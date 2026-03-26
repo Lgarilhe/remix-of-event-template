@@ -6,11 +6,14 @@ import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { useATSData, ATS_STAGES, ATSCandidate } from '@/hooks/useATSData';
+import { useOrganization } from '@/hooks/useOrganization';
+import { getOrgTypeLabel, getOrgTypeEmoji } from '@/lib/featureGates';
 import { RefreshCw } from 'lucide-react';
 import iconDashboard3d from '@/assets/icon-dashboard-3d.png';
 
 export default function Dashboard() {
   const { candidates, loading, isFetching, isFromCache, refetch, handleStageChange, handleTagsChange } = useATSData();
+  const { orgType } = useOrganization();
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
@@ -33,6 +36,11 @@ export default function Dashboard() {
                 <img src={iconDashboard3d} alt="" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Dashboard</h1>
+              {orgType && (
+                <span className="text-[9px] text-muted-foreground border border-foreground/20 px-2 py-0.5 uppercase tracking-wider font-bold hidden sm:inline">
+                  {getOrgTypeEmoji(orgType)} {getOrgTypeLabel(orgType)}
+                </span>
+              )}
               {isFromCache && !isFetching && (
                 <span className="text-[9px] text-muted-foreground border border-border px-1.5 py-0.5 uppercase tracking-wider font-medium hidden sm:inline">
                   Cache

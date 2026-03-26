@@ -7,6 +7,8 @@ import { User } from '@supabase/supabase-js';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
+import { useOrganization } from '@/hooks/useOrganization';
+import { hasFeature } from '@/lib/featureGates';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,6 +110,7 @@ export const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
+  const { orgType } = useOrganization();
   const unreadMsgCount = useUnreadMessageNotifications();
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const lastScrollY = useRef(0);
@@ -211,26 +214,28 @@ export const Navbar: React.FC = () => {
             </Link>
             {/* Spacer */}
             <div className="flex-1" />
-            {/* Quick create menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="relative overflow-hidden glass text-foreground h-[34px] w-[34px] flex items-center justify-center text-sm font-bold border border-foreground leading-none group">
-                  <span className="relative z-10">+</span>
-                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => navigate('/missions?create=brief')}>
-                  📋 Nouvelle mission (Brief IA)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/missions?create=import')}>
-                  📥 Importer depuis page carrières
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/missions?create=manual')}>
-                  ✏️ Création manuelle
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Quick create menu — hidden for freelance */}
+            {hasFeature(orgType, 'create_missions') && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="relative overflow-hidden glass text-foreground h-[34px] w-[34px] flex items-center justify-center text-sm font-bold border border-foreground leading-none group">
+                    <span className="relative z-10">+</span>
+                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate('/missions?create=brief')}>
+                    📋 Nouvelle mission (Brief IA)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/missions?create=import')}>
+                    📥 Importer depuis page carrières
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/missions?create=manual')}>
+                    ✏️ Création manuelle
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {/* Right group: notifications + sign out */}
             <NotificationDropdown />
             <button 
@@ -239,7 +244,7 @@ export const Navbar: React.FC = () => {
               }}
               className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
             >
-              <span className="relative z-10">SIGN OUT</span>
+              <span className="relative z-10">DÉCONNEXION</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
             </button>
           </>
