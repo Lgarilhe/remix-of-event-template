@@ -7,6 +7,8 @@ import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useOrganization } from '@/hooks/useOrganization';
+import { hasFeature } from '@/lib/featureGates';
 import { MissionBrief } from '@/components/missions/MissionBrief';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';
@@ -44,6 +46,9 @@ const MissionWorkspace = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { orgType } = useOrganization();
+  const canEditBrief = hasFeature(orgType, 'edit_brief');
+  const canEditProcess = hasFeature(orgType, 'edit_process');
 
   const { projects, isLoading } = useSourcingProjects();
 
@@ -170,13 +175,13 @@ const MissionWorkspace = () => {
 
           <div className={cn("mt-0 min-w-0", activeTab !== 'brief' && 'hidden')}>
             <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
-              <MissionBrief project={project} />
+              <MissionBrief project={project} readOnly={!canEditBrief} />
             </SectionErrorBoundary>
           </div>
 
           <div className={cn("mt-0 min-w-0", activeTab !== 'process' && 'hidden')}>
             <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
-              <MissionProcess project={project} />
+              <MissionProcess project={project} readOnly={!canEditProcess} />
             </SectionErrorBoundary>
           </div>
 

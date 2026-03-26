@@ -41,6 +41,7 @@ interface AnalysisResult {
 
 interface MissionBriefProps {
   project: SourcingProject;
+  readOnly?: boolean;
 }
 
 const EditField = ({ label, value, field, projectId }: {
@@ -62,7 +63,7 @@ const EditField = ({ label, value, field, projectId }: {
   );
 };
 
-export const MissionBrief = ({ project }: MissionBriefProps) => {
+export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) => {
   const [, setSearchParams] = useSearchParams();
   const { updateProject } = useSourcingProjects();
 
@@ -178,8 +179,15 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
-      {/* Mode toggle */}
-      <div className="flex items-center gap-2 mb-4">
+      {readOnly && (
+        <div className="mb-4 px-3 py-2 border border-foreground/20 bg-muted/30 flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            👁️ Lecture seule — vous n'avez pas les droits d'édition sur ce brief
+          </span>
+        </div>
+      )}
+      {/* Mode toggle — hidden in read-only */}
+      <div className={cn("flex items-center gap-2 mb-4", readOnly && "hidden")}
         <button
           onClick={() => setBriefMode('structured')}
           className={cn(

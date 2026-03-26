@@ -195,9 +195,10 @@ const StepCard: React.FC<StepCardProps> = ({
 
 interface MissionProcessProps {
   project: SourcingProject;
+  readOnly?: boolean;
 }
 
-export const MissionProcess: React.FC<MissionProcessProps> = ({ project }) => {
+export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnly = false }) => {
   const {
     steps, team, loadingSteps, loadingTeam,
     addStep, updateStep, deleteStep, reorderSteps,
@@ -230,12 +231,19 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project }) => {
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
+      {readOnly && (
+        <div className="mb-4 px-3 py-2 border border-foreground/20 bg-muted/30 flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            👁️ Lecture seule — le process est défini par le lead recruteur
+          </span>
+        </div>
+      )}
       {/* Steps timeline */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           Étapes du process ({steps.length})
         </h3>
-        {steps.length === 0 && !loadingSteps && (
+        {steps.length === 0 && !loadingSteps && !readOnly && (
           <button
             onClick={initializeDefaultSteps}
             disabled={isAdding}
@@ -254,16 +262,16 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project }) => {
         <div className="border border-dashed border-foreground/20 p-8 text-center">
           <div className="text-3xl mb-3">🏗️</div>
           <p className="text-sm text-muted-foreground mb-4">
-            Aucune étape définie. Créez votre process de recrutement.
+            {readOnly ? 'Aucune étape définie pour cette mission.' : 'Aucune étape définie. Créez votre process de recrutement.'}
           </p>
-          <button
+          {!readOnly && <button
             onClick={initializeDefaultSteps}
             disabled={isAdding}
             className="relative overflow-hidden h-[34px] px-5 bg-foreground text-background border border-foreground text-[10px] font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10">{isAdding ? 'Création...' : 'Créer un process par défaut'}</span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-          </button>
+          </button>}
         </div>
       ) : (
         <div className="space-y-2">
@@ -297,8 +305,8 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project }) => {
         </div>
       )}
 
-      {/* Add step */}
-      <div className="mt-3">
+      {/* Add step — hidden in read-only */}
+      {!readOnly && <div className="mt-3">
         {addingStep ? (
           <div className="flex items-center gap-2">
             <input
@@ -332,7 +340,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project }) => {
             <span className="relative z-10">Ajouter une étape</span>
           </button>
         )}
-      </div>
+      </div>}
 
       {/* Team section */}
       <div className="mt-8 pt-6 border-t border-foreground/10">

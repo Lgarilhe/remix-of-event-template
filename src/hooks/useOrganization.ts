@@ -156,10 +156,16 @@ export const useOrganization = () => {
     },
   });
 
+  const orgType = (data?.organization as any)?.org_type as 'enterprise' | 'agency' | 'freelance' | null ?? null;
+
   return {
     organization: data?.organization || null,
     organizationId: data?.organization?.id || null,
     organizationName: data?.organization?.name || null,
+    orgType,
+    isEnterprise: orgType === 'enterprise',
+    isAgency: orgType === 'agency',
+    isFreelance: orgType === 'freelance',
     userRole: data?.role || null,
     isOwner: data?.role === 'owner',
     isAdmin: data?.role === 'owner' || data?.role === 'admin',
