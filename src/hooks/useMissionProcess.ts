@@ -154,10 +154,14 @@ export const useMissionProcess = (projectId: string | undefined) => {
   // Initialize with default steps
   const initializeDefaultSteps = async () => {
     if (!projectId || !organizationId) return;
-    for (const step of DEFAULT_STEPS) {
-      await addStepMutation.mutateAsync({ ...step } as any);
+    try {
+      for (const step of DEFAULT_STEPS) {
+        await addStepMutation.mutateAsync({ ...step } as any);
+      }
+      toast.success('Process par défaut créé');
+    } catch {
+      // Individual step errors already toasted by mutation onError
     }
-    toast.success('Process par défaut créé');
   };
 
   return {

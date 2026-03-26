@@ -298,9 +298,9 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           ))}
 
           {/* Fixed last step: Hired */}
-          <div className="flex items-center gap-3 px-4 py-3 border border-foreground/10 bg-emerald-50">
-            <div className="flex items-center justify-center w-7 h-7 bg-emerald-600 text-white text-[11px] font-bold shrink-0">✓</div>
-            <span className="text-sm font-bold uppercase tracking-wider text-emerald-700">Embauché</span>
+          <div className="flex items-center gap-3 px-4 py-3 border border-foreground/10 bg-brutal-accent/10">
+            <div className="flex items-center justify-center w-7 h-7 bg-brutal-accent text-background text-[11px] font-bold shrink-0">✓</div>
+            <span className="text-sm font-bold uppercase tracking-wider text-foreground">Embauché</span>
           </div>
         </div>
       )}

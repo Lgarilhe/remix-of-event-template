@@ -187,7 +187,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
         </div>
       )}
       {/* Mode toggle — hidden in read-only */}
-      <div className={cn("flex items-center gap-2 mb-4", readOnly && "hidden")}
+      {!readOnly && <div className="flex items-center gap-2 mb-4">
         <button
           onClick={() => setBriefMode('structured')}
           className={cn(
@@ -221,7 +221,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
         >
           <Mic className="w-3 h-3" /> Dicter
         </button>
-      </div>
+      </div>}
 
       {/* Structured mode */}
       {briefMode === 'structured' && (

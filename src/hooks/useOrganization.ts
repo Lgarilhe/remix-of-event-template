@@ -156,7 +156,7 @@ export const useOrganization = () => {
     },
   });
 
-  const orgType = (data?.organization as any)?.org_type as 'enterprise' | 'agency' | 'freelance' | null ?? null;
+  const orgType = ((data?.organization as any)?.org_type || null) as 'enterprise' | 'agency' | 'freelance' | null;
 
   return {
     organization: data?.organization || null,
