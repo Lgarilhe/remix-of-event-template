@@ -2,11 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { SEOHead } from '@/components/SEOHead';
-import { Loader2, Users, ExternalLink, Clock, MessageSquare } from 'lucide-react';
+import { Loader2, Users, Clock, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { toast } from 'sonner';
 
 interface PortalCandidate {
   id: string;
@@ -14,9 +13,9 @@ interface PortalCandidate {
   candidate_headline: string | null;
   pipeline_stage: string | null;
   score: number | null;
-  recommendation: string | null;
   updated_at: string;
   created_at: string;
+  project_id: string;
 }
 
 interface PortalProject {
@@ -43,8 +42,6 @@ export default function ClientPortal() {
   const [data, setData] = useState<ClientPortalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [comment, setComment] = useState('');
-  const [commentingOn, setCommentingOn] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) { setNotFound(true); setLoading(false); return; }
@@ -56,19 +53,29 @@ export default function ClientPortal() {
           .from('client_portal_tokens')
           .select('*')
           .eq('token', token)
-          .single();
+          .maybeSingle();
 
         if (tokenErr || !tokenRow) { setNotFound(true); setLoading(false); return; }
 
-        // Update last_accessed_at
-        supabase.from('client_portal_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('id', tokenRow.id).then(() => {});
+        // Check expiration
+        if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+
+        // Update last_accessed_at (fire-and-forget with error logging)
+        supabase.from('client_portal_tokens')
+          .update({ last_accessed_at: new Date().toISOString() })
+          .eq('id', tokenRow.id)
+          .then(({ error }) => { if (error) console.warn('Failed to update last_accessed_at:', error); });
 
         // 2. Get organization info
         const { data: org } = await supabase
           .from('organizations')
           .select('name, logo_url')
           .eq('id', tokenRow.organization_id)
-          .single();
+          .maybeSingle();
 
         // 3. Get projects
         const projectIds = tokenRow.project_ids as string[] | null;
@@ -81,34 +88,53 @@ export default function ClientPortal() {
           projectsQuery = projectsQuery.in('id', projectIds);
         }
 
-        const { data: projects } = await projectsQuery.order('created_at', { ascending: false });
-
-        // 4. Get candidates for each project
-        const portalProjects: PortalProject[] = [];
-        for (const proj of (projects || [])) {
-          const { data: candidates } = await supabase
-            .from('job_candidate_status')
-            .select('id, candidate_name, candidate_headline, pipeline_stage, score, recommendation, updated_at, created_at')
-            .eq('project_id', proj.id)
-            .order('updated_at', { ascending: false })
-            .limit(50);
-
-          portalProjects.push({
-            id: proj.id,
-            name: proj.name,
-            status: proj.status,
-            candidates: (candidates || []) as PortalCandidate[],
+        const { data: projects, error: projErr } = await projectsQuery.order('created_at', { ascending: false });
+        if (projErr || !projects || projects.length === 0) {
+          setData({
+            client_name: tokenRow.client_name,
+            org_name: org?.name || null,
+            org_logo: org?.logo_url || null,
+            projects: [],
+            permissions: parsePermissions(tokenRow.permissions),
           });
+          setLoading(false);
+          return;
         }
+
+        // 4. Get ALL candidates in one query (no N+1)
+        const allProjectIds = projects.map(p => p.id);
+        const { data: allCandidates, error: candErr } = await supabase
+          .from('job_candidate_status')
+          .select('id, candidate_name, candidate_headline, pipeline_stage, score, updated_at, created_at, project_id')
+          .in('project_id', allProjectIds)
+          .order('updated_at', { ascending: false });
+
+        if (candErr) console.warn('Failed to load candidates:', candErr);
+
+        // Group candidates by project
+        const candidatesByProject = new Map<string, PortalCandidate[]>();
+        (allCandidates || []).forEach(c => {
+          const list = candidatesByProject.get(c.project_id) || [];
+          list.push(c as PortalCandidate);
+          candidatesByProject.set(c.project_id, list);
+        });
+
+        const portalProjects: PortalProject[] = projects.map(proj => ({
+          id: proj.id,
+          name: proj.name,
+          status: proj.status,
+          candidates: candidatesByProject.get(proj.id) || [],
+        }));
 
         setData({
           client_name: tokenRow.client_name,
           org_name: org?.name || null,
           org_logo: org?.logo_url || null,
           projects: portalProjects,
-          permissions: tokenRow.permissions as any || { can_comment: true, can_see_names: true, can_fill_scorecard: true },
+          permissions: parsePermissions(tokenRow.permissions),
         });
-      } catch {
+      } catch (err) {
+        console.error('Portal fetch error:', err);
         setNotFound(true);
       } finally {
         setLoading(false);
@@ -121,7 +147,7 @@ export default function ClientPortal() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-6 h-6 animate-spin text-foreground" />
+          <div className="w-6 h-6 border-2 border-foreground/20 border-t-foreground animate-spin" />
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Chargement du portail client...</p>
         </div>
       </div>
@@ -189,7 +215,7 @@ export default function ClientPortal() {
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">{project.name}</h2>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
-                    {project.candidates.length} candidat{project.candidates.length > 1 ? 's' : ''} · {project.status}
+                    {project.candidates.length} candidat{project.candidates.length > 1 ? 's' : ''}
                   </p>
                 </div>
               </div>
@@ -233,9 +259,9 @@ export default function ClientPortal() {
                       {candidate.score != null && (
                         <span className={cn(
                           "px-1.5 py-0.5 text-[10px] font-bold shrink-0",
-                          candidate.score >= 70 ? "bg-green-600 text-white" :
-                          candidate.score >= 40 ? "bg-amber-500 text-white" :
-                          "bg-red-600 text-white"
+                          candidate.score >= 70 ? "bg-foreground text-background" :
+                          candidate.score >= 40 ? "bg-foreground/60 text-background" :
+                          "bg-foreground/30 text-foreground"
                         )}>
                           {candidate.score}
                         </span>
@@ -246,16 +272,6 @@ export default function ClientPortal() {
                         <Clock className="w-2.5 h-2.5" />
                         {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
                       </span>
-
-                      {/* Comment button */}
-                      {data.permissions.can_comment && (
-                        <button
-                          onClick={() => setCommentingOn(commentingOn === candidate.id ? null : candidate.id)}
-                          className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -273,4 +289,15 @@ export default function ClientPortal() {
       </footer>
     </div>
   );
+}
+
+/** Parse permissions from DB with safe defaults */
+function parsePermissions(raw: any): { can_comment: boolean; can_see_names: boolean; can_fill_scorecard: boolean } {
+  const defaults = { can_comment: true, can_see_names: true, can_fill_scorecard: true };
+  if (!raw || typeof raw !== 'object') return defaults;
+  return {
+    can_comment: typeof raw.can_comment === 'boolean' ? raw.can_comment : defaults.can_comment,
+    can_see_names: typeof raw.can_see_names === 'boolean' ? raw.can_see_names : defaults.can_see_names,
+    can_fill_scorecard: typeof raw.can_fill_scorecard === 'boolean' ? raw.can_fill_scorecard : defaults.can_fill_scorecard,
+  };
 }

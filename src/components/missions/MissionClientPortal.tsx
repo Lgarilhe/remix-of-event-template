@@ -57,12 +57,25 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
     }
   };
 
-  const handleCopy = async (token: string) => {
-    const url = `${window.location.origin}/client/${token}`;
-    await navigator.clipboard.writeText(url);
-    setCopiedId(token);
-    toast.success('Lien copié !');
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = async (tokenValue: string) => {
+    const url = `${window.location.origin}/client/${tokenValue}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(tokenValue);
+      toast.success('Lien copié !');
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      toast.error('Impossible de copier — copiez manuellement : ' + url);
+    }
+  };
+
+  const handleDelete = async (tokenId: string, clientName: string) => {
+    if (!confirm(`Révoquer l'accès pour "${clientName}" ? Cette action est irréversible.`)) return;
+    try {
+      await deleteToken(tokenId);
+    } catch {
+      // Error already toasted by hook
+    }
   };
 
   return (
@@ -167,7 +180,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
               <button
-                onClick={() => deleteToken(t.id)}
+                onClick={() => handleDelete(t.id, t.client_name)}
                 className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
                 title="Révoquer l'accès"
               >
