@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionProcess, ProcessStep } from '@/hooks/useMissionProcess';
+import { useMissionInvitations } from '@/hooks/useMissionInvitations';
 import { useOrganizationMembers } from '@/hooks/useOrganization';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Loader2, FileText } from 'lucide-react';
+import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Loader2, FileText, Mail, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { JobDetails } from '@/types/jobDetails';
@@ -256,14 +257,18 @@ interface MissionTeamSectionProps {
   readOnly: boolean;
   getMemberName: (userId: string) => string;
   orgMembers: any[];
+  projectId: string;
   onAdd: (input: { user_id: string; role: string }) => Promise<any>;
   onRemove: (id: string) => Promise<any>;
 }
 
 const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
-  team, loadingTeam, readOnly, getMemberName, orgMembers, onAdd, onRemove,
+  team, loadingTeam, readOnly, getMemberName, orgMembers, projectId, onAdd, onRemove,
 }) => {
+  const { invitations, sendInvitation, isSending, cancelInvitation } = useMissionInvitations(projectId);
   const [showAssign, setShowAssign] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('sourcer');
 
@@ -373,6 +378,96 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* External invitations */}
+      {!readOnly && (
+        <div className="mt-4 pt-4 border-t border-foreground/10">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Invitations externes ({invitations.filter(i => i.status === 'pending').length} en attente)
+            </p>
+            {!showInvite && (
+              <button
+                onClick={() => setShowInvite(true)}
+                className="flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
+              >
+                <Mail className="w-3 h-3" /> Inviter par email
+              </button>
+            )}
+          </div>
+
+          {showInvite && (
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="email@freelance.com"
+                className="flex-1 h-[34px] px-3 text-sm border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (inviteEmail.trim()) {
+                      sendInvitation({ email: inviteEmail.trim(), role: 'freelance' })
+                        .then(() => { setInviteEmail(''); setShowInvite(false); })
+                        .catch(() => {});
+                    }
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (inviteEmail.trim()) {
+                    sendInvitation({ email: inviteEmail.trim(), role: 'freelance' })
+                      .then(() => { setInviteEmail(''); setShowInvite(false); })
+                      .catch(() => {});
+                  }
+                }}
+                disabled={!inviteEmail.trim() || isSending}
+                className="h-[34px] px-4 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider border border-foreground disabled:opacity-50"
+              >
+                {isSending ? 'Envoi...' : 'Inviter'}
+              </button>
+              <button
+                onClick={() => { setShowInvite(false); setInviteEmail(''); }}
+                className="h-[34px] px-2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {invitations.length > 0 && (
+            <div className="space-y-1.5">
+              {invitations.map(inv => (
+                <div key={inv.id} className="flex items-center gap-3 px-3 py-2 border border-foreground/10">
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-foreground truncate">{inv.email}</p>
+                  </div>
+                  <span className={cn(
+                    "px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border",
+                    inv.status === 'accepted' ? "border-green-600 text-green-600" :
+                    inv.status === 'pending' ? "border-amber-500 text-amber-600" :
+                    "border-foreground/20 text-muted-foreground"
+                  )}>
+                    {inv.status === 'pending' ? 'En attente' : inv.status === 'accepted' ? 'Acceptée' : inv.status === 'rejected' ? 'Refusée' : 'Expirée'}
+                  </span>
+                  {inv.status === 'pending' && (
+                    <button
+                      onClick={() => cancelInvitation(inv.id)}
+                      className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                      title="Annuler l'invitation"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -614,6 +709,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
         readOnly={readOnly}
         getMemberName={getMemberName}
         orgMembers={orgMembers}
+        projectId={project.id}
         onAdd={addTeamMember}
         onRemove={removeTeamMember}
       />
