@@ -2,10 +2,11 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { Sparkles, Loader2, Play, RefreshCw, FileText, FormInput } from 'lucide-react';
+import { Sparkles, Loader2, Play, RefreshCw, FileText, FormInput, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { StructuredBriefForm } from './StructuredBriefForm';
+import { VoiceDictation } from './VoiceDictation';
 import type { JobDetails } from '@/types/jobDetails';
 
 interface AnalysisResult {
@@ -65,7 +66,8 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
   const [, setSearchParams] = useSearchParams();
   const { updateProject } = useSourcingProjects();
 
-  const [briefMode, setBriefMode] = useState<'structured' | 'text'>('structured');
+  const [briefMode, setBriefMode] = useState<'structured' | 'text' | 'voice'>('structured');
+  const [voiceTranscript, setVoiceTranscript] = useState('');
   const [briefText, setBriefText] = useState(project.description || '');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -200,6 +202,17 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
         >
           <FileText className="w-3 h-3" /> Texte libre
         </button>
+        <button
+          onClick={() => setBriefMode('voice')}
+          className={cn(
+            "flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border transition-colors",
+            briefMode === 'voice'
+              ? "bg-foreground text-background border-foreground"
+              : "bg-background text-foreground border-foreground/30 hover:border-foreground"
+          )}
+        >
+          <Mic className="w-3 h-3" /> Dicter
+        </button>
       </div>
 
       {/* Structured mode */}
@@ -227,6 +240,44 @@ export const MissionBrief = ({ project }: MissionBriefProps) => {
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-2">
             {briefText.length > 0 ? `${briefText.length} caractères` : 'Collez votre fiche de poste'}
           </p>
+        </div>
+      )}
+
+      {/* Voice mode */}
+      {briefMode === 'voice' && (
+        <div className="space-y-4">
+          <VoiceDictation
+            onTranscript={(chunk) => {
+              setVoiceTranscript(prev => (prev ? prev + ' ' : '') + chunk);
+            }}
+            onComplete={(fullText) => {
+              // Save transcript to job_details
+              handleJobDetailsUpdate({
+                voice_transcript: fullText,
+                raw_brief: fullText,
+                brief_source: 'voice',
+              });
+              toast.success('Dictée terminée — transcript sauvegardé');
+            }}
+          />
+
+          {/* Transcript display */}
+          {(voiceTranscript || (project.job_details as any)?.voice_transcript) && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Transcript
+              </label>
+              <div className="border border-foreground/20 bg-muted/10 p-4 max-h-[300px] overflow-y-auto">
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                  {voiceTranscript || (project.job_details as any)?.voice_transcript || ''}
+                </p>
+              </div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                {(voiceTranscript || (project.job_details as any)?.voice_transcript || '').length} caractères
+                — Utilisez "Analyser avec l'IA" pour structurer automatiquement
+              </p>
+            </div>
+          )}
         </div>
       )}
 
