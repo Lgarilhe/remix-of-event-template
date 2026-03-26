@@ -7,10 +7,11 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjects';
 import { useProjectStats } from '@/hooks/useProjectStats';
+import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { ProjectCandidatesTableEnhanced } from '@/components/outreach/projects/ProjectCandidatesTableEnhanced';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
-import { List, LayoutGrid, ExternalLink } from 'lucide-react';
+import { List, LayoutGrid, ExternalLink, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -27,6 +28,7 @@ interface ProjectCandidate {
   candidate_headline: string | null;
   linkedin_profile_url: string | null;
   status: string;
+  pipeline_stage: string | null;
   score: number | null;
   recommendation: string | null;
   skip_reason: string | null;
@@ -34,60 +36,79 @@ interface ProjectCandidate {
   updated_at: string;
 }
 
-const PIPELINE_COLUMNS = [
-  { key: 'untreated', label: 'Sourcé', color: 'bg-gray-100', textColor: 'text-gray-600' },
-  { key: 'messaged', label: 'Contacté', color: 'bg-blue-50', textColor: 'text-blue-700' },
-  { key: 'shortlisted', label: 'Shortlisté', color: 'bg-purple-50', textColor: 'text-purple-700' },
-  { key: 'dismissed', label: 'Écarté', color: 'bg-red-50', textColor: 'text-red-600' },
+interface PipelineColumn {
+  key: string;
+  label: string;
+  isProcessStep?: boolean;
+}
+
+// ── Static fallback columns (used when no process steps defined) ──
+
+const STATIC_COLUMNS: PipelineColumn[] = [
+  { key: 'untreated', label: 'Sourcé' },
+  { key: 'messaged', label: 'Contacté' },
+  { key: 'shortlisted', label: 'Shortlisté' },
 ];
+
+const DISMISSED_COLUMN: PipelineColumn = { key: 'dismissed', label: 'Écarté' };
 
 // ── Kanban Card ──
 
-const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; isDragging?: boolean }) => (
-  <div className={cn(
-    "bg-background border border-foreground/20 p-2.5 cursor-grab transition-all",
-    "hover:border-foreground hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
-    isDragging && "shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] border-foreground"
-  )}>
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-foreground truncate">
-          {candidate.candidate_name || 'Candidat inconnu'}
-        </p>
-        {candidate.candidate_headline && (
-          <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-            {candidate.candidate_headline}
+const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; isDragging?: boolean }) => {
+  const timeInStage = candidate.updated_at
+    ? formatDistanceToNow(new Date(candidate.updated_at), { locale: fr })
+    : null;
+
+  return (
+    <div className={cn(
+      "bg-background border border-foreground/20 p-2.5 cursor-grab transition-all",
+      "hover:border-foreground hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
+      isDragging && "shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] border-foreground"
+    )}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-foreground truncate">
+            {candidate.candidate_name || 'Candidat inconnu'}
           </p>
+          {candidate.candidate_headline && (
+            <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+              {candidate.candidate_headline}
+            </p>
+          )}
+        </div>
+        {candidate.score != null && (
+          <span className={cn(
+            "text-[10px] font-bold px-1.5 py-0.5 shrink-0",
+            candidate.score >= 70 ? "bg-green-100 text-green-700" :
+            candidate.score >= 40 ? "bg-yellow-100 text-yellow-700" :
+            "bg-red-100 text-red-600"
+          )}>
+            {candidate.score}
+          </span>
         )}
       </div>
-      {candidate.score !== null && (
-        <span className={cn(
-          "text-[10px] font-bold px-1.5 py-0.5 shrink-0",
-          candidate.score >= 70 ? "bg-green-100 text-green-700" :
-          candidate.score >= 40 ? "bg-yellow-100 text-yellow-700" :
-          "bg-red-100 text-red-600"
-        )}>
-          {candidate.score}
-        </span>
-      )}
+      <div className="flex items-center gap-2 mt-1.5">
+        {candidate.linkedin_profile_url && (
+          <a
+            href={candidate.linkedin_profile_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="w-2.5 h-2.5" /> LinkedIn
+          </a>
+        )}
+        {timeInStage && (
+          <span className="text-[9px] text-muted-foreground inline-flex items-center gap-0.5 ml-auto">
+            <Clock className="w-2.5 h-2.5" /> {timeInStage}
+          </span>
+        )}
+      </div>
     </div>
-    {candidate.linkedin_profile_url && (
-      <a
-        href={candidate.linkedin_profile_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[10px] text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1"
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <ExternalLink className="w-2.5 h-2.5" /> LinkedIn
-      </a>
-    )}
-    <p className="text-[9px] text-muted-foreground mt-1">
-      {formatDistanceToNow(new Date(candidate.created_at), { addSuffix: true, locale: fr })}
-    </p>
-  </div>
-);
+  );
+};
 
 // ── Draggable Card ──
 
@@ -106,9 +127,10 @@ const DraggableKanbanCard = ({ candidate, columnId }: { candidate: ProjectCandid
 
 // ── Kanban Column ──
 
-const KanbanColumn = ({ column, candidates }: {
-  column: typeof PIPELINE_COLUMNS[0];
+const KanbanColumn = ({ column, candidates, isDismissed }: {
+  column: PipelineColumn;
   candidates: ProjectCandidate[];
+  isDismissed?: boolean;
 }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: column.key,
@@ -119,13 +141,22 @@ const KanbanColumn = ({ column, candidates }: {
     <div
       ref={setNodeRef}
       className={cn(
-        "w-[260px] flex-shrink-0 border border-foreground/30 bg-background transition-all",
+        "flex-shrink-0 border border-foreground/30 bg-background transition-all",
+        isDismissed ? "w-[200px]" : "w-[260px]",
         isOver && "border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
       )}
     >
-      <div className="p-3 border-b border-foreground/20 bg-foreground/5">
+      <div className={cn(
+        "p-3 border-b border-foreground/20",
+        isDismissed ? "bg-red-50" : "bg-foreground/5"
+      )}>
         <div className="flex items-center justify-between">
-          <h3 className="font-medium text-[11px] uppercase tracking-wider">{column.label}</h3>
+          <h3 className={cn(
+            "font-medium text-[11px] uppercase tracking-wider",
+            isDismissed && "text-red-600"
+          )}>
+            {column.label}
+          </h3>
           <span className="text-[10px] bg-foreground/10 px-2 py-0.5 font-bold">
             {candidates.length}
           </span>
@@ -133,7 +164,7 @@ const KanbanColumn = ({ column, candidates }: {
       </div>
       <div className="p-2 space-y-2 min-h-[100px] max-h-[500px] overflow-y-auto">
         {candidates.map(c => (
-          <DraggableKanbanCard key={c.id} candidate={c as ProjectCandidate} columnId={column.key} />
+          <DraggableKanbanCard key={c.id} candidate={c} columnId={column.key} />
         ))}
         {candidates.length === 0 && (
           <p className="text-[10px] text-muted-foreground text-center py-4">Aucun candidat</p>
@@ -152,15 +183,34 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
 
   const { data: candidates = [], isLoading } = useProjectCandidates(project.id);
   const { data: stats } = useProjectStats(project.id);
+  const { steps, loadingSteps } = useMissionProcess(project.id);
+
+  // Build dynamic columns from process steps
+  const columns = useMemo<PipelineColumn[]>(() => {
+    if (steps.length === 0) return STATIC_COLUMNS;
+    return [
+      { key: 'sourced', label: 'Sourcé' },
+      ...steps.map(s => ({ key: s.name, label: s.name, isProcessStep: true })),
+      { key: 'hired', label: 'Embauché' },
+    ];
+  }, [steps]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const updateStatus = async (candidateId: string, newStatus: string) => {
+  const updateStage = async (candidateId: string, newStage: string) => {
+    // Map back to status for backward compatibility
+    const statusMap: Record<string, string> = {
+      sourced: 'untreated', untreated: 'untreated',
+      dismissed: 'dismissed',
+      hired: 'shortlisted',
+    };
+    const newStatus = statusMap[newStage] || 'shortlisted';
+
     const { error } = await supabase
       .from('job_candidate_status')
-      .update({ status: newStatus })
+      .update({ status: newStatus, pipeline_stage: newStage })
       .eq('id', candidateId);
     if (error) {
       toast.error('Erreur lors de la mise à jour');
@@ -171,19 +221,31 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
   };
 
-  const candidatesByStatus = useMemo(() => {
-    const grouped: Record<string, any[]> = {};
-    PIPELINE_COLUMNS.forEach(col => { grouped[col.key] = []; });
-    candidates.forEach((c: any) => {
-      const key = PIPELINE_COLUMNS.find(col => col.key === c.status)?.key || 'untreated';
-      grouped[key].push(c);
+  // Group candidates by column
+  const candidatesByColumn = useMemo(() => {
+    const grouped: Record<string, ProjectCandidate[]> = {};
+    columns.forEach(col => { grouped[col.key] = []; });
+    grouped['dismissed'] = [];
+
+    (candidates as ProjectCandidate[]).forEach(c => {
+      const stage = c.pipeline_stage || c.status;
+      if (stage === 'dismissed') {
+        grouped['dismissed'].push(c);
+      } else if (grouped[stage]) {
+        grouped[stage].push(c);
+      } else {
+        // Fallback: map old statuses to first column
+        const firstKey = columns[0]?.key || 'untreated';
+        if (!grouped[firstKey]) grouped[firstKey] = [];
+        grouped[firstKey].push(c);
+      }
     });
     return grouped;
-  }, [candidates]);
+  }, [candidates, columns]);
 
   const handleDragStart = (event: DragStartEvent) => {
-    const c = candidates.find((c: any) => c.id === event.active.id);
-    setDraggedCandidate((c as ProjectCandidate) || null);
+    const c = (candidates as ProjectCandidate[]).find(c => c.id === event.active.id);
+    setDraggedCandidate(c || null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -198,14 +260,16 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
 
     if (!targetColumn) return;
 
-    const currentStatus = (candidates as any[]).find(c => c.id === candidateId)?.status;
-    if (currentStatus === targetColumn) return;
+    const candidate = (candidates as ProjectCandidate[]).find(c => c.id === candidateId);
+    const currentStage = candidate?.pipeline_stage || candidate?.status;
+    if (currentStage === targetColumn) return;
 
-    updateStatus(candidateId, targetColumn);
-    toast.success(`Candidat déplacé vers "${PIPELINE_COLUMNS.find(c => c.key === targetColumn)?.label}"`);
+    updateStage(candidateId, targetColumn);
+    const colLabel = columns.find(c => c.key === targetColumn)?.label || targetColumn;
+    toast.success(`Candidat déplacé vers "${colLabel}"`);
   };
 
-  if (isLoading) {
+  if (isLoading || loadingSteps) {
     return <BrutalLoader variant="default" rows={3} messages={['Chargement du pipeline…']} />;
   }
 
@@ -217,47 +281,60 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
       {totalCandidates > 0 && (
         <div className="mb-4">
           <div className="flex h-2 w-full overflow-hidden border border-foreground/20">
-            {stats && stats.total > 0 && (
-              <>
-                {stats.untreated > 0 && (
-                  <div className="bg-gray-300 h-full" style={{ width: `${(stats.untreated / stats.total) * 100}%` }} title={`${stats.untreated} sourcés`} />
-                )}
-                {stats.messaged > 0 && (
-                  <div className="bg-blue-400 h-full" style={{ width: `${(stats.messaged / stats.total) * 100}%` }} title={`${stats.messaged} contactés`} />
-                )}
-                {stats.shortlisted > 0 && (
-                  <div className="bg-purple-400 h-full" style={{ width: `${(stats.shortlisted / stats.total) * 100}%` }} title={`${stats.shortlisted} shortlistés`} />
-                )}
-                {stats.dismissed > 0 && (
-                  <div className="bg-red-300 h-full" style={{ width: `${(stats.dismissed / stats.total) * 100}%` }} title={`${stats.dismissed} écartés`} />
-                )}
-              </>
+            {columns.map((col, i) => {
+              const count = candidatesByColumn[col.key]?.length || 0;
+              if (count === 0 || totalCandidates === 0) return null;
+              const colors = ['bg-gray-300', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
+              return (
+                <div
+                  key={col.key}
+                  className={cn("h-full", colors[i % colors.length])}
+                  style={{ width: `${(count / totalCandidates) * 100}%` }}
+                  title={`${count} ${col.label}`}
+                />
+              );
+            })}
+            {(candidatesByColumn['dismissed']?.length || 0) > 0 && (
+              <div
+                className="bg-red-300 h-full"
+                style={{ width: `${((candidatesByColumn['dismissed']?.length || 0) / totalCandidates) * 100}%` }}
+                title={`${candidatesByColumn['dismissed']?.length || 0} écartés`}
+              />
             )}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            {columns.map((col, i) => {
+              const count = candidatesByColumn[col.key]?.length || 0;
+              const colors = ['bg-gray-300', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
+              return (
+                <span key={col.key} className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  <span className={cn("inline-block w-2 h-2 mr-1", colors[i % colors.length])} />
+                  {count} {col.label}
+                </span>
+              );
+            })}
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              <span className="inline-block w-2 h-2 bg-gray-300 mr-1" />{stats?.untreated || 0} sourcés
-            </span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              <span className="inline-block w-2 h-2 bg-blue-400 mr-1" />{stats?.messaged || 0} contactés
-            </span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              <span className="inline-block w-2 h-2 bg-purple-400 mr-1" />{stats?.shortlisted || 0} shortlistés
-            </span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              <span className="inline-block w-2 h-2 bg-red-300 mr-1" />{stats?.dismissed || 0} écartés
+              <span className="inline-block w-2 h-2 bg-red-300 mr-1" />
+              {candidatesByColumn['dismissed']?.length || 0} écartés
             </span>
             <span className="text-[10px] font-bold text-foreground uppercase tracking-wider ml-auto">
-              {stats?.total || 0} total
+              {totalCandidates} total
             </span>
           </div>
         </div>
       )}
 
-      {/* View toggle */}
+      {/* View toggle + dynamic info */}
       <div className="flex items-center justify-between mb-4">
-        <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
-          {totalCandidates} candidat{totalCandidates > 1 ? 's' : ''}
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            {totalCandidates} candidat{totalCandidates > 1 ? 's' : ''}
+          </span>
+          {steps.length > 0 && (
+            <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">
+              • {steps.length} étapes de process
+            </span>
+          )}
         </div>
         <div className="flex gap-0">
           <button
@@ -308,13 +385,19 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               onDragEnd={handleDragEnd}
             >
               <div className="flex gap-3 overflow-x-auto pb-4">
-                {PIPELINE_COLUMNS.map(column => (
+                {columns.map(column => (
                   <KanbanColumn
                     key={column.key}
                     column={column}
-                    candidates={candidatesByStatus[column.key] || []}
+                    candidates={candidatesByColumn[column.key] || []}
                   />
                 ))}
+                {/* Dismissed column — always last, transversal */}
+                <KanbanColumn
+                  column={DISMISSED_COLUMN}
+                  candidates={candidatesByColumn['dismissed'] || []}
+                  isDismissed
+                />
               </div>
               <DragOverlay dropAnimation={null}>
                 {draggedCandidate ? <KanbanCard candidate={draggedCandidate} isDragging /> : null}
