@@ -77,6 +77,51 @@ export const useMissionProcess = (projectId: string | undefined) => {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Add team member
+  const addTeamMemberMutation = useMutation({
+    mutationFn: async (input: { user_id: string; role: TeamMember['role'] }) => {
+      if (!projectId) throw new Error('Missing project');
+      const { data, error } = await db
+        .from('mission_team')
+        .insert({
+          project_id: projectId,
+          user_id: input.user_id,
+          role: input.role,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as TeamMember;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      toast.success('Membre assigné à la mission');
+    },
+    onError: (err: Error) => {
+      if (err.message?.includes('duplicate') || err.message?.includes('unique')) {
+        toast.error('Ce membre est déjà assigné à cette mission');
+      } else {
+        toast.error(err.message);
+      }
+    },
+  });
+
+  // Remove team member
+  const removeTeamMemberMutation = useMutation({
+    mutationFn: async (memberId: string) => {
+      const { error } = await db
+        .from('mission_team')
+        .delete()
+        .eq('id', memberId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      toast.success('Membre retiré de la mission');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // Add step
   const addStepMutation = useMutation({
     mutationFn: async (input: Partial<ProcessStep> & { name: string }) => {
@@ -189,6 +234,8 @@ export const useMissionProcess = (projectId: string | undefined) => {
     reorderSteps: reorderStepsMutation.mutateAsync,
     initializeDefaultSteps,
     initializeFromTemplate,
+    addTeamMember: addTeamMemberMutation.mutateAsync,
+    removeTeamMember: removeTeamMemberMutation.mutateAsync,
     isAdding: addStepMutation.isPending,
   };
 };

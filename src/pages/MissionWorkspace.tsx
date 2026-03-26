@@ -46,9 +46,7 @@ const MissionWorkspace = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { orgType } = useOrganization();
-  const canEditBrief = hasFeature(orgType, 'edit_brief');
-  const canEditProcess = hasFeature(orgType, 'edit_process');
+  const { orgType, organizationId } = useOrganization();
 
   const { projects, isLoading } = useSourcingProjects();
 
@@ -56,6 +54,11 @@ const MissionWorkspace = () => {
     () => projects.find(p => p.id === id) || null,
     [projects, id]
   );
+
+  // Read-only logic: can't edit if org_type doesn't allow it OR if mission belongs to another org (marketplace)
+  const isOwnMission = project?.organization_id === organizationId;
+  const canEditBrief = hasFeature(orgType, 'edit_brief') && isOwnMission;
+  const canEditProcess = hasFeature(orgType, 'edit_process') && isOwnMission;
 
   const tabFromUrl = searchParams.get('tab');
   const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'brief';

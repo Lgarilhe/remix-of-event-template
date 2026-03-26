@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionProcess, ProcessStep } from '@/hooks/useMissionProcess';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useOrganizationMembers } from '@/hooks/useOrganization';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Loader2, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -246,12 +248,174 @@ interface MissionProcessProps {
   readOnly?: boolean;
 }
 
+// ─── Team Section ──────────────────────────────────────────
+
+interface MissionTeamSectionProps {
+  team: any[];
+  loadingTeam: boolean;
+  readOnly: boolean;
+  getMemberName: (userId: string) => string;
+  orgMembers: any[];
+  onAdd: (input: { user_id: string; role: string }) => Promise<any>;
+  onRemove: (id: string) => Promise<any>;
+}
+
+const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
+  team, loadingTeam, readOnly, getMemberName, orgMembers, onAdd, onRemove,
+}) => {
+  const [showAssign, setShowAssign] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedRole, setSelectedRole] = useState<string>('sourcer');
+
+  const assignedIds = new Set(team.map((m: any) => m.user_id));
+  const availableMembers = orgMembers.filter(m => !assignedIds.has(m.user_id));
+
+  const handleAssign = async () => {
+    if (!selectedUserId) return;
+    try {
+      await onAdd({ user_id: selectedUserId, role: selectedRole });
+      setSelectedUserId('');
+      setShowAssign(false);
+    } catch {
+      // Error toasted by hook
+    }
+  };
+
+  return (
+    <div className="mt-8 pt-6 border-t border-foreground/10">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Équipe mission ({team.length})
+          </h3>
+        </div>
+        {!readOnly && availableMembers.length > 0 && !showAssign && (
+          <button
+            onClick={() => setShowAssign(true)}
+            className="flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
+          >
+            <Plus className="w-3 h-3" /> Assigner
+          </button>
+        )}
+      </div>
+
+      {/* Assign form */}
+      {showAssign && (
+        <div className="flex items-center gap-2 mb-4">
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            className="flex-1 h-[34px] px-3 text-sm border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors"
+          >
+            <option value="">Sélectionner un membre...</option>
+            {availableMembers.map((m: any) => (
+              <option key={m.user_id} value={m.user_id}>{getMemberName(m.user_id)}</option>
+            ))}
+          </select>
+          <select
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value)}
+            className="h-[34px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
+          >
+            <option value="lead">Lead</option>
+            <option value="sourcer">Sourcer</option>
+            <option value="account_manager">Account Manager</option>
+            <option value="reviewer">Reviewer</option>
+            <option value="freelance">Freelance</option>
+          </select>
+          <button
+            onClick={handleAssign}
+            disabled={!selectedUserId}
+            className="h-[34px] px-4 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider border border-foreground disabled:opacity-50"
+          >
+            OK
+          </button>
+          <button
+            onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
+            className="h-[34px] px-3 text-muted-foreground hover:text-foreground border border-foreground/30 text-[10px] uppercase"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {loadingTeam ? (
+        <div className="flex items-center justify-center py-6">
+          <div className="w-4 h-4 border-2 border-foreground/20 border-t-foreground animate-spin" />
+        </div>
+      ) : team.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
+      ) : (
+        <div className="space-y-2">
+          {team.map((member: any) => (
+            <div key={member.id} className="flex items-center gap-3 px-4 py-2 border border-foreground/10">
+              <div className="w-7 h-7 bg-foreground/10 flex items-center justify-center">
+                <User className="w-3.5 h-3.5 text-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-foreground truncate">{getMemberName(member.user_id)}</p>
+              </div>
+              <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground">
+                {ROLE_LABELS[member.role] || member.role}
+              </span>
+              {!readOnly && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Retirer ${getMemberName(member.user_id)} de cette mission ?`)) {
+                      onRemove(member.id);
+                    }
+                  }}
+                  className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Role Labels ───────────────────────────────────────────
+
+const ROLE_LABELS: Record<string, string> = {
+  lead: 'Lead',
+  sourcer: 'Sourcer',
+  account_manager: 'Account Manager',
+  reviewer: 'Reviewer',
+  freelance: 'Freelance',
+};
+
 export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnly = false }) => {
   const {
     steps, team, loadingSteps, loadingTeam,
     addStep, updateStep, deleteStep, reorderSteps,
-    initializeDefaultSteps, initializeFromTemplate, isAdding,
+    initializeDefaultSteps, initializeFromTemplate, addTeamMember, removeTeamMember, isAdding,
   } = useMissionProcess(project.id);
+
+  // Fetch org members for the assign dropdown + name resolution
+  const { members: orgMembers } = useOrganizationMembers(project.organization_id);
+  const { data: memberProfiles = [] } = useQuery({
+    queryKey: ['member-profiles-mission', orgMembers.map(m => m.user_id)],
+    queryFn: async () => {
+      if (orgMembers.length === 0) return [];
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, recruiter_headline')
+        .in('user_id', orgMembers.map(m => m.user_id));
+      return data || [];
+    },
+    enabled: orgMembers.length > 0,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const getMemberName = (userId: string) => {
+    const profile = memberProfiles.find((p: any) => p.user_id === userId);
+    return profile?.display_name || userId.slice(0, 8) + '...';
+  };
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -444,38 +608,15 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
       </div>}
 
       {/* Team section */}
-      <div className="mt-8 pt-6 border-t border-foreground/10">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Équipe mission ({team.length})
-          </h3>
-        </div>
-
-        {loadingTeam ? (
-          <div className="flex items-center justify-center py-6">
-            <div className="w-4 h-4 border-2 border-foreground/20 border-t-foreground animate-spin" />
-          </div>
-        ) : team.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
-        ) : (
-          <div className="space-y-2">
-            {team.map((member) => (
-              <div key={member.id} className="flex items-center gap-3 px-4 py-2 border border-foreground/10">
-                <div className="w-7 h-7 bg-foreground/10 flex items-center justify-center">
-                  <User className="w-3.5 h-3.5 text-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{member.user_id}</p>
-                </div>
-                <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground">
-                  {member.role}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <MissionTeamSection
+        team={team}
+        loadingTeam={loadingTeam}
+        readOnly={readOnly}
+        getMemberName={getMemberName}
+        orgMembers={orgMembers}
+        onAdd={addTeamMember}
+        onRemove={removeTeamMember}
+      />
     </div>
   );
 };
