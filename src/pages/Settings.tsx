@@ -29,6 +29,7 @@ import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
 import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
 import { AgencySettings } from '@/components/settings/AgencySettings';
+import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import iconSettings3d from '@/assets/icon-settings-3d.png';
@@ -111,6 +112,7 @@ const Settings = () => {
     ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d }] : []),
     ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
     ...(isAgency ? [{ value: 'agency', label: 'Agence', icon3d: iconTeam3d }] : []),
+    { value: 'marketplace', label: 'Marketplace', icon3d: iconIntegrations3d },
   ];
 
   return (
@@ -347,6 +349,9 @@ const Settings = () => {
             )}
             {activeTab === 'agency' && isAgency && (
               <AgencySettings />
+            )}
+            {activeTab === 'marketplace' && (
+              <MarketplaceActivation />
             )}
           </div>
         </div>

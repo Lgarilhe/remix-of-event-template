@@ -163,18 +163,20 @@ export const useMissionProcess = (projectId: string | undefined) => {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  // Initialize with default steps
-  const initializeDefaultSteps = async () => {
+  // Initialize with steps from a template
+  const initializeFromTemplate = async (templateSteps: typeof DEFAULT_STEPS) => {
     if (!projectId || !organizationId) return;
     try {
-      for (const step of DEFAULT_STEPS) {
+      for (const step of templateSteps) {
         await addStepMutation.mutateAsync({ ...step } as any);
       }
-      toast.success('Process par défaut créé');
+      toast.success('Process créé');
     } catch {
       // Individual step errors already toasted by mutation onError
     }
   };
+
+  const initializeDefaultSteps = () => initializeFromTemplate(DEFAULT_STEPS);
 
   return {
     steps,
@@ -186,6 +188,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
     deleteStep: deleteStepMutation.mutateAsync,
     reorderSteps: reorderStepsMutation.mutateAsync,
     initializeDefaultSteps,
+    initializeFromTemplate,
     isAdding: addStepMutation.isPending,
   };
 };

@@ -1,8 +1,56 @@
 import React, { useState } from 'react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionProcess, ProcessStep } from '@/hooks/useMissionProcess';
-import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users } from 'lucide-react';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Loader2, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import type { JobDetails } from '@/types/jobDetails';
+
+// ─── Process Templates ─────────────────────────────────────
+
+type StepTemplate = { step_order: number; name: string; description: string; objectives: string[]; duration_minutes: number; interviewer_type: 'internal' | 'client' | 'panel'; interviewer_name: null; interviewer_user_id: null; evaluation_criteria: []; is_eliminatory: boolean; template_source: 'default' };
+
+const PROCESS_TEMPLATES: Record<string, { label: string; description: string; steps: StepTemplate[] }> = {
+  standard: {
+    label: 'Standard (3 étapes)',
+    description: 'Screening → Technique → Client',
+    steps: [
+      { step_order: 1, name: 'Screening call', description: 'Premier échange téléphonique', objectives: ['Motivation', 'Disponibilité', 'Prétentions salariales'], duration_minutes: 30, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: true, template_source: 'default' },
+      { step_order: 2, name: 'Entretien technique', description: 'Évaluation des compétences', objectives: ['Compétences techniques', 'Résolution de problèmes'], duration_minutes: 60, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+      { step_order: 3, name: 'Entretien client', description: 'Rencontre avec le hiring manager', objectives: ['Culture fit', 'Adéquation avec l\'équipe'], duration_minutes: 45, interviewer_type: 'client', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+    ],
+  },
+  senior: {
+    label: 'Senior (5 étapes)',
+    description: 'Screening → Tech → Cas pratique → Culture → Direction',
+    steps: [
+      { step_order: 1, name: 'Screening call', description: 'Premier échange', objectives: ['Motivation', 'Disponibilité', 'Prétentions'], duration_minutes: 30, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: true, template_source: 'default' },
+      { step_order: 2, name: 'Entretien technique approfondi', description: 'Deep-dive technique', objectives: ['Architecture', 'Expertise technique', 'Vision'], duration_minutes: 90, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: true, template_source: 'default' },
+      { step_order: 3, name: 'Cas pratique', description: 'Mise en situation ou take-home', objectives: ['Méthodologie', 'Qualité du livrable', 'Communication'], duration_minutes: 120, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+      { step_order: 4, name: 'Culture fit', description: 'Échange équipe et valeurs', objectives: ['Valeurs', 'Collaboration', 'Leadership'], duration_minutes: 45, interviewer_type: 'client', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+      { step_order: 5, name: 'Entretien direction', description: 'Validation finale par la direction', objectives: ['Vision stratégique', 'Fit managérial'], duration_minutes: 30, interviewer_type: 'client', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+    ],
+  },
+  fast: {
+    label: 'Rapide (2 étapes)',
+    description: 'Screening → Entretien unique',
+    steps: [
+      { step_order: 1, name: 'Screening call', description: 'Premier échange rapide', objectives: ['Motivation', 'Disponibilité'], duration_minutes: 20, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: true, template_source: 'default' },
+      { step_order: 2, name: 'Entretien final', description: 'Entretien combiné technique + culture', objectives: ['Compétences', 'Culture fit', 'Motivation'], duration_minutes: 60, interviewer_type: 'client', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+    ],
+  },
+  executive: {
+    label: 'Executive (4 étapes)',
+    description: 'Screening → Stratégie → Panel → Board',
+    steps: [
+      { step_order: 1, name: 'Screening approfondi', description: 'Échange de cadrage', objectives: ['Parcours', 'Vision', 'Motivations'], duration_minutes: 45, interviewer_type: 'internal', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: true, template_source: 'default' },
+      { step_order: 2, name: 'Cas stratégique', description: 'Présentation d\'une vision stratégique', objectives: ['Vision', 'Leadership', 'Communication'], duration_minutes: 90, interviewer_type: 'client', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: true, template_source: 'default' },
+      { step_order: 3, name: 'Panel entretien', description: 'Rencontre avec les stakeholders', objectives: ['Fit équipe direction', 'Collaboration'], duration_minutes: 60, interviewer_type: 'panel', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+      { step_order: 4, name: 'Validation board', description: 'Validation finale', objectives: ['Approbation direction'], duration_minutes: 30, interviewer_type: 'client', interviewer_name: null, interviewer_user_id: null, evaluation_criteria: [], is_eliminatory: false, template_source: 'default' },
+    ],
+  },
+};
 
 // ─── Step Card ─────────────────────────────────────────────
 
@@ -202,12 +250,38 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
   const {
     steps, team, loadingSteps, loadingTeam,
     addStep, updateStep, deleteStep, reorderSteps,
-    initializeDefaultSteps, isAdding,
+    initializeDefaultSteps, initializeFromTemplate, isAdding,
   } = useMissionProcess(project.id);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [addingStep, setAddingStep] = useState(false);
+  const [suggestingAI, setSuggestingAI] = useState(false);
+
+  // AI suggestion based on job details
+  const handleAISuggestion = async () => {
+    const jd = (project.job_details || {}) as JobDetails;
+    const seniority = jd.seniority?.toLowerCase() || '';
+    const manages = jd.manages || 0;
+
+    // Simple rule-based suggestion (no edge function needed)
+    let templateKey = 'standard';
+    if (seniority.includes('junior') || seniority.includes('stage') || seniority.includes('alternance')) {
+      templateKey = 'fast';
+    } else if (seniority.includes('lead') || seniority.includes('senior') || seniority.includes('principal')) {
+      templateKey = 'senior';
+    } else if (seniority.includes('director') || seniority.includes('vp') || seniority.includes('c-level') || seniority.includes('head') || manages > 5) {
+      templateKey = 'executive';
+    }
+
+    setSuggestingAI(true);
+    try {
+      await initializeFromTemplate(PROCESS_TEMPLATES[templateKey].steps);
+      toast.success(`Process "${PROCESS_TEMPLATES[templateKey].label}" suggéré par l'IA`);
+    } finally {
+      setSuggestingAI(false);
+    }
+  };
   const [newStepName, setNewStepName] = useState('');
 
   const handleDragEnd = () => {
@@ -259,19 +333,46 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground animate-spin" />
         </div>
       ) : steps.length === 0 ? (
-        <div className="border border-dashed border-foreground/20 p-8 text-center">
-          <div className="text-3xl mb-3">🏗️</div>
-          <p className="text-sm text-muted-foreground mb-4">
-            {readOnly ? 'Aucune étape définie pour cette mission.' : 'Aucune étape définie. Créez votre process de recrutement.'}
+        <div className="border border-dashed border-foreground/20 p-6">
+          <div className="text-3xl mb-3 text-center">🏗️</div>
+          <p className="text-sm text-muted-foreground mb-5 text-center">
+            {readOnly ? 'Aucune étape définie pour cette mission.' : 'Choisissez un template ou laissez l\'IA suggérer un process.'}
           </p>
-          {!readOnly && <button
-            onClick={initializeDefaultSteps}
-            disabled={isAdding}
-            className="relative overflow-hidden h-[34px] px-5 bg-foreground text-background border border-foreground text-[10px] font-medium uppercase tracking-wider group"
-          >
-            <span className="relative z-10">{isAdding ? 'Création...' : 'Créer un process par défaut'}</span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-          </button>}
+          {!readOnly && (
+            <div className="space-y-4">
+              {/* AI suggestion button */}
+              <button
+                onClick={handleAISuggestion}
+                disabled={isAdding || suggestingAI}
+                className="relative overflow-hidden w-full flex items-center justify-center gap-2 h-[40px] bg-foreground text-background border border-foreground text-[10px] font-medium uppercase tracking-wider group"
+              >
+                {suggestingAI ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /><span className="relative z-10">Analyse du brief...</span></>
+                ) : (
+                  <><Sparkles className="w-3.5 h-3.5 relative z-10" /><span className="relative z-10">Suggestion IA (basé sur le brief)</span></>
+                )}
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              </button>
+
+              {/* Template grid */}
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(PROCESS_TEMPLATES).map(([key, tpl]) => (
+                  <button
+                    key={key}
+                    onClick={() => initializeFromTemplate(tpl.steps)}
+                    disabled={isAdding}
+                    className="border border-foreground/20 p-3 text-left hover:border-foreground hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))] transition-all disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <FileText className="w-3 h-3 text-muted-foreground" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">{tpl.label}</p>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground">{tpl.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
