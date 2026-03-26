@@ -12,6 +12,7 @@ import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionInsights } from '@/components/missions/MissionInsights';
+import { MissionProcess } from '@/components/missions/MissionProcess';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
@@ -28,6 +29,7 @@ const statusConfig: Record<SourcingProject['status'], { label: string; color: st
 
 const tabs = [
   { value: 'brief', label: 'Brief', emoji: '📋', description: "Analysez le poste avec l'IA, définissez l'ICP et la stratégie d'approche." },
+  { value: 'process', label: 'Process', emoji: '🏗️', description: 'Définissez les étapes du recrutement, les interviewers et les objectifs.' },
   { value: 'sourcing', label: 'Sourcing', emoji: '🔍', description: 'Lancez des recherches LinkedIn, Apollo ou PDL pour trouver les meilleurs candidats.' },
   { value: 'pipeline', label: 'Pipeline', emoji: '📊', description: 'Suivez la progression des candidats dans le processus de recrutement.' },
   { value: 'outreach', label: 'Outreach', emoji: '🚀', description: 'Gérez vos séquences de messages et suivez les réponses.' },
@@ -169,6 +171,12 @@ const MissionWorkspace = () => {
           <div className={cn("mt-0 min-w-0", activeTab !== 'brief' && 'hidden')}>
             <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
               <MissionBrief project={project} />
+            </SectionErrorBoundary>
+          </div>
+
+          <div className={cn("mt-0 min-w-0", activeTab !== 'process' && 'hidden')}>
+            <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
+              <MissionProcess project={project} />
             </SectionErrorBoundary>
           </div>
 
