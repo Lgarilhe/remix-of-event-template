@@ -1,0 +1,1 @@
+ALTER TABLE public.sourcing_projects ADD COLUMN IF NOT EXISTS job_details jsonb DEFAULT '{}';

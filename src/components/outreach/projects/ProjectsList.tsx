@@ -269,6 +269,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
       stats_dismissed: 0,
       stats_shortlisted: 0,
       calendly_link: null,
+      job_details: {},
     };
   };
 

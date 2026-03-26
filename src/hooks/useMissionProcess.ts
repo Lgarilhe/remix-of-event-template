@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { toast } from 'sonner';
 
+const db = supabase as any;
+
 export interface ProcessStep {
   id: string;
   project_id: string;
@@ -46,7 +48,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
     queryKey: ['mission-process-steps', projectId],
     queryFn: async () => {
       if (!projectId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('mission_process_steps')
         .select('*')
         .eq('project_id', projectId)
@@ -63,7 +65,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
     queryKey: ['mission-team', projectId],
     queryFn: async () => {
       if (!projectId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('mission_team')
         .select('*')
         .eq('project_id', projectId)
@@ -80,7 +82,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
     mutationFn: async (input: Partial<ProcessStep> & { name: string }) => {
       if (!projectId || !organizationId) throw new Error('Missing context');
       const nextOrder = steps.length > 0 ? Math.max(...steps.map(s => s.step_order)) + 1 : 1;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('mission_process_steps')
         .insert({
           project_id: projectId,
@@ -108,7 +110,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
   // Update step
   const updateStepMutation = useMutation({
     mutationFn: async ({ id, ...input }: Partial<ProcessStep> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from('mission_process_steps')
         .update({ ...input, updated_at: new Date().toISOString() })
         .eq('id', id);
@@ -123,7 +125,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
   // Delete step
   const deleteStepMutation = useMutation({
     mutationFn: async (stepId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from('mission_process_steps')
         .delete()
         .eq('id', stepId);
