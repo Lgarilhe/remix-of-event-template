@@ -2571,6 +2571,69 @@ export type Database = {
           },
         ]
       }
+      mission_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string | null
+          email: string
+          expires_at: string | null
+          id: string
+          invited_by: string
+          message: string | null
+          organization_id: string
+          project_id: string
+          role: string
+          status: string | null
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string | null
+          email: string
+          expires_at?: string | null
+          id?: string
+          invited_by: string
+          message?: string | null
+          organization_id: string
+          project_id: string
+          role?: string
+          status?: string | null
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string | null
+          email?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string
+          message?: string | null
+          organization_id?: string
+          project_id?: string
+          role?: string
+          status?: string | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mission_invitations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mission_process_steps: {
         Row: {
           created_at: string | null
@@ -3065,6 +3128,7 @@ export type Database = {
       }
       organizations: {
         Row: {
+          agency_permissions: Json | null
           annual_hires: string | null
           careers_url: string | null
           created_at: string
@@ -3082,6 +3146,7 @@ export type Database = {
           website: string | null
         }
         Insert: {
+          agency_permissions?: Json | null
           annual_hires?: string | null
           careers_url?: string | null
           created_at?: string
@@ -3099,6 +3164,7 @@ export type Database = {
           website?: string | null
         }
         Update: {
+          agency_permissions?: Json | null
           annual_hires?: string | null
           careers_url?: string | null
           created_at?: string

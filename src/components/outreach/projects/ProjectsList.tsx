@@ -251,6 +251,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     // Create a virtual SourcingProject for Notion jobs without one
     return {
       id: '',
+      organization_id: '',
       name: project.name,
       description: project.description,
       job_id: project.job?.id || null,
