@@ -95,6 +95,7 @@ const AppContent = () => {
       <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" /></div>}>
         <Routes>
           <Route path="/" element={<SkalrLanding />} />
+          <Route path="/index" element={<Navigate to="/" replace />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
