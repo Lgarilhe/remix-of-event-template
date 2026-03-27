@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import type { JobDetails } from '@/types/jobDetails';
 
 export interface SourcingProject {
@@ -68,22 +69,24 @@ export interface UpdateProjectInput {
 export const useSourcingProjects = () => {
   const queryClient = useQueryClient();
   const { organizationId } = useOrganization();
+  const { isReady, user } = useAuthReady();
 
   // Fetch all projects
   const { data: projects = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['sourcing-projects'],
+    queryKey: ['sourcing-projects', organizationId, user?.id],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('sourcing_projects')
         .select('*')
+        .eq('organization_id', organizationId)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
       return data as SourcingProject[];
     },
+    enabled: isReady && !!user && !!organizationId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes cache
   });
@@ -91,8 +94,8 @@ export const useSourcingProjects = () => {
   // Create project mutation
   const createMutation = useMutation({
     mutationFn: async (input: CreateProjectInput) => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      if (!organizationId) throw new Error('No organization selected');
 
       const { data, error } = await supabase
         .from('sourcing_projects')
