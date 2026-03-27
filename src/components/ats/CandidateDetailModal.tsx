@@ -12,9 +12,10 @@ import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
   X, Mail, User, Target, CheckCircle2, AlertTriangle,
   MapPin, Briefcase, TrendingUp, Building2, Link2, Zap,
-  Activity, StickyNote
+  Activity, StickyNote, Phone
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
+import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
 import { useAgent } from '@/contexts/AgentContext';
 import { toast } from 'sonner';
@@ -52,6 +53,7 @@ interface Reminder {
 
 const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User, emoji: '👤' },
+  { key: 'prep', label: 'Préparer', icon: Phone, emoji: '📞' },
   { key: 'evaluation', label: 'Évaluation', icon: Target, emoji: '🎯' },
   { key: 'activity', label: 'Activité', icon: Activity, emoji: '⚡' },
   { key: 'notes', label: 'Notes', icon: StickyNote, emoji: '📝' },
@@ -534,6 +536,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 enrichedProfile={enrichedProfile}
                 enrichLoading={enrichLoading}
                 fullProfile={fullProfile}
+              />
+            )}
+            {activeTab === 'prep' && (
+              <PrepSheetTab
+                candidateId={candidate.candidateId}
+                jobId={candidate.jobId}
+                candidateName={candidate.name}
               />
             )}
             {activeTab === 'evaluation' && (
