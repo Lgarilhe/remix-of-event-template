@@ -301,6 +301,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             summary: ev.summary || null,
             follow_up_notes: ev.followUpNotes || null,
             interview_stage: ev.interviewStage || null,
+            organization_id: organizationId || null,
           };
           if (ev.id) {
             const { error: saveErr } = await supabase.from('candidate_evaluations').update(payload).eq('id', ev.id);
@@ -362,6 +363,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         summary: activeEval.summary || null,
         follow_up_notes: activeEval.followUpNotes || null,
         interview_stage: activeEval.interviewStage || null,
+        organization_id: organizationId || null,
       };
 
       if (activeEval.id) {
@@ -588,6 +590,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                         summary: activeEval.summary || null,
                         follow_up_notes: activeEval.followUpNotes || null,
                         interview_stage: activeEval.interviewStage || null,
+                        organization_id: organizationId || null,
                       };
                       if (activeEval.id) {
                         const { error: updErr } = await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
