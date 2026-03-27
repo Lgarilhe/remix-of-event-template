@@ -310,27 +310,39 @@ export function useLinkedInSearch({
       
       // Build synthetic job from project + job_details for scoring
       const jd = (activeProject as any).job_details || {};
-      const jobBase = {
-        id: activeProject.job_id || `project:${activeProject.id}`,
-        title: jd.title || activeProject.job_title || activeProject.name,
-        description: jd.mission_description || jd.context || activeProject.description || '',
-        client: jd.client?.name
-          ? { name: jd.client.name, sector: jd.client.sector, size: jd.client.size }
-          : activeProject.client_name ? { name: activeProject.client_name } : undefined,
-        skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
-        seniority: jd.seniority || '',
-        location: jd.location || '',
-        remote: jd.remote_policy || '',
-        xpMin: jd.experience_min,
-        xpMax: jd.experience_max,
-        salaryMin: jd.salary_min,
-        salaryMax: jd.salary_max,
-        contractType: jd.contract_type || '',
-        mustHave: (jd.skills_must_have || []).join(', '),
-        shouldHave: (jd.skills_should_have || []).join(', '),
-        niceToHave: (jd.skills_nice_to_have || []).join(', '),
-      };
-      setSelectedJob(jobBase as Job);
+      if (activeProject.job_id && activeProject.job_title) {
+        // Real job linked — use it as base, enrich with job_details
+        const enriched: Record<string, any> = {
+          id: activeProject.job_id,
+          title: jd.title || activeProject.job_title,
+          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
+        };
+        // Only add fields if they have actual values (avoid sending undefined)
+        if (jd.mission_description || jd.context) enriched.description = jd.mission_description || jd.context;
+        if (jd.skills_must_have?.length) enriched.mustHave = jd.skills_must_have.join(', ');
+        if (jd.skills_should_have?.length) enriched.shouldHave = jd.skills_should_have.join(', ');
+        if (jd.skills_nice_to_have?.length) enriched.niceToHave = jd.skills_nice_to_have.join(', ');
+        if (jd.seniority) enriched.seniority = jd.seniority;
+        if (jd.location) enriched.location = jd.location;
+        if (jd.experience_min != null) enriched.xpMin = jd.experience_min;
+        if (jd.experience_max != null) enriched.xpMax = jd.experience_max;
+        setSelectedJob(enriched as Job);
+      } else if (activeProject.name) {
+        // Brief-based project without a real job
+        const synthetic: Record<string, any> = {
+          id: `project:${activeProject.id}`,
+          title: jd.title || activeProject.name,
+          description: jd.mission_description || jd.context || activeProject.description || '',
+          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
+        };
+        if (jd.skills_must_have?.length) synthetic.mustHave = jd.skills_must_have.join(', ');
+        if (jd.skills_should_have?.length) synthetic.shouldHave = jd.skills_should_have.join(', ');
+        if (jd.seniority) synthetic.seniority = jd.seniority;
+        if (jd.location) synthetic.location = jd.location;
+        if (jd.experience_min != null) synthetic.xpMin = jd.experience_min;
+        if (jd.experience_max != null) synthetic.xpMax = jd.experience_max;
+        setSelectedJob(synthetic as Job);
+      }
     }
   }, [activeProject?.id]);
 
