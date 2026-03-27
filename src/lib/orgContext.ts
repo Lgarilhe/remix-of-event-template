@@ -30,23 +30,24 @@ export async function getActiveOrganizationId(): Promise<string | null> {
     cachedUserId = userId;
     hasResolvedOrgId = false;
 
-    pendingOrgIdPromise = supabase
-      .from('profiles')
-      .select('active_organization_id')
-      .eq('user_id', userId)
-      .maybeSingle()
-      .then(({ data: profile }) => {
+    pendingOrgIdPromise = (async () => {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('active_organization_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
         cachedOrgId = profile?.active_organization_id || null;
         hasResolvedOrgId = true;
         return cachedOrgId;
-      })
-      .catch(() => {
+      } catch {
         hasResolvedOrgId = false;
         return null;
-      })
-      .finally(() => {
+      } finally {
         pendingOrgIdPromise = null;
-      });
+      }
+    })();
 
     return pendingOrgIdPromise;
   } catch {
