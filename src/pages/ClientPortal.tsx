@@ -6,6 +6,7 @@ import { Loader2, Users, Clock, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { PortalCandidateScoring } from '@/components/portal/PortalCandidateScoring';
 
 interface PortalCandidate {
   id: string;
@@ -273,6 +274,15 @@ export default function ClientPortal() {
                         {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
                       </span>
                     </div>
+                    {/* Inline scoring */}
+                    {data.permissions.can_fill_scorecard && (
+                      <PortalCandidateScoring
+                        candidate={candidate}
+                        projectId={project.id}
+                        clientName={data.client_name}
+                        canFillScorecard={data.permissions.can_fill_scorecard}
+                      />
+                    )}
                   ))}
                 </div>
               )}
