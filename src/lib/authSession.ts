@@ -1,5 +1,16 @@
 import { supabase } from '@/integrations/supabase/client';
 
+const AUTH_VALIDATION_TIMEOUT_MS = 4000;
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs = AUTH_VALIDATION_TIMEOUT_MS): Promise<T> => {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error('AUTH_VALIDATION_TIMEOUT')), timeoutMs);
+    }),
+  ]);
+};
+
 /**
  * Synchronously purge all Supabase auth tokens from localStorage.
  * Does NOT call supabase.auth.signOut() to avoid triggering
@@ -29,17 +40,30 @@ export const getValidatedSession = async () => {
     return { session: null, user: null };
   }
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    // Token is corrupted — purge synchronously, then sign out in background
+  if (!session.user?.id) {
     clearCorruptedTokens();
     supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     return { session: null, user: null };
   }
 
-  return { session, user };
+  try {
+    const {
+      data: { user },
+      error,
+    } = await withTimeout(supabase.auth.getUser());
+
+    if (error || !user) {
+      clearCorruptedTokens();
+      supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      return { session: null, user: null };
+    }
+
+    return { session, user };
+  } catch {
+    // Token is corrupted or validation is hanging — purge synchronously,
+    // then sign out in background to unblock the UI.
+    clearCorruptedTokens();
+    supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    return { session: null, user: null };
+  }
 };
