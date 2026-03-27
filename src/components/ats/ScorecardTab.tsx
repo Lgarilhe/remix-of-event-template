@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { ATSCandidate } from '@/hooks/useATSData';
+import { useOrganization } from '@/hooks/useOrganization';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
@@ -74,6 +75,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: 
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching }) => {
   const navigate = useNavigate();
+  const { organizationId } = useOrganization();
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -299,6 +301,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             summary: ev.summary || null,
             follow_up_notes: ev.followUpNotes || null,
             interview_stage: ev.interviewStage || null,
+            organization_id: organizationId || null,
           };
           if (ev.id) {
             const { error: saveErr } = await supabase.from('candidate_evaluations').update(payload).eq('id', ev.id);
@@ -360,6 +363,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         summary: activeEval.summary || null,
         follow_up_notes: activeEval.followUpNotes || null,
         interview_stage: activeEval.interviewStage || null,
+        organization_id: organizationId || null,
       };
 
       if (activeEval.id) {
@@ -586,6 +590,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                         summary: activeEval.summary || null,
                         follow_up_notes: activeEval.followUpNotes || null,
                         interview_stage: activeEval.interviewStage || null,
+                        organization_id: organizationId || null,
                       };
                       if (activeEval.id) {
                         const { error: updErr } = await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
