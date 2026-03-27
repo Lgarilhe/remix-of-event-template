@@ -191,7 +191,7 @@ export const useTriggerSync = () => {
           status: 'running',
         })
         .select()
-        .single();
+        .single()) as any;
       if (runErr) throw runErr;
 
       // The actual sync would be triggered via an edge function
