@@ -12,30 +12,44 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
 import landingDashboard from '@/assets/landing-dashboard.webp';
+import { getValidatedSession } from '@/lib/authSession';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
+
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        // Validate the token is actually valid before redirecting
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (user && !error) {
+    let isMounted = true;
+
+    getValidatedSession()
+      .then(({ session }) => {
+        if (!isMounted) return;
+
+        if (session?.user) {
           navigate('/missions', { replace: true });
           return;
         }
-        // Token is corrupted — clear and show landing
-        const { clearCorruptedTokens } = await import('@/lib/authSession');
-        clearCorruptedTokens();
-      }
-      setChecking(false);
-    });
+
+        setChecking(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setChecking(false);
+      });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) navigate('/missions', { replace: true });
+      if ((event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) && isMounted) {
+        setChecking(false);
+      }
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
+
   return checking;
 };
 
