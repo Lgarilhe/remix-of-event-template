@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { getActiveOrganizationId } from '@/lib/orgContext';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { AudioSetupGuide } from './AudioSetupGuide';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -82,6 +83,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   onClose,
   onOpenProfile,
 }) => {
+  const [showAudioGuide, setShowAudioGuide] = useState(() => !sessionStorage.getItem('audio-guide-dismissed'));
   const [isRecording, setIsRecording] = useState(false);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [interimText, setInterimText] = useState('');
@@ -566,6 +568,22 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Audio setup guide — shown before first recording */}
+      {showAudioGuide && !isRecording && !callStopped && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-3">
+          <AudioSetupGuide
+            onReady={() => {
+              setShowAudioGuide(false);
+              sessionStorage.setItem('audio-guide-dismissed', '1');
+            }}
+            onDismiss={() => {
+              setShowAudioGuide(false);
+              sessionStorage.setItem('audio-guide-dismissed', '1');
+            }}
+          />
+        </div>
+      )}
 
       {/* Dashboard: Checklist + Dig Deeper */}
       {(isRecording || callStopped) && !report && (
