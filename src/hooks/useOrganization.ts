@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { toast } from 'sonner';
 
 export interface Organization {
@@ -42,12 +43,12 @@ interface SendInvitationResult {
 
 export const useOrganization = () => {
   const queryClient = useQueryClient();
+  const { isReady, user } = useAuthReady();
 
   // Fetch current user's active organization
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['active-organization'],
+  const { data, isLoading } = useQuery({
+    queryKey: ['active-organization', user?.id],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
       // Get profile with active_organization_id
@@ -83,6 +84,7 @@ export const useOrganization = () => {
         role: (membership?.role || 'member') as OrganizationMember['role'],
       };
     },
+    enabled: isReady && !!user,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -170,8 +172,8 @@ export const useOrganization = () => {
     isOwner: data?.role === 'owner',
     isAdmin: data?.role === 'owner' || data?.role === 'admin',
     isCollaborator: (data?.role as string) === 'collaborator',
-    isLoading,
-    needsOnboarding: !isLoading && data === null,
+    isLoading: !isReady || isLoading,
+    needsOnboarding: isReady && !!user && !isLoading && data === null,
     createOrganization: createOrgMutation.mutateAsync,
     switchOrganization: switchOrgMutation.mutateAsync,
     isCreating: createOrgMutation.isPending,

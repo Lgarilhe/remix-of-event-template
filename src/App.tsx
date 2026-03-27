@@ -41,6 +41,17 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 const PUBLIC_ROUTES = ['/', '/auth', '/portal', '/client'];
 const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
 
+const IndexRedirect = () => {
+  const location = useLocation();
+
+  return (
+    <Navigate
+      to={{ pathname: '/', search: location.search, hash: location.hash }}
+      replace
+    />
+  );
+};
+
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
   const location = useLocation();
@@ -106,7 +117,7 @@ const AppContent = () => {
       <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" /></div>}>
         <Routes>
           <Route path="/" element={<SkalrLanding />} />
-          <Route path="/index" element={<Navigate to="/" replace />} />
+          <Route path="/index" element={<IndexRedirect />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
