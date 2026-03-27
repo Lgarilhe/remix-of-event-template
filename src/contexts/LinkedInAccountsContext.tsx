@@ -54,36 +54,53 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     setHasLoaded(false);
   }, []);
 
-  // Load accounts once user is authenticated
   useEffect(() => {
+    let isMounted = true;
     let prevUserId: string | null = null;
 
-    const checkAndLoad = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        prevUserId = session.user.id;
-        reload();
-      }
+    const resetState = () => {
+      if (!isMounted) return;
+      prevUserId = null;
+      setAccounts([]);
+      setHasLoaded(false);
+      setLoading(false);
     };
-    checkAndLoad();
 
+    // Initial check — safe to call async here (not inside onAuthStateChange)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
+      if (!session?.user) {
+        resetState();
+        return;
+      }
+      prevUserId = session.user.id;
+      void reload();
+    });
+
+    // Subsequent auth events — NO async Supabase calls inside callback
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        // If user changed, clear stale accounts first
-        if (prevUserId && prevUserId !== session.user.id) {
-          setAccounts([]);
-          setHasLoaded(false);
-        }
-        prevUserId = session.user.id;
-        reload();
-      } else if (event === 'SIGNED_OUT') {
-        prevUserId = null;
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        resetState();
+        return;
+      }
+
+      const newUserId = session.user.id;
+      if (prevUserId && prevUserId !== newUserId) {
         setAccounts([]);
         setHasLoaded(false);
       }
+      prevUserId = newUserId;
+
+      // reload() calls an edge function, not a Supabase auth method — safe
+      void reload();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [reload]);
 
   const contextValue = useMemo(() => ({

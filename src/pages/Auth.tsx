@@ -8,6 +8,7 @@ import { SEOHead } from '@/components/SEOHead';
 import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
+import { getValidatedSession } from '@/lib/authSession';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
 const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
@@ -152,7 +153,7 @@ const Auth = () => {
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    getValidatedSession().then(({ session }) => {
       if (session?.access_token && !isResettingPassword) {
         handleAuthenticatedUser(session.access_token).catch(() => {
           navigate(from, { replace: true });

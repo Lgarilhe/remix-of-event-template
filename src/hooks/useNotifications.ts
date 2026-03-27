@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export interface Notification {
   id: string;
@@ -15,10 +16,20 @@ export const useNotifications = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const { isReady, user } = useAuthReady();
 
   const fetchNotifications = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!isReady) {
+      setLoading(true);
+      return;
+    }
+
+    if (!user) {
+      setNotifications([]);
+      setUnreadCount(0);
+      setLoading(false);
+      return;
+    }
 
     const { data } = await supabase
       .from('notifications')
@@ -31,22 +42,25 @@ export const useNotifications = () => {
     setNotifications(notifs);
     setUnreadCount(notifs.filter(n => !n.read_at).length);
     setLoading(false);
-  }, []);
+  }, [isReady, user]);
 
   useEffect(() => {
-    fetchNotifications();
+    void fetchNotifications();
   }, [fetchNotifications]);
 
   // Realtime subscription for new notifications
   useEffect(() => {
-    let userId: string | null = null;
+    if (!isReady || !user) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    let isMounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
     
     const setup = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      userId = user.id;
-
-      const channel = supabase
+      channel = supabase
         .channel('notifications-realtime')
         .on(
           'postgres_changes',
@@ -57,23 +71,22 @@ export const useNotifications = () => {
             filter: `user_id=eq.${user.id}`,
           },
           (payload) => {
+            if (!isMounted) return;
             const newNotif = payload.new as Notification;
             setNotifications(prev => [newNotif, ...prev]);
             setUnreadCount(prev => prev + 1);
           }
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     };
 
-    const cleanup = setup();
+    void setup();
+
     return () => {
-      cleanup.then(fn => fn?.());
+      isMounted = false;
+      if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [isReady, user]);
 
   const markAsRead = useCallback(async (notificationId: string) => {
     await supabase
@@ -88,7 +101,6 @@ export const useNotifications = () => {
   }, []);
 
   const markAllAsRead = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     await supabase
@@ -99,7 +111,7 @@ export const useNotifications = () => {
 
     setNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
     setUnreadCount(0);
-  }, []);
+  }, [user]);
 
   return { notifications, unreadCount, loading, markAsRead, markAllAsRead, refresh: fetchNotifications };
 };
