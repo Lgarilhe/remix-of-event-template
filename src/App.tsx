@@ -39,6 +39,7 @@ const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal', '/client'];
+const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -51,6 +52,13 @@ const AppContent = () => {
   useEffect(() => {
     locationRef.current = location.pathname;
   }, [location.pathname]);
+
+  useEffect(() => {
+    const previewAccessToken = new URLSearchParams(location.search).get('__lovable_token');
+    if (previewAccessToken) {
+      sessionStorage.setItem(PREVIEW_ACCESS_TOKEN_STORAGE_KEY, previewAccessToken);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
