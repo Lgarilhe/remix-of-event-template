@@ -18,12 +18,24 @@ import {
   ExternalLink,
   RefreshCw,
   Linkedin,
+  Trash2,
 } from 'lucide-react';
 import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { ProxyConfigPanel } from '@/components/outreach/ProxyConfigPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 import notionLogo from '@/assets/notion-logo.webp';
 import calendlyLogo from '@/assets/calendly-logo.webp';
@@ -122,6 +134,7 @@ const LinkedInHostedAuthCard = ({
   const { organization } = useOrganization();
   const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
   const [proxyCache, setProxyCache] = useState<Record<string, { country: string | null; mode: string | null }>>({});
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   // Initialize proxy cache from mappings (use JSON key to avoid infinite loop)
   const mappingsKey = JSON.stringify(mappings.map(m => [m.linkedin_account_id, m.proxy_country, m.proxy_mode]));
@@ -153,6 +166,26 @@ const LinkedInHostedAuthCard = ({
       toast.error(e.message || 'Erreur lors de la connexion');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleDisconnectAccount = async (accountId: string) => {
+    setDisconnecting(accountId);
+    try {
+      const { data } = await invokeEdgeFunction('unipile-accounts', {
+        action: 'disconnect',
+        account_id: accountId,
+      });
+      if (data?.success) {
+        toast.success('Compte LinkedIn déconnecté');
+        await loadAccounts();
+      } else {
+        throw new Error((data as any)?.error || 'Erreur');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erreur lors de la déconnexion');
+    } finally {
+      setDisconnecting(null);
     }
   };
 
@@ -235,6 +268,39 @@ const LinkedInHostedAuthCard = ({
                         </div>
                       </div>
                     </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          disabled={disconnecting === account.id}
+                        >
+                          {disconnecting === account.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Déconnecter ce compte LinkedIn ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Le compte <strong>{account.name}</strong> sera supprimé de la plateforme. Vous pourrez le reconnecter ultérieurement.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDisconnectAccount(account.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Déconnecter
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                   {account.status === 'OK' && (() => {
                     const mapping = getMappingForAccount(account.id);
