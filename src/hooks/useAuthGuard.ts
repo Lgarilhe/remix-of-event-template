@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { getValidatedSession } from '@/lib/authSession';
 
 // Pages that don't require authentication
 const PUBLIC_ROUTES = ['/', '/auth', '/discover', '/event', '/jobs'];
@@ -42,7 +43,10 @@ export const useAuthGuard = () => {
     });
 
     // Check initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    getValidatedSession().then(({ session }) => {
+      setIsAuthenticated(!!session);
+      setIsLoading(false);
+    }).catch((error) => {
       if (error) {
         console.error('[AuthGuard] Session error:', error);
         setIsAuthenticated(false);
@@ -61,7 +65,7 @@ export const useAuthGuard = () => {
           });
         }
       } else {
-        setIsAuthenticated(!!session);
+        setIsAuthenticated(false);
       }
       setIsLoading(false);
     });
