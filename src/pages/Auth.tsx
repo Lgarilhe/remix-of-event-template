@@ -10,13 +10,9 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
-const DEFAULT_APP_ORIGIN = 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
-
 const getPublicAppOrigin = () => {
-  if (typeof window === 'undefined') return DEFAULT_APP_ORIGIN;
-
-  const { origin, hostname } = window.location;
-  return hostname.endsWith('.lovableproject.com') ? DEFAULT_APP_ORIGIN : origin;
+  if (typeof window === 'undefined') return 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
+  return window.location.origin;
 };
 
 const Auth = () => {
