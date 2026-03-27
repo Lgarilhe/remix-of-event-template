@@ -14,9 +14,8 @@ const DEFAULT_APP_ORIGIN = 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96
 
 const getPublicAppOrigin = () => {
   if (typeof window === 'undefined') return DEFAULT_APP_ORIGIN;
-
-  const { origin, hostname } = window.location;
-  return hostname.endsWith('.lovableproject.com') ? DEFAULT_APP_ORIGIN : origin;
+  // Always use current origin — the preview URL might have changed after deployments
+  return window.location.origin;
 };
 
 const Auth = () => {
@@ -114,11 +113,15 @@ const Auth = () => {
 
       navigate(from, { replace: true });
     } catch (error: any) {
-      toast({
-        title: 'Invitation non acceptée',
-        description: error.message,
-        variant: 'destructive',
-      });
+      // If invitation fails, still navigate to the app (don't leave user on blank page)
+      if (error?.message) {
+        toast({
+          title: 'Invitation non acceptée',
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
+      navigate(from, { replace: true });
     }
   }, [acceptPendingInvitation, from, navigate, toast]);
 
@@ -134,13 +137,18 @@ const Auth = () => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsResettingPassword(true);
       } else if (event === 'SIGNED_IN' && !isResettingPassword && session?.access_token) {
-        void handleAuthenticatedUser(session.access_token);
+        handleAuthenticatedUser(session.access_token).catch(() => {
+          // Failsafe: if auth handling crashes, still navigate to app
+          navigate(from, { replace: true });
+        });
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.access_token && !isResettingPassword) {
-        void handleAuthenticatedUser(session.access_token);
+        handleAuthenticatedUser(session.access_token).catch(() => {
+          navigate(from, { replace: true });
+        });
       }
     });
 
