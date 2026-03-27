@@ -17,12 +17,19 @@ const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        navigate('/missions', { replace: true });
-      } else {
-        setChecking(false);
+        // Validate the token is actually valid before redirecting
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (user && !error) {
+          navigate('/missions', { replace: true });
+          return;
+        }
+        // Token is corrupted — clear and show landing
+        const { clearCorruptedTokens } = await import('@/lib/authSession');
+        clearCorruptedTokens();
       }
+      setChecking(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) navigate('/missions', { replace: true });
