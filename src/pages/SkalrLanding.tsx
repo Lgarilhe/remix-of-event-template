@@ -17,11 +17,12 @@ import landingDashboard from '@/assets/landing-dashboard.png';
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
   useEffect(() => {
-    getValidatedSession().then(({ session }) => {
-      if (session) navigate('/missions', { replace: true });
+    // Check initial session (no async calls inside onAuthStateChange!)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) navigate('/missions', { replace: true });
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) navigate('/missions', { replace: true });
+      if (event === 'SIGNED_IN' && session?.user) navigate('/missions', { replace: true });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
