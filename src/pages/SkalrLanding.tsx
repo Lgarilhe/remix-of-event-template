@@ -15,16 +15,21 @@ import landingDashboard from '@/assets/landing-dashboard.webp';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
   useEffect(() => {
-    // Check initial session (no async calls inside onAuthStateChange!)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) navigate('/missions', { replace: true });
+      if (session?.user) {
+        navigate('/missions', { replace: true });
+      } else {
+        setChecking(false);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) navigate('/missions', { replace: true });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
+  return checking;
 };
 
 const CALENDLY_URL = 'https://calendly.com/demo/30min';
