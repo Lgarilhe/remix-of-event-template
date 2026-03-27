@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 const AUTH_VALIDATION_TIMEOUT_MS = 4000;
+let isInvalidatingLocalSession = false;
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs = AUTH_VALIDATION_TIMEOUT_MS): Promise<T> => {
   return await Promise.race([
@@ -23,6 +24,53 @@ export const clearCorruptedTokens = () => {
     .forEach((key) => window.localStorage.removeItem(key));
 };
 
+const isTransientValidationError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  return (
+    lower.includes('auth_validation_timeout') ||
+    lower.includes('timeout') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('load failed') ||
+    lower.includes('fetch') ||
+    lower.includes('abort') ||
+    lower.includes('signal')
+  );
+};
+
+const isDefinitiveInvalidSessionError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  return (
+    lower.includes('jwt') ||
+    lower.includes('missing sub claim') ||
+    lower.includes('invalid claim') ||
+    lower.includes('invalid token') ||
+    lower.includes('token has expired') ||
+    lower.includes('refresh token') ||
+    lower.includes('session missing') ||
+    lower.includes('session_not_found') ||
+    lower.includes('user from sub claim in jwt does not exist') ||
+    (lower.includes('401') && !isTransientValidationError(error))
+  );
+};
+
+const invalidateLocalSession = () => {
+  if (isInvalidatingLocalSession) return;
+
+  isInvalidatingLocalSession = true;
+  clearCorruptedTokens();
+  supabase.auth
+    .signOut({ scope: 'local' })
+    .catch(() => {})
+    .finally(() => {
+      isInvalidatingLocalSession = false;
+    });
+};
+
 /**
  * Validate the current session by calling getUser() (network round-trip).
  * IMPORTANT: NEVER call this from inside an onAuthStateChange callback —
@@ -41,8 +89,7 @@ export const getValidatedSession = async () => {
   }
 
   if (!session.user?.id) {
-    clearCorruptedTokens();
-    supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    invalidateLocalSession();
     return { session: null, user: null };
   }
 
@@ -52,18 +99,29 @@ export const getValidatedSession = async () => {
       error,
     } = await withTimeout(supabase.auth.getUser());
 
-    if (error || !user) {
-      clearCorruptedTokens();
-      supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    if (error) {
+      if (isDefinitiveInvalidSessionError(error)) {
+        invalidateLocalSession();
+        return { session: null, user: null };
+      }
+
+      return { session, user: session.user };
+    }
+
+    if (!user) {
+      invalidateLocalSession();
       return { session: null, user: null };
     }
 
     return { session, user };
-  } catch {
-    // Token is corrupted or validation is hanging — purge synchronously,
-    // then sign out in background to unblock the UI.
-    clearCorruptedTokens();
-    supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-    return { session: null, user: null };
+  } catch (error) {
+    // Network hiccup or auth endpoint timeout: keep the local session instead
+    // of force-signing the user out. Only purge when the token is definitively invalid.
+    if (isDefinitiveInvalidSessionError(error)) {
+      invalidateLocalSession();
+      return { session: null, user: null };
+    }
+
+    return { session, user: session.user };
   }
 };
