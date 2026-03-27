@@ -21,15 +21,16 @@ async function fetchJobs(refresh = false, organizationId?: string | null): Promi
 }
 
 export function useNotionJobs() {
-  const { organizationId } = useOrganization();
+  const { organizationId, isLoading } = useOrganization();
 
   return useQuery({
     queryKey: ['notion-jobs', organizationId],
     queryFn: () => fetchJobs(false, organizationId),
+    enabled: !isLoading && !!organizationId,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
     refetchOnWindowFocus: false,
-    refetchInterval: REFETCH_INTERVAL,
+    refetchInterval: organizationId ? REFETCH_INTERVAL : false,
   });
 }
 

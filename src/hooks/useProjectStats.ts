@@ -65,8 +65,6 @@ export const useMultipleProjectStats = (projectIds: string[]) => {
         p_project_ids: projectIds,
       });
 
-      if (error) throw error;
-
       const statsByProject: Record<string, ProjectStats> = {};
 
       // Initialize all projects with empty stats
@@ -74,6 +72,11 @@ export const useMultipleProjectStats = (projectIds: string[]) => {
         statsByProject[projectId] = {
           total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0,
         };
+      }
+
+      if (error) {
+        console.warn('[useMultipleProjectStats] RPC unavailable, fallback to empty stats:', error.message);
+        return statsByProject;
       }
 
       // Fill in from RPC results
