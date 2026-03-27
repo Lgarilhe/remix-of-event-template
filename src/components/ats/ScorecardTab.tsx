@@ -623,8 +623,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           </div>
         </div>
 
-        {/* Live Coaching Panel — only in fullscreen mode */}
+        {/* Live Coaching Panel — now inline in the side context panel on desktop, stacked on mobile */}
         {showCoaching && activeEval && (
+          <div className="lg:hidden">
           <LiveCoachingPanel
             candidateId={candidate.candidateId}
             candidateName={candidate.name}
@@ -667,6 +668,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             onClose={() => setShowCoaching(false)}
             onOpenProfile={onOpenProfile}
           />
+          </div>
         )}
 
         {/* Mobile category tabs (horizontal scroll) */}
@@ -691,7 +693,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           })}
         </div>
 
-        {/* Side rail + Card layout */}
+        {/* Side rail + Card + Context panel layout */}
         <div className="flex gap-3">
           {/* Criteria side rail */}
           <div className="hidden sm:flex flex-col gap-1 w-[140px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto">
@@ -849,7 +851,114 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           );
         })()}
           </div>{/* end card column */}
-        </div>{/* end flex rail+card */}
+
+          {/* Context panel — right side (desktop only) */}
+          <div className="hidden lg:block w-[300px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto space-y-3">
+            {/* Live Coaching — desktop: inline in context panel */}
+            {showCoaching && activeEval && (
+              <LiveCoachingPanel
+                candidateId={candidate.candidateId}
+                candidateName={candidate.name}
+                candidateHeadline={candidate.headline || ''}
+                candidateProfileSummary={(() => { const p = candidate.linkedinProfileData as any; return p?.summary || p?.about || p?.headline || ''; })()}
+                jobId={candidate.jobId || ''}
+                jobTitle={candidate.jobTitle || ''}
+                jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
+                criteria={activeEval.criteria}
+                scorecardId={activeEval.id}
+                onCriteriaUpdate={(updates) => {
+                  if (!coachingAutoNav || !activeEval) return;
+                  const coveredIds = Object.entries(updates).filter(([, u]) => u.covered).map(([id]) => id);
+                  if (coveredIds.length === 0) return;
+                  const latestCovered = coveredIds[coveredIds.length - 1];
+                  if (latestCovered !== lastAutoNavCriterionRef.current) {
+                    lastAutoNavCriterionRef.current = latestCovered;
+                    const idx = activeEval.criteria.findIndex(c => c.id === latestCovered);
+                    if (idx !== -1) setCurrentCriterionIdx(idx);
+                  }
+                }}
+                onAutoScores={(scores) => { for (const [id, score] of Object.entries(scores)) handleRate(id, score); }}
+                onReportGenerated={(report) => { updateActiveEval(ev => ({ ...ev, summary: report.summary, recommendation: report.recommendation === 'GO' ? 'strong_yes' : report.recommendation === 'NO_GO' ? 'strong_no' : 'maybe', followUpNotes: report.open_questions?.join('\n') || ev.followUpNotes })); }}
+                onClose={() => setShowCoaching(false)}
+                onOpenProfile={onOpenProfile}
+              />
+            )}
+            {/* Current criterion context */}
+            {(() => {
+              const currentCriterion = activeEval.criteria[currentCriterionIdx];
+              if (!currentCriterion) return null;
+              const rating = activeEval.ratings[currentCriterion.id];
+
+              return (
+                <>
+                  {/* Quick score overview */}
+                  <div className="border border-foreground/20 p-3">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Progression</p>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex-1 h-1.5 bg-foreground/10">
+                        <div className="h-full bg-foreground transition-all duration-300" style={{ width: `${(ratedCount / totalCriteria) * 100}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-foreground">{ratedCount}/{totalCriteria}</span>
+                    </div>
+                    {activeEval.overallScore != null && (
+                      <p className="text-[10px] text-muted-foreground">Score actuel : <strong className="text-foreground">{activeEval.overallScore}/5</strong></p>
+                    )}
+                  </div>
+
+                  {/* Suggested questions for current criterion */}
+                  {currentCriterion.suggestedQuestions && currentCriterion.suggestedQuestions.length > 0 && (
+                    <div className="border border-foreground/20 p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">💡 Questions suggérées</p>
+                      <div className="space-y-1.5">
+                        {currentCriterion.suggestedQuestions.map((q: string, i: number) => (
+                          <p key={i} className="text-[10px] text-foreground leading-relaxed">• {q}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Red flags for current criterion */}
+                  {currentCriterion.redFlags && currentCriterion.redFlags.length > 0 && (
+                    <div className="border border-red-200 bg-red-50/30 p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-red-600 mb-2">⚠️ Red flags</p>
+                      <div className="space-y-1">
+                        {currentCriterion.redFlags.map((rf: string, i: number) => (
+                          <p key={i} className="text-[10px] text-red-700">{rf}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rating rubric for current selection */}
+                  {rating != null && currentCriterion.ratingRubric && (
+                    <div className="border border-foreground/20 p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Échelle</p>
+                      <div className="space-y-1">
+                        {Object.entries(currentCriterion.ratingRubric).map(([score, desc]) => (
+                          <div key={score} className={cn(
+                            "flex items-start gap-2 text-[10px] px-2 py-1",
+                            String(rating) === score ? "bg-foreground/5 font-medium text-foreground" : "text-muted-foreground"
+                          )}>
+                            <span className="font-bold shrink-0 w-3">{score}</span>
+                            <span>{desc as string}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Criterion weight info */}
+                  <div className="border border-foreground/10 p-3 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>Poids : {currentCriterion.weight === 3 ? '🔴 Critique' : currentCriterion.weight === 2 ? '🟡 Important' : '🟢 Bonus'}</span>
+                      <span>{currentCriterionIdx + 1}/{totalCriteria}</span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>{/* end context panel */}
+        </div>{/* end flex rail+card+context */}
 
         {/* ─── Verdict Section ─── */}
         <div className="border-t-2 border-foreground/20 pt-4 mt-6 space-y-4">
