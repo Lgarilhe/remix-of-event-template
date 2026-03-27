@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { clearCorruptedTokens } from '@/lib/authSession';
+import { getValidatedSession } from '@/lib/authSession';
 
 /**
  * Central auth-readiness hook.
@@ -21,29 +21,21 @@ export const useAuthReady = () => {
     let isMounted = true;
 
     // 1. Initial session restoration — validate token integrity
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (!isMounted) return;
-
-      if (s?.user) {
-        // Verify the token is actually valid via network call
-        const { data: { user }, error } = await supabase.auth.getUser();
+    getValidatedSession()
+      .then(({ session: s, user: validatedUser }) => {
         if (!isMounted) return;
-        if (user && !error) {
-          setSession(s);
-          setUser(user);
-        } else {
-          // Corrupted token
-          clearCorruptedTokens();
-          setSession(null);
-          setUser(null);
-        }
-      } else if (s && !s.user) {
-        clearCorruptedTokens();
+
+        setSession(s);
+        setUser(validatedUser);
+        setIsReady(true);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+
         setSession(null);
         setUser(null);
-      }
-      setIsReady(true);
-    });
+        setIsReady(true);
+      });
 
     // 2. Subsequent auth events — synchronous only, no async Supabase calls
     const {
