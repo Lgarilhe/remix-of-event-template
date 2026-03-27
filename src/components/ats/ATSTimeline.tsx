@@ -9,7 +9,7 @@ import {
   StickyNote,
   Calendar
 } from 'lucide-react';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { format, isToday, isYesterday, isThisWeek, isThisMonth, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 

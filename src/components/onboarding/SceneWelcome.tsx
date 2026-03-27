@@ -3,13 +3,13 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-import rocketImg from '@/assets/illust-rocket.png';
-import dashboardImg from '@/assets/landing-dashboard.png';
-import linkedinLogo from '@/assets/linkedin-logo.png';
-import notionLogo from '@/assets/notion-logo.png';
-import calendlyLogo from '@/assets/calendly-logo.png';
+import rocketImg from '@/assets/illust-rocket.webp';
+import dashboardImg from '@/assets/landing-dashboard.webp';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
+import notionLogo from '@/assets/notion-logo.webp';
+import calendlyLogo from '@/assets/calendly-logo.webp';
 import airtableLogo from '@/assets/airtable-logo.svg';
-import aircallLogo from '@/assets/aircall-logo.png';
+import aircallLogo from '@/assets/aircall-logo.webp';
 
 interface Props {
   onNext: () => void;

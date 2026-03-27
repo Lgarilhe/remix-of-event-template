@@ -6,7 +6,7 @@ import {
   Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
   Mail, MessageSquare, Search, Eye, Gauge, Link2, Unlink, UserCog,
 } from 'lucide-react';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';

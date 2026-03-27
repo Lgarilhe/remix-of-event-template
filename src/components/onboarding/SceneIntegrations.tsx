@@ -7,8 +7,8 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
-import integrationsIcon from '@/assets/icon-integrations-3d.png';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import integrationsIcon from '@/assets/icon-integrations-3d.webp';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 interface Props {
   onNext: () => void;

@@ -6,8 +6,8 @@ import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { ArrowLeft, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X } from 'lucide-react';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
-import iconProfile3d from '@/assets/icon-profile-3d.png';
-import iconJob3d from '@/assets/icon-job-3d.png';
+import iconProfile3d from '@/assets/icon-profile-3d.webp';
+import iconJob3d from '@/assets/icon-job-3d.webp';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 

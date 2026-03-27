@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Globe, Briefcase, Star, MessageSquare, Linkedin, Share2, FileText, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import analyticsIcon from '@/assets/icon-analytics-3d.png';
+import analyticsIcon from '@/assets/icon-analytics-3d.webp';
 import type { OnboardingCompanyData } from '@/pages/Onboarding';
 
 interface Props {

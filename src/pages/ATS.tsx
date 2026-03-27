@@ -24,11 +24,11 @@ import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandid
 import { PIPELINE_STAGES, type ShortlistEntry } from '@/pages/Candidates';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Bell, Users, RefreshCw, Loader2, LayoutGrid, List } from 'lucide-react';
-import iconAts3d from '@/assets/icon-ats-3d.png';
-import iconKanban3d from '@/assets/icon-kanban-3d.png';
-import iconTable3d from '@/assets/icon-table-3d.png';
-import iconTimeline3d from '@/assets/icon-timeline-3d.png';
-import iconAnalytics3d from '@/assets/icon-analytics-3d.png';
+import iconAts3d from '@/assets/icon-ats-3d.webp';
+import iconKanban3d from '@/assets/icon-kanban-3d.webp';
+import iconTable3d from '@/assets/icon-table-3d.webp';
+import iconTimeline3d from '@/assets/icon-timeline-3d.webp';
+import iconAnalytics3d from '@/assets/icon-analytics-3d.webp';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';

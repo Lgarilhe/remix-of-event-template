@@ -1,5 +1,5 @@
 import React from 'react';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { ScoringRecord } from '@/hooks/useCandidateFullProfile';

@@ -25,11 +25,11 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 
-import notionLogo from '@/assets/notion-logo.png';
-import calendlyLogo from '@/assets/calendly-logo.png';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import notionLogo from '@/assets/notion-logo.webp';
+import calendlyLogo from '@/assets/calendly-logo.webp';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 import airtableLogo from '@/assets/airtable-logo.svg';
-import aircallLogo from '@/assets/aircall-logo.png';
+import aircallLogo from '@/assets/aircall-logo.webp';
 
 interface IntegrationField {
   key: string;

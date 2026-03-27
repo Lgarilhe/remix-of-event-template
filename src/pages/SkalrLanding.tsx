@@ -11,8 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
-
-import landingDashboard from '@/assets/landing-dashboard.png';
+import landingDashboard from '@/assets/landing-dashboard.webp';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();

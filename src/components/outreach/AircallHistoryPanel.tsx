@@ -3,7 +3,7 @@ import { AircallCall } from '@/hooks/useAircallHistory';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Mic, MessageSquareText, Tag, Loader2 } from 'lucide-react';
-import aircallLogo from '@/assets/aircall-logo.png';
+import aircallLogo from '@/assets/aircall-logo.webp';
 
 interface AircallHistoryPanelProps {
   calls: AircallCall[];

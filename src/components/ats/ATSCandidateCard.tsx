@@ -1,7 +1,7 @@
 import React from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { differenceInDays, parseISO } from 'date-fns';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { 
   Mail, 
   StickyNote, 

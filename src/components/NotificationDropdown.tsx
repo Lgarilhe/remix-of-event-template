@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CheckCheck } from 'lucide-react';
-import iconBell3d from '@/assets/icon-bell-3d.png';
+import iconBell3d from '@/assets/icon-bell-3d.webp';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';

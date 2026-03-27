@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import skalrLogo from '@/assets/skalr-logo-concept-3.png';
+import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
 
 interface OnboardingLayoutProps {
   currentStep: number;

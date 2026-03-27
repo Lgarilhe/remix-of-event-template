@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Check, Rocket, Circle } from 'lucide-react';
-import trophyImg from '@/assets/illust-trophy.png';
+import trophyImg from '@/assets/illust-trophy.webp';
 
 interface Props {
   completedSet: Set<number>;
