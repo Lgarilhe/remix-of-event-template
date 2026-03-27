@@ -16,31 +16,32 @@ import { getValidatedSession } from '@/lib/authSession';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
 
-    getValidatedSession()
-      .then(({ session }) => {
-        if (!isMounted) return;
+    const validateSessionInBackground = async () => {
+      const {
+        data: { session: localSession },
+      } = await supabase.auth.getSession();
 
-        if (session?.user) {
-          navigate('/missions', { replace: true });
-          return;
-        }
+      if (!localSession?.user || !isMounted) return;
 
-        setChecking(false);
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setChecking(false);
-      });
+      const { session } = await getValidatedSession();
+
+      if (!isMounted || !session?.user) return;
+      navigate('/missions', { replace: true });
+    };
+
+    validateSessionInBackground().catch(() => {
+      // Landing page is public: never block rendering on auth/network failures.
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) navigate('/missions', { replace: true });
-      if ((event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) && isMounted) {
-        setChecking(false);
+      if (!isMounted) return;
+
+      if ((event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && !!session?.user)) && session?.user) {
+        navigate('/missions', { replace: true });
       }
     });
 
@@ -49,8 +50,6 @@ const useRedirectIfAuthenticated = () => {
       subscription.unsubscribe();
     };
   }, [navigate]);
-
-  return checking;
 };
 
 const CALENDLY_URL = 'https://calendly.com/demo/30min';
@@ -84,7 +83,7 @@ const BrutalButton = ({
 );
 
 const SkalrLanding = () => {
-  const checking = useRedirectIfAuthenticated();
+  useRedirectIfAuthenticated();
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
@@ -92,14 +91,6 @@ const SkalrLanding = () => {
   const [contactForm, setContactForm] = useState({ name: '', email: '', company: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
