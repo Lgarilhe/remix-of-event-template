@@ -316,6 +316,7 @@ export function useLinkedInSearch({
           id: activeProject.job_id,
           title: jd.title || activeProject.job_title,
           client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
+          skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
         };
         // Only add fields if they have actual values (avoid sending undefined)
         if (jd.mission_description || jd.context) enriched.description = jd.mission_description || jd.context;
@@ -334,6 +335,7 @@ export function useLinkedInSearch({
           title: jd.title || activeProject.name,
           description: jd.mission_description || jd.context || activeProject.description || '',
           client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
+          skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
         };
         if (jd.skills_must_have?.length) synthetic.mustHave = jd.skills_must_have.join(', ');
         if (jd.skills_should_have?.length) synthetic.shouldHave = jd.skills_should_have.join(', ');
