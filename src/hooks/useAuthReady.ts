@@ -20,15 +20,24 @@ export const useAuthReady = () => {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial session restoration
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    // 1. Initial session restoration — validate token integrity
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       if (!isMounted) return;
 
       if (s?.user) {
-        setSession(s);
-        setUser(s.user);
+        // Verify the token is actually valid via network call
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (!isMounted) return;
+        if (user && !error) {
+          setSession(s);
+          setUser(user);
+        } else {
+          // Corrupted token
+          clearCorruptedTokens();
+          setSession(null);
+          setUser(null);
+        }
       } else if (s && !s.user) {
-        // Session exists but no user — corrupted token
         clearCorruptedTokens();
         setSession(null);
         setUser(null);
