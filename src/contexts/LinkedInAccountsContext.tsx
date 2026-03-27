@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
-import { getValidatedSession } from '@/lib/authSession';
 
 interface LinkedInAccount {
   id: string;
@@ -56,7 +54,6 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     setHasLoaded(false);
   }, []);
 
-  // Load accounts once user is authenticated
   useEffect(() => {
     let isMounted = true;
     let prevUserId: string | null = null;
@@ -69,44 +66,35 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
       setLoading(false);
     };
 
-    const syncAccounts = async (nextSession?: Session | null) => {
-      if (!nextSession?.access_token) {
+    // Initial check — safe to call async here (not inside onAuthStateChange)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
+      if (!session?.user) {
         resetState();
         return;
       }
-
-      const { session, user } = await getValidatedSession();
-      if (!isMounted || !session?.access_token || !user) {
-        resetState();
-        return;
-      }
-
-      if (prevUserId && prevUserId !== user.id) {
-        setAccounts([]);
-        setHasLoaded(false);
-      }
-
-      prevUserId = user.id;
-      await reload();
-    };
-
-    void getValidatedSession().then(({ session, user }) => {
-      if (!isMounted || !session?.access_token || !user) {
-        resetState();
-        return;
-      }
-
-      prevUserId = user.id;
+      prevUserId = session.user.id;
       void reload();
     });
 
+    // Subsequent auth events — NO async Supabase calls inside callback
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_OUT' || !session?.user) {
         resetState();
         return;
       }
 
-      void syncAccounts(session ?? null);
+      const newUserId = session.user.id;
+      if (prevUserId && prevUserId !== newUserId) {
+        setAccounts([]);
+        setHasLoaded(false);
+      }
+      prevUserId = newUserId;
+
+      // reload() calls an edge function, not a Supabase auth method — safe
+      void reload();
     });
 
     return () => {
