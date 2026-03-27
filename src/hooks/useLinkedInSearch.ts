@@ -308,22 +308,29 @@ export function useLinkedInSearch({
         toast.info(`Filtres du projet "${activeProject.name}" chargés`);
       }
       
-      if (activeProject.job_id && activeProject.job_title) {
-        setSelectedJob({
-          id: activeProject.job_id,
-          title: activeProject.job_title,
-          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
-        } as Job);
-      } else if (activeProject.name) {
-        // Brief-based project without a real job — create a synthetic job
-        // so the search button is enabled and scoring can reference the project
-        setSelectedJob({
-          id: `project:${activeProject.id}`,
-          title: activeProject.name,
-          description: activeProject.description || '',
-          client: activeProject.client_name ? { name: activeProject.client_name } : undefined,
-        } as Job);
-      }
+      // Build synthetic job from project + job_details for scoring
+      const jd = (activeProject as any).job_details || {};
+      const jobBase = {
+        id: activeProject.job_id || `project:${activeProject.id}`,
+        title: jd.title || activeProject.job_title || activeProject.name,
+        description: jd.mission_description || jd.context || activeProject.description || '',
+        client: jd.client?.name
+          ? { name: jd.client.name, sector: jd.client.sector, size: jd.client.size }
+          : activeProject.client_name ? { name: activeProject.client_name } : undefined,
+        skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
+        seniority: jd.seniority || '',
+        location: jd.location || '',
+        remote: jd.remote_policy || '',
+        xpMin: jd.experience_min,
+        xpMax: jd.experience_max,
+        salaryMin: jd.salary_min,
+        salaryMax: jd.salary_max,
+        contractType: jd.contract_type || '',
+        mustHave: (jd.skills_must_have || []).join(', '),
+        shouldHave: (jd.skills_should_have || []).join(', '),
+        niceToHave: (jd.skills_nice_to_have || []).join(', '),
+      };
+      setSelectedJob(jobBase as Job);
     }
   }, [activeProject?.id]);
 

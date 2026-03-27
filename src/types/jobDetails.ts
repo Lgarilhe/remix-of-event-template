@@ -68,6 +68,26 @@ export interface JobDetails {
     areas_of_improvement?: string;
   }>;
 
+  // ── Manager evaluation criteria ──
+  evaluation_criteria?: Array<{
+    id: string;
+    label: string;
+    description: string;
+    category: 'technical' | 'soft_skill' | 'culture_fit' | 'motivation' | 'experience';
+    weight: 1 | 2 | 3; // 1=bonus, 2=important, 3=critique
+    deal_breaker?: boolean;
+    level_10?: string; // "Mon 10/10 c'est..."
+    level_1?: string;  // "Mon rédhibitoire c'est..."
+    interview_stage?: string; // À quelle étape évaluer ce critère
+  }>;
+  evaluation_weights?: {
+    technical: number;   // % du total
+    soft_skill: number;
+    culture_fit: number;
+    motivation: number;
+    experience: number;
+  };
+
   // ── Brief brut ──
   raw_brief?: string;
   brief_source?: 'typed' | 'voice' | 'imported' | 'ai_structured';

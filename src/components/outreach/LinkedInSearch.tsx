@@ -40,6 +40,27 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [scoringInstructions, setScoringInstructions] = useLocalState('');
 
+  // Auto-generate scoring instructions from brief's evaluation criteria
+  React.useEffect(() => {
+    if (!activeProject || scoringInstructions.trim()) return; // Don't overwrite manual instructions
+    const jd = (activeProject as any).job_details;
+    if (!jd?.evaluation_criteria?.length) return;
+
+    const lines: string[] = ['Critères du manager pour le scoring :'];
+    if (jd.evaluation_weights) {
+      const w = jd.evaluation_weights;
+      lines.push(`Pondération : ${w.technical || 0}% technique, ${w.soft_skill || 0}% soft skills, ${w.culture_fit || 0}% culture fit, ${w.motivation || 0}% motivation, ${w.experience || 0}% expérience.`);
+    }
+    for (const c of jd.evaluation_criteria) {
+      const weight = c.weight === 3 ? 'CRITIQUE' : c.weight === 2 ? 'important' : 'bonus';
+      let line = `- ${c.label} (${weight}${c.deal_breaker ? ', DEAL BREAKER' : ''})`;
+      if (c.level_10) line += ` — Excellence: "${c.level_10}"`;
+      if (c.level_1) line += ` — Rédhibitoire: "${c.level_1}"`;
+      lines.push(line);
+    }
+    setScoringInstructions(lines.join('\n'));
+  }, [activeProject]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Main search state hook
   const search = useLinkedInSearch({
     selectedAccount,
