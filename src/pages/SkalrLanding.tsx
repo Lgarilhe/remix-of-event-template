@@ -63,7 +63,14 @@ const BrutalButton = ({
 );
 
 const SkalrLanding = () => {
-  useRedirectIfAuthenticated();
+  const checking = useRedirectIfAuthenticated();
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+      </div>
+    );
+  }
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
