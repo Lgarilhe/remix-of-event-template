@@ -5,6 +5,7 @@ import { invokeUnipile } from '@/lib/invokeUnipile';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { useChatCategories } from './useChatCategories';
 import {
   getChatDisplayName,
@@ -361,6 +362,7 @@ function contextReducer(state: ContextState, action: ContextAction): ContextStat
 
 export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange }: UseMessagesInboxOptions) {
   const { organizationId } = useOrganization();
+  const { isReady, user } = useAuthReady();
 
   // ── Chat state (useReducer #1) ──
   const [chatState, chatDispatch] = useReducer(chatReducer, {
@@ -557,10 +559,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
   // Fetch active sequences
   const fetchSequences = useCallback(async () => {
+    if (!user) return;
+
     try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
-      
       const { data, error } = await supabase
         .from('outreach_sequences')
         .select(`
@@ -575,7 +576,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           )
         `)
         .eq('is_active', true)
-        .eq('created_by', user.user.id)
+        .eq('created_by', user.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -587,7 +588,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     } catch (error) {
       console.error('Error fetching sequences:', error);
     }
-  }, []);
+  }, [user]);
 
   // Fetch all chats
   const fetchChats = useCallback(async (showToast = false) => {
@@ -846,10 +847,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
   // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
   const syncAfterInboxSend = useCallback(async (chat: Chat) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    if (!user) return;
 
+    try {
       const profileId = getAttendeeProfileId(chat);
       const profileUrl = chat.attendees?.[0]?.profile_url || null;
       const candidateName = getChatDisplayName(chat);
@@ -910,7 +910,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     } catch (err) {
       console.error('[Inbox] Post-send sync error (non-blocking):', err);
     }
-  }, [enrollmentsMap, availableJobs]);
+  }, [availableJobs, enrollmentsMap, organizationId, user]);
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback((smooth = true) => {
@@ -1098,7 +1098,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
   // Enroll in sequence
   const enrollInSequence = useCallback(async (sequence: { id: string; name: string; steps: any[] }) => {
-    if (!selectedChat || !selectedAccount) return;
+    if (!selectedChat || !selectedAccount || !user) return;
     
     const profileId = getAttendeeProfileId(selectedChat);
     if (!profileId) {
@@ -1107,9 +1107,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
     
     try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Non authentifié');
-      
       const { data: existing } = await supabase
         .from('sequence_enrollments')
         .select('id')
@@ -1133,7 +1130,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           profile_name: getChatDisplayName(selectedChat),
           profile_headline: getChatHeadline(selectedChat),
           profile_url: selectedChat.attendees?.[0]?.profile_url,
-          created_by: user.user.id,
+          created_by: user.id,
           organization_id: organizationId,
           user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           status: 'active',
@@ -1151,7 +1148,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       console.error('Error enrolling in sequence:', error);
       toast.error('Erreur lors de l\'inscription');
     }
-  }, [selectedChat, selectedAccount, fetchEnrollments]);
+  }, [fetchEnrollments, organizationId, selectedAccount, selectedChat, user]);
 
   // Handle adding to pipeline
   const handleAddToPipeline = useCallback((jobId?: string) => {
@@ -1378,7 +1375,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
   // Load chats on account change
   useEffect(() => {
-    if (selectedAccount) {
+    if (isReady && user && selectedAccount) {
       fetchChats();
       fetchEnrollments();
       fetchAvailableJobs();
@@ -1390,11 +1387,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setMessages([]);
       }
     }
-  }, [selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences]);
+  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences, user]);
 
   // Auto-poll chat list every 30s to detect new messages / conversations
   useEffect(() => {
-    if (!selectedAccount) return;
+    if (!isReady || !user || !selectedAccount) return;
 
     const pollChats = async () => {
       try {
@@ -1435,7 +1432,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     const intervalId = setInterval(pollChats, 30_000);
     return () => clearInterval(intervalId);
-  }, [selectedAccount]);
+  }, [isReady, selectedAccount, user]);
 
   // Load messages on chat selection & mark as read
   useEffect(() => {
@@ -1454,7 +1451,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
   // Auto-poll messages every 5s when a chat is selected
   useEffect(() => {
-    if (!selectedChat || !selectedAccount) return;
+    if (!isReady || !user || !selectedChat || !selectedAccount) return;
 
     const chatId = selectedChat.id;
     let active = true;
@@ -1511,7 +1508,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       active = false;
       clearInterval(intervalId);
     };
-  }, [selectedChat?.id, selectedAccount]);
+  }, [isReady, selectedChat?.id, selectedAccount, user]);
 
   // Scroll to bottom helper
 
