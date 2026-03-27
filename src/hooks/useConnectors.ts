@@ -158,12 +158,12 @@ export const useConnectorSyncRuns = (instanceId: string | undefined) => {
     queryKey: ['connector-sync-runs', instanceId],
     queryFn: async () => {
       if (!instanceId) return [];
-      const { data, error } = await supabase
-        .from('connector_sync_runs')
+      const { data, error } = await (supabase
+        .from('connector_sync_runs' as any)
         .select('*')
         .eq('connector_instance_id', instanceId)
         .order('started_at', { ascending: false })
-        .limit(20);
+        .limit(20)) as any;
       if (error) throw error;
       return (data || []) as SyncRun[];
     },
@@ -182,8 +182,8 @@ export const useTriggerSync = () => {
       if (!organizationId) throw new Error('No organization');
 
       // Create a sync run record
-      const { data: run, error: runErr } = await supabase
-        .from('connector_sync_runs')
+      const { data: run, error: runErr } = await (supabase
+        .from('connector_sync_runs' as any)
         .insert({
           organization_id: organizationId,
           connector_instance_id: input.instanceId,
@@ -191,7 +191,7 @@ export const useTriggerSync = () => {
           status: 'running',
         })
         .select()
-        .single();
+        .single()) as any;
       if (runErr) throw runErr;
 
       // The actual sync would be triggered via an edge function

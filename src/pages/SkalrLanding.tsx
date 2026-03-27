@@ -15,16 +15,21 @@ import landingDashboard from '@/assets/landing-dashboard.webp';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
   useEffect(() => {
-    // Check initial session (no async calls inside onAuthStateChange!)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) navigate('/missions', { replace: true });
+      if (session?.user) {
+        navigate('/missions', { replace: true });
+      } else {
+        setChecking(false);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) navigate('/missions', { replace: true });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
+  return checking;
 };
 
 const CALENDLY_URL = 'https://calendly.com/demo/30min';
@@ -58,7 +63,7 @@ const BrutalButton = ({
 );
 
 const SkalrLanding = () => {
-  useRedirectIfAuthenticated();
+  const checking = useRedirectIfAuthenticated();
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
@@ -66,6 +71,14 @@ const SkalrLanding = () => {
   const [contactForm, setContactForm] = useState({ name: '', email: '', company: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
