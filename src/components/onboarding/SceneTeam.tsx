@@ -11,8 +11,8 @@ import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
-import teamIcon from '@/assets/icon-team-3d.png';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import teamIcon from '@/assets/icon-team-3d.webp';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 interface Props {
   organizationId: string | null;

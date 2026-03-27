@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { MessageSquare, CheckCircle2, Star, Target, Archive, Zap, Sparkles, Loader2 } from 'lucide-react';
 import { JobMatchResult, SalaryBadge } from '../JobScoreDisplay';
 import airtableLogo from '@/assets/airtable-logo.svg';
-import notionLogo from '@/assets/notion-logo.png';
+import notionLogo from '@/assets/notion-logo.webp';
 
 interface CardStatusBadgesProps {
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null } | null;

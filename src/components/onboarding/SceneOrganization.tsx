@@ -8,8 +8,8 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import searchIcon from '@/assets/icon-search-3d.png';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import searchIcon from '@/assets/icon-search-3d.webp';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.svg';
 const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';

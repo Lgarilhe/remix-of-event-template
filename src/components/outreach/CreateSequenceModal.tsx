@@ -14,7 +14,7 @@ import {
   Mail,
   X,
 } from 'lucide-react';
-import linkedInLogo from '@/assets/linkedin-logo.png';
+import linkedInLogo from '@/assets/linkedin-logo.webp';
 
 interface CreateSequenceModalProps {
   isOpen: boolean;

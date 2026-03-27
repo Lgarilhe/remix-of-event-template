@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
 import { UserCog } from 'lucide-react';
-import iconBuilding3d from '@/assets/icon-building-3d.png';
-import iconProfile3d from '@/assets/icon-profile-3d.png';
-import iconTeam3d from '@/assets/icon-team-3d.png';
-import iconBilling3d from '@/assets/icon-billing-3d.png';
-import iconCredits3d from '@/assets/icon-credits-3d.png';
-import iconIntegrations3d from '@/assets/icon-integrations-3d.png';
+import iconBuilding3d from '@/assets/icon-building-3d.webp';
+import iconProfile3d from '@/assets/icon-profile-3d.webp';
+import iconTeam3d from '@/assets/icon-team-3d.webp';
+import iconBilling3d from '@/assets/icon-billing-3d.webp';
+import iconCredits3d from '@/assets/icon-credits-3d.webp';
+import iconIntegrations3d from '@/assets/icon-integrations-3d.webp';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -32,7 +32,7 @@ import { AgencySettings } from '@/components/settings/AgencySettings';
 import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import iconSettings3d from '@/assets/icon-settings-3d.png';
+import iconSettings3d from '@/assets/icon-settings-3d.webp';
 
 const roleIcons = {
   owner: Crown,

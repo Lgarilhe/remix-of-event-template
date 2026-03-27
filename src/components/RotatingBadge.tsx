@@ -1,5 +1,5 @@
 import React from 'react';
-import badgeImage from '@/assets/badge.png';
+import badgeImage from '@/assets/badge.webp';
 
 interface RotatingBadgeProps {
   text: string;

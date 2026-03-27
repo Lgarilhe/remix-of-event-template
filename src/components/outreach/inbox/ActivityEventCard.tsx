@@ -19,7 +19,7 @@ import {
   Phone,
 } from 'lucide-react';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
-import aircallLogo from '@/assets/aircall-logo.png';
+import aircallLogo from '@/assets/aircall-logo.webp';
 
 const ACTION_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string }> = {
   profile_visit: { icon: Eye, label: 'Visite de profil', color: 'text-blue-500' },

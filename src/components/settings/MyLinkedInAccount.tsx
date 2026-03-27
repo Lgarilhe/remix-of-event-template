@@ -10,7 +10,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 export const MyLinkedInAccount = () => {
   const [generating, setGenerating] = useState(false);

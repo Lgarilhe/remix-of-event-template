@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import airtableLogo from '@/assets/airtable-logo.svg';
-import notionLogo from '@/assets/notion-logo.png';
+import notionLogo from '@/assets/notion-logo.webp';
 
 interface CandidateHistoryPanelProps {
   data: CandidateHistoryData | null;

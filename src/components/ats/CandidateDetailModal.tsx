@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
