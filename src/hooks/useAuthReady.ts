@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { getValidatedSession } from '@/lib/authSession';
 
 export const useAuthReady = () => {
   const [isReady, setIsReady] = useState(false);
@@ -10,16 +11,32 @@ export const useAuthReady = () => {
   useEffect(() => {
     let isMounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const syncSession = async (nextSession?: Session | null) => {
       if (!isMounted) return;
-      setSession(nextSession ?? null);
-      setUser(nextSession?.user ?? null);
+
+      if (!nextSession?.access_token) {
+        setSession(null);
+        setUser(null);
+        setIsReady(true);
+        return;
+      }
+
+      const validated = await getValidatedSession();
+      if (!isMounted) return;
+
+      setSession(validated.session);
+      setUser(validated.user);
+      setIsReady(true);
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void syncSession(nextSession ?? null);
     });
 
-    supabase.auth.getSession().then(({ data: { session: restoredSession } }) => {
+    void getValidatedSession().then((validated) => {
       if (!isMounted) return;
-      setSession(restoredSession ?? null);
-      setUser(restoredSession?.user ?? null);
+      setSession(validated.session);
+      setUser(validated.user);
       setIsReady(true);
     });
 
