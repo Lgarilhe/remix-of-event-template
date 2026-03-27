@@ -10,6 +10,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
+const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
 const getPublicAppOrigin = () => {
   if (typeof window === 'undefined') return 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
   return window.location.origin;
@@ -38,17 +39,27 @@ const Auth = () => {
   useEffect(() => {
     const storedToken = sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
     const nextToken = invitationTokenFromUrl || storedToken;
+    const previewAccessToken = new URLSearchParams(window.location.search).get('__lovable_token');
 
     invitationTokenRef.current = nextToken;
 
     if (invitationTokenFromUrl) {
       sessionStorage.setItem(PENDING_INVITATION_STORAGE_KEY, invitationTokenFromUrl);
     }
+
+    if (previewAccessToken) {
+      sessionStorage.setItem(PREVIEW_ACCESS_TOKEN_STORAGE_KEY, previewAccessToken);
+    }
   }, [invitationTokenFromUrl]);
 
   const getAuthRedirectUrl = useCallback(() => {
     const token = invitationTokenRef.current || sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
+    const previewAccessToken = new URLSearchParams(window.location.search).get('__lovable_token') || sessionStorage.getItem(PREVIEW_ACCESS_TOKEN_STORAGE_KEY);
     const params = new URLSearchParams();
+
+    if (previewAccessToken) {
+      params.set('__lovable_token', previewAccessToken);
+    }
 
     if (token) {
       params.set('invitation', token);
