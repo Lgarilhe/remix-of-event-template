@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
@@ -7,31 +7,26 @@ import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
-import { supabase } from '@/integrations/supabase/client';
 import { AttendeePicturesProvider } from '@/contexts/AttendeePicturesContext';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export default function Inbox() {
   const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
   const { isAdmin, isOwner, isCollaborator, organizationId } = useOrganization();
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
+  const { user } = useAuthReady();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUserId(user.id);
-    });
-  }, []);
 
   const accounts = useMemo(() => {
     if (!rawAccounts) return [];
     const mapped = rawAccounts.map(a => applySubscriptionOverrides(a as LinkedInAccount));
     if ((isAdmin || isOwner) && !isCollaborator) return mapped;
+    const currentUserId = user?.id ?? null;
     if (!currentUserId) return [];
     const linkedId = getUserLinkedAccountId(currentUserId);
     if (!linkedId) return [];
     return mapped.filter(a => a.id === linkedId);
-  }, [rawAccounts, isAdmin, isOwner, isCollaborator, currentUserId, getUserLinkedAccountId]);
+  }, [rawAccounts, isAdmin, isOwner, isCollaborator, user?.id, getUserLinkedAccountId]);
 
   useEffect(() => {
     if (!selectedAccount && accounts.length > 0) {

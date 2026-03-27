@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export type ChatCategory = 'interested' | 'not_interested' | 'to_recontact' | 'no_response';
 
@@ -24,17 +25,21 @@ export function useChatCategories() {
   const [loading, setLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<ChatCategory | 'all'>('all');
   const { organizationId } = useOrganization();
+  const { isReady, user } = useAuthReady();
 
   const fetchCategories = useCallback(async () => {
+    if (!isReady || !user) {
+      setCategoriesMap(new Map());
+      return;
+    }
+
     try {
       setLoading(true);
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
 
       const { data, error } = await supabase
         .from('chat_categories')
         .select('chat_id, category')
-        .eq('created_by', user.user.id);
+        .eq('created_by', user.id);
 
       if (error) throw error;
 
@@ -48,20 +53,19 @@ export function useChatCategories() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isReady, user]);
 
   const setCategory = useCallback(async (chatId: string, accountId: string, category: ChatCategory | null) => {
-    try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
+    if (!user) return;
 
+    try {
       if (category === null) {
         // Remove category
         await supabase
           .from('chat_categories')
           .delete()
           .eq('chat_id', chatId)
-          .eq('created_by', user.user.id);
+          .eq('created_by', user.id);
 
         setCategoriesMap(prev => {
           const next = new Map(prev);
@@ -76,7 +80,7 @@ export function useChatCategories() {
             chat_id: chatId,
             account_id: accountId,
             category,
-            created_by: user.user.id,
+          created_by: user.id,
             organization_id: organizationId,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'chat_id,created_by' });
@@ -92,7 +96,7 @@ export function useChatCategories() {
     } catch (error) {
       console.error('Error setting chat category:', error);
     }
-  }, []);
+  }, [organizationId, user]);
 
   const getCategoryForChat = useCallback((chatId: string): ChatCategory | null => {
     return categoriesMap.get(chatId) || null;
@@ -117,7 +121,7 @@ export function useChatCategories() {
   const [autoTagging, setAutoTagging] = useState(false);
 
   const autoTagChats = useCallback(async (chats: Array<{ id: string; account_id: string; name?: string; attendees?: any[]; last_message?: any; unread_count?: number; unread?: number }>) => {
-    if (autoTagging || chats.length === 0) return;
+    if (autoTagging || chats.length === 0 || !user) return;
     
     // Skip chats already categorized (manually or by previous auto-tag) to avoid overwriting user corrections
     const untaggedChats = chats.filter(c => !categoriesMap.has(c.id));
@@ -125,9 +129,6 @@ export function useChatCategories() {
 
     setAutoTagging(true);
     try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
-
       // Process in batches of 30
       const batchSize = 30;
       let totalTagged = 0;
@@ -152,7 +153,7 @@ export function useChatCategories() {
           chat_id: r.chat_id,
           account_id: r.account_id,
           category: r.category,
-          created_by: user.user!.id,
+          created_by: user.id,
           organization_id: organizationId,
           updated_at: new Date().toISOString(),
         }));
@@ -183,11 +184,16 @@ export function useChatCategories() {
     } finally {
       setAutoTagging(false);
     }
-  }, [autoTagging]);
+  }, [autoTagging, categoriesMap, organizationId, user]);
 
   useEffect(() => {
+    if (!isReady || !user) {
+      setCategoriesMap(new Map());
+      return;
+    }
+
     fetchCategories();
-  }, [fetchCategories]);
+  }, [fetchCategories, isReady, user]);
 
   return {
     categoriesMap,
