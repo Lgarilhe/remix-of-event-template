@@ -157,15 +157,27 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       if (candidate.jobId) {
         const { data: project } = await supabase
           .from('sourcing_projects')
-          .select('job_title, client_name, description, filters_snapshot')
+          .select('job_title, client_name, description, filters_snapshot, job_details')
           .eq('job_id', candidate.jobId)
           .limit(1)
           .maybeSingle();
 
         if (project) {
-          jobContext.title = project.job_title || jobContext.title;
-          jobContext.client = project.client_name;
-          jobContext.description = project.description;
+          const jd = (project as any).job_details || {};
+          jobContext.title = jd.title || project.job_title || jobContext.title;
+          jobContext.client = jd.client?.name || project.client_name;
+          jobContext.description = jd.mission_description || jd.context || project.description;
+          jobContext.seniority = jd.seniority;
+          jobContext.xpMin = jd.experience_min;
+          jobContext.xpMax = jd.experience_max;
+          jobContext.mustHave = (jd.skills_must_have || []).join(', ');
+          jobContext.shouldHave = (jd.skills_should_have || []).join(', ');
+          jobContext.niceToHave = (jd.skills_nice_to_have || []).join(', ');
+          // Pass manager's evaluation criteria to the AI
+          if (jd.evaluation_criteria?.length > 0) {
+            jobContext.managerCriteria = jd.evaluation_criteria;
+            jobContext.evaluationWeights = jd.evaluation_weights;
+          }
         }
 
         try {
@@ -181,6 +193,34 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       }
 
       const stage = activeEval?.interviewStage || selectedStage || undefined;
+
+      // Fetch process steps to enrich stage context
+      if (candidate.jobId && stage) {
+        try {
+          const { data: projectForSteps } = await supabase
+            .from('sourcing_projects')
+            .select('id')
+            .eq('job_id', candidate.jobId)
+            .limit(1)
+            .maybeSingle();
+          if (projectForSteps) {
+            const { data: processSteps } = await supabase
+              .from('mission_process_steps')
+              .select('name, description, objectives, evaluation_criteria, is_eliminatory')
+              .eq('project_id', projectForSteps.id)
+              .order('step_order', { ascending: true });
+            if (processSteps?.length) {
+              jobContext.processSteps = processSteps;
+              // Find the current step by name match or index
+              const currentStep = processSteps.find(s => s.name.toLowerCase().includes(stage.toLowerCase()));
+              if (currentStep) {
+                jobContext.currentStepObjectives = currentStep.objectives;
+                jobContext.currentStepIsEliminatory = currentStep.is_eliminatory;
+              }
+            }
+          }
+        } catch { /* Non-blocking */ }
+      }
 
       const { data, error } = await invokeWithCredits('generate-scorecard', 'generate_scorecard', {
         candidateProfile, jobContext, scoringDetails: candidate.scoringDetails, interviewStage: stage,

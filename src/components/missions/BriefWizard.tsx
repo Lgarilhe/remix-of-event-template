@@ -67,6 +67,7 @@ const STEPS = [
   { key: 'client', label: 'Le client', emoji: '🏢' },
   { key: 'profil', label: 'Profil recherché', emoji: '🎯' },
   { key: 'competences', label: 'Compétences', emoji: '⚡' },
+  { key: 'evaluation', label: 'Évaluation', emoji: '📋' },
 ];
 
 // ─── Completion score ──────────────────────────────────────
@@ -83,6 +84,7 @@ function computeCompletionScore(d: JobDetails): { score: number; missing: string
     [d.salary_min != null, 'Salaire min'],
     [(d.skills_must_have?.length || 0) > 0, 'Skills must-have'],
     [!!d.mission_description || !!d.context, 'Description ou contexte'],
+    [(d.evaluation_criteria?.length || 0) > 0, 'Critères d\'évaluation'],
   ];
   const done = checks.filter(([ok]) => ok).length;
   const missing = checks.filter(([ok]) => !ok).map(([, label]) => label);
@@ -150,6 +152,9 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
           )}
           {activeStep === 3 && (
             <StepCompetences d={d} onUpdate={onUpdate} readOnly={readOnly} />
+          )}
+          {activeStep === 4 && (
+            <StepEvaluation d={d} onUpdate={onUpdate} readOnly={readOnly} />
           )}
 
           {/* Navigation */}
@@ -337,3 +342,210 @@ const StepCompetences = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (
     <Field label="Brief brut (texte ou voice transcript)" value={d.raw_brief} onChange={(v) => onUpdate({ raw_brief: v })} type="textarea" placeholder="Collez un brief brut ou retrouvez ici le transcript vocal..." />
   </div>
 );
+
+// ─── Step 5: Critères d'évaluation du manager ─────────────
+
+const CATEGORY_OPTIONS: Record<string, string> = {
+  technical: 'Technique',
+  soft_skill: 'Soft skills',
+  culture_fit: 'Culture fit',
+  motivation: 'Motivation',
+  experience: 'Expérience',
+};
+
+const WEIGHT_OPTIONS: Record<string, string> = {
+  '1': '🟢 Bonus',
+  '2': '🟡 Important',
+  '3': '🔴 Critique',
+};
+
+const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => {
+  const [adding, setAdding] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newCategory, setNewCategory] = useState<string>('technical');
+  const [newWeight, setNewWeight] = useState<string>('2');
+
+  const criteria = d.evaluation_criteria || [];
+  const weights = d.evaluation_weights || { technical: 40, soft_skill: 20, culture_fit: 20, motivation: 10, experience: 10 };
+
+  const addCriterion = () => {
+    if (!newLabel.trim()) return;
+    const newCriterion = {
+      id: `crit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      label: newLabel.trim(),
+      description: '',
+      category: newCategory as any,
+      weight: Number(newWeight) as 1 | 2 | 3,
+      deal_breaker: Number(newWeight) === 3,
+    };
+    onUpdate({ evaluation_criteria: [...criteria, newCriterion] });
+    setNewLabel('');
+    setAdding(false);
+  };
+
+  const removeCriterion = (id: string) => {
+    onUpdate({ evaluation_criteria: criteria.filter(c => c.id !== id) });
+  };
+
+  const updateCriterion = (id: string, patch: any) => {
+    onUpdate({
+      evaluation_criteria: criteria.map(c => c.id === id ? { ...c, ...patch } : c),
+    });
+  };
+
+  const updateWeight = (category: string, value: number) => {
+    onUpdate({ evaluation_weights: { ...weights, [category]: value } });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Weight distribution */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
+          Répartition des poids (total = 100%)
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
+            <div key={key} className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={(weights as any)[key] || 0}
+                  onChange={(e) => updateWeight(key, Number(e.target.value) || 0)}
+                  className="w-full h-[34px] px-2 text-sm text-center border border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
+                />
+                <span className="text-[10px] text-muted-foreground">%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {Object.values(weights).reduce((a, b) => a + b, 0) !== 100 && (
+          <p className="text-[10px] text-red-500 mt-1">
+            Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit être 100%)
+          </p>
+        )}
+      </div>
+
+      {/* Criteria list */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Critères d'évaluation ({criteria.length})
+          </p>
+          {!readOnly && !adding && (
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-1 h-[28px] px-3 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-foreground hover:border-foreground transition-colors"
+            >
+              + Ajouter
+            </button>
+          )}
+        </div>
+
+        {/* Add form */}
+        {adding && (
+          <div className="border border-foreground/20 p-3 mb-3 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-3">
+                <input
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCriterion(); } }}
+                  autoFocus
+                  placeholder="Ex: Maîtrise de Kubernetes, Leadership, Communication client..."
+                  className="w-full h-[34px] px-3 text-sm border border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
+                />
+              </div>
+              <SelectField label="Catégorie" value={newCategory} onChange={setNewCategory} options={CATEGORY_OPTIONS} />
+              <SelectField label="Importance" value={newWeight} onChange={setNewWeight} options={WEIGHT_OPTIONS} />
+              <div className="flex items-end gap-2">
+                <button onClick={addCriterion} disabled={!newLabel.trim()}
+                  className="h-[34px] px-4 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider border border-foreground disabled:opacity-50">
+                  Ajouter
+                </button>
+                <button onClick={() => { setAdding(false); setNewLabel(''); }}
+                  className="h-[34px] px-3 text-[10px] font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground hover:text-foreground">
+                  ×
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Criteria cards */}
+        {criteria.length === 0 ? (
+          <div className="border border-dashed border-foreground/20 p-6 text-center">
+            <p className="text-sm text-muted-foreground mb-2">Aucun critère défini</p>
+            <p className="text-[10px] text-muted-foreground">
+              Ajoutez les critères que le manager souhaite évaluer. Ils seront utilisés pour générer les scorecards à chaque étape du process.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {criteria.map((c) => (
+              <div key={c.id} className="border border-foreground/15 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  {/* Weight badge */}
+                  <span className={cn(
+                    "mt-0.5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shrink-0",
+                    c.weight === 3 ? "bg-red-600 text-white" :
+                    c.weight === 2 ? "bg-amber-500 text-white" :
+                    "bg-foreground/10 text-foreground"
+                  )}>
+                    {c.weight === 3 ? 'Critique' : c.weight === 2 ? 'Important' : 'Bonus'}
+                  </span>
+
+                  <div className="flex-1 min-w-0 space-y-2">
+                    {/* Label + category */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{c.label}</span>
+                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{CATEGORY_OPTIONS[c.category] || c.category}</span>
+                      {c.deal_breaker && (
+                        <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-red-600 text-white">Deal breaker</span>
+                      )}
+                    </div>
+
+                    {/* Level descriptions */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="space-y-0.5">
+                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
+                        <input
+                          defaultValue={c.level_10 || ''}
+                          onBlur={(e) => updateCriterion(c.id, { level_10: e.target.value || undefined })}
+                          placeholder="Décrivez l'excellence pour ce critère"
+                          className="w-full h-[30px] px-2 text-[11px] border border-foreground/15 bg-background text-foreground focus:border-foreground focus:outline-none"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Rédhibitoire si...</label>
+                        <input
+                          defaultValue={c.level_1 || ''}
+                          onBlur={(e) => updateCriterion(c.id, { level_1: e.target.value || undefined })}
+                          placeholder="Décrivez ce qui est éliminatoire"
+                          className="w-full h-[30px] px-2 text-[11px] border border-foreground/15 bg-background text-foreground focus:border-foreground focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delete */}
+                  {!readOnly && (
+                    <button
+                      onClick={() => removeCriterion(c.id)}
+                      className="text-muted-foreground hover:text-red-500 transition-colors shrink-0 mt-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
