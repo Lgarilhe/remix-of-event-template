@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     const reqAction = validateString(body.action);
     const organization_id = validateUUID(body.organization_id);
 
-    if (!reqAction || !['get_balance', 'check_credits', 'deduct', 'get_history', 'get_costs'].includes(reqAction)) {
+    if (!reqAction || !['get_balance', 'check_credits', 'check_and_deduct', 'deduct', 'get_history', 'get_costs'].includes(reqAction)) {
       return new Response(JSON.stringify({ error: "Invalid action" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -137,6 +137,33 @@ Deno.serve(async (req) => {
         const hasCredits = remaining >= cost;
 
         return new Response(JSON.stringify({ has_credits: hasCredits, remaining, cost }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      case "check_and_deduct": {
+        const { ai_action, description } = body;
+        const cost = CREDIT_COSTS[ai_action] || 1;
+
+        const { data: result } = await adminClient.rpc("deduct_ai_credits", {
+          p_organization_id: organization_id,
+          p_user_id: user.id,
+          p_amount: cost,
+          p_action: ai_action,
+          p_description: description || null,
+        });
+
+        const hasCredits = result?.success === true;
+        const remaining = typeof result?.remaining === 'number' ? result.remaining : 0;
+
+        return new Response(JSON.stringify({
+          has_credits: hasCredits,
+          remaining,
+          cost,
+          success: hasCredits,
+          error: result?.error ?? null,
+          message: result?.message ?? null,
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
