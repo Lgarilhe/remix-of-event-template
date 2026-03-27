@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { Menu, X, Bell, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { User } from '@supabase/supabase-js';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -105,11 +105,11 @@ const NavLogo: React.FC = () => {
 };
 
 export const Navbar: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuthReady();
   const { orgType } = useOrganization();
   const unreadMsgCount = useUnreadMessageNotifications();
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
@@ -128,18 +128,6 @@ export const Navbar: React.FC = () => {
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {

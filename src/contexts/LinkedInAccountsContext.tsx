@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
+import { getValidatedSession } from '@/lib/authSession';
 
 interface LinkedInAccount {
   id: string;
@@ -56,34 +58,61 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
 
   // Load accounts once user is authenticated
   useEffect(() => {
+    let isMounted = true;
     let prevUserId: string | null = null;
 
-    const checkAndLoad = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        prevUserId = session.user.id;
-        reload();
-      }
+    const resetState = () => {
+      if (!isMounted) return;
+      prevUserId = null;
+      setAccounts([]);
+      setHasLoaded(false);
+      setLoading(false);
     };
-    checkAndLoad();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        // If user changed, clear stale accounts first
-        if (prevUserId && prevUserId !== session.user.id) {
-          setAccounts([]);
-          setHasLoaded(false);
-        }
-        prevUserId = session.user.id;
-        reload();
-      } else if (event === 'SIGNED_OUT') {
-        prevUserId = null;
+    const syncAccounts = async (nextSession?: Session | null) => {
+      if (!nextSession?.access_token) {
+        resetState();
+        return;
+      }
+
+      const { session, user } = await getValidatedSession();
+      if (!isMounted || !session?.access_token || !user) {
+        resetState();
+        return;
+      }
+
+      if (prevUserId && prevUserId !== user.id) {
         setAccounts([]);
         setHasLoaded(false);
       }
+
+      prevUserId = user.id;
+      await reload();
+    };
+
+    void getValidatedSession().then(({ session, user }) => {
+      if (!isMounted || !session?.access_token || !user) {
+        resetState();
+        return;
+      }
+
+      prevUserId = user.id;
+      void reload();
     });
 
-    return () => subscription.unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        resetState();
+        return;
+      }
+
+      void syncAccounts(session ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [reload]);
 
   const contextValue = useMemo(() => ({
