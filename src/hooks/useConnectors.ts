@@ -163,7 +163,7 @@ export const useConnectorSyncRuns = (instanceId: string | undefined) => {
         .select('*')
         .eq('connector_instance_id', instanceId)
         .order('started_at', { ascending: false })
-        .limit(20);
+        .limit(20)) as any;
       if (error) throw error;
       return (data || []) as SyncRun[];
     },
