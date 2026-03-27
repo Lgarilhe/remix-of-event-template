@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
-import { getValidatedSession } from '@/lib/authSession';
+
 import landingDashboard from '@/assets/landing-dashboard.png';
 
 const useRedirectIfAuthenticated = () => {
