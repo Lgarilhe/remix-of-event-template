@@ -151,8 +151,23 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const profileAnyLocal = profile as any;
       const candidateProviderId = profileAnyLocal.provider_id || profile.id;
 
+      // Fetch RAG context for personalization (posts, notes, knowledge)
+      let ragContext: string | undefined;
+      try {
+        const { data: chunks } = await supabase
+          .from('knowledge_chunks')
+          .select('chunk_type, content')
+          .eq('entity_id', candidateProviderId || profile.id)
+          .in('chunk_type', ['post', 'about', 'notes'])
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (chunks && chunks.length > 0) {
+          ragContext = chunks.map((c: any) => `[${c.chunk_type}] ${c.content.slice(0, 300)}`).join('\n');
+        }
+      } catch { /* non-blocking */ }
+
       const { data, error } = await invokeWithCredits<{ subject?: string; message?: string; personalization_points?: string[] }>('generate-outreach-message', 'outreach_message', {
-        profile: profileData, 
+        profile: profileData,
         job: {
           title: job.title,
           client: job.client,
@@ -170,6 +185,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         customInstructions: customInstructions.trim() || undefined,
         calendlyLink: calendlyLink || undefined,
         candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
+        ragContext,
       });
 
       if (error) throw error;

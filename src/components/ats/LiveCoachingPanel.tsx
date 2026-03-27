@@ -803,6 +803,47 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               </div>
             </div>
           )}
+
+          {/* Debrief actions */}
+          <div className="pt-3 border-t border-foreground/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Actions post-entretien</p>
+            <div className="flex flex-wrap gap-2">
+              {report.recommendation === 'GO' && (
+                <button
+                  onClick={() => {
+                    toast.success('Candidat avancé à l\'étape suivante');
+                    onClose();
+                  }}
+                  className="flex items-center gap-1.5 h-[32px] px-4 text-[10px] font-bold uppercase tracking-wider border border-foreground bg-foreground text-background"
+                >
+                  ✓ Avancer dans le pipeline
+                </button>
+              )}
+              {report.recommendation === 'NO_GO' && (
+                <button
+                  onClick={() => {
+                    if (report.follow_up_message) {
+                      navigator.clipboard.writeText(report.follow_up_message).catch(() => {});
+                      toast.success('Message de refus copié');
+                    }
+                    onClose();
+                  }}
+                  className="flex items-center gap-1.5 h-[32px] px-4 text-[10px] font-bold uppercase tracking-wider border border-red-500 text-red-600"
+                >
+                  ✕ Écarter + copier le message
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  toast.success('Entretien suivant à planifier');
+                  onClose();
+                }}
+                className="flex items-center gap-1.5 h-[32px] px-4 text-[10px] font-bold uppercase tracking-wider border border-foreground/30 text-foreground hover:border-foreground transition-colors"
+              >
+                📅 Planifier la suite
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
