@@ -36,7 +36,7 @@ import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
 export interface SequenceStep {
   id: string;
   order: number;
-  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
+  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
   conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response';
   delayDays: number;
   delayHours: number;
