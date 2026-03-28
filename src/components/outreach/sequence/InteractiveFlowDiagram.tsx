@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
+import { Button } from '@/components/ui/button';
+import { SequenceStep } from '../SequenceBuilder';
+import { getStepMessageType } from './messageTypeUtils';
 
 export type BranchTarget = 'true' | 'false' | null;
 
@@ -28,12 +32,13 @@ interface InteractiveFlowDiagramProps {
   selectedStepId: string | null;
 }
 
-const STEP_ICONS: Record<string, React.ElementType> = {
+const STEP_ICONS: Record<string, React.ElementType | null> = {
   inmail: Mail,
   connection_request: UserPlus,
   profile_visit: Eye,
   message: MessageSquare,
   smart_message: Sparkles,
+  whatsapp_message: null, // uses custom image
   wait_connection: Timer,
   wait_reply: MessageSquare,
   wait_profile_visit: Eye,
@@ -47,6 +52,7 @@ const STEP_COLORS: Record<string, string> = {
   profile_visit: 'bg-sky-100 text-sky-600 border-sky-300',
   message: 'bg-orange-100 text-orange-600 border-orange-300',
   smart_message: 'bg-purple-100 text-purple-600 border-purple-300',
+  whatsapp_message: 'bg-green-100 text-green-600 border-green-300',
   wait_connection: 'bg-amber-100 text-amber-600 border-amber-300',
   wait_reply: 'bg-amber-100 text-amber-600 border-amber-300',
   wait_profile_visit: 'bg-amber-100 text-amber-600 border-amber-300',
@@ -60,6 +66,7 @@ const STEP_LABELS: Record<string, string> = {
   profile_visit: 'Visite profil',
   message: 'Message',
   smart_message: 'Smart Msg',
+  whatsapp_message: 'WhatsApp',
   wait_connection: 'Attendre',
   wait_reply: 'Attendre réponse',
   wait_profile_visit: 'Attendre visite',
