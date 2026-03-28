@@ -24,6 +24,7 @@ import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
+import { CandidateContactInfo } from './CandidateContactInfo';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Loader2,
   Target, PenLine, Archive,
