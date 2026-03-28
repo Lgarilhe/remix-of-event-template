@@ -24,6 +24,7 @@ import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
+import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
@@ -240,7 +241,10 @@ const Settings = () => {
             )}
 
             {activeTab === 'account' && (
-              <MyLinkedInAccount />
+              <div className="space-y-6">
+                <MyLinkedInAccount />
+                <MyWhatsAppAccount />
+              </div>
             )}
 
             {activeTab === 'team' && (
