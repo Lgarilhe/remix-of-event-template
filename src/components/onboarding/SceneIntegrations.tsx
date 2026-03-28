@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import { Button } from '@/components/ui/button';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -33,6 +34,13 @@ const INTEGRATIONS: IntegrationDef[] = [
     description: 'Sourcing, messages et InMails directement depuis la plateforme.',
     logo: linkedinLogo,
     essential: true,
+    hostedAuth: true,
+  },
+  {
+    id: 'whatsapp',
+    name: 'WhatsApp',
+    description: 'Envoyez des messages WhatsApp dans vos séquences multicanales.',
+    logo: whatsappLogo,
     hostedAuth: true,
   },
 ];
