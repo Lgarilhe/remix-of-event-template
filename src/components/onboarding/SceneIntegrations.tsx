@@ -167,7 +167,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Button
                       size="sm"
-                      onClick={handleLinkedInConnect}
+                      onClick={() => handleHostedConnect(def.id === 'whatsapp' ? 'WHATSAPP' : 'LINKEDIN')}
                       disabled={isLoading}
                       className="text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
                       style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
