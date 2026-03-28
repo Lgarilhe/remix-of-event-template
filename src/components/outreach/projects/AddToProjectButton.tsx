@@ -140,18 +140,18 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         <Button
           variant={isAdded ? "ghost" : "outline"}
           size="sm"
-          className={`h-8 gap-1.5 text-[11px] rounded-none border px-3 uppercase tracking-wider font-bold shrink-0 ${isAdded ? 'text-green-600 border-green-600/40' : 'border-foreground/40 text-foreground hover:bg-muted'}`}
+          className={`h-7 gap-1 text-[10px] rounded-none border px-2 uppercase tracking-wider font-bold shrink-0 ${isAdded ? 'text-green-600 border-green-600/40' : 'border-foreground/40 text-foreground hover:bg-muted'}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >
           {isAdding ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="w-3 h-3 animate-spin" />
           ) : isAdded ? (
-            <Check className="w-3.5 h-3.5" />
+            <Check className="w-3 h-3" />
           ) : (
-            <FolderPlus className="w-3.5 h-3.5" />
+            <FolderPlus className="w-3 h-3" />
           )}
-          {isAdded ? 'Ajouté' : 'Pipeline'}
+          {isAdded ? 'OK' : 'Pipe'}
         </Button>
       );
     }
