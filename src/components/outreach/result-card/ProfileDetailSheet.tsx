@@ -33,6 +33,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
+const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
+  const [imgError, setImgError] = useState(false);
+  const slug = company.replace(/\s*(inc\.?|ltd\.?|llc|sarl|sas|sa|gmbh|group|corp\.?)\s*$/i, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const src = logoUrl || `https://logo.clearbit.com/${slug}.com`;
+  if (imgError && !logoUrl) return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />;
+  return <img src={src} alt={company} className="w-4 h-4 sm:w-5 sm:h-5 object-contain shrink-0 rounded-sm" onError={() => setImgError(true)} />;
+};
+
 interface ProfileDetailSheetProps {
   profile: LinkedInProfile | null;
   open: boolean;
