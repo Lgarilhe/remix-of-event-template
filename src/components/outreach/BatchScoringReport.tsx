@@ -86,18 +86,18 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 border-b border-border gap-1.5">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-brutal-accent" />
-          <span className="text-[11px] font-black text-foreground uppercase tracking-widest">
+          <Sparkles className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+          <span className="text-[11px] font-black text-foreground uppercase tracking-widest whitespace-nowrap">
             Scoring
           </span>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
             {entries.length} profils{durationLabel && ` · ${durationLabel}`}
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Filter pills — brutal style */}
           {([
             { key: 'go' as const, count: counts.go, activeClass: 'bg-foreground text-background' },
@@ -133,20 +133,20 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 
       {/* Stats strip */}
       {stats && (
-        <div className="flex items-center gap-3 px-3 py-1 border-b border-border bg-muted/30 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5 border-b border-border bg-muted/30 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
           <span>{stats.llmCalled} scorés IA</span>
-          <span>·</span>
+          <span className="hidden sm:inline">·</span>
           <span>moy <span className="text-foreground">{stats.avgScore}</span>/100</span>
           {stats.llmCalled > 0 && (
             <>
-              <span>·</span>
+              <span className="hidden sm:inline">·</span>
               <span>{stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''}</span>
             </>
           )}
-          <div className="flex-1" />
+          <div className="flex-1 min-w-0" />
           {/* Go ratio bar */}
           <div className="flex items-center gap-1.5">
-            <div className="w-16 h-1 bg-border overflow-hidden">
+            <div className="w-12 sm:w-16 h-1 bg-border overflow-hidden">
               <motion.div
                 className="h-full bg-foreground"
                 initial={{ width: 0 }}
