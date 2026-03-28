@@ -13,6 +13,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
 import landingDashboard from '@/assets/landing-dashboard.webp';
 import { getValidatedSession } from '@/lib/authSession';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ const useRedirectIfAuthenticated = () => {
       const { session } = await getValidatedSession();
 
       if (!isMounted || !session?.user) return;
-      navigate('/missions', { replace: true });
+      navigate(withPreviewAccessToken('/missions'), { replace: true });
     };
 
     validateSessionInBackground().catch(() => {
@@ -41,7 +42,7 @@ const useRedirectIfAuthenticated = () => {
       if (!isMounted) return;
 
       if ((event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && !!session?.user)) && session?.user) {
-        navigate('/missions', { replace: true });
+        navigate(withPreviewAccessToken('/missions'), { replace: true });
       }
     });
 
@@ -192,7 +193,7 @@ const SkalrLanding = () => {
               >
                 Démo
               </button>
-              <BrutalButton onClick={() => navigate('/auth')} className="h-9 px-5 text-[10px]">
+              <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))} className="h-9 px-5 text-[10px]">
                 Commencer <ArrowRight className="h-3 w-3" />
               </BrutalButton>
             </div>
@@ -244,7 +245,7 @@ const SkalrLanding = () => {
               <BrutalButton onClick={() => setShowCalendly(true)}>
                 Réserver une démo
               </BrutalButton>
-              <BrutalButton variant="outline" onClick={() => navigate('/auth')}>
+              <BrutalButton variant="outline" onClick={() => navigate(withPreviewAccessToken('/auth'))}>
                 Commencer gratuitement
                 <ArrowRight className="h-3.5 w-3.5" />
               </BrutalButton>
@@ -332,7 +333,7 @@ const SkalrLanding = () => {
                   viewport={{ once: true }}
                   className="pt-6"
                 >
-                  <BrutalButton onClick={() => navigate('/auth')}>
+                  <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))}>
                     Découvrir la plateforme
                     <ArrowRight className="h-3.5 w-3.5" />
                   </BrutalButton>
@@ -502,7 +503,7 @@ const SkalrLanding = () => {
                 Rejoignez les équipes qui recrutent mieux, plus vite et à moindre coût.
               </p>
               <div className="flex flex-wrap justify-center gap-3">
-                <BrutalButton onClick={() => navigate('/auth')}>
+                <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))}>
                   Commencer gratuitement
                   <ArrowRight className="h-3.5 w-3.5" />
                 </BrutalButton>

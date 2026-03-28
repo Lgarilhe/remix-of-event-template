@@ -9,6 +9,7 @@ import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 import { getValidatedSession } from '@/lib/authSession';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
 const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
@@ -116,11 +117,11 @@ const Auth = () => {
           title: 'Invitation acceptée',
           description: 'Vous avez bien rejoint votre équipe.',
         });
-        navigate('/settings', { replace: true });
+        navigate(withPreviewAccessToken('/settings'), { replace: true });
         return;
       }
 
-      navigate(from, { replace: true });
+      navigate(withPreviewAccessToken(from), { replace: true });
     } catch (error: any) {
       // If invitation fails, still navigate to the app (don't leave user on blank page)
       if (error?.message) {
@@ -130,7 +131,7 @@ const Auth = () => {
           variant: 'destructive',
         });
       }
-      navigate(from, { replace: true });
+      navigate(withPreviewAccessToken(from), { replace: true });
     }
   }, [acceptPendingInvitation, from, navigate, toast]);
 
@@ -148,7 +149,7 @@ const Auth = () => {
       } else if (event === 'SIGNED_IN' && !isResettingPassword && session?.access_token) {
         handleAuthenticatedUser(session.access_token).catch(() => {
           // Failsafe: if auth handling crashes, still navigate to app
-          navigate(from, { replace: true });
+          navigate(withPreviewAccessToken(from), { replace: true });
         });
       }
     });
@@ -156,7 +157,7 @@ const Auth = () => {
     getValidatedSession().then(({ session }) => {
       if (session?.access_token && !isResettingPassword) {
         handleAuthenticatedUser(session.access_token).catch(() => {
-          navigate(from, { replace: true });
+          navigate(withPreviewAccessToken(from), { replace: true });
         });
       }
     });
@@ -177,7 +178,7 @@ const Auth = () => {
           description: 'Votre mot de passe a été changé avec succès.',
         });
         setIsResettingPassword(false);
-        navigate(from);
+        navigate(withPreviewAccessToken(from));
       } else if (isForgotPassword) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: getAuthRedirectUrl(),
@@ -217,8 +218,8 @@ const Auth = () => {
     return (
       <CollaboratorWelcome
         orgName={collaboratorWelcome.orgName}
-        onCreateWorkspace={() => navigate('/onboarding', { replace: true })}
-        onSkip={() => navigate('/dashboard', { replace: true })}
+        onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding'), { replace: true })}
+        onSkip={() => navigate(withPreviewAccessToken('/dashboard'), { replace: true })}
       />
     );
   }
