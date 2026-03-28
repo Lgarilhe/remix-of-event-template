@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
-import { Linkedin } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.svg';
 
 export type ChannelType = 'linkedin' | 'whatsapp';
 
@@ -30,7 +30,7 @@ export const ChannelIcon: React.FC<ChannelIconProps> = ({
   if (channel === 'whatsapp') {
     return (
       <span className={cn('inline-flex items-center gap-1', className)}>
-        <img src={whatsappLogo} alt="WhatsApp" className={sizeClass} />
+        <img src={whatsappLogo} alt="WhatsApp" className={cn(sizeClass, 'rounded-sm')} />
         {showLabel && <span className="text-xs font-medium text-[#25D366]">WhatsApp</span>}
       </span>
     );
@@ -38,7 +38,7 @@ export const ChannelIcon: React.FC<ChannelIconProps> = ({
 
   return (
     <span className={cn('inline-flex items-center gap-1', className)}>
-      <Linkedin className={cn(sizeClass, 'text-[#0A66C2]')} />
+      <img src={linkedinLogo} alt="LinkedIn" className={cn(sizeClass, 'rounded-sm')} />
       {showLabel && <span className="text-xs font-medium text-[#0A66C2]">LinkedIn</span>}
     </span>
   );
