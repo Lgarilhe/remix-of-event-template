@@ -110,9 +110,9 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
         >
           04 — Vos outils
         </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez LinkedIn</h2>
+        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos comptes</h2>
         <p className="text-muted-foreground text-sm">
-          Essentiel pour le sourcing et la prospection. D'autres intégrations (ATS, CRM, etc.) sont disponibles dans les paramètres.
+          LinkedIn est essentiel pour le sourcing. WhatsApp permet d'enrichir vos séquences multicanales.
         </p>
       </div>
 
