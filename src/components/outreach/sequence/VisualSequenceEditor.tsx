@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
 import { StepEditor } from './StepEditor';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
 
 interface VisualSequenceEditorProps {
   steps: SequenceStep[];
@@ -37,6 +38,7 @@ const ACTIONS = [
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect' },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)' },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA' },
+  { value: 'whatsapp_message', label: 'Message WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-100 text-green-600', description: 'Envoyer un WhatsApp (si numéro)' },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
@@ -194,11 +196,11 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   const getFilteredActions = () => {
     if (pendingBranch?.branch === 'true') {
       // Connected branch - show message-related actions
-      return ACTIONS.filter(a => ['message', 'smart_message', 'profile_visit'].includes(a.value));
+      return ACTIONS.filter(a => ['message', 'smart_message', 'profile_visit', 'whatsapp_message'].includes(a.value));
     }
     if (pendingBranch?.branch === 'false') {
       // Not connected branch - show connection actions
-      return ACTIONS.filter(a => ['connection_request', 'inmail', 'profile_visit'].includes(a.value));
+      return ACTIONS.filter(a => ['connection_request', 'inmail', 'profile_visit', 'whatsapp_message'].includes(a.value));
     }
     return ACTIONS;
   };
@@ -293,7 +295,11 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
                       className="flex items-center gap-3 w-full p-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
                     >
                       <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
-                        <action.icon className="w-4 h-4" />
+                        {(action as any).customIcon ? (
+                          <img src={(action as any).customIcon} alt={action.label} className="w-4 h-4" />
+                        ) : action.icon ? (
+                          <action.icon className="w-4 h-4" />
+                        ) : null}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{action.label}</div>

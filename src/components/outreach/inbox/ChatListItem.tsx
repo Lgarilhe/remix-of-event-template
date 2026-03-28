@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Tag, X, Trash2, Loader2 } from 'lucide-react';
 import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
+import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 
 interface ChatListItemProps {
   chat: Chat;
@@ -89,7 +90,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           unread && !isSelected && "bg-muted/50"
         )}
       >
-        {/* Avatar with unread indicator */}
+        {/* Avatar with unread indicator + channel badge */}
         <div className="relative shrink-0">
           <Avatar className="w-12 h-12 rounded-none">
             <AvatarImage src={avatar} />
@@ -102,6 +103,10 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               {unreadCount}
             </span>
           )}
+          {/* Channel indicator */}
+          <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-0.5">
+            <ChannelIcon channel={detectChannel(chat.account_type)} size="xs" />
+          </span>
         </div>
         
         <div className="flex-1 min-w-0 overflow-hidden">

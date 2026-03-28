@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
 
 export type BranchTarget = 'true' | 'false' | null;
 
@@ -28,12 +29,13 @@ interface InteractiveFlowDiagramProps {
   selectedStepId: string | null;
 }
 
-const STEP_ICONS: Record<string, React.ElementType> = {
+const STEP_ICONS: Record<string, React.ElementType | null> = {
   inmail: Mail,
   connection_request: UserPlus,
   profile_visit: Eye,
   message: MessageSquare,
   smart_message: Sparkles,
+  whatsapp_message: null, // uses custom image
   wait_connection: Timer,
   wait_reply: MessageSquare,
   wait_profile_visit: Eye,
@@ -47,6 +49,7 @@ const STEP_COLORS: Record<string, string> = {
   profile_visit: 'bg-sky-100 text-sky-600 border-sky-300',
   message: 'bg-orange-100 text-orange-600 border-orange-300',
   smart_message: 'bg-purple-100 text-purple-600 border-purple-300',
+  whatsapp_message: 'bg-green-100 text-green-600 border-green-300',
   wait_connection: 'bg-amber-100 text-amber-600 border-amber-300',
   wait_reply: 'bg-amber-100 text-amber-600 border-amber-300',
   wait_profile_visit: 'bg-amber-100 text-amber-600 border-amber-300',
@@ -60,6 +63,7 @@ const STEP_LABELS: Record<string, string> = {
   profile_visit: 'Visite profil',
   message: 'Message',
   smart_message: 'Smart Msg',
+  whatsapp_message: 'WhatsApp',
   wait_connection: 'Attendre',
   wait_reply: 'Attendre réponse',
   wait_profile_visit: 'Attendre visite',
@@ -77,7 +81,8 @@ const StepNode: React.FC<{
   canRemove: boolean;
   compact?: boolean;
 }> = ({ step, index, allSteps, onClick, onRemove, isSelected, canRemove, compact = false }) => {
-  const Icon = STEP_ICONS[step.actionType] || Mail;
+  const Icon = STEP_ICONS[step.actionType];
+  const isWhatsApp = step.actionType === 'whatsapp_message';
   const colorClass = STEP_COLORS[step.actionType] || 'bg-gray-100 text-gray-600 border-gray-300';
   const msgType = getStepMessageType(step, allSteps);
   
@@ -98,7 +103,7 @@ const StepNode: React.FC<{
           )}
         >
           <div className="flex items-center gap-2">
-            <Icon className="w-4 h-4" />
+            {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
             <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
           </div>
           {msgType && (
@@ -139,7 +144,7 @@ const StepNode: React.FC<{
         )}
       >
         <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/50">
-          <Icon className="w-4 h-4" />
+          {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-muted-foreground">Étape {index + 1}</div>

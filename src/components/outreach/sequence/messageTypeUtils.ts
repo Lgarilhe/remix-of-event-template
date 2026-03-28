@@ -16,7 +16,7 @@ export function getStepMessageType(
   allSteps: SequenceStep[]
 ): MessageTypeInfo | null {
   // Only message-type steps get a label
-  if (!['message', 'smart_message', 'inmail', 'connection_request'].includes(step.actionType)) {
+  if (!['message', 'smart_message', 'inmail', 'connection_request', 'whatsapp_message'].includes(step.actionType)) {
     return null;
   }
 
@@ -26,6 +26,15 @@ export function getStepMessageType(
 
   // Walk backwards through the graph to find previous message steps in this branch
   const previousSteps = getPreviousStepsInBranch(step, allSteps);
+
+  if (step.actionType === 'whatsapp_message') {
+    const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
+    if (prevWhatsApp.length === 0) {
+      return { label: 'WhatsApp initial', shortLabel: 'WhatsApp', color: 'bg-green-50 text-green-700' };
+    }
+    return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-50 text-green-700' };
+  }
+
   const prevMessages = previousSteps.filter(s =>
     ['message', 'smart_message', 'inmail'].includes(s.actionType)
   );
