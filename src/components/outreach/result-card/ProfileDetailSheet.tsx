@@ -556,9 +556,16 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             <div className="p-2 sm:p-6 space-y-3 sm:space-y-5 min-w-0 max-w-full">
               {/* Job Score */}
               {jobScore && (
-                <div className="border border-foreground p-5 bg-background">
-                  <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
-                </div>
+                <details open className="border border-foreground bg-background group">
+                  <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                    <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Scoring</h3>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold group-open:hidden">Voir</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold hidden group-open:inline">Réduire</span>
+                  </summary>
+                  <div className="px-3 sm:px-5 pb-4">
+                    <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
+                  </div>
+                </details>
               )}
 
 
