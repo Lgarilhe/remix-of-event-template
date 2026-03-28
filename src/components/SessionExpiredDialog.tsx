@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { LogIn } from 'lucide-react';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 
 interface SessionExpiredDialogProps {
   open: boolean;
@@ -25,7 +26,7 @@ export const SessionExpiredDialog: React.FC<SessionExpiredDialogProps> = ({
 
   const handleLogin = () => {
     onOpenChange(false);
-    navigate('/auth', { 
+    navigate(withPreviewAccessToken('/auth'), { 
       state: { from: location.pathname, sessionExpired: true } 
     });
   };

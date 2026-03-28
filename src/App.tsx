@@ -39,7 +39,7 @@ const AcceptMissionInvite = lazy(() => import("./pages/AcceptMissionInvite"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
-const PUBLIC_ROUTES = ['/', '/auth', '/portal', '/client'];
+const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
 
 const IndexRedirect = () => {
   const location = useLocation();
