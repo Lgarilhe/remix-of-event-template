@@ -65,19 +65,24 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
     return connectedIds.has(def.id);
   };
 
-  const handleLinkedInConnect = async () => {
-    setConnectingId('linkedin');
+  const handleHostedConnect = async (provider: 'LINKEDIN' | 'WHATSAPP') => {
+    const defId = provider.toLowerCase();
+    setConnectingId(defId);
     try {
       const currentUrl = window.location.href;
       const { data } = await invokeEdgeFunction('unipile-accounts', {
         action: 'hosted_auth_link',
+        providers: [provider],
         success_redirect_url: currentUrl,
         failure_redirect_url: currentUrl,
         org_name: organization?.name || undefined,
       });
       if (data?.success && (data as any).url) {
         window.open((data as any).url, '_blank', 'noopener,noreferrer');
-        toast.info('Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.');
+        const msg = provider === 'WHATSAPP'
+          ? 'Scannez le QR code dans la fenêtre qui s\'est ouverte.'
+          : 'Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.';
+        toast.info(msg);
       } else {
         throw new Error((data as any)?.error || 'Erreur');
       }
