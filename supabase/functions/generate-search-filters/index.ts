@@ -521,12 +521,15 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
 
     // === RÈGLE 1: Exclure le client des expériences actuelles ET passées ===
     const companyKeywords: CompanyKeywordFilter[] = [];
-    if (job.client?.name) {
+    // Priority: explicit job.client.name > AI-detected company from brief text
+    const companyToExclude = job.client?.name || parsed.detected_company || null;
+    if (companyToExclude) {
       companyKeywords.push({
-        keywords: job.client.name,
+        keywords: companyToExclude,
         priority: 'DOESNT_HAVE',
         scope: 'CURRENT_OR_PAST', // Exclure sur toutes les expériences
       });
+      console.log(`[generate-search-filters] Excluding company: ${companyToExclude}`);
     }
 
     // === RÈGLE 2: Dé-prioriser les ESN (optionnel - on les exclut pas, on les note moins) ===
