@@ -42,12 +42,12 @@ const AI_TONES = [
   { value: 'enthusiastic', label: 'Enthousiaste' },
 ];
 
-const ACTIONS = ['connection_request', 'inmail', 'profile_visit', 'message', 'smart_message'];
+const ACTIONS = ['connection_request', 'inmail', 'profile_visit', 'message', 'smart_message', 'whatsapp_message'];
 const TRIGGERS = ['check_connection', 'wait_connection', 'wait_reply', 'wait_profile_visit', 'condition_branch'];
 
 const isAction = (actionType: string) => ACTIONS.includes(actionType);
 const isTrigger = (actionType: string) => TRIGGERS.includes(actionType);
-const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
+const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(type);
 const needsSubject = (type: string) => type === 'inmail';
 
 export const StepEditor: React.FC<StepEditorProps> = ({

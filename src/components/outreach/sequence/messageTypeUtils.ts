@@ -16,12 +16,20 @@ export function getStepMessageType(
   allSteps: SequenceStep[]
 ): MessageTypeInfo | null {
   // Only message-type steps get a label
-  if (!['message', 'smart_message', 'inmail', 'connection_request'].includes(step.actionType)) {
+  if (!['message', 'smart_message', 'inmail', 'connection_request', 'whatsapp_message'].includes(step.actionType)) {
     return null;
   }
 
   if (step.actionType === 'connection_request') {
     return { label: 'Invitation (pas de note)', shortLabel: 'Invitation', color: 'bg-emerald-50 text-emerald-700' };
+  }
+
+  if (step.actionType === 'whatsapp_message') {
+    const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
+    if (prevWhatsApp.length === 0) {
+      return { label: 'WhatsApp initial', shortLabel: 'WhatsApp', color: 'bg-green-50 text-green-700' };
+    }
+    return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-50 text-green-700' };
   }
 
   // Walk backwards through the graph to find previous message steps in this branch

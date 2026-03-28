@@ -295,7 +295,12 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
                       className="flex items-center gap-3 w-full p-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
                     >
                       <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
-                        <action.icon className="w-4 h-4" />
+                        {(action as any).customIcon ? (
+                          <img src={(action as any).customIcon} alt={action.label} className="w-4 h-4" />
+                        ) : action.icon ? (
+                          <action.icon className="w-4 h-4" />
+                        ) : null}
+                      </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{action.label}</div>
