@@ -140,9 +140,9 @@ const AppContent = () => {
           <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><ATS /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><Inbox /></OrganizationGuard></ProtectedRoute>} />
           {/* Legacy redirects */}
-          <Route path="/outreach" element={<Navigate to="/missions" replace />} />
-          <Route path="/ats" element={<Navigate to="/pipeline" replace />} />
-          <Route path="/prospection" element={<Navigate to="/missions?tab=prospection" replace />} />
+          <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
+          <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
+          <Route path="/prospection" element={<Navigate to={withPreviewAccessToken('/missions', '?tab=prospection')} replace />} />
           <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><Dashboard /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><Qualification /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
