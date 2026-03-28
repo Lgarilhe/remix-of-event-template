@@ -43,8 +43,8 @@ Deno.serve(async (req) => {
 
     if (organization_id) {
       try {
-        const creds = await resolveApolloCredentials(admin, organization_id);
-        apolloApiKey = creds.apiKey;
+        const creds = await resolveApolloCredentials(organization_id, admin);
+        if (creds) apolloApiKey = creds.apiKey;
       } catch {
         // fallback to env
       }
