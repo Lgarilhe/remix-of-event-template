@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import linkedinLogo from '@/assets/linkedin-logo.svg';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -473,29 +474,17 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
             {/* ─── ACTIONS BAR ─── */}
             <div className="space-y-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
-              {/* Row 1 — primary actions */}
+              {/* Row 1 — primary: Score + Séquence */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar" data-no-swipe>
-                {selectedJob && (
-                  <Button
-                    size="sm"
-                    onClick={() => setShowMessageModal(true)}
-                    className="h-7 gap-1 text-[11px] rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2.5 uppercase tracking-wider font-semibold shrink-0"
-                  >
-                    <PenLine className="w-3 h-3" />
-                    Message
-                  </Button>
-                )}
-
                 {selectedJob && onScoreProfile && !jobScore && (
                   <Button
-                    variant="outline"
                     size="sm"
                     onClick={handleScore}
                     disabled={isScoring}
-                    className="h-7 gap-1 text-[11px] rounded-none border border-foreground text-foreground hover:bg-brutal-accent/20 px-2.5 uppercase tracking-wider font-semibold shrink-0"
+                    className="h-8 gap-1.5 text-[11px] rounded-none border border-foreground bg-foreground text-background hover:bg-foreground/90 px-3 uppercase tracking-wider font-bold shrink-0"
                   >
-                    {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
-                    {isScoring ? '…' : 'Scorer'}
+                    {isScoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
+                    {isScoring ? 'Analyse…' : 'Scorer'}
                   </Button>
                 )}
 
@@ -506,6 +495,27 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
                     onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
                   />
+                )}
+
+                {selectedJob && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowMessageModal(true)}
+                    className="h-8 gap-1.5 text-[11px] rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-3 uppercase tracking-wider font-bold shrink-0"
+                  >
+                    <PenLine className="w-3.5 h-3.5" />
+                    Message
+                  </Button>
+                )}
+              </div>
+
+              {/* Row 2 — secondary: Archiver | Pipe | LinkedIn */}
+              <div className="flex items-center gap-1.5">
+                {onArchive && (
+                  <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-semibold shrink-0">
+                    <Archive className="w-3 h-3" />
+                    Archiver
+                  </Button>
                 )}
 
                 {selectedJob && (
@@ -523,23 +533,18 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     onAdded={onProfileTreated}
                   />
                 )}
-              </div>
 
-              {/* Row 2 — secondary actions */}
-              <div className="flex items-center justify-between gap-1.5">
-                {profileUrl ? (
-                  <Button variant="outline" size="sm" asChild className="h-7 gap-1 text-[11px] rounded-none border border-foreground px-2 uppercase tracking-wider font-semibold">
-                    <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="w-3 h-3" />
-                      Voir sur LinkedIn
-                    </a>
-                  </Button>
-                ) : <span />}
-                {onArchive && (
-                  <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground px-2.5 uppercase tracking-wider font-semibold">
-                    <Archive className="w-3.5 h-3.5" />
-                    Archiver
-                  </Button>
+                <div className="flex-1" />
+
+                {profileUrl && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-7 h-7 border border-foreground/30 hover:border-foreground hover:bg-muted transition-colors shrink-0">
+                        <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4" />
+                      </a>
+                    </TooltipTrigger>
+                    <TooltipContent>Voir sur LinkedIn</TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>
