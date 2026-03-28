@@ -18,9 +18,6 @@ import { Button } from '@/components/ui/button';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
-import { Button } from '@/components/ui/button';
-import { SequenceStep } from '../SequenceBuilder';
-import { getStepMessageType } from './messageTypeUtils';
 
 export type BranchTarget = 'true' | 'false' | null;
 
