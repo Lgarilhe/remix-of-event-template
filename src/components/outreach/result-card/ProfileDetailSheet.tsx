@@ -391,54 +391,56 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           )}
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-foreground shrink-0">
-            <div className="flex items-start gap-2.5 sm:gap-4">
-               <Avatar className="w-11 h-11 sm:w-16 sm:h-16 border border-foreground shrink-0 rounded-none">
+            <div className="flex items-start gap-3 sm:gap-4">
+               <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border border-foreground shrink-0 rounded-none">
                 <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
                 <AvatarFallback className="bg-brutal-accent text-foreground text-base sm:text-xl font-bold rounded-none">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-base sm:text-xl font-bold text-foreground truncate uppercase tracking-wide">
-                    {fullName || 'Profil LinkedIn'}
-                  </SheetTitle>
-                  <CardStatusBadges
-                    candidateStatus={candidateStatus}
-                    jobScore={jobScore}
-                    profile={profile}
-                    isLikelyToRespond={isLikelyToRespond}
-                    airtableMatch={airtableMatch}
-                    notionMatch={notionMatch}
-                    historyData={historyData}
-                    historyLoading={historyLoading}
-                    historyLatestDateLabel={historyLatestDateLabel}
-                  />
-                </div>
-                <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1 leading-relaxed">
+              <div className="flex-1 min-w-0 space-y-1">
+                <SheetTitle className="text-base sm:text-xl font-black text-foreground uppercase tracking-wide leading-tight truncate">
+                  {fullName || 'Profil LinkedIn'}
+                </SheetTitle>
+                <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 leading-snug">
                   {displayProfile.headline || currentRole || 'Profil LinkedIn'}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 mt-1.5 sm:mt-2.5 text-[11px] sm:text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 pt-0.5 text-[11px] sm:text-xs text-muted-foreground">
                   {currentCompany && (
-                    <span className="flex items-center gap-1 font-medium text-foreground/80">
-                      <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    <span className="flex items-center gap-1.5 font-medium text-foreground/80">
+                      {profileData.currentJob?.company_logo ? (
+                        <img src={profileData.currentJob.company_logo} alt={currentCompany} className="w-4 h-4 sm:w-5 sm:h-5 object-contain shrink-0" />
+                      ) : (
+                        <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                      )}
                       <span className="truncate max-w-[120px] sm:max-w-none">{currentCompany}</span>
                       {currentJobTenure && <span className="text-muted-foreground/50 font-normal hidden sm:inline">• {currentJobTenure}</span>}
                     </span>
                   )}
                   {displayProfile.location && (
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                       <span className="truncate max-w-[100px] sm:max-w-none">{displayProfile.location}</span>
                     </span>
                   )}
                   {totalExperience && (
                     <span className="flex items-center gap-1 font-medium text-foreground">
-                      <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                       {totalExperience}
                     </span>
                   )}
                 </div>
+                <CardStatusBadges
+                  candidateStatus={candidateStatus}
+                  jobScore={jobScore}
+                  profile={profile}
+                  isLikelyToRespond={isLikelyToRespond}
+                  airtableMatch={airtableMatch}
+                  notionMatch={notionMatch}
+                  historyData={historyData}
+                  historyLoading={historyLoading}
+                  historyLatestDateLabel={historyLatestDateLabel}
+                />
               </div>
             </div>
 
