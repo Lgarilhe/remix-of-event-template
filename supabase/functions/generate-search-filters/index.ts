@@ -308,6 +308,12 @@ RÈGLES MÉTIER:
 4. Toujours inclure des exclusions NOT pertinentes
 5. suggest_spotlight = "" par défaut (JAMAIS ACTIVE_TALENT automatiquement)
 
+⚠️ RÈGLE CRITIQUE - EXTRACTION LOCALISATION ET ENTREPRISE:
+Tu DOIS extraire la localisation et le nom de l'entreprise/client depuis le texte du brief, même s'ils ne sont pas fournis dans des champs structurés.
+- Si le brief mentionne une ville, région ou pays → retourner dans location_hint (ex: "Paris", "Lyon", "Île-de-France", "Remote France")
+- Si le brief mentionne une entreprise cliente, un nom de société pour laquelle on recrute → retourner dans detected_company (le nom exact de l'entreprise)
+- L'entreprise détectée sera EXCLUE de la recherche (on ne veut pas sourcer des gens qui y travaillent déjà)
+
 Retourne UNIQUEMENT un objet JSON avec:
 - keywords: string - Booléen LAYERED: "(catégorie1 OR alt1) AND (catégorie2 OR alt2) NOT (exclusion1 OR exclusion2)"
 - role_keywords: string[] - UN élément avec titres FR+EN en OR (synonym ring exhaustif)
@@ -317,7 +323,8 @@ Retourne UNIQUEMENT un objet JSON avec:
 - certifications: string[] - Certifications pertinentes (max 3)
 - industry_keywords: string[] - Secteurs (max 3) - ATTENTION: peu fiable, préférer feeder companies
 - domain_expertise: string[] - Domaines métier + feeder companies (max 5)
-- location_hint: string
+- location_hint: string - Localisation extraite du brief ou des champs structurés. OBLIGATOIRE si mentionnée dans le texte.
+- detected_company: string | null - Nom de l'entreprise/client détecté dans le brief. Sera exclu de la recherche.
 - job_category: string - "tech", "business", "data", "product", "design", "other"
 - suggest_open_to_work: boolean - false sauf si explicitement demandé
 - suggest_spotlight: string - "" par défaut (ne jamais mettre ACTIVE_TALENT automatiquement). Valeurs valides: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS. Utiliser uniquement si demandé explicitement.
@@ -514,12 +521,15 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
 
     // === RÈGLE 1: Exclure le client des expériences actuelles ET passées ===
     const companyKeywords: CompanyKeywordFilter[] = [];
-    if (job.client?.name) {
+    // Priority: explicit job.client.name > AI-detected company from brief text
+    const companyToExclude = job.client?.name || parsed.detected_company || null;
+    if (companyToExclude) {
       companyKeywords.push({
-        keywords: job.client.name,
+        keywords: companyToExclude,
         priority: 'DOESNT_HAVE',
         scope: 'CURRENT_OR_PAST', // Exclure sur toutes les expériences
       });
+      console.log(`[generate-search-filters] Excluding company: ${companyToExclude}`);
     }
 
     // === RÈGLE 2: Dé-prioriser les ESN (optionnel - on les exclut pas, on les note moins) ===
