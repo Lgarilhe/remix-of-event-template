@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as Sentry from '@sentry/react';
+import { reloadWithPreviewAccessToken } from '@/lib/previewToken';
 
 interface Props {
   children: ReactNode;
@@ -28,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   handleReload = () => {
     this.setState({ hasError: false, error: null });
-    window.location.reload();
+    reloadWithPreviewAccessToken();
   };
 
   handleRetry = () => {
