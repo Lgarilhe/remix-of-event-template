@@ -24,6 +24,7 @@ import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
+import { CandidateContactInfo } from './CandidateContactInfo';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Loader2,
   Target, PenLine, Archive,
@@ -468,6 +469,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   historyData={historyData}
                   historyLoading={historyLoading}
                   historyLatestDateLabel={historyLatestDateLabel}
+                />
+              </div>
+
+              {/* ─── CONTACT INFO ─── */}
+              <div className="mt-2 pt-2 border-t border-foreground/10">
+                <CandidateContactInfo
+                  profile={displayProfile}
+                  airtableMatch={airtableMatch}
+                  historyCandidate={historyData?.candidate}
                 />
               </div>
             </div>
