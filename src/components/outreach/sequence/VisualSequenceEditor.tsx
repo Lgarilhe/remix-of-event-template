@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
 import { StepEditor } from './StepEditor';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
+import { SequenceStep } from '../SequenceBuilder';
+import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
+import { StepEditor } from './StepEditor';
 
 interface VisualSequenceEditorProps {
   steps: SequenceStep[];
@@ -37,6 +41,7 @@ const ACTIONS = [
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect' },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)' },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA' },
+  { value: 'whatsapp_message', label: 'Message WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-100 text-green-600', description: 'Envoyer un WhatsApp (si numéro)' },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
