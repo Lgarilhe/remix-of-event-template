@@ -12,12 +12,12 @@ import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile, INITIAL_FILTERS } from './types';
+import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
+import { Job } from '@/types/jobs';
 import { extractTraitsFromProfile, traitsToFilters } from '@/hooks/linkedin/extractSimilarFilters';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
-import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 
 interface LinkedInSearchProps {
