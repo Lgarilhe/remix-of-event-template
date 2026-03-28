@@ -18,6 +18,8 @@ import { extractTraitsFromProfile, traitsToFilters } from '@/hooks/linkedin/extr
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 
 interface LinkedInSearchProps {
