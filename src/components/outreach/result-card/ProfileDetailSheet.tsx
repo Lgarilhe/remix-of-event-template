@@ -577,10 +577,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* À propos */}
               {displayProfile.summary && (
-                <div className="border border-foreground bg-background p-3 sm:p-4">
-                  <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wider">À propos</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
-                </div>
+                <details className="border border-foreground bg-background group">
+                  <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                    <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">À propos</h3>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                  </summary>
+                  <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
+                  </div>
+                </details>
               )}
 
               {/* Loading indicator for pool profile enrichment */}
