@@ -137,28 +137,22 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
     
     if (compact) {
       return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={isAdded ? "ghost" : "outline"}
-              size="icon"
-              className={`h-7 w-7 ${isAdded ? 'text-green-600' : 'text-[#0077B5]'}`}
-              onClick={() => !isAdded && addToProject(activeProject)}
-              disabled={isAdding || isAdded}
-            >
-              {isAdding ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : isAdded ? (
-                <Check className="w-3.5 h-3.5" />
-              ) : (
-                <FolderPlus className="w-3.5 h-3.5" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {isAdded ? 'Ajouté au projet' : `Ajouter à "${activeProject.name}"`}
-          </TooltipContent>
-        </Tooltip>
+        <Button
+          variant={isAdded ? "ghost" : "outline"}
+          size="sm"
+          className={`h-8 gap-1.5 text-[11px] rounded-none border px-3 uppercase tracking-wider font-bold shrink-0 ${isAdded ? 'text-green-600 border-green-600/40' : 'border-foreground/40 text-foreground hover:bg-muted'}`}
+          onClick={() => !isAdded && addToProject(activeProject)}
+          disabled={isAdding || isAdded}
+        >
+          {isAdding ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : isAdded ? (
+            <Check className="w-3.5 h-3.5" />
+          ) : (
+            <FolderPlus className="w-3.5 h-3.5" />
+          )}
+          {isAdded ? 'Ajouté' : 'Pipeline'}
+        </Button>
       );
     }
 
