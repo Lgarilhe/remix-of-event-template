@@ -18,9 +18,6 @@ import { SequenceStep } from '../SequenceBuilder';
 import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
 import { StepEditor } from './StepEditor';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
-import { SequenceStep } from '../SequenceBuilder';
-import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
-import { StepEditor } from './StepEditor';
 
 interface VisualSequenceEditorProps {
   steps: SequenceStep[];
