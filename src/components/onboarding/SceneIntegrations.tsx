@@ -55,11 +55,13 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
   const [refreshingLinkedIn, setRefreshingLinkedIn] = useState(false);
 
-  const linkedInConnected = accounts.length > 0;
-  const totalConnected = linkedInConnected ? 1 : 0;
+  const linkedInConnected = accounts.some((a: any) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP');
+  const whatsappConnected = accounts.some((a: any) => a.type === 'WHATSAPP' || a.provider === 'WHATSAPP');
+  const totalConnected = (linkedInConnected ? 1 : 0) + (whatsappConnected ? 1 : 0);
 
   const isConnected = (def: IntegrationDef) => {
     if (def.id === 'linkedin') return linkedInConnected;
+    if (def.id === 'whatsapp') return whatsappConnected;
     return connectedIds.has(def.id);
   };
 
