@@ -81,7 +81,8 @@ const StepNode: React.FC<{
   canRemove: boolean;
   compact?: boolean;
 }> = ({ step, index, allSteps, onClick, onRemove, isSelected, canRemove, compact = false }) => {
-  const Icon = STEP_ICONS[step.actionType] || Mail;
+  const Icon = STEP_ICONS[step.actionType];
+  const isWhatsApp = step.actionType === 'whatsapp_message';
   const colorClass = STEP_COLORS[step.actionType] || 'bg-gray-100 text-gray-600 border-gray-300';
   const msgType = getStepMessageType(step, allSteps);
   
@@ -102,7 +103,7 @@ const StepNode: React.FC<{
           )}
         >
           <div className="flex items-center gap-2">
-            <Icon className="w-4 h-4" />
+            {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
             <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
           </div>
           {msgType && (
@@ -143,7 +144,7 @@ const StepNode: React.FC<{
         )}
       >
         <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/50">
-          <Icon className="w-4 h-4" />
+          {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-muted-foreground">Étape {index + 1}</div>
