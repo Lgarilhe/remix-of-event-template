@@ -7,7 +7,7 @@ import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './searc
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
-import { useFilteredResults } from '@/hooks/useFilteredResults';
+import { useFilteredResults, type ScoredSortBy } from '@/hooks/useFilteredResults';
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -27,6 +27,29 @@ interface LinkedInSearchProps {
   activeProject?: SourcingProject | null;
   onProjectChange?: (project: SourcingProject | null) => void;
 }
+
+type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
+
+interface MissionSearchCacheEntry {
+  filters: typeof INITIAL_FILTERS;
+  results: LinkedInProfile[];
+  hasSearched: boolean;
+  total: number | null;
+  cursor: string | null;
+  hasMoreResults: boolean;
+  selectedJob: Job | null;
+  jobScores: Record<string, JobMatchResult>;
+  sortByScore: boolean;
+  statusFilter: SearchStatusFilter;
+  showDismissed: boolean;
+  selectedProfiles: string[];
+  showPoolView: boolean;
+  scoredSortBy: ScoredSortBy;
+  scrollTop: number;
+  scoringInstructions: string;
+}
+
+const missionSearchCache = new Map<string, MissionSearchCacheEntry>();
 
 export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   accounts,
@@ -70,7 +93,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Search history (must be after search hook)
   const searchHistory = useSearchHistory(search.selectedJob?.id || null);
-
 
   // Search actions hook
   const { handleSearch, handleLoadMore } = useLinkedInSearchActions(
@@ -135,7 +157,102 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [showPoolView, setShowPoolView] = useLocalState(true);
 
   // Scored sort
-  const [scoredSortBy, setScoredSortBy] = useLocalState<import('@/hooks/useFilteredResults').ScoredSortBy>('score_desc');
+  const [scoredSortBy, setScoredSortBy] = useLocalState<ScoredSortBy>('score_desc');
+
+  const missionCacheKey = activeProject?.id ? `mission-sourcing:${activeProject.id}` : null;
+  const hydratedCacheKeyRef = useRef<string | null>(null);
+  const restoredScrollKeyRef = useRef<string | null>(null);
+  const skipNextCacheWriteRef = useRef(false);
+
+  const cacheMissionState = useCallback((scrollTop?: number) => {
+    if (!missionCacheKey) return;
+
+    missionSearchCache.set(missionCacheKey, {
+      filters: search.filters,
+      results: search.results,
+      hasSearched: search.hasSearched,
+      total: search.total,
+      cursor: search.cursor,
+      hasMoreResults: search.hasMoreResults,
+      selectedJob: search.selectedJob,
+      jobScores: search.jobScores,
+      sortByScore: search.sortByScore,
+      statusFilter: search.statusFilter as SearchStatusFilter,
+      showDismissed: search.showDismissed,
+      selectedProfiles: Array.from(search.selectedProfiles),
+      showPoolView,
+      scoredSortBy,
+      scrollTop: scrollTop ?? scrollAreaRef.current?.scrollTop ?? missionSearchCache.get(missionCacheKey)?.scrollTop ?? 0,
+      scoringInstructions,
+    });
+  }, [missionCacheKey, search.filters, search.results, search.hasSearched, search.total, search.cursor, search.hasMoreResults, search.selectedJob, search.jobScores, search.sortByScore, search.statusFilter, search.showDismissed, search.selectedProfiles, showPoolView, scoredSortBy, scoringInstructions]);
+
+  useEffect(() => {
+    hydratedCacheKeyRef.current = null;
+    restoredScrollKeyRef.current = null;
+    skipNextCacheWriteRef.current = false;
+  }, [missionCacheKey]);
+
+  useEffect(() => {
+    if (!missionCacheKey || hydratedCacheKeyRef.current === missionCacheKey) return;
+
+    const cached = missionSearchCache.get(missionCacheKey);
+    hydratedCacheKeyRef.current = missionCacheKey;
+
+    if (!cached) return;
+
+    skipNextCacheWriteRef.current = true;
+    search.setFilters(cached.filters);
+    search.filtersRef.current = cached.filters;
+    search.setResults(cached.results);
+    search.setHasSearched(cached.hasSearched);
+    search.setTotal(cached.total);
+    search.setCursor(cached.cursor);
+    search.setHasMoreResults(cached.hasMoreResults);
+    search.setSelectedJob(cached.selectedJob);
+    search.setJobScores(cached.jobScores);
+    search.setSortByScore(cached.sortByScore);
+    search.setStatusFilter(cached.statusFilter);
+    search.setShowDismissed(cached.showDismissed);
+    search.setSelectedProfiles(new Set(cached.selectedProfiles));
+    setShowPoolView(cached.showPoolView);
+    setScoredSortBy(cached.scoredSortBy);
+    setScoringInstructions(cached.scoringInstructions);
+  }, [missionCacheKey, search]);
+
+  useEffect(() => {
+    if (!missionCacheKey || hydratedCacheKeyRef.current !== missionCacheKey) return;
+    if (skipNextCacheWriteRef.current) {
+      skipNextCacheWriteRef.current = false;
+      return;
+    }
+    cacheMissionState();
+  }, [missionCacheKey, cacheMissionState]);
+
+  useEffect(() => {
+    if (!missionCacheKey || !scrollAreaRef.current) return;
+
+    const element = scrollAreaRef.current;
+    const handleScroll = () => cacheMissionState(element.scrollTop);
+
+    element.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      handleScroll();
+      element.removeEventListener('scroll', handleScroll);
+    };
+  }, [missionCacheKey, cacheMissionState, search.results.length]);
+
+  useEffect(() => {
+    if (!missionCacheKey || restoredScrollKeyRef.current === missionCacheKey || search.results.length === 0) return;
+
+    const cached = missionSearchCache.get(missionCacheKey);
+    if (!cached || cached.scrollTop <= 0) return;
+
+    restoredScrollKeyRef.current = missionCacheKey;
+    requestAnimationFrame(() => {
+      scrollAreaRef.current?.scrollTo({ top: cached.scrollTop });
+    });
+  }, [missionCacheKey, search.results.length]);
 
   // Filtered results hook
   const { filteredAndSortedResults, selectableProfiles, allSelectableSelected, poolCount, mergedResults } = useFilteredResults({
