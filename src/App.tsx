@@ -44,6 +44,10 @@ const PUBLIC_ROUTES = ['/', '/auth', '/portal', '/client'];
 const IndexRedirect = () => {
   const location = useLocation();
 
+  if (location.pathname === '/index') {
+    return <SkalrLanding />;
+  }
+
   return (
     <Navigate
       to={withPreviewAccessToken('/', location.search, location.hash)}
