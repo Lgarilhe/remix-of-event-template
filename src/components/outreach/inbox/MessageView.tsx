@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
+import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
   getChatDisplayName,
   getChatHeadline,
@@ -236,7 +237,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-foreground truncate text-xs md:text-sm uppercase tracking-wide">
+          <h4 className="font-semibold text-foreground truncate text-xs md:text-sm uppercase tracking-wide flex items-center gap-1.5">
+            <ChannelIcon channel={detectChannel(selectedChat.account_type)} size="sm" />
             {displayName}
           </h4>
           {headline && (
