@@ -474,7 +474,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
             {/* ─── ACTIONS BAR ─── */}
             <div className="space-y-2 mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-foreground/20">
-              {/* Row 1 — primary: Score + Séquence */}
+              {/* Row 1 — Scorer · Séquence · Message */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar" data-no-swipe>
                 {selectedJob && onScoreProfile && !jobScore && (
                   <Button
@@ -509,15 +509,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 )}
               </div>
 
-              {/* Row 2 — secondary: Archiver | Pipe | LinkedIn */}
+              {/* Row 2 — Pipe · Archiver · LinkedIn */}
               <div className="flex items-center gap-1.5">
-                {onArchive && (
-                  <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[11px] rounded-none border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-semibold shrink-0">
-                    <Archive className="w-3 h-3" />
-                    Archiver
-                  </Button>
-                )}
-
                 {selectedJob && (
                   <AddToProjectButton
                     candidateId={profile.id}
@@ -534,16 +527,24 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   />
                 )}
 
+                {onArchive && (
+                  <Button variant="outline" size="sm" onClick={onArchive} className="h-8 gap-1.5 text-[11px] rounded-none border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-3 uppercase tracking-wider font-bold shrink-0">
+                    <Archive className="w-3.5 h-3.5" />
+                    Archiver
+                  </Button>
+                )}
+
                 <div className="flex-1" />
 
                 {profileUrl && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-7 h-7 border border-foreground/30 hover:border-foreground hover:bg-muted transition-colors shrink-0">
+                      <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 h-8 px-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted transition-colors shrink-0 text-[11px] uppercase tracking-wider font-bold text-muted-foreground hover:text-foreground">
                         <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4" />
+                        Profil
                       </a>
                     </TooltipTrigger>
-                    <TooltipContent>Voir sur LinkedIn</TooltipContent>
+                    <TooltipContent>Voir le profil LinkedIn</TooltipContent>
                   </Tooltip>
                 )}
               </div>
