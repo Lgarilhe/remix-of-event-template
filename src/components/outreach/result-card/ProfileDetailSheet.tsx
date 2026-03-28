@@ -33,6 +33,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
+const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
+  const [imgError, setImgError] = useState(false);
+  const slug = company.replace(/\s*(inc\.?|ltd\.?|llc|sarl|sas|sa|gmbh|group|corp\.?)\s*$/i, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const src = logoUrl || `https://logo.clearbit.com/${slug}.com`;
+  if (imgError && !logoUrl) return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />;
+  return <img src={src} alt={company} className="w-4 h-4 sm:w-5 sm:h-5 object-contain shrink-0 rounded-sm" onError={() => setImgError(true)} />;
+};
+
 interface ProfileDetailSheetProps {
   profile: LinkedInProfile | null;
   open: boolean;
@@ -408,11 +416,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 pt-0.5 text-[11px] sm:text-xs text-muted-foreground">
                   {currentCompany && (
                     <span className="flex items-center gap-1.5 font-medium text-foreground/80">
-                      {profileData.currentJob?.company_logo ? (
-                        <img src={profileData.currentJob.company_logo} alt={currentCompany} className="w-4 h-4 sm:w-5 sm:h-5 object-contain shrink-0" />
-                      ) : (
-                        <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-                      )}
+                      <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
                       <span className="truncate max-w-[120px] sm:max-w-none">{currentCompany}</span>
                       {currentJobTenure && <span className="text-muted-foreground/50 font-normal hidden sm:inline">• {currentJobTenure}</span>}
                     </span>
