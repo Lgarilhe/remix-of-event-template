@@ -34,11 +34,34 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
-  const [imgError, setImgError] = useState(false);
-  const slug = company.replace(/\s*(inc\.?|ltd\.?|llc|sarl|sas|sa|gmbh|group|corp\.?)\s*$/i, '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const src = logoUrl || `https://logo.clearbit.com/${slug}.com`;
-  if (imgError && !logoUrl) return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />;
-  return <img src={src} alt={company} className="w-4 h-4 sm:w-5 sm:h-5 object-contain shrink-0 rounded-sm" onError={() => setImgError(true)} />;
+  const [fallbackIndex, setFallbackIndex] = useState(0);
+
+  const domainSlug = company
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(inc|inc\.|ltd|ltd\.|llc|sarl|sas|sa|gmbh|group|corp|corp\.)\b/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+
+  const sources = [
+    logoUrl,
+    domainSlug ? `https://logo.clearbit.com/${domainSlug}.com` : null,
+    domainSlug ? `https://www.google.com/s2/favicons?domain=${domainSlug}.com&sz=128` : null,
+  ].filter(Boolean) as string[];
+
+  if (!sources[fallbackIndex]) {
+    return <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />;
+  }
+
+  return (
+    <img
+      src={sources[fallbackIndex]}
+      alt={company}
+      className="w-4 h-4 sm:w-5 sm:h-5 object-contain shrink-0 rounded-sm"
+      onError={() => setFallbackIndex((prev) => prev + 1)}
+    />
+  );
 };
 
 interface ProfileDetailSheetProps {
