@@ -213,16 +213,28 @@ Deno.serve(async (req) => {
       }
 
       case 'hosted_auth_link': {
-        // Generate a hosted auth link for white-label LinkedIn connection
-        const { success_redirect_url, failure_redirect_url, notify_url, org_name } = params;
+        // Generate a hosted auth link for white-label account connection (LinkedIn or WhatsApp)
+        const { success_redirect_url, failure_redirect_url, notify_url, org_name, providers: requestedProviders } = params;
+
+        // Allow caller to specify provider(s), default to LinkedIn
+        const resolvedProviders = Array.isArray(requestedProviders) && requestedProviders.length > 0
+          ? requestedProviders
+          : ['LINKEDIN'];
+
+        // WhatsApp uses QR code auth — disable credential-based options
+        const isWhatsApp = resolvedProviders.includes('WHATSAPP');
+        const defaultDisabled = ['proxy', 'autoproxy', 'sync_limit', 'language'];
+        const disabledOptions = isWhatsApp
+          ? [...defaultDisabled, 'credentials_auth', 'cookie_auth']
+          : defaultDisabled;
 
         const hostedBody: Record<string, unknown> = {
           type: 'create',
-          providers: ['LINKEDIN'],
+          providers: resolvedProviders,
           api_url: `https://${dsn}`,
           expiresOn: new Date(Date.now() + 30 * 60 * 1000).toISOString().replace(/(\.\d{3})\d*Z/, '$1Z'),
           bypass_success_screen: false,
-          disabled_options: ['proxy', 'autoproxy', 'sync_limit', 'language'],
+          disabled_options: disabledOptions,
         };
 
         if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;

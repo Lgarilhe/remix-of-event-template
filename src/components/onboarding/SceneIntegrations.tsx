@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import { Button } from '@/components/ui/button';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -35,6 +36,13 @@ const INTEGRATIONS: IntegrationDef[] = [
     essential: true,
     hostedAuth: true,
   },
+  {
+    id: 'whatsapp',
+    name: 'WhatsApp',
+    description: 'Envoyez des messages WhatsApp dans vos séquences multicanales.',
+    logo: whatsappLogo,
+    hostedAuth: true,
+  },
 ];
 
 export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
@@ -47,27 +55,34 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
   const [refreshingLinkedIn, setRefreshingLinkedIn] = useState(false);
 
-  const linkedInConnected = accounts.length > 0;
-  const totalConnected = linkedInConnected ? 1 : 0;
+  const linkedInConnected = accounts.some((a: any) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP');
+  const whatsappConnected = accounts.some((a: any) => a.type === 'WHATSAPP' || a.provider === 'WHATSAPP');
+  const totalConnected = (linkedInConnected ? 1 : 0) + (whatsappConnected ? 1 : 0);
 
   const isConnected = (def: IntegrationDef) => {
     if (def.id === 'linkedin') return linkedInConnected;
+    if (def.id === 'whatsapp') return whatsappConnected;
     return connectedIds.has(def.id);
   };
 
-  const handleLinkedInConnect = async () => {
-    setConnectingId('linkedin');
+  const handleHostedConnect = async (provider: 'LINKEDIN' | 'WHATSAPP') => {
+    const defId = provider.toLowerCase();
+    setConnectingId(defId);
     try {
       const currentUrl = window.location.href;
       const { data } = await invokeEdgeFunction('unipile-accounts', {
         action: 'hosted_auth_link',
+        providers: [provider],
         success_redirect_url: currentUrl,
         failure_redirect_url: currentUrl,
         org_name: organization?.name || undefined,
       });
       if (data?.success && (data as any).url) {
         window.open((data as any).url, '_blank', 'noopener,noreferrer');
-        toast.info('Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.');
+        const msg = provider === 'WHATSAPP'
+          ? 'Scannez le QR code dans la fenêtre qui s\'est ouverte.'
+          : 'Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.';
+        toast.info(msg);
       } else {
         throw new Error((data as any)?.error || 'Erreur');
       }
@@ -95,9 +110,9 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
         >
           04 — Vos outils
         </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez LinkedIn</h2>
+        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos comptes</h2>
         <p className="text-muted-foreground text-sm">
-          Essentiel pour le sourcing et la prospection. D'autres intégrations (ATS, CRM, etc.) sont disponibles dans les paramètres.
+          LinkedIn est essentiel pour le sourcing. WhatsApp permet d'enrichir vos séquences multicanales.
         </p>
       </div>
 
@@ -152,7 +167,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Button
                       size="sm"
-                      onClick={handleLinkedInConnect}
+                      onClick={() => handleHostedConnect(def.id === 'whatsapp' ? 'WHATSAPP' : 'LINKEDIN')}
                       disabled={isLoading}
                       className="text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
                       style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
