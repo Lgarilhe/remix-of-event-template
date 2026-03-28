@@ -12,6 +12,7 @@ import { AgentProvider } from "@/contexts/AgentContext";
 import { AgentDrawer } from "@/components/agent";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
+import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken } from "@/lib/previewToken";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
@@ -39,14 +40,13 @@ const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
 const PUBLIC_ROUTES = ['/', '/auth', '/portal', '/client'];
-const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
 
 const IndexRedirect = () => {
   const location = useLocation();
 
   return (
     <Navigate
-      to={{ pathname: '/', search: location.search, hash: location.hash }}
+      to={withPreviewAccessToken('/', location.search, location.hash)}
       replace
     />
   );
@@ -65,11 +65,23 @@ const AppContent = () => {
   }, [location.pathname]);
 
   useEffect(() => {
-    const previewAccessToken = new URLSearchParams(location.search).get('__lovable_token');
-    if (previewAccessToken) {
-      sessionStorage.setItem(PREVIEW_ACCESS_TOKEN_STORAGE_KEY, previewAccessToken);
+    const tokenFromUrl = persistPreviewAccessToken(location.search);
+    if (tokenFromUrl) {
+      return;
     }
-  }, [location.search]);
+
+    const storedToken = getPreviewAccessToken();
+    if (!storedToken) {
+      return;
+    }
+
+    const nextLocation = withPreviewAccessToken(location.pathname, location.search, location.hash);
+    if (nextLocation.search === location.search) {
+      return;
+    }
+
+    navigate(nextLocation, { replace: true });
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -106,7 +118,7 @@ const AppContent = () => {
   const handleSessionExpiredClose = (open: boolean) => {
     setSessionExpired(open);
     if (!open) {
-      navigate('/auth', { state: { from: location.pathname } });
+      navigate(withPreviewAccessToken('/auth'), { state: { from: location.pathname } });
     }
   };
 

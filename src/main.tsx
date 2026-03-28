@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from 'react-helmet-async';
 import * as Sentry from "@sentry/react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { reloadWithPreviewAccessToken } from "@/lib/previewToken";
 import App from "./App.tsx";
 import "./index.css";
 
@@ -43,7 +44,7 @@ window.addEventListener('error', (e) => {
     const reloaded = sessionStorage.getItem('chunk-reload');
     if (!reloaded) {
       sessionStorage.setItem('chunk-reload', '1');
-      window.location.reload();
+      reloadWithPreviewAccessToken();
     }
   }
 });
