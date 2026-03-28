@@ -301,7 +301,6 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
                           <action.icon className="w-4 h-4" />
                         ) : null}
                       </div>
-                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{action.label}</div>
                         <div className="text-xs text-muted-foreground truncate">{action.description}</div>
