@@ -24,6 +24,9 @@ export function getStepMessageType(
     return { label: 'Invitation (pas de note)', shortLabel: 'Invitation', color: 'bg-emerald-50 text-emerald-700' };
   }
 
+  // Walk backwards through the graph to find previous message steps in this branch
+  const previousSteps = getPreviousStepsInBranch(step, allSteps);
+
   if (step.actionType === 'whatsapp_message') {
     const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
     if (prevWhatsApp.length === 0) {
@@ -32,8 +35,6 @@ export function getStepMessageType(
     return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-50 text-green-700' };
   }
 
-  // Walk backwards through the graph to find previous message steps in this branch
-  const previousSteps = getPreviousStepsInBranch(step, allSteps);
   const prevMessages = previousSteps.filter(s =>
     ['message', 'smart_message', 'inmail'].includes(s.actionType)
   );
