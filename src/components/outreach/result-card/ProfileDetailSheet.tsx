@@ -471,6 +471,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   historyLatestDateLabel={historyLatestDateLabel}
                 />
               </div>
+
+              {/* ─── CONTACT INFO ─── */}
+              <div className="mt-2 pt-2 border-t border-foreground/10">
+                <CandidateContactInfo
+                  profile={displayProfile}
+                  airtableMatch={airtableMatch}
+                  historyCandidate={historyData?.candidate}
+                />
+              </div>
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
