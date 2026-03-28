@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isReady, session } = useAuthReady();
@@ -14,7 +15,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!session) {
-    return <Navigate to="/auth" state={{ from: location.pathname }} replace />;
+    return <Navigate to={withPreviewAccessToken('/auth')} state={{ from: location.pathname }} replace />;
   }
 
   return <>{children}</>;

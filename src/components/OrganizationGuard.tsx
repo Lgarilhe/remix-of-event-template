@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useOrganization } from '@/hooks/useOrganization';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 
 export const OrganizationGuard = ({ children }: { children: React.ReactNode }) => {
   const { isLoading, needsOnboarding } = useOrganization();
@@ -13,7 +14,7 @@ export const OrganizationGuard = ({ children }: { children: React.ReactNode }) =
   }
 
   if (needsOnboarding) {
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to={withPreviewAccessToken('/onboarding')} replace />;
   }
 
   return <>{children}</>;
