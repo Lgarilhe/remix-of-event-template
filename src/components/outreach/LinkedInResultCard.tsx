@@ -59,6 +59,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   const profileData = useProfileData(profile);
   const switchResult = useMemo(() => computeLikelyToSwitch(profile), [profile]);
+  const {
+    fullName, initials, currentCompany, currentRole, currentJobTenure,
+    networkDistance, profileUrl, skills, education, educationPreview,
+    otherCurrentJobs, pastJobs, connectionsCount,
+    isLikelyToRespond, totalExperience,
+  } = profileData;
   const companyType = useMemo(() => {
     if (!currentCompany) return null;
     return classifyFromProfile({
@@ -69,12 +75,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       company_type: (profile as any).organization_type,
     });
   }, [currentCompany, profile]);
-  const {
-    fullName, initials, currentCompany, currentRole, currentJobTenure,
-    networkDistance, profileUrl, skills, education, educationPreview,
-    otherCurrentJobs, pastJobs, connectionsCount,
-    isLikelyToRespond, totalExperience,
-  } = profileData;
 
   // Airtable history
   const candidateProfileUrl = profile.public_profile_url || profile.profile_url;
