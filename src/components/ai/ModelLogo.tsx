@@ -8,21 +8,27 @@ interface ModelLogoProps {
 }
 
 /**
- * Provider logos matching the Notion-style model picker.
- * - Gemini: 4-pointed diamond star with blue→pink→orange gradient
- * - Claude (Anthropic): starburst / sparkle icon in coral
+ * Official provider logos for AI model picker.
+ * SVG paths sourced from Simple Icons (official brand marks).
  */
 export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => {
-  const isGemini = modelId.startsWith('gemini');
-  const isClaude = modelId.startsWith('claude');
   const uid = useId();
 
-  if (isGemini) {
-    // Gemini 4-pointed diamond star — matches the official Google Gemini icon
+  // Detect provider from modelId (supports both "gemini-..." and "google/gemini-..." formats)
+  const provider = modelId.startsWith('google/') || modelId.startsWith('gemini')
+    ? 'google'
+    : modelId.startsWith('openai/') || modelId.startsWith('gpt')
+      ? 'openai'
+      : modelId.startsWith('claude') || modelId.startsWith('anthropic/')
+        ? 'anthropic'
+        : null;
+
+  if (provider === 'google') {
+    // Official Google Gemini star — Simple Icons
     const gid = `gem${uid}`;
     return (
       <svg
-        viewBox="0 0 28 28"
+        viewBox="0 0 24 24"
         width={size}
         height={size}
         className={cn("shrink-0", className)}
@@ -31,11 +37,11 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
         aria-label="Google Gemini"
       >
         <path
-          d="M14 0C14 7.732 8.627 14 2 14c6.627 0 12 6.268 12 14 0-7.732 5.373-14 12-14-6.627 0-12-6.268-12-14Z"
+          d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"
           fill={`url(#${gid})`}
         />
         <defs>
-          <linearGradient id={gid} x1="2" y1="2" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+          <linearGradient id={gid} x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
             <stop stopColor="#4285F4" />
             <stop offset="0.35" stopColor="#9B72CB" />
             <stop offset="0.65" stopColor="#D96570" />
@@ -46,34 +52,36 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
     );
   }
 
-  if (isClaude) {
-    // Anthropic Claude sparkle / starburst icon — coral brand color
-    const color = '#E87040';
+  if (provider === 'anthropic') {
+    // Official Anthropic "A" mark — Simple Icons, brand color #D4A27F (coral/tan)
     return (
       <svg
         viewBox="0 0 24 24"
         width={size}
         height={size}
         className={cn("shrink-0", className)}
-        fill="none"
+        fill="#D4A27F"
         xmlns="http://www.w3.org/2000/svg"
         aria-label="Anthropic Claude"
       >
-        {/* 8-ray starburst */}
-        <path
-          d="M12 1l1.3 4.5a2 2 0 001.2 1.2L19 8l-4.5 1.3a2 2 0 00-1.2 1.2L12 15l-1.3-4.5a2 2 0 00-1.2-1.2L5 8l4.5-1.3a2 2 0 001.2-1.2L12 1z"
-          fill={color}
-        />
-        <path
-          d="M18 14l.7 2.3a1 1 0 00.6.6L22 17.6l-2.7.7a1 1 0 00-.6.6L18 21.6l-.7-2.7a1 1 0 00-.6-.6L14 17.6l2.7-.7a1 1 0 00.6-.6L18 14z"
-          fill={color}
-          opacity="0.7"
-        />
-        <path
-          d="M7 14.5l.45 1.55a.75.75 0 00.5.5L9.5 17l-1.55.45a.75.75 0 00-.5.5L7 19.5l-.45-1.55a.75.75 0 00-.5-.5L4.5 17l1.55-.45a.75.75 0 00.5-.5L7 14.5z"
-          fill={color}
-          opacity="0.5"
-        />
+        <path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z" />
+      </svg>
+    );
+  }
+
+  if (provider === 'openai') {
+    // Official OpenAI hexagonal knot — Simple Icons
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        className={cn("shrink-0", className)}
+        fill="currentColor"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="OpenAI"
+      >
+        <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" />
       </svg>
     );
   }
@@ -89,9 +97,19 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
 
 /** Small provider label as a muted badge */
 export const ProviderLabel = ({ modelId }: { modelId: string }) => {
-  if (modelId.startsWith('gemini'))
+  const provider = modelId.startsWith('google/') || modelId.startsWith('gemini')
+    ? 'google'
+    : modelId.startsWith('openai/') || modelId.startsWith('gpt')
+      ? 'openai'
+      : modelId.startsWith('claude') || modelId.startsWith('anthropic/')
+        ? 'anthropic'
+        : null;
+
+  if (provider === 'google')
     return <span className="text-[9px] font-semibold text-[#4285F4] uppercase tracking-wider">Google</span>;
-  if (modelId.startsWith('claude'))
-    return <span className="text-[9px] font-semibold text-[#E87040] uppercase tracking-wider">Anthropic</span>;
+  if (provider === 'anthropic')
+    return <span className="text-[9px] font-semibold text-[#D4A27F] uppercase tracking-wider">Anthropic</span>;
+  if (provider === 'openai')
+    return <span className="text-[9px] font-semibold uppercase tracking-wider">OpenAI</span>;
   return null;
 };
