@@ -408,6 +408,32 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     }));
   }
 
+  // AI-generated keyword-based skills → inject into Boolean keywords for broader matching
+  if (filters.skills_keywords?.length) {
+    // Add skills as additional keywords in the Boolean search if not already present
+    const existingKeywords = (baseParams.keywords || '').toLowerCase();
+    const newSkills = filters.skills_keywords.filter(
+      (s: string) => !existingKeywords.includes(s.toLowerCase())
+    );
+    if (newSkills.length > 0 && baseParams.keywords) {
+      // Append as OR group: existing AND (skill1 OR skill2 OR ...)
+      const skillsGroup = newSkills.map((s: string) => `"${s}"`).join(' OR ');
+      baseParams.keywords = `${baseParams.keywords} AND (${skillsGroup})`;
+    }
+  }
+
+  // AI-generated industry keywords → send as industry filter if no ID-based industry set
+  if (filters.industry_keywords?.length && !filters.industry?.length) {
+    // Unipile supports keyword-based industry on some APIs
+    // For recruiter, inject into keywords Boolean as context
+    const industryTerms = filters.industry_keywords.join(' OR ');
+    if (baseParams.keywords && industryTerms) {
+      // Don't add to Boolean (too restrictive) — but include in role scope hint
+      // For now, add as metadata for the edge function to use
+      baseParams.industry_keywords = filters.industry_keywords;
+    }
+  }
+
   return baseParams;
 }
 

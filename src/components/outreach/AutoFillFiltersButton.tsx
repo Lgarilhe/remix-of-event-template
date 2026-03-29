@@ -266,6 +266,16 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
         })) as PriorityFilterItem[];
       }
 
+      // AI-generated keyword-based skills (skills + certifications + domain expertise)
+      if (generated.skills_keywords?.length) {
+        update.skills_keywords = generated.skills_keywords;
+      }
+
+      // AI-generated industry keywords
+      if (generated.industry_keywords?.length) {
+        update.industry_keywords = generated.industry_keywords;
+      }
+
       // Open to work / Spotlight
       if (generated.spotlight) {
         update.spotlight = generated.spotlight as SpotlightType | '';

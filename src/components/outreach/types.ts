@@ -151,6 +151,10 @@ export interface LinkedInFiltersState {
   last_name: string;
   title_keywords: string;
   
+  // AI-generated keyword-based filters (from generate-search-filters)
+  skills_keywords: string[];              // Skills/certs/domains identified by AI
+  industry_keywords: string[];            // Industries identified by AI
+
   // Activity filters (Recruiter specific)
   activity_messages: ActivityMessageType;  // with_message, without_message
   activity_messages_days: number | null;   // Since X days (null = all time)
@@ -200,6 +204,9 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   first_name: '',
   last_name: '',
   title_keywords: '',
+  // AI-generated keyword filters
+  skills_keywords: [],
+  industry_keywords: [],
   // Activity filters
   activity_messages: 'without_message',
   activity_messages_days: 90,
