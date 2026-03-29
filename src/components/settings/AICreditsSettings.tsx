@@ -1,20 +1,67 @@
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAICredits, useAICreditHistory, AI_CREDIT_COSTS } from '@/hooks/useAICredits';
-import { estimateCredits } from '@/types/aiCredits';
+import { estimateCredits, CREDIT_PACKS } from '@/types/aiCredits';
+import { useOrganization } from '@/hooks/useOrganization';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins } from 'lucide-react';
+import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { toast } from 'sonner';
 
 export const AICreditsSettings = () => {
   const navigate = useNavigate();
-  const { creditsRemaining, creditsTotal, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, periodEnd } = useAICredits();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { organizationId } = useOrganization();
+  const { creditsRemaining, creditsTotal, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, periodEnd, refetch } = useAICredits();
   const { data: history = [], isLoading: isLoadingHistory } = useAICreditHistory();
+  const [buyingPack, setBuyingPack] = useState<string | null>(null);
+
+  // Handle Stripe checkout return
+  useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    if (checkout === 'success') {
+      toast.success('Paiement réussi ! Vos crédits ont été ajoutés.');
+      refetch();
+      searchParams.delete('checkout');
+      setSearchParams(searchParams, { replace: true });
+    } else if (checkout === 'cancel') {
+      toast.info('Achat annulé.');
+      searchParams.delete('checkout');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, refetch]);
+
+  const handleBuyPack = async (packId: string) => {
+    if (!organizationId) return;
+    setBuyingPack(packId);
+    try {
+      const { data, error } = await invokeEdgeFunction<{ url?: string }>('create-checkout-session', {
+        mode: 'credit_pack',
+        pack_id: packId,
+        organization_id: organizationId,
+      });
+
+      if (error || !data?.url) {
+        toast.error('Erreur lors de la création du paiement. Réessayez.');
+        return;
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (err) {
+      console.error('Checkout error:', err);
+      toast.error('Erreur de connexion à Stripe.');
+    } finally {
+      setBuyingPack(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -47,7 +94,7 @@ export const AICreditsSettings = () => {
             </div>
             {(isLow || isOut) && (
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate('/pricing')}>
-                Acheter des crédits
+                Changer de plan
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </Button>
             )}
@@ -84,6 +131,53 @@ export const AICreditsSettings = () => {
               Plus de crédits disponibles. Achetez un pack de crédits ou passez à un plan supérieur.
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Top-up Packs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+            <ShoppingCart className="w-4 h-4" />
+            Recharger des crédits
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Les crédits top-up ne s'expirent jamais et sont utilisés après les crédits du plan.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {CREDIT_PACKS.map((pack) => (
+              <button
+                key={pack.id}
+                onClick={() => handleBuyPack(pack.id)}
+                disabled={!!buyingPack}
+                className={cn(
+                  "relative flex flex-col items-center p-4 border-2 rounded-md transition-all text-center",
+                  "hover:border-foreground hover:shadow-[2px_2px_0_0_hsl(var(--foreground))]",
+                  "disabled:opacity-50 disabled:cursor-not-allowed",
+                  pack.badge ? "border-foreground" : "border-border"
+                )}
+              >
+                {pack.badge && (
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider">
+                    {pack.badge}
+                  </span>
+                )}
+                <span className="text-2xl font-bold text-foreground">
+                  {pack.credits.toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground mt-0.5">crédits</span>
+                <span className="text-lg font-bold text-foreground mt-2">{pack.price_eur}€</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {pack.price_per_credit_cents.toFixed(1)}c€/crédit
+                </span>
+                {buyingPack === pack.id && (
+                  <Loader2 className="w-4 h-4 animate-spin absolute top-2 right-2" />
+                )}
+              </button>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -139,11 +233,21 @@ export const AICreditsSettings = () => {
               {history.slice(0, 30).map((tx) => {
                 const actionInfo = AI_CREDIT_COSTS[tx.action];
                 const creditsUsed = tx.credits_used ?? Math.abs(tx.amount ?? 0);
-                const modelName = tx.model_id ? (tx.metadata as Record<string, unknown>)?.model as string || tx.model_id : null;
+                const isTopup = tx.action === 'topup_purchase';
+                const modelName = tx.model_id && tx.model_id !== 'system' ? (tx.metadata as Record<string, unknown>)?.model as string || tx.model_id : null;
                 return (
                   <div key={tx.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-foreground">{actionInfo?.label || tx.action}</p>
+                      <p className="text-sm text-foreground">
+                        {isTopup ? (
+                          <span className="flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            Achat de crédits
+                          </span>
+                        ) : (
+                          actionInfo?.label || tx.action
+                        )}
+                      </p>
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                         {modelName && <span>{modelName}</span>}
                         {tx.description && (
@@ -152,7 +256,12 @@ export const AICreditsSettings = () => {
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <p className="text-sm font-medium text-destructive">-{creditsUsed} cr</p>
+                      <p className={cn(
+                        "text-sm font-medium",
+                        isTopup ? "text-emerald-600" : "text-destructive"
+                      )}>
+                        {isTopup ? '+' : '-'}{isTopup ? Math.abs(tx.amount ?? 0) : creditsUsed} cr
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {format(new Date(tx.created_at), 'dd/MM HH:mm', { locale: fr })}
                       </p>
