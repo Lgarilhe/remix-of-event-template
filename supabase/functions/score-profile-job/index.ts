@@ -616,6 +616,7 @@ Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication 
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -1012,11 +1013,11 @@ Réponds UNIQUEMENT en JSON compact :
         "content-type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        system:
-          "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Réponds en JSON compact, sans markdown.",
+        system: [{ type: "text", text: "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Réponds en JSON compact, sans markdown.", cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: prompt }],
         max_tokens: 800,
         temperature: 0.1,
