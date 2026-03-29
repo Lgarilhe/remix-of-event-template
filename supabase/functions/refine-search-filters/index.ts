@@ -57,6 +57,15 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn("[refine-search-filters] Failed to load settle-credits:", e);
     }
+    // Resolve Anthropic model ID from user selection
+    let resolvedModel = "claude-sonnet-4-6";
+    try {
+      const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
+      const candidate = getAnthropicModelId(_aiParams.modelId);
+      if (candidate && candidate.startsWith("claude-")) resolvedModel = candidate;
+    } catch (e) {
+      console.warn("[refine-search-filters] Failed to resolve model, using default:", e);
+    }
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
@@ -146,7 +155,7 @@ ${JSON.stringify(currentFilters, null, 2)}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: resolvedModel,
         max_tokens: 1024,
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
