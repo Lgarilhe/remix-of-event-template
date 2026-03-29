@@ -55,32 +55,38 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
   const model = resolveModel(routingTier, options?.modelOverride, orgDefault);
 
   // Step 1: PRE-AUTH — verify credits before calling the AI
+  // Graceful: if pre-auth fails (no balance table, network error), proceed anyway
   if (!options?.skipCreditCheck) {
-    const { data: preauthResult } = await invokeEdgeFunction<{
-      has_credits: boolean;
-      estimated_credits: number;
-      remaining: number;
-      model: string;
-    }>('ai-credits', {
-      action: 'preauth',
-      ai_action: aiAction,
-      model,
-    });
-
-    if (!preauthResult?.has_credits) {
-      const remaining = preauthResult?.remaining ?? 0;
-      const estimated = preauthResult?.estimated_credits ?? 1;
-      const msg = `Crédits IA insuffisants (${remaining} restants, ~${estimated} requis)`;
-      toast.error(msg, {
-        action: {
-          label: 'Acheter des crédits',
-          onClick: () => window.location.href = '/settings?tab=credits',
-        },
+    try {
+      const { data: preauthResult, error: preauthError } = await invokeEdgeFunction<{
+        has_credits: boolean;
+        estimated_credits: number;
+        remaining: number;
+        model: string;
+      }>('ai-credits', {
+        action: 'preauth',
+        ai_action: aiAction,
+        model,
       });
-      return {
-        data: { success: false, error: 'insufficient_credits' } as T & { success: boolean; error: string },
-        error: new Error(msg),
-      };
+
+      // Only block when pre-auth explicitly says "no credits"
+      if (!preauthError && preauthResult && preauthResult.has_credits === false) {
+        const remaining = preauthResult.remaining ?? 0;
+        const estimated = preauthResult.estimated_credits ?? 1;
+        const msg = `Crédits IA insuffisants (${remaining} restants, ~${estimated} requis)`;
+        toast.error(msg, {
+          action: {
+            label: 'Acheter des crédits',
+            onClick: () => window.location.href = '/settings?tab=credits',
+          },
+        });
+        return {
+          data: { success: false, error: 'insufficient_credits' } as T & { success: boolean; error: string },
+          error: new Error(msg),
+        };
+      }
+    } catch (e) {
+      console.warn('[invokeWithCredits] Pre-auth failed, proceeding anyway:', e);
     }
   }
 
