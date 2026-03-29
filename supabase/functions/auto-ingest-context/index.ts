@@ -267,9 +267,7 @@ Deno.serve(async (req) => {
 
     // Call ingest-context edge function
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const svc = createClient(supabaseUrl, serviceKey);
+    const svcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // Get a service-level token for internal call
     const ingestRes = await fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
