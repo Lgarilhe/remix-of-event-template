@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAICredits, useAICreditHistory, AI_CREDIT_COSTS } from '@/hooks/useAICredits';
-import { estimateCredits, CREDIT_PACKS } from '@/types/aiCredits';
+import { estimateCredits, CREDIT_PACKS, MODEL_CATALOG, TIER_ICONS } from '@/types/aiCredits';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useModelPreference } from '@/hooks/useModelPreference';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2, Brain } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -21,6 +23,7 @@ export const AICreditsSettings = () => {
   const { organizationId } = useOrganization();
   const { creditsRemaining, creditsTotal, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, periodEnd, refetch } = useAICredits();
   const { data: history = [], isLoading: isLoadingHistory } = useAICreditHistory();
+  const { modelId: defaultModel, setModelId: setDefaultModel } = useModelPreference();
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
 
   // Handle Stripe checkout return
@@ -131,6 +134,54 @@ export const AICreditsSettings = () => {
               Plus de crédits disponibles. Achetez un pack de crédits ou passez à un plan supérieur.
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Default Model Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+            <Brain className="w-4 h-4" />
+            Modèle IA par défaut
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Ce modèle sera utilisé pour toutes les actions IA (sauf classification et tri qui restent sur modèles rapides).
+            Chaque utilisateur peut changer ponctuellement sur chaque action.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Select
+            value={defaultModel || '__auto__'}
+            onValueChange={(v) => {
+              setDefaultModel(v === '__auto__' ? null : v);
+              toast.success(v === '__auto__' ? 'Modèle auto-routé activé' : `Modèle par défaut : ${MODEL_CATALOG[v]?.name}`);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__auto__">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🔄</span>
+                  <div>
+                    <span className="font-medium">Auto (recommandé)</span>
+                    <span className="text-xs text-muted-foreground ml-2">Le meilleur modèle est choisi par action</span>
+                  </div>
+                </div>
+              </SelectItem>
+              {Object.values(MODEL_CATALOG).map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{TIER_ICONS[model.tier]}</span>
+                    <span className="font-medium">{model.name}</span>
+                    <span className="text-xs text-muted-foreground">— {model.description}</span>
+                    <span className="text-xs font-medium ml-auto">×{model.multiplier}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 

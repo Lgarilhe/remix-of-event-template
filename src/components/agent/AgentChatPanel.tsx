@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, ArrowLeft, Loader2, Bot, Target, Search, BarChart3, Sparkles } from 'lucide-react';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { useAgentChat, AgentConversation } from '@/hooks/useAgentChat';
 import { AgentMessageBubble, extractOptions } from './AgentMessageBubble';
@@ -49,6 +50,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
   const [showList, setShowList] = useState(true);
   const [input, setInput] = useState('');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [jobSentForConv, setJobSentForConv] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -291,6 +293,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
             </div>
           )}
         </div>
+        <ModelPicker actionId="agent_search_calibration" value={selectedModel} onChange={setSelectedModel} compact />
       </div>
 
       {/* Messages area */}

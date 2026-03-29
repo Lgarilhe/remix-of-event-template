@@ -14,6 +14,17 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { ACTION_COSTS, resolveModel } from '@/types/aiCredits';
 
+const MODEL_PREF_KEY = 'konekt_ai_model_default';
+
+/** Read org default model from localStorage (set in Settings > Crédits IA) */
+function getOrgModelDefault(): string | null {
+  try {
+    return localStorage.getItem(MODEL_PREF_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 interface InvokeWithCreditsOptions {
   /** Human-readable description for the transaction log */
   description?: string;
@@ -39,8 +50,9 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
   const action = ACTION_COSTS[aiAction];
   const routingTier = action?.routingTier ?? 'default';
 
-  // Resolve which model to use
-  const model = resolveModel(routingTier, options?.modelOverride, options?.orgModelDefault);
+  // Resolve which model to use (user override > org default from localStorage > auto)
+  const orgDefault = options?.orgModelDefault || getOrgModelDefault();
+  const model = resolveModel(routingTier, options?.modelOverride, orgDefault);
 
   // Step 1: PRE-AUTH — verify credits before calling the AI
   if (!options?.skipCreditCheck) {
