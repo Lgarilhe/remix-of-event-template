@@ -1,8 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1";
 import { requireAuth } from "../_shared/require-auth.ts";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
-import { getAnthropicModelId } from "../_shared/ai-config.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -161,7 +160,15 @@ Deno.serve(async (req) => {
     // IMPORTANT: A Request body can only be consumed once.
     const body = await req.json();
     const { action, account_id, user_id, conversations, jobs } = body;
-    const _aiParams = extractAIParams(body, "nurturing_analysis");
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "nurturing_analysis", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(body, "nurturing_analysis");
+    } catch (e) {
+      console.warn("[nurturing-analyzer] Failed to load settle-credits:", e);
+    }
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY"); // Keep for intent analysis (lightweight)
@@ -287,6 +294,7 @@ Deno.serve(async (req) => {
           const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const orgId = await resolveOrgIdFromUser(authUserId, adminClient);
           if (orgId) {
+            const { settleCredits } = await import("../_shared/settle-credits.ts");
             settleCredits(adminClient, {
               organizationId: orgId, userId: authUserId,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
@@ -465,6 +473,7 @@ Deno.serve(async (req) => {
           const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const orgId = await resolveOrgIdFromUser(authUserId, adminClient);
           if (orgId) {
+            const { settleCredits } = await import("../_shared/settle-credits.ts");
             settleCredits(adminClient, {
               organizationId: orgId, userId: authUserId,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,

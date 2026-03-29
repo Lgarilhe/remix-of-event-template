@@ -1,8 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
-import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,7 +31,15 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { candidateProfile, jobContext, scoringDetails, interviewStage } = body;
-    const _aiParams = extractAIParams(body, "generate_scorecard");
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "generate_scorecard", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(body, "generate_scorecard");
+    } catch (e) {
+      console.warn("[generate-scorecard] Failed to load settle-credits:", e);
+    }
 
     if (!candidateProfile || !jobContext) {
       return new Response(
@@ -246,6 +252,7 @@ Génère la scorecard d'évaluation sur mesure.`;
         const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const orgId = await resolveOrgIdFromUser(userId, adminClient);
         if (orgId) {
+          const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {
             organizationId: orgId, userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
