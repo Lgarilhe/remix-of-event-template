@@ -253,6 +253,30 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "outreach",
   },
+  scorecard_chat: {
+    action: "scorecard_chat",
+    label: "Chat scorecard",
+    floor: 1,
+    typicalTokens: 2_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
+  debrief: {
+    action: "debrief",
+    label: "Débrief rapide",
+    floor: 2,
+    typicalTokens: 4_000,
+    routingTier: "default",
+    category: "qualification",
+  },
+  meeting_minutes: {
+    action: "meeting_minutes",
+    label: "Compte-rendu réunion",
+    floor: 2,
+    typicalTokens: 5_000,
+    routingTier: "default",
+    category: "qualification",
+  },
 };
 
 // ─── Routing Defaults ───────────────────────────────────────────────────────
