@@ -1,7 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -146,7 +146,15 @@ Deno.serve(async (req) => {
 
     const _body = await req.json();
     const { messages } = _body as { messages: Message[] };
-    const _aiParams = extractAIParams(_body, "filter_assistant_msg");
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "filter_assistant_msg", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(_body, "filter_assistant_msg");
+    } catch (e) {
+      console.warn("[chat-filter-assistant] Failed to load settle-credits:", e);
+    }
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -231,6 +239,7 @@ Deno.serve(async (req) => {
                 const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
                 const orgId = await resolveOrgIdFromUser(userId, adminClient);
                 if (orgId) {
+                  const { settleCredits } = await import("../_shared/settle-credits.ts");
                   settleCredits(adminClient, {
                     organizationId: orgId, userId,
                     aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,

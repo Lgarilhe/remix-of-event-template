@@ -1,7 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -157,7 +156,17 @@ Deno.serve(async (req) => {
 
     const _body = await req.json();
     const { job } = _body as { job: Job };
-    const _aiParams = extractAIParams(_body, "filter_generation");
+
+    // Lazy import to avoid crashing the function if _shared modules have issues
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "filter_generation", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(_body, "filter_generation");
+    } catch (e) {
+      console.warn("[generate-search-filters] Failed to load settle-credits, using defaults:", e);
+    }
 
     if (!job) {
       return new Response(
@@ -672,16 +681,17 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     // Settle credits (fire-and-forget)
     if (_tokensIn + _tokensOut > 0) {
       try {
+        const { settleCredits } = await import("../_shared/settle-credits.ts");
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const orgId = await resolveOrgIdFromUser(auth.userId, svc);
+        const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const orgId = await resolveOrgIdFromUser(auth.userId, svcSettle);
         if (orgId) {
-          settleCredits(svc, {
+          settleCredits(svcSettle, {
             organizationId: orgId, userId: auth.userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
-          }).catch((e) => console.warn("[generate-search-filters] settle error:", e));
+          }).catch((e: unknown) => console.warn("[generate-search-filters] settle error:", e));
         }
       } catch (e) { console.warn("[generate-search-filters] settle skipped:", e); }
     }

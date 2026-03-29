@@ -1,7 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
-import { getAnthropicModelId } from "../_shared/ai-config.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -296,7 +295,15 @@ Deno.serve(async (req) => {
 
     const _body = await req.json();
     const { chat_id, account_id, sender_id, organization_id } = _body;
-    const _aiParams = extractAIParams(_body, "auto_analyze_message");
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "auto_analyze_message", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(_body, "auto_analyze_message");
+    } catch (e) {
+      console.warn("[auto-analyze-message] Failed to load settle-credits:", e);
+    }
 
     // Resolve org-specific credentials (Unipile + Notion)
     await resolveOrgCredentials(organization_id);
@@ -597,6 +604,7 @@ Deno.serve(async (req) => {
         const settleUserId = sender_id || 'system';
         const orgId = organization_id || await resolveOrgIdFromUser(settleUserId, adminClient).catch(() => null);
         if (orgId) {
+          const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {
             organizationId: orgId, userId: settleUserId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
