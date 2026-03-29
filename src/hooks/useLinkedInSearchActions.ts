@@ -435,19 +435,18 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
 
   // AI-generated keyword-based skills → inject into Boolean keywords for broader matching
   if (filters.skills_keywords?.length) {
-    const existingKeywords = (baseParams.keywords || '').toLowerCase();
+    const currentKeywords = typeof baseParams.keywords === 'string' ? baseParams.keywords : '';
+    const existingKeywords = currentKeywords.toLowerCase();
     const newSkills = (filters.skills_keywords as string[])
-      .filter(s => !existingKeywords.includes(s.toLowerCase()))
-      .map(s => `"${s.replace(/"/g, '')}"`) // Sanitize quotes
+      .filter((skill) => !existingKeywords.includes(skill.toLowerCase()))
+      .map((skill) => `"${skill.replace(/"/g, '')}"`) // Sanitize quotes
       .slice(0, 5); // Max 5 skills to avoid overly long Boolean
 
     if (newSkills.length > 0) {
       const skillsGroup = newSkills.join(' OR ');
-      if (baseParams.keywords) {
-        baseParams.keywords = `(${baseParams.keywords}) AND (${skillsGroup})`;
-      } else {
-        baseParams.keywords = skillsGroup;
-      }
+      baseParams.keywords = currentKeywords
+        ? `(${currentKeywords}) AND (${skillsGroup})`
+        : skillsGroup;
     }
   }
 
