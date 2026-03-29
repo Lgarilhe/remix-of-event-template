@@ -1,7 +1,5 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
-import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -367,10 +365,23 @@ Deno.serve(async (req) => {
     };
 
     // Resolve AI model from frontend
-    const _aiParams = extractAIParams(_body, "outreach_message");
-    const _resolvedAnthropicModel = getAnthropicModelId(_aiParams.modelId).startsWith("claude-")
-      ? getAnthropicModelId(_aiParams.modelId)
-      : "claude-sonnet-4-6";
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "outreach_message", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(_body, "outreach_message");
+    } catch (e) {
+      console.warn("[generate-outreach-message] Failed to load settle-credits:", e);
+    }
+    let _resolvedAnthropicModel = "claude-sonnet-4-6";
+    try {
+      const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
+      const resolved = getAnthropicModelId(_aiParams.modelId);
+      _resolvedAnthropicModel = resolved.startsWith("claude-") ? resolved : "claude-sonnet-4-6";
+    } catch (e) {
+      console.warn("[generate-outreach-message] Failed to load ai-config:", e);
+    }
     
     // Build Calendly link with pre-filled fields (LinkedIn URL + name)
     const buildCalendlyPrefill = (base: string, linkedInUrl?: string, name?: string): string => {
@@ -992,6 +1003,7 @@ Réponds UNIQUEMENT en JSON valide:
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const orgId = await resolveOrgIdFromUser(userId, svc);
         if (orgId) {
+          const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(svc, {
             organizationId: orgId, userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,

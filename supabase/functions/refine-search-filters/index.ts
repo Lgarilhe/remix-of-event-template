@@ -1,7 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,7 +48,15 @@ Deno.serve(async (req) => {
     const _body = await req.json();
     const { currentFilters, internalFilters, totalResults, resultCount, jobTitle, jobLocation, direction } =
       _body as RefineRequest;
-    const _aiParams = extractAIParams(_body, "refine_search");
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "refine_search", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(_body, "refine_search");
+    } catch (e) {
+      console.warn("[refine-search-filters] Failed to load settle-credits:", e);
+    }
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
@@ -174,6 +181,7 @@ ${JSON.stringify(currentFilters, null, 2)}`;
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const orgId = await resolveOrgIdFromUser(userId, svc);
         if (orgId) {
+          const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(svc, {
             organizationId: orgId, userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,

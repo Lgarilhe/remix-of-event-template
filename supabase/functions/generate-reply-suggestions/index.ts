@@ -1,8 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
-import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
-import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 // Timeout wrapper for fetch calls
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -383,7 +381,15 @@ Deno.serve(async (req) => {
 
     const _body = await req.json() as { context: ChatContext };
     const { context } = _body;
-    const _aiParams = extractAIParams(_body, "reply_suggestion");
+    let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
+      aiAction: "reply_suggestion", modelId: "claude-sonnet-4-6", description: null,
+    };
+    try {
+      const { extractAIParams } = await import("../_shared/settle-credits.ts");
+      _aiParams = extractAIParams(_body, "reply_suggestion");
+    } catch (e) {
+      console.warn("[generate-reply-suggestions] Failed to load settle-credits:", e);
+    }
 
     // Fetch org_id for RAG
     let orgId: string | null = null;
@@ -624,6 +630,7 @@ Réponds UNIQUEMENT en JSON valide:
         const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const orgId2 = await resolveOrgIdFromUser(userId, adminClient);
         if (orgId2) {
+          const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {
             organizationId: orgId2, userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
