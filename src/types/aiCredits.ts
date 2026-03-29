@@ -177,14 +177,16 @@ export interface CreditTransaction {
   organization_id: string;
   user_id: string;
   action: string;
+  amount: number;
   credits_used: number;
   tokens_input: number;
   tokens_output: number;
-  model_id: string;
+  model_id: string | null;
   cost_usd: number;
   source: "plan" | "topup" | "mixed";
+  balance_after: number;
   description: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 }
 

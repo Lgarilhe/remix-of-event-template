@@ -118,6 +118,8 @@ export type Database = {
           organization_id: string
           period_end: string
           period_start: string
+          plan_credits: number
+          topup_credits: number
           updated_at: string
         }
         Insert: {
@@ -128,6 +130,8 @@ export type Database = {
           organization_id: string
           period_end?: string
           period_start?: string
+          plan_credits?: number
+          topup_credits?: number
           updated_at?: string
         }
         Update: {
@@ -138,6 +142,8 @@ export type Database = {
           organization_id?: string
           period_end?: string
           period_start?: string
+          plan_credits?: number
+          topup_credits?: number
           updated_at?: string
         }
         Relationships: [
@@ -155,33 +161,51 @@ export type Database = {
           action: string
           amount: number
           balance_after: number
+          cost_usd: number
           created_at: string
+          credits_used: number
           description: string | null
           id: string
           metadata: Json | null
+          model_id: string | null
           organization_id: string
+          source: string
+          tokens_input: number
+          tokens_output: number
           user_id: string
         }
         Insert: {
           action: string
           amount: number
           balance_after: number
+          cost_usd?: number
           created_at?: string
+          credits_used?: number
           description?: string | null
           id?: string
           metadata?: Json | null
+          model_id?: string | null
           organization_id: string
+          source?: string
+          tokens_input?: number
+          tokens_output?: number
           user_id: string
         }
         Update: {
           action?: string
           amount?: number
           balance_after?: number
+          cost_usd?: number
           created_at?: string
+          credits_used?: number
           description?: string | null
           id?: string
           metadata?: Json | null
+          model_id?: string | null
           organization_id?: string
+          source?: string
+          tokens_input?: number
+          tokens_output?: number
           user_id?: string
         }
         Relationships: [
@@ -1732,6 +1756,53 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      credit_purchases: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          credits: number
+          currency: string
+          id: string
+          organization_id: string
+          pack_id: string | null
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount_cents?: number
+          created_at?: string
+          credits?: number
+          currency?: string
+          id?: string
+          organization_id: string
+          pack_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          credits?: number
+          currency?: string
+          id?: string
+          organization_id?: string
+          pack_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_purchases_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       email_send_log: {
         Row: {
