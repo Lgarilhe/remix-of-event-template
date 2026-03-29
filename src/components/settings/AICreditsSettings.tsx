@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAICredits, useAICreditHistory, AI_CREDIT_COSTS } from '@/hooks/useAICredits';
-import { estimateCredits, CREDIT_PACKS, MODEL_CATALOG, TIER_ICONS } from '@/types/aiCredits';
+import { estimateCredits, CREDIT_PACKS, MODEL_CATALOG } from '@/types/aiCredits';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useModelPreference } from '@/hooks/useModelPreference';
+import { ModelLogo, ProviderLabel } from '@/components/ai/ModelLogo';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -173,8 +174,9 @@ export const AICreditsSettings = () => {
               {Object.values(MODEL_CATALOG).map((model) => (
                 <SelectItem key={model.id} value={model.id}>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{TIER_ICONS[model.tier]}</span>
+                    <ModelLogo modelId={model.id} size={16} />
                     <span className="font-medium">{model.name}</span>
+                    <ProviderLabel modelId={model.id} />
                     <span className="text-xs text-muted-foreground">— {model.description}</span>
                     <span className="text-xs font-medium ml-auto">×{model.multiplier}</span>
                   </div>

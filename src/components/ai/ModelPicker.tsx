@@ -2,11 +2,9 @@ import { useState } from 'react';
 import {
   MODEL_CATALOG,
   ACTION_COSTS,
-  TIER_ICONS,
   TIER_LABELS,
   estimateCredits,
   resolveModel,
-  type AIModel,
   type RoutingTier,
 } from '@/types/aiCredits';
 import {
@@ -18,20 +16,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ModelLogo, ProviderLabel } from './ModelLogo';
 import { cn } from '@/lib/utils';
 
 interface ModelPickerProps {
-  /** The AI action this picker is for (determines routing tier & estimation) */
   actionId: string;
-  /** Currently selected model override (null = auto) */
   value?: string | null;
-  /** Called when user selects a model */
   onChange: (modelId: string | null) => void;
-  /** Organization default model */
   orgDefault?: string | null;
-  /** Compact mode — just shows the badge, no label */
   compact?: boolean;
-  /** Disable interaction */
   disabled?: boolean;
 }
 
@@ -72,7 +65,7 @@ export const ModelPicker = ({
             !compact && "min-w-[140px]"
           )}
         >
-          <span className="text-[10px]">{TIER_ICONS[resolvedModel?.tier ?? 'balanced']}</span>
+          <ModelLogo modelId={resolvedModelId} size={14} />
           {!compact && (
             <span className="truncate text-muted-foreground">
               {resolvedModel?.name ?? 'Sonnet 4.6'}
@@ -87,13 +80,12 @@ export const ModelPicker = ({
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
           Choisir le modèle IA
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        {/* Auto option */}
         <DropdownMenuRadioGroup
           value={value ?? '__auto__'}
           onValueChange={(v) => {
@@ -101,10 +93,13 @@ export const ModelPicker = ({
             setOpen(false);
           }}
         >
-          <DropdownMenuRadioItem value="__auto__" className="cursor-pointer">
+          {/* Auto option */}
+          <DropdownMenuRadioItem value="__auto__" className="cursor-pointer py-2.5">
             <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px]">🔄</span>
+              <div className="flex items-center gap-2.5">
+                <div className="w-5 h-5 rounded-sm bg-muted flex items-center justify-center">
+                  <span className="text-[10px]">🔄</span>
+                </div>
                 <div>
                   <p className="text-sm font-medium">Auto</p>
                   <p className="text-[10px] text-muted-foreground">
@@ -130,23 +125,26 @@ export const ModelPicker = ({
               <DropdownMenuRadioItem
                 key={modelId}
                 value={modelId}
-                className="cursor-pointer"
+                className="cursor-pointer py-2.5"
               >
                 <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px]">{TIER_ICONS[model.tier]}</span>
+                  <div className="flex items-center gap-2.5">
+                    <ModelLogo modelId={modelId} size={18} />
                     <div>
-                      <p className="text-sm">
-                        {model.name}
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium">{model.name}</p>
                         {isRecommended && (
-                          <span className="ml-1.5 text-[9px] text-muted-foreground uppercase">rec.</span>
+                          <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-foreground/10 text-foreground rounded-sm">rec.</span>
                         )}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">{model.description}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <ProviderLabel modelId={modelId} />
+                        <span className="text-[10px] text-muted-foreground">· {model.description}</span>
+                      </div>
                     </div>
                   </div>
                   <span className={cn(
-                    "text-xs font-medium whitespace-nowrap",
+                    "text-xs font-bold whitespace-nowrap ml-2",
                     model.tier === 'premium' && "text-amber-600",
                     model.tier === 'budget' && "text-emerald-600"
                   )}>
