@@ -79,7 +79,8 @@ interface GeneratedFilters {
 }
 
 // TOP French Engineering Schools - used when job explicitly requires "top X" schools
-const TOP_SCHOOLS = [
+// Top French engineering schools
+const TOP_ENGINEERING_SCHOOLS = [
   { id: "14034", name: "École Polytechnique" },
   { id: "14803", name: "CentraleSupélec" },
   { id: "15092675", name: "Mines Paris - PSL" },
@@ -97,7 +98,32 @@ const TOP_SCHOOLS = [
   { id: "12446", name: "ISAE-SUPAERO" },
   { id: "12451", name: "ISEP" },
   { id: "12440", name: "EPITA" },
+  { id: "12435", name: "INSA Lyon" },
+  { id: "12460", name: "INSA Toulouse" },
+  { id: "12456", name: "Polytech Nice" },
+  { id: "167703", name: "ENSAE Paris" },
 ];
+
+// Top French business schools
+const TOP_BUSINESS_SCHOOLS = [
+  { id: "14304", name: "HEC Paris" },
+  { id: "14296", name: "ESSEC Business School" },
+  { id: "14298", name: "ESCP Business School" },
+  { id: "14310", name: "EM Lyon Business School" },
+  { id: "14302", name: "EDHEC Business School" },
+  { id: "166993", name: "Sciences Po" },
+  { id: "14312", name: "Grenoble École de Management" },
+  { id: "14316", name: "SKEMA Business School" },
+  { id: "14306", name: "Audencia Business School" },
+  { id: "14314", name: "Neoma Business School" },
+  { id: "14318", name: "Kedge Business School" },
+  { id: "14300", name: "Toulouse Business School" },
+  { id: "166675", name: "Paris-Dauphine University" },
+  { id: "14308", name: "IESEG School of Management" },
+];
+
+// Combined list — used when job mentions "top schools" / "grandes écoles"
+const TOP_SCHOOLS = [...TOP_ENGINEERING_SCHOOLS, ...TOP_BUSINESS_SCHOOLS];
 
 // ESN companies to deprioritize
 const ESN_KEYWORDS = [
@@ -531,13 +557,17 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     const jobTextForSchools = `${job.description || ''} ${job.requirements || ''} ${job.sourcingCriteria || ''} ${job.mustHave || ''} ${job.shouldHave || ''}`.toLowerCase();
     
     // Regex pour détecter "top X" avec X = nombre ou "écoles"
-    const topMatch = jobTextForSchools.match(/top\s*(\d+|écoles?|schools?|ingé|engineering)/i);
+    // Detect school requirements: "top X schools", "grandes écoles", "école de commerce", "business school", "école d'ingénieur"
+    const topMatch = jobTextForSchools.match(/top\s*(\d+|écoles?|schools?|ingé|engineering|commerce|business)/i);
+    const wantsEngineering = /ingé|engineering|technique|polytechnique/i.test(jobTextForSchools);
+    const wantsBusiness = /commerce|business\s*school|gestion|management|MBA|finance/i.test(jobTextForSchools);
+    const wantsGrandesEcoles = /grandes?\s*écoles?/i.test(jobTextForSchools);
     let schoolFilters: SchoolFilter[] = [];
-    
-    if (topMatch) {
-      let topCount = 17; // Par défaut toutes les écoles
-      const matchValue = topMatch[1]?.toLowerCase();
-      
+
+    if (topMatch || wantsGrandesEcoles) {
+      let topCount = TOP_SCHOOLS.length;
+      const matchValue = topMatch?.[1]?.toLowerCase();
+
       if (matchValue && /^\d+$/.test(matchValue)) {
         topCount = Math.min(parseInt(matchValue, 10), TOP_SCHOOLS.length);
       } else if (matchValue?.includes('5') || matchValue === '5') {
@@ -545,14 +575,25 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
       } else if (matchValue?.includes('10') || matchValue === '10') {
         topCount = 10;
       }
-      
-      console.log(`[generate-search-filters] Detected TOP ${topCount} schools requirement`);
-      
-      // Prendre les N premières écoles (déjà triées par prestige)
-      schoolFilters = TOP_SCHOOLS.slice(0, topCount).map(school => ({
+
+      // Select the right school list based on context
+      let selectedSchools;
+      if (wantsBusiness && !wantsEngineering) {
+        selectedSchools = TOP_BUSINESS_SCHOOLS.slice(0, topCount);
+        console.log(`[generate-search-filters] Detected business school requirement (${selectedSchools.length} schools)`);
+      } else if (wantsEngineering && !wantsBusiness) {
+        selectedSchools = TOP_ENGINEERING_SCHOOLS.slice(0, topCount);
+        console.log(`[generate-search-filters] Detected engineering school requirement (${selectedSchools.length} schools)`);
+      } else {
+        // Both or "grandes écoles" → all schools
+        selectedSchools = TOP_SCHOOLS.slice(0, topCount);
+        console.log(`[generate-search-filters] Detected TOP ${selectedSchools.length} schools requirement (all types)`);
+      }
+
+      schoolFilters = selectedSchools.map(school => ({
         id: school.id,
         name: school.name,
-        priority: 'CAN_HAVE' as const, // OR logic entre les écoles
+        priority: 'CAN_HAVE' as const,
       }));
     }
 

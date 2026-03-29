@@ -397,6 +397,31 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
   if (filters.company_headcount.length) baseParams.company_headcount = filters.company_headcount;
   if (filters.company_type.length) baseParams.company_type = filters.company_type;
 
+  // Smart company filters — exclude consulting/ESN
+  if (filters.exclude_consulting) {
+    // Exclude IT Services & Consulting industry via industry filter
+    const consultingIndustries = ['96', '4', '104']; // IT Services, Staffing, Outsourcing LinkedIn IDs
+    const currentIndustry = baseParams.industry as any;
+    if (currentIndustry?.exclude) {
+      currentIndustry.exclude.push(...consultingIndustries);
+    } else {
+      baseParams.industry = { ...(currentIndustry || {}), exclude: consultingIndustries };
+    }
+  }
+
+  // Smart company filters — company category (startup/scaleup/enterprise)
+  if (filters.company_category) {
+    const headcountMap: Record<string, string[]> = {
+      startup: ['B', 'C', 'D'],      // 1-200 employees
+      scaleup: ['D', 'E', 'F'],      // 51-1000 employees
+      enterprise: ['G', 'H', 'I'],   // 1001+ employees
+    };
+    const codes = headcountMap[filters.company_category];
+    if (codes && !filters.company_headcount.length) {
+      baseParams.company_headcount = codes;
+    }
+  }
+
   // Past filters
   if (filters.past_company.length) {
     baseParams.past_company = { include: filters.past_company.map(f => f.id) };

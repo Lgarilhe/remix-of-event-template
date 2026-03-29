@@ -155,6 +155,10 @@ export interface LinkedInFiltersState {
   skills_keywords: string[];              // Skills/certs/domains identified by AI
   industry_keywords: string[];            // Industries identified by AI
 
+  // Company type filters (smart filtering)
+  exclude_consulting: boolean;            // Exclude ESN/consulting firms (IT Services industry)
+  company_category: 'all' | 'startup' | 'scaleup' | 'enterprise' | ''; // Filter by company size category
+
   // Activity filters (Recruiter specific)
   activity_messages: ActivityMessageType;  // with_message, without_message
   activity_messages_days: number | null;   // Since X days (null = all time)
@@ -207,6 +211,9 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   // AI-generated keyword filters
   skills_keywords: [],
   industry_keywords: [],
+  // Company type filters
+  exclude_consulting: false,
+  company_category: '',
   // Activity filters
   activity_messages: 'without_message',
   activity_messages_days: 90,
