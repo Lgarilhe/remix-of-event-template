@@ -251,9 +251,8 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
         if (resolvedLocations.length > 0) {
           update.location = resolvedLocations;
-        } else {
-          update.location = [];
         }
+        // Don't set location = [] — preserve user's existing location if resolution fails
       }
 
       // Company keywords (e.g., exclude client)

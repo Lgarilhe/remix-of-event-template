@@ -410,28 +410,28 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
 
   // AI-generated keyword-based skills → inject into Boolean keywords for broader matching
   if (filters.skills_keywords?.length) {
-    // Add skills as additional keywords in the Boolean search if not already present
     const existingKeywords = (baseParams.keywords || '').toLowerCase();
-    const newSkills = filters.skills_keywords.filter(
-      (s: string) => !existingKeywords.includes(s.toLowerCase())
-    );
-    if (newSkills.length > 0 && baseParams.keywords) {
-      // Append as OR group: existing AND (skill1 OR skill2 OR ...)
-      const skillsGroup = newSkills.map((s: string) => `"${s}"`).join(' OR ');
-      baseParams.keywords = `${baseParams.keywords} AND (${skillsGroup})`;
+    const newSkills = (filters.skills_keywords as string[])
+      .filter(s => !existingKeywords.includes(s.toLowerCase()))
+      .map(s => `"${s.replace(/"/g, '')}"`) // Sanitize quotes
+      .slice(0, 5); // Max 5 skills to avoid overly long Boolean
+
+    if (newSkills.length > 0) {
+      const skillsGroup = newSkills.join(' OR ');
+      if (baseParams.keywords) {
+        baseParams.keywords = `(${baseParams.keywords}) AND (${skillsGroup})`;
+      } else {
+        baseParams.keywords = skillsGroup;
+      }
     }
   }
 
-  // AI-generated industry keywords → send as industry filter if no ID-based industry set
+  // AI-generated industry keywords → add as context in keywords if no ID-based industry
   if (filters.industry_keywords?.length && !filters.industry?.length) {
-    // Unipile supports keyword-based industry on some APIs
-    // For recruiter, inject into keywords Boolean as context
-    const industryTerms = filters.industry_keywords.join(' OR ');
-    if (baseParams.keywords && industryTerms) {
-      // Don't add to Boolean (too restrictive) — but include in role scope hint
-      // For now, add as metadata for the edge function to use
-      baseParams.industry_keywords = filters.industry_keywords;
-    }
+    // Industry keywords are best used as soft context, not hard filters
+    // We DON'T inject into Boolean (too restrictive) but we CAN use them
+    // to enrich the role filter or as metadata for scoring
+    baseParams.industry_keywords = filters.industry_keywords;
   }
 
   return baseParams;
