@@ -1020,16 +1020,23 @@ ${workExpText}
 
 3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
 
-4. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
+4. **Qualité des expériences & pedigree** : Évalue la QUALITÉ des entreprises où le candidat a travaillé.
+   → **Bonus** : scale-ups reconnues (Doctolib, Alan, Datadog, Contentsquare, Mirakl, etc.), GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1 (McKinsey, BCG, etc.), grandes écoles/universités prestigieuses.
+   → **Bonus modéré** : startups funded (même petites), entreprises tech reconnues dans leur niche, PME innovantes, cabinets spécialisés reconnus.
+   → **Neutre** : entreprises classiques (grands groupes CAC40, administrations, PME traditionnelles).
+   → **Signal négatif** : ESN/SSII de basse qualité connues pour le body shopping (Alten, Altran, Capgemini Engineering, Sopra, CGI = neutre-négatif), cabinets de recrutement/intérim généralistes, expériences exclusivement dans des pays low-cost (offshore).
+   → Un parcours dans des entreprises exigeantes indique un candidat sélectionné et formé à haut niveau. Mentionne les entreprises notables dans strengths.
 
-5. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
+5. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
 
-6. **Score global** (0-100) : Ta note finale de correspondance candidat/poste.
+6. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
+
+7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste. Intègre la qualité du pedigree dans le score global — un candidat avec les bonnes compétences ET un parcours dans des boîtes exigeantes mérite un score supérieur à un profil équivalent dans des ESN.
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
-{"techFitScore":N,"softSkillsScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null}
-mustHavePassed: "passed" (critère validé), "failed" (clairement KO), ou "uncertain" (pas assez d'info → à vérifier manuellement)`,
+{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3 noms d'entreprises notables du parcours, ou null"]}
+pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "failed" / "uncertain".`,
   );
 
   let lastError: Error | null = null;
@@ -1085,13 +1092,15 @@ mustHavePassed: "passed" (critère validé), "failed" (clairement KO), ou "uncer
     overallScore: parsed.overallScore ?? parsed.softSkillsScore ?? 50,
     techFitScore: parsed.techFitScore ?? 50,
     softSkillsScore: parsed.softSkillsScore ?? 50,
+    pedigreeScore: parsed.pedigreeScore ?? null,
     matchedSkills: parsed.matchedSkills || [],
     missingCriticalSkills: parsed.missingCriticalSkills || [],
     summary: parsed.summary || "",
     strengths: parsed.strengths || [],
     concerns: parsed.concerns || [],
-    mustHavePassed: parsed.mustHavePassed === "failed" ? false : true, // "passed" or "uncertain" → proceed, "failed" → KO
-    mustHaveUncertain: parsed.mustHavePassed === "uncertain", // Flag for manual review
+    notableCompanies: parsed.notableCompanies || null,
+    mustHavePassed: parsed.mustHavePassed === "failed" ? false : true,
+    mustHaveUncertain: parsed.mustHavePassed === "uncertain",
     mustHaveDetails: parsed.mustHaveDetails || null,
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
@@ -1525,6 +1534,8 @@ async function scoreProfile(
     weightedCriteriaScore: weighted.score,
     semanticScore,
     llmScore: llmResult?.overallScore ?? null,
+    pedigreeScore: (llmResult as any)?.pedigreeScore ?? null,
+    notableCompanies: (llmResult as any)?.notableCompanies ?? null,
     finalScore,
     confidenceScore: weighted.confidenceScore,
     dimensions: weighted.dimensions,
