@@ -115,7 +115,7 @@ interface ScoringResult {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 // Default model — can be overridden per-request via _ai_model
-const CLAUDE_MODEL_DEFAULT = "claude-sonnet-4-6-20250627";
+const CLAUDE_MODEL_DEFAULT = "claude-sonnet-4-6-20260217";
 const BATCH_SIZE = 5;
 const DELAY_BETWEEN_BATCHES_MS = 200;
 const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
