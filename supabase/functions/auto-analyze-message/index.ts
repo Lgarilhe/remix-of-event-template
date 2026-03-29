@@ -1,5 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -189,7 +191,7 @@ async function fetchChatDetails(chatId: string): Promise<{ attendeeName?: string
 }
 
 // ─── AI Analysis (lightweight) ────────────────────────────────────
-async function analyzeIntent(messages: Array<{ text: string; is_sender: boolean }>, candidateName: string): Promise<{ intent: string; confidence: number; summary: string } | null> {
+async function analyzeIntent(messages: Array<{ text: string; is_sender: boolean }>, candidateName: string): Promise<{ intent: string; confidence: number; summary: string; _tokensIn: number; _tokensOut: number } | null> {
   if (!ANTHROPIC_API_KEY) {
     console.error('[auto-analyze] ANTHROPIC_API_KEY not set');
     return null;
@@ -249,14 +251,18 @@ Réponds UNIQUEMENT en JSON strict:
     }
 
     const data = await response.json();
+    const tokIn = data.usage?.input_tokens || 0;
+    const tokOut = data.usage?.output_tokens || 0;
     let content = data.content?.[0]?.text || "";
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
+
     const result = JSON.parse(content);
     return {
       intent: result.intent || 'neutral',
       confidence: Math.min(100, Math.max(0, result.confidence || 0)),
       summary: result.summary || '',
+      _tokensIn: tokIn,
+      _tokensOut: tokOut,
     };
   } catch (err) {
     console.error('[auto-analyze] Analysis error:', err);
@@ -288,8 +294,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { chat_id, account_id, sender_id, organization_id } = await req.json();
-    
+    const _body = await req.json();
+    const { chat_id, account_id, sender_id, organization_id } = _body;
+    const _aiParams = extractAIParams(_body, "auto_analyze_message");
+
     // Resolve org-specific credentials (Unipile + Notion)
     await resolveOrgCredentials(organization_id);
 
@@ -578,8 +586,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
+    // ── Settle AI credits (fire-and-forget) ──
+    const _tokensIn = analysis?._tokensIn || 0;
+    const _tokensOut = analysis?._tokensOut || 0;
+    if (_tokensIn + _tokensOut > 0) {
+      try {
+        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        // Use organization_id from body, or resolve from any available user
+        const settleUserId = sender_id || 'system';
+        const orgId = organization_id || await resolveOrgIdFromUser(settleUserId, adminClient).catch(() => null);
+        if (orgId) {
+          settleCredits(adminClient, {
+            organizationId: orgId, userId: settleUserId,
+            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            tokensInput: _tokensIn, tokensOutput: _tokensOut,
+            description: _aiParams.description,
+          }).catch((e) => console.warn("[auto-analyze-message] settle error:", e));
+        }
+      } catch (e) { console.warn("[auto-analyze-message] settle skipped:", e); }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
       analysis,
       cacheWritten,
       updatedCandidatEtat: candidatEtat || null,

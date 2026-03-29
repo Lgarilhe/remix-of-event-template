@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -154,8 +155,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { job } = await req.json() as { job: Job };
-    
+    const _body = await req.json();
+    const { job } = _body as { job: Job };
+    const _aiParams = extractAIParams(_body, "filter_generation");
+
     if (!job) {
       return new Response(
         JSON.stringify({ error: "Job is required" }),
@@ -498,9 +501,11 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     }
 
     const aiResult = await response.json();
+    const _tokensIn = aiResult.usage?.input_tokens || 0;
+    const _tokensOut = aiResult.usage?.output_tokens || 0;
     // Claude API returns content as array of blocks
     const content = aiResult.content?.[0]?.text || "";
-    
+
     console.log("[generate-search-filters] AI response:", content);
 
     // Parse JSON from response (handle potential markdown code blocks)
@@ -663,6 +668,23 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     };
 
     console.log("[generate-search-filters] Generated filters:", JSON.stringify(filters, null, 2));
+
+    // Settle credits (fire-and-forget)
+    if (_tokensIn + _tokensOut > 0) {
+      try {
+        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+        const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const orgId = await resolveOrgIdFromUser(auth.userId, svc);
+        if (orgId) {
+          settleCredits(svc, {
+            organizationId: orgId, userId: auth.userId,
+            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            tokensInput: _tokensIn, tokensOutput: _tokensOut,
+            description: _aiParams.description,
+          }).catch((e) => console.warn("[generate-search-filters] settle error:", e));
+        }
+      } catch (e) { console.warn("[generate-search-filters] settle skipped:", e); }
+    }
 
     return new Response(
       JSON.stringify({

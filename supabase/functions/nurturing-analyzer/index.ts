@@ -1,6 +1,8 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -159,6 +161,7 @@ Deno.serve(async (req) => {
     // IMPORTANT: A Request body can only be consumed once.
     const body = await req.json();
     const { action, account_id, user_id, conversations, jobs } = body;
+    const _aiParams = extractAIParams(body, "nurturing_analysis");
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY"); // Keep for intent analysis (lightweight)
@@ -218,6 +221,8 @@ Deno.serve(async (req) => {
 
       // AUTO-GENERATE messages for all opportunities (parallel, in batches of 5)
       console.log(`[nurturing-analyzer] Auto-generating messages for ${opportunities.length} opportunities`);
+      let _tokensIn = 0;
+      let _tokensOut = 0;
       const BATCH_SIZE = 5;
       for (let i = 0; i < opportunities.length; i += BATCH_SIZE) {
         const batch = opportunities.slice(i, i + BATCH_SIZE);
@@ -226,6 +231,8 @@ Deno.serve(async (req) => {
             const generated = await generateNurturingMessage(opp as unknown as Record<string, unknown>, ANTHROPIC_API_KEY);
             opp.suggested_message = generated.message;
             opp.suggested_subject = generated.subject;
+            _tokensIn += generated._tokensIn;
+            _tokensOut += generated._tokensOut;
           } catch (err) {
             console.error(`[nurturing-analyzer] Failed to generate message for ${opp.candidate_id}:`, err);
           }
@@ -273,11 +280,28 @@ Deno.serve(async (req) => {
         }
       }
 
+      // ── Settle AI credits (fire-and-forget) ──
+      if (_tokensIn + _tokensOut > 0) {
+        try {
+          const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+          const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const orgId = await resolveOrgIdFromUser(authUserId, adminClient);
+          if (orgId) {
+            settleCredits(adminClient, {
+              organizationId: orgId, userId: authUserId,
+              aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+              tokensInput: _tokensIn, tokensOutput: _tokensOut,
+              description: _aiParams.description,
+            }).catch((e) => console.warn("[nurturing-analyzer] settle error:", e));
+          }
+        } catch (e) { console.warn("[nurturing-analyzer] settle skipped:", e); }
+      }
+
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           analyzed: conversationsToAnalyze.length,
-          opportunities: opportunities.length 
+          opportunities: opportunities.length
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -428,11 +452,28 @@ Deno.serve(async (req) => {
       // Update opportunity with generated message
       await supabase
         .from('nurturing_opportunities')
-        .update({ 
+        .update({
           suggested_message: message.message,
-          suggested_subject: message.subject 
+          suggested_subject: message.subject
         })
         .eq('id', opportunity_id);
+
+      // ── Settle AI credits (fire-and-forget) ──
+      if (message._tokensIn + message._tokensOut > 0) {
+        try {
+          const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+          const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const orgId = await resolveOrgIdFromUser(authUserId, adminClient);
+          if (orgId) {
+            settleCredits(adminClient, {
+              organizationId: orgId, userId: authUserId,
+              aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+              tokensInput: message._tokensIn, tokensOutput: message._tokensOut,
+              description: _aiParams.description,
+            }).catch((e) => console.warn("[nurturing-analyzer] settle error:", e));
+          }
+        } catch (e) { console.warn("[nurturing-analyzer] settle skipped:", e); }
+      }
 
       return new Response(
         JSON.stringify({ success: true, message: message.message, subject: message.subject }),
@@ -793,7 +834,7 @@ Réponds en JSON:
 async function generateNurturingMessage(
   opportunity: Record<string, unknown>,
   apiKey: string
-): Promise<{ message: string; subject: string }> {
+): Promise<{ message: string; subject: string; _tokensIn: number; _tokensOut: number }> {
   const triggerMessages: Record<string, string> = {
     silence: "Relance après silence - maintenir le contact",
     new_job_match: "Nouveau poste correspondant au profil",
@@ -885,18 +926,24 @@ Réponds UNIQUEMENT en JSON:
     }
 
     const data = await response.json();
+    const tokIn = data.usage?.input_tokens || 0;
+    const tokOut = data.usage?.output_tokens || 0;
     let content = data.content?.[0]?.text || "";
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
+
     const parsed = JSON.parse(content);
     return {
       message: parsed.message || "Je voulais prendre de tes nouvelles. Dispo pour un call cette semaine ?",
       subject: parsed.subject || "Suite à notre échange",
+      _tokensIn: tokIn,
+      _tokensOut: tokOut,
     };
   } catch {
     return {
       message: "Je voulais prendre de tes nouvelles. Dispo pour un call cette semaine ?",
       subject: "Suite à notre échange",
+      _tokensIn: 0,
+      _tokensOut: 0,
     };
   }
 }

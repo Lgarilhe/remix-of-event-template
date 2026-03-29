@@ -1,5 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -281,7 +283,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { conversation_id, message, job_context } = await req.json();
+    const body = await req.json();
+    const { conversation_id, message, job_context } = body;
+    const _aiParams = extractAIParams(body, "agent_search_calibration");
 
     if (!conversation_id || !message) {
       return new Response(JSON.stringify({ error: "conversation_id and message required" }), {
@@ -402,6 +406,8 @@ Deno.serve(async (req) => {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let fullResponse = "";
+    let _tokensIn = 0;
+    let _tokensOut = 0;
 
     const transformedStream = new ReadableStream({
       async start(controller) {
@@ -437,6 +443,23 @@ Deno.serve(async (req) => {
                   .update({ search_config: metadata.search_plan, status: "plan_proposed" })
                   .eq("id", conversation_id);
               }
+            }
+
+            // Settle AI credits (fire-and-forget)
+            if (_tokensIn + _tokensOut > 0) {
+              try {
+                const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const orgId = await resolveOrgIdFromUser(user.id, adminClient);
+                if (orgId) {
+                  settleCredits(adminClient, {
+                    organizationId: orgId, userId: user.id,
+                    aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+                    tokensInput: _tokensIn, tokensOutput: _tokensOut,
+                    description: _aiParams.description,
+                  }).catch((e) => console.warn("[search-agent-chat] settle error:", e));
+                }
+              } catch (e) { console.warn("[search-agent-chat] settle skipped:", e); }
             }
 
             // Emit done event so the client knows the DB is up to date
@@ -478,6 +501,14 @@ Deno.serve(async (req) => {
                     const chunk = { choices: [{ delta: { content: text }, index: 0 }] };
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
                   }
+                }
+
+                // Capture token usage
+                if (event.type === "message_start" && event.message?.usage) {
+                  _tokensIn = event.message.usage.input_tokens || 0;
+                }
+                if (event.type === "message_delta" && event.usage) {
+                  _tokensOut = event.usage.output_tokens || 0;
                 }
               } catch {}
             }

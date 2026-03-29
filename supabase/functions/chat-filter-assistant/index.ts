@@ -1,5 +1,7 @@
 // Deno.serve used directly
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +144,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { messages } = await req.json() as { messages: Message[] };
+    const _body = await req.json();
+    const { messages } = _body as { messages: Message[] };
+    const _aiParams = extractAIParams(_body, "filter_assistant_msg");
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -210,13 +214,32 @@ Deno.serve(async (req) => {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
+    let _tokensIn = 0;
+    let _tokensOut = 0;
+
     const transformedStream = new ReadableStream({
       async start(controller) {
         let buffer = "";
-        
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
+            // Settle credits at stream end (fire-and-forget)
+            if (_tokensIn + _tokensOut > 0) {
+              try {
+                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+                const orgId = await resolveOrgIdFromUser(userId, adminClient);
+                if (orgId) {
+                  settleCredits(adminClient, {
+                    organizationId: orgId, userId,
+                    aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+                    tokensInput: _tokensIn, tokensOutput: _tokensOut,
+                    description: _aiParams.description,
+                  }).catch((e) => console.warn("[chat-filter-assistant] settle error:", e));
+                }
+              } catch (e) { console.warn("[chat-filter-assistant] settle skipped:", e); }
+            }
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
             break;
@@ -233,7 +256,15 @@ Deno.serve(async (req) => {
 
               try {
                 const event = JSON.parse(jsonStr);
-                
+
+                // Capture token usage from SSE events
+                if (event.type === "message_start" && event.message?.usage) {
+                  _tokensIn = event.message.usage.input_tokens || 0;
+                }
+                if (event.type === "message_delta" && event.usage) {
+                  _tokensOut = event.usage.output_tokens || 0;
+                }
+
                 // Extract text from Anthropic format
                 let text = "";
                 if (event.type === "content_block_delta" && event.delta?.text) {

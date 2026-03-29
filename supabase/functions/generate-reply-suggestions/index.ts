@@ -1,5 +1,8 @@
 // Deno.serve used directly
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 // Timeout wrapper for fetch calls
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -378,7 +381,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { context } = await req.json() as { context: ChatContext };
+    const _body = await req.json() as { context: ChatContext };
+    const { context } = _body;
+    const _aiParams = extractAIParams(_body, "reply_suggestion");
 
     // Fetch org_id for RAG
     let orgId: string | null = null;
@@ -605,16 +610,35 @@ Réponds UNIQUEMENT en JSON valide:
     }
 
     const data = await response.json();
+    let _tokensIn = data.usage?.input_tokens || 0;
+    let _tokensOut = data.usage?.output_tokens || 0;
     let content = data.content?.[0]?.text || "";
-    
+
     // Clean up potential markdown code blocks
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
+    // ── Settle AI credits (fire-and-forget) ──
+    if (_tokensIn + _tokensOut > 0) {
+      try {
+        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+        const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const orgId2 = await resolveOrgIdFromUser(userId, adminClient);
+        if (orgId2) {
+          settleCredits(adminClient, {
+            organizationId: orgId2, userId,
+            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            tokensInput: _tokensIn, tokensOutput: _tokensOut,
+            description: _aiParams.description,
+          }).catch((e) => console.warn("[generate-reply-suggestions] settle error:", e));
+        }
+      } catch (e) { console.warn("[generate-reply-suggestions] settle skipped:", e); }
+    }
+
     try {
       const result = JSON.parse(content);
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           suggestions: result.suggestions || [],
           infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined,
           detectedLanguage,
@@ -644,6 +668,8 @@ Réponds UNIQUEMENT en JSON valide:
         clearTimeout(retryTimeout);
         if (retryRes.ok) {
           const retryData = await retryRes.json();
+          _tokensIn += retryData.usage?.input_tokens || 0;
+          _tokensOut += retryData.usage?.output_tokens || 0;
           let retryContent = retryData.content?.[0]?.text || "";
           retryContent = retryContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           const retryResult = JSON.parse(retryContent);

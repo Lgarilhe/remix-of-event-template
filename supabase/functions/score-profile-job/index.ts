@@ -1,6 +1,8 @@
 // Deno.serve used directly
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,7 +115,9 @@ interface ScoringResult {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+// Default model — can be overridden by _ai_model from frontend
+const CLAUDE_MODEL_DEFAULT = "claude-sonnet-4-20250514";
+let CLAUDE_MODEL = CLAUDE_MODEL_DEFAULT;
 const BATCH_SIZE = 5;
 const DELAY_BETWEEN_BATCHES_MS = 200;
 const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
@@ -1542,6 +1546,15 @@ Deno.serve(async (req) => {
       accountId?: string;
     };
 
+    // Resolve AI model from frontend override
+    const aiParams = extractAIParams(body, "scoring");
+    const anthropicModelId = getAnthropicModelId(aiParams.modelId);
+    if (anthropicModelId && anthropicModelId.startsWith("claude-")) {
+      CLAUDE_MODEL = anthropicModelId;
+    } else {
+      CLAUDE_MODEL = CLAUDE_MODEL_DEFAULT;
+    }
+
     // Input validation
     if (!job || !job.id || !job.title) {
       return new Response(JSON.stringify({ error: "Missing or invalid job data (id and title required)" }), {
@@ -1711,6 +1724,23 @@ Deno.serve(async (req) => {
     };
 
     const responseData = profiles ? { results, stats } : { result: results[0] };
+
+    // Settle credits based on actual tokens consumed (fire-and-forget)
+    if (totalTokensInput + totalTokensOutput > 0) {
+      const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      const orgId = await resolveOrgIdFromUser(userId, supabase);
+      if (orgId) {
+        settleCredits(supabase, {
+          organizationId: orgId,
+          userId,
+          aiAction: aiParams.aiAction,
+          modelId: aiParams.modelId,
+          tokensInput: totalTokensInput,
+          tokensOutput: totalTokensOutput,
+          description: aiParams.description,
+        }).catch((err) => console.warn("[score-profile-job] settle-credits error:", err));
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, ...responseData }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
