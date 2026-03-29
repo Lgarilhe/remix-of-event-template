@@ -410,6 +410,24 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     : null;
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
+  const contactInfo = useMemo(() => {
+    const rawValues = [
+      (enrichedProfile || profile)?.contact_info?.emails,
+      (enrichedProfile || profile)?.contact_info?.phones,
+      airtableMatch,
+      historyData?.candidate,
+    ].flatMap((value) => collectStrings(value));
+
+    const emails = unique(rawValues.filter((value) => EMAIL_REGEX.test(value.toLowerCase()))).slice(0, 4);
+    const phones = unique(
+      rawValues
+        .map((value) => value.replace(/\s+/g, ' ').trim())
+        .filter((value) => PHONE_REGEX.test(value) && !EMAIL_REGEX.test(value.toLowerCase()))
+    ).slice(0, 3);
+
+    return { emails, phones };
+  }, [airtableMatch, enrichedProfile, historyData?.candidate, profile]);
+
   if (!profile) return null;
 
   // Use enriched version if available (pool profiles auto-fetched from Unipile)
