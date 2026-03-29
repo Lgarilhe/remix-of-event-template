@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -24,9 +24,8 @@ import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
-import { CandidateContactInfo } from './CandidateContactInfo';
 import {
-  Building2, MapPin, TrendingUp, ExternalLink, Loader2,
+  Building2, MapPin, TrendingUp, ExternalLink, Loader2, Mail, Phone,
   Target, PenLine, Archive,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
@@ -34,6 +33,28 @@ import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const normalizeValue = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const collectStrings = (input: unknown, depth = 0): string[] => {
+  if (depth > 3 || input == null) return [];
+  if (typeof input === 'string') return normalizeValue(input) ? [input.trim()] : [];
+  if (Array.isArray(input)) return input.flatMap((item) => collectStrings(item, depth + 1));
+  if (isRecord(input)) return Object.values(input).flatMap((value) => collectStrings(value, depth + 1));
+  return [];
+};
+
+const unique = (values: string[]) => Array.from(new Set(values.map((value) => value.trim())));
 
 const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
   const [fallbackIndex, setFallbackIndex] = useState(0);
@@ -389,6 +410,24 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     : null;
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
+  const contactInfo = useMemo(() => {
+    const rawValues = [
+      (enrichedProfile || profile)?.contact_info?.emails,
+      (enrichedProfile || profile)?.contact_info?.phones,
+      airtableMatch,
+      historyData?.candidate,
+    ].flatMap((value) => collectStrings(value));
+
+    const emails = unique(rawValues.filter((value) => EMAIL_REGEX.test(value.toLowerCase()))).slice(0, 4);
+    const phones = unique(
+      rawValues
+        .map((value) => value.replace(/\s+/g, ' ').trim())
+        .filter((value) => PHONE_REGEX.test(value) && !EMAIL_REGEX.test(value.toLowerCase()))
+    ).slice(0, 3);
+
+    return { emails, phones };
+  }, [airtableMatch, enrichedProfile, historyData?.candidate, profile]);
+
   if (!profile) return null;
 
   // Use enriched version if available (pool profiles auto-fetched from Unipile)
@@ -505,13 +544,31 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </div>
 
               {/* ─── CONTACT INFO ─── */}
-              <div className="mt-2 pt-2 border-t border-foreground/10">
-                <CandidateContactInfo
-                  profile={displayProfile}
-                  airtableMatch={airtableMatch}
-                  historyCandidate={historyData?.candidate}
-                />
-              </div>
+              {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-foreground/10 pt-2">
+                  {contactInfo.emails.map((email) => (
+                    <Badge
+                      key={email}
+                      variant="outline"
+                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground"
+                    >
+                      <Mail className="h-3 w-3" />
+                      <span className="max-w-[180px] truncate">{email}</span>
+                    </Badge>
+                  ))}
+
+                  {contactInfo.phones.map((phone) => (
+                    <Badge
+                      key={phone}
+                      variant="outline"
+                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground"
+                    >
+                      <Phone className="h-3 w-3" />
+                      <span>{phone}</span>
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
