@@ -201,6 +201,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     let cancelled = false;
     setIsEnriching(true);
 
+    const timeout = setTimeout(() => {
+      if (!cancelled) {
+        cancelled = true;
+        setIsEnriching(false);
+        console.warn('[ProfileDetail] Auto-enrich timed out after 15s');
+      }
+    }, 15000);
+
     (async () => {
       try {
         const { data: response } = await invokeUnipile({
@@ -239,7 +247,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             network_distance: p.network_distance || profile.network_distance,
           } as LinkedInProfile);
 
-          // Also persist the enriched data in DB for future use
           const { error } = await supabase
             .from('job_candidate_status')
             .update({ linkedin_profile_data: response.profile as any })
@@ -250,6 +257,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       } catch (err) {
         console.warn('[ProfileDetail] Auto-enrich failed:', err);
       } finally {
+        clearTimeout(timeout);
         if (!cancelled) setIsEnriching(false);
       }
     })();
