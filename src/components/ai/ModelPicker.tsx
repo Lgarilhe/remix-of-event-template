@@ -127,24 +127,22 @@ export const ModelPicker = ({
                 value={modelId}
                 className="cursor-pointer py-2.5"
               >
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2.5">
-                    <ModelLogo modelId={modelId} size={18} />
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium">{model.name}</p>
+                <div className="flex items-center justify-between w-full gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ModelLogo modelId={modelId} size={20} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium">{model.name}</span>
+                        <ProviderLabel modelId={modelId} />
                         {isRecommended && (
-                          <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-foreground/10 text-foreground rounded-sm">rec.</span>
+                          <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-foreground/10 text-foreground">rec.</span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <ProviderLabel modelId={modelId} />
-                        <span className="text-[10px] text-muted-foreground">· {model.description}</span>
-                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate">{model.description}</p>
                     </div>
                   </div>
                   <span className={cn(
-                    "text-xs font-bold whitespace-nowrap ml-2",
+                    "text-xs font-bold whitespace-nowrap shrink-0",
                     model.tier === 'premium' && "text-amber-600",
                     model.tier === 'budget' && "text-emerald-600"
                   )}>
