@@ -115,9 +115,8 @@ interface ScoringResult {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// Default model — can be overridden by _ai_model from frontend
-const CLAUDE_MODEL_DEFAULT = "claude-sonnet-4-20250514";
-let CLAUDE_MODEL = CLAUDE_MODEL_DEFAULT;
+// Default model — can be overridden per-request via _ai_model
+const CLAUDE_MODEL_DEFAULT = "claude-sonnet-4-6-20250627";
 const BATCH_SIZE = 5;
 const DELAY_BETWEEN_BATCHES_MS = 200;
 const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
@@ -557,6 +556,7 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
 async function evaluateMustHaveWithAI(
   profile: ProfileData,
   job: JobData,
+  modelOverride?: string,
 ): Promise<{ passed: boolean; reason?: string }> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) {
@@ -624,7 +624,7 @@ Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication 
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
+        model: modelOverride || CLAUDE_MODEL_DEFAULT,
         max_tokens: 150,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -908,6 +908,7 @@ async function callLLM(
     semanticScore: number | null;
   },
   customScoringInstructions?: string,
+  modelOverride?: string,
 ): Promise<LLMResult> {
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -1026,7 +1027,7 @@ mustHavePassed: "passed" (critère validé), "failed" (clairement KO), ou "uncer
         "anthropic-beta": "prompt-caching-2024-07-31",
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
+        model: modelOverride || CLAUDE_MODEL_DEFAULT,
         system: [{ type: "text", text: "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Réponds en JSON compact, sans markdown.", cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: prompt }],
         max_tokens: 800,
@@ -1317,6 +1318,7 @@ async function scoreProfile(
   job: JobData,
   customScoringInstructions?: string,
   enrichmentCtx?: EnrichmentContext | null,
+  claudeModel?: string,
 ): Promise<ScoringResult> {
   const startTime = Date.now();
   const candidateId = profile.id; // Stable ID from your candidates table
@@ -1387,6 +1389,7 @@ async function scoreProfile(
         semanticScore,
       },
       customScoringInstructions,
+      claudeModel,
     );
 
     // If LLM says must-have clearly failed, treat as hard filter KO
@@ -1546,14 +1549,12 @@ Deno.serve(async (req) => {
       accountId?: string;
     };
 
-    // Resolve AI model from frontend override
+    // Resolve AI model from frontend override (request-scoped)
     const aiParams = extractAIParams(body, "scoring");
     const anthropicModelId = getAnthropicModelId(aiParams.modelId);
-    if (anthropicModelId && anthropicModelId.startsWith("claude-")) {
-      CLAUDE_MODEL = anthropicModelId;
-    } else {
-      CLAUDE_MODEL = CLAUDE_MODEL_DEFAULT;
-    }
+    const CLAUDE_MODEL = (anthropicModelId && anthropicModelId.startsWith("claude-"))
+      ? anthropicModelId
+      : CLAUDE_MODEL_DEFAULT;
 
     // Input validation
     if (!job || !job.id || !job.title) {
@@ -1656,7 +1657,7 @@ Deno.serve(async (req) => {
               }));
               console.log(`[scoring-input] ${p.name} sample:`, JSON.stringify(sample));
             }
-            const result = await scoreProfile(supabase, p, job, customScoringInstructions, enrichmentCtx);
+            const result = await scoreProfile(supabase, p, job, customScoringInstructions, enrichmentCtx, CLAUDE_MODEL);
             batchResults.push(result);
           } catch (err) {
             console.error(`[scoring] Error for ${p.name}:`, err);

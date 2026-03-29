@@ -340,15 +340,21 @@ export function useLinkedInSearch({
         if (jd.languages?.length) reqParts.push(`Langues : ${jd.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}`);
         if (reqParts.length) job.requirements = reqParts.join('. ');
         // Evaluation criteria from the brief → bodyContent for the LLM
-        if (jd.evaluation_criteria?.length) {
+        if (jd.evaluation_criteria?.length && Array.isArray(jd.evaluation_criteria)) {
           const criteriaText = jd.evaluation_criteria
-            .map((c: any) => `[${c.category}${c.deal_breaker ? ' DEAL-BREAKER' : ''} poids:${c.weight}] ${c.label}: ${c.description}${c.level_10 ? ` (10/10: ${c.level_10})` : ''}${c.level_1 ? ` (rédhibitoire: ${c.level_1})` : ''}`)
+            .filter((c: any) => c && c.label)
+            .slice(0, 15) // max 15 criteria to limit token usage
+            .map((c: any) => `[${c.category || '?'}${c.deal_breaker ? ' DEAL-BREAKER' : ''} poids:${c.weight || 1}] ${c.label}: ${(c.description || '').slice(0, 150)}${c.level_10 ? ` (10/10: ${c.level_10.slice(0, 80)})` : ''}${c.level_1 ? ` (rédhibitoire: ${c.level_1.slice(0, 80)})` : ''}`)
             .join('\n');
           job.bodyContent = (job.bodyContent ? job.bodyContent + '\n\n' : '') + `=== CRITÈRES D'ÉVALUATION DU MANAGER ===\n${criteriaText}`;
         }
         // Raw brief as additional context
         if (jd.raw_brief && !job.bodyContent) {
           job.bodyContent = jd.raw_brief.slice(0, 1000);
+        }
+        // Safety: cap bodyContent total length
+        if (job.bodyContent && job.bodyContent.length > 2000) {
+          job.bodyContent = job.bodyContent.slice(0, 2000);
         }
         // Target companies as transversal context
         if (jd.target_companies?.length) {
