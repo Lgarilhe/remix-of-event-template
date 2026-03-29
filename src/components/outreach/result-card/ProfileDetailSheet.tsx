@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -24,9 +24,8 @@ import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
-import { CandidateContactInfo } from './CandidateContactInfo';
 import {
-  Building2, MapPin, TrendingUp, ExternalLink, Loader2,
+  Building2, MapPin, TrendingUp, ExternalLink, Loader2, Mail, Phone,
   Target, PenLine, Archive,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
@@ -34,6 +33,28 @@ import { invokeUnipile } from '@/lib/invokeUnipile';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const normalizeValue = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const collectStrings = (input: unknown, depth = 0): string[] => {
+  if (depth > 3 || input == null) return [];
+  if (typeof input === 'string') return normalizeValue(input) ? [input.trim()] : [];
+  if (Array.isArray(input)) return input.flatMap((item) => collectStrings(item, depth + 1));
+  if (isRecord(input)) return Object.values(input).flatMap((value) => collectStrings(value, depth + 1));
+  return [];
+};
+
+const unique = (values: string[]) => Array.from(new Set(values.map((value) => value.trim())));
 
 const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
   const [fallbackIndex, setFallbackIndex] = useState(0);
