@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { Sparkles, Loader2, Play, RefreshCw, Mic, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -74,7 +74,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
     }
     setIsAnalyzing(true);
     try {
-      const response = await invokeEdgeFunction('generate-search-filters', {
+      const response = await invokeWithCredits('generate-search-filters', 'generate_filters', {
         job: {
           id: project.id,
           title: jd.title || project.name,

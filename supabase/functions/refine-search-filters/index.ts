@@ -135,7 +135,7 @@ ${JSON.stringify(currentFilters, null, 2)}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-5-20250514",
         max_tokens: 1024,
         system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],

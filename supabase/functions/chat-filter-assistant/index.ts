@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5-20250929",
+          model: "claude-sonnet-4-5-20250514",
           max_tokens: 2048,
           system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
           messages: messages.map((m: Message) => ({

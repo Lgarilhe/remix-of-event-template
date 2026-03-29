@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-5-20250514",
         max_tokens: 32000,
         thinking: {
           type: "enabled",
