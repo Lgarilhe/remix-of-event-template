@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +93,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
   sending = false,
 }) => {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'suggestions' | 'jobs'>('suggestions');
@@ -129,7 +131,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
         }
       }
 
-      const response = await invokeWithCredits<{ analysis?: any }>('analyze-response', 'analyze_response', { context });
+      const response = await invokeWithCredits<{ analysis?: any }>('analyze-response', 'analyze_response', { context }, { modelOverride: selectedModel ?? undefined });
       if (response.error) throw response.error;
       if (response.data?.success && response.data?.analysis) {
         setAnalysis(response.data.analysis);
@@ -222,6 +224,8 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
         </button>
 
         <div className="flex-1" />
+
+        <ModelPicker actionId="analyze_response" value={selectedModel} onChange={setSelectedModel} compact />
 
         {analysis && (
           <Button

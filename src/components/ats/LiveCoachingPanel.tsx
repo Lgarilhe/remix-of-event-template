@@ -4,6 +4,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { getActiveOrganizationId } from '@/lib/orgContext';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AudioSetupGuide } from './AudioSetupGuide';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -96,6 +97,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [report, setReport] = useState<CallReport | null>(null);
   const [callStopped, setCallStopped] = useState(false);
   const [loadingIntro, setLoadingIntro] = useState(false);
@@ -170,7 +172,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         job_context: params.jobContext,
         elapsed_seconds: params.elapsedSeconds,
         pending_signals: params.pendingSignals,
-      });
+      }, { modelOverride: selectedModel ?? undefined });
 
       if (!data) return;
       const d = data as any;
@@ -493,7 +495,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         job_title: jobTitle,
         call_duration_seconds: Math.round((Date.now() - callStartRef.current) / 1000),
         alerts_log: alertsLogRef.current,
-      });
+      }, { modelOverride: selectedModel ?? undefined });
 
       if (error) throw error;
       if (data) {
@@ -560,6 +562,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                 Générer le CR
               </button>
               <CreditCostBadge actionId="call_report" />
+              <ModelPicker actionId="call_report" value={selectedModel} onChange={setSelectedModel} compact />
             </>
           )}
           {onOpenProfile && (

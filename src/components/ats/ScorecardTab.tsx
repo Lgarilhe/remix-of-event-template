@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { useOrganization } from '@/hooks/useOrganization';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
@@ -80,6 +81,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(new Set());
@@ -227,7 +229,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
       const { data, error } = await invokeWithCredits('generate-scorecard', 'generate_scorecard', {
         candidateProfile, jobContext, scoringDetails: candidate.scoringDetails, interviewStage: stage,
-      });
+      }, { modelOverride: selectedModel ?? undefined });
 
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Failed to generate scorecard');
@@ -497,6 +499,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" /> Générer la scorecard</span>
               )}
             </button>
+            <div className="mt-3 flex justify-center">
+              <ModelPicker actionId="generate_scorecard" value={selectedModel} onChange={setSelectedModel} compact />
+            </div>
           </div>
         </div>
       );
@@ -1020,6 +1025,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         Nouvelle scorecard
         <CreditCostBadge actionId="generate_scorecard" />
       </button>
+      <ModelPicker actionId="generate_scorecard" value={selectedModel} onChange={setSelectedModel} compact />
 
       {evaluations.length === 0 && (
         <div className="text-center py-8">

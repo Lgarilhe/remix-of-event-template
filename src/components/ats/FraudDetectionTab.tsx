@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -38,6 +39,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
   const [result, setResult] = useState<FraudResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
 
   const runAnalysis = async () => {
     setLoading(true);
@@ -47,7 +49,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
         profileData: candidate.linkedinProfileData,
         candidateName: candidate.name,
         headline: candidate.headline,
-      });
+      }, { modelOverride: selectedModel ?? undefined });
       if (fnError) throw fnError;
       if (data?.error) throw new Error(data.error);
       setResult(data as any);
@@ -87,6 +89,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <CreditCostBadge actionId="screen_candidate" />
+          <ModelPicker actionId="profile_fraud" value={selectedModel} onChange={setSelectedModel} compact />
         </div>
         {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
       </div>

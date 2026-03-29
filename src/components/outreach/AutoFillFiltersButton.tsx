@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
 import { Job } from '@/types/jobs';
@@ -106,6 +107,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   disabled,
 }) => {
   const [loading, setLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [debugData, setDebugData] = useState<{
     input: string;
@@ -143,7 +145,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await invokeWithCredits<{ filters?: any }>('generate-search-filters', 'generate_filters', { job: selectedJob });
+      const { data, error } = await invokeWithCredits<{ filters?: any }>('generate-search-filters', 'generate_filters', { job: selectedJob }, { modelOverride: selectedModel ?? undefined });
 
       if (error) throw error;
 
@@ -386,6 +388,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
               )}
             </TooltipContent>
           </Tooltip>
+          <ModelPicker actionId="filter_generation" value={selectedModel} onChange={setSelectedModel} compact />
         </div>
       </TooltipProvider>
 
