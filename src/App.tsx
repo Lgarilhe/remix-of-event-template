@@ -130,7 +130,7 @@ const AppContent = () => {
     <>
       <Toaster />
       <Sonner />
-      <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" /></div>}>
+      <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" /></div>}>
         <Routes>
           <Route path="/" element={<SkalrLanding />} />
           <Route path="/index" element={<IndexRedirect />} />
