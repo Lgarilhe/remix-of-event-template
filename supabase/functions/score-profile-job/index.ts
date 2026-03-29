@@ -488,7 +488,24 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
     }
   }
 
-  // 2. Gross seniority mismatch (FREE)
+  // 2. Freelance vs CDI hard filter (FREE)
+  // Si le candidat affiche explicitement "Freelance" / "Indépendant" dans son titre
+  // ou son À propos, et que le poste est en CDI → exclusion
+  if (job.contractType && ["cdi", "permanent"].includes(job.contractType.toLowerCase())) {
+    const freelanceKeywords = ["freelance", "indépendant", "auto-entrepreneur", "consultant indépendant", "micro-entrepreneur"];
+    const headlineLower = (profile.headline || "").toLowerCase();
+    const summaryLower = (profile.summary || "").toLowerCase();
+    const freelanceInTitle = freelanceKeywords.some((f) => headlineLower.includes(f));
+    const freelanceInSummary = freelanceKeywords.some((f) => summaryLower.includes(f));
+    if (freelanceInTitle || freelanceInSummary) {
+      return {
+        passed: false,
+        reason: `Profil freelance/indépendant explicite (${freelanceInTitle ? 'titre' : 'à propos'}) — poste CDI`,
+      };
+    }
+  }
+
+  // 3. Gross seniority mismatch (FREE)
   if (job.seniority && profile.headline) {
     const headline = profile.headline.toLowerCase();
     const jobSeniority = job.seniority.toLowerCase();
@@ -824,10 +841,10 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
     const isCDI = ["cdi", "permanent"].includes(job.contractType.toLowerCase());
     const isFreelanceJob = ["freelance", "mission", "portage"].includes(job.contractType.toLowerCase());
     if (isFreelance && isCDI) {
-      // Freelance qui candidate sur un CDI : signal faible, PAS rédhibitoire
-      // Beaucoup de freelances veulent redevenir salariés
-      contractFitScore = 50;
-      contractDetails = "Freelance (poste CDI — à vérifier en entretien)";
+      // Freelance explicite sur un poste CDI → exclu par hard filter en amont
+      // Si on arrive ici, c'est un cas edge (mot dans currentCompany par ex.)
+      contractFitScore = 10;
+      contractDetails = "Freelance vs CDI — exclu";
     } else if (isFreelance && isFreelanceJob) {
       contractFitScore = 100;
       contractDetails = "Freelance match";
@@ -1007,9 +1024,7 @@ ${workExpText}
 
 5. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
 
-6. **Statut contractuel** : Si le candidat affiche "Freelance" / "Indépendant" et que le poste est en CDI, ce n'est PAS un critère d'exclusion. Beaucoup de freelances souhaitent revenir en CDI. Mentionne-le dans "concerns" mais ne pénalise PAS le score technique ou global pour ce seul motif. Évalue les compétences, pas le statut contractuel.
-
-7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste.
+6. **Score global** (0-100) : Ta note finale de correspondance candidat/poste.
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
