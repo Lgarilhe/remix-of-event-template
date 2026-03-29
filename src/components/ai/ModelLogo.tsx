@@ -42,10 +42,11 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
         />
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#4285F4" />
-            <stop offset="0.35" stopColor="#9B72CB" />
-            <stop offset="0.65" stopColor="#D96570" />
-            <stop offset="1" stopColor="#E8710A" />
+            <stop offset="0" stopColor="#1BA1E3" />
+            <stop offset="0.25" stopColor="#5489D6" />
+            <stop offset="0.5" stopColor="#9B72CB" />
+            <stop offset="0.75" stopColor="#D96570" />
+            <stop offset="1" stopColor="#F49C46" />
           </linearGradient>
         </defs>
       </svg>
