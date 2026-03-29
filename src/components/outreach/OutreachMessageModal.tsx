@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 import {
   Dialog,
   DialogContent,
@@ -71,6 +72,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
     return localStorage.getItem('outreach_sender_name') || '';
   });
   const [customInstructions, setCustomInstructions] = useState('');
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
 
   // Reset state when profile changes
   const profileKey = profile?.id || `${profile?.first_name}-${profile?.last_name}`;
@@ -186,7 +188,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         calendlyLink: calendlyLink || undefined,
         candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
         ragContext,
-      });
+      }, { modelOverride: selectedModel ?? undefined });
 
       if (error) throw error;
       
@@ -487,24 +489,33 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
           {/* Generate button */}
           {!hasGenerated && (
-            <Button
-              onClick={generateMessage}
-              disabled={loading}
-              size="lg"
-              className="w-full h-12 bg-foreground hover:bg-foreground/90 text-background font-bold rounded-none border border-foreground shadow-[2px_2px_0_0_hsl(var(--primary))] hover:shadow-none transition-all uppercase tracking-wide text-sm"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Génération en cours...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Générer le message
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={generateMessage}
+                disabled={loading}
+                size="lg"
+                className="flex-1 h-12 bg-foreground hover:bg-foreground/90 text-background font-bold rounded-none border border-foreground shadow-[2px_2px_0_0_hsl(var(--primary))] hover:shadow-none transition-all uppercase tracking-wide text-sm"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Génération en cours...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Générer le message
+                  </>
+                )}
+              </Button>
+              <ModelPicker
+                actionId="outreach_message"
+                value={selectedModel}
+                onChange={setSelectedModel}
+                compact
+                disabled={loading}
+              />
+            </div>
           )}
 
           {/* Generated content */}

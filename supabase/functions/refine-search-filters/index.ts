@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,8 +46,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    const _body = await req.json();
     const { currentFilters, internalFilters, totalResults, resultCount, jobTitle, jobLocation, direction } =
-      await req.json() as RefineRequest;
+      _body as RefineRequest;
+    const _aiParams = extractAIParams(_body, "refine_search");
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
@@ -150,6 +153,8 @@ ${JSON.stringify(currentFilters, null, 2)}`;
     }
 
     const aiResult = await response.json();
+    const _tokensIn = aiResult.usage?.input_tokens || 0;
+    const _tokensOut = aiResult.usage?.output_tokens || 0;
     const content = aiResult.content?.[0]?.text || "";
 
     let parsed;
@@ -162,6 +167,22 @@ ${JSON.stringify(currentFilters, null, 2)}`;
     }
 
     console.log("[refine-search-filters] Adjustments:", JSON.stringify(parsed, null, 2));
+
+    // Settle credits (fire-and-forget)
+    if (_tokensIn + _tokensOut > 0) {
+      try {
+        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+        const orgId = await resolveOrgIdFromUser(userId, svc);
+        if (orgId) {
+          settleCredits(svc, {
+            organizationId: orgId, userId,
+            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            tokensInput: _tokensIn, tokensOutput: _tokensOut,
+            description: _aiParams.description,
+          }).catch((e) => console.warn("[refine-search-filters] settle error:", e));
+        }
+      } catch (e) { console.warn("[refine-search-filters] settle skipped:", e); }
+    }
 
     return new Response(
       JSON.stringify({ success: true, ...parsed }),

@@ -1,5 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -349,7 +351,8 @@ Deno.serve(async (req) => {
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl } = await req.json() as {
+    const _body = await req.json();
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl } = _body as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -362,6 +365,12 @@ Deno.serve(async (req) => {
       calendlyLink?: string;
       candidateLinkedInUrl?: string;
     };
+
+    // Resolve AI model from frontend
+    const _aiParams = extractAIParams(_body, "outreach_message");
+    const _resolvedAnthropicModel = getAnthropicModelId(_aiParams.modelId).startsWith("claude-")
+      ? getAnthropicModelId(_aiParams.modelId)
+      : "claude-sonnet-4-6";
     
     // Build Calendly link with pre-filled fields (LinkedIn URL + name)
     const buildCalendlyPrefill = (base: string, linkedInUrl?: string, name?: string): string => {
@@ -885,6 +894,10 @@ Réponds UNIQUEMENT en JSON valide:
   "personalization_points": ["HOOK 1: citation EXACTE ou fait PRÉCIS du profil utilisé comme accroche (ex: 'Post LinkedIn du 15/01 sur le DDD', 'Transition Doctolib→startup après 4 ans', 'Formation GOBELINS + parcours Rails/iOS')", "HOOK 2: lien CONCRET entre cet élément et le poste (ex: 'Expérience cloud souverain → projet infra greenfield', 'Double casquette dev/design → rôle VP Experience Design')"]
 }`;
 
+    // Track cumulative token usage across calls
+    let _totalTokensIn = 0;
+    let _totalTokensOut = 0;
+
     const callAnthropic = async (userPrompt: string, maxRetries = 3): Promise<{ ok: true; content: string } | { ok: false; response: Response }> => {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
@@ -896,7 +909,7 @@ Réponds UNIQUEMENT en JSON valide:
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-6",
+            model: _resolvedAnthropicModel,
             max_tokens: 2048,
             system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.", cache_control: { type: "ephemeral" } }],
             messages: [{ role: "user", content: userPrompt }],
@@ -905,6 +918,8 @@ Réponds UNIQUEMENT en JSON valide:
 
         if (response.ok) {
           const data = await response.json();
+          _totalTokensIn += data.usage?.input_tokens || 0;
+          _totalTokensOut += data.usage?.output_tokens || 0;
           let content = data.content?.[0]?.text || "";
           content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
           return { ok: true, content };
@@ -970,6 +985,22 @@ Réponds UNIQUEMENT en JSON valide:
     }
 
     parsed.message = sanitizeMessage(parsed.message);
+
+    // Settle credits based on actual token usage (fire-and-forget)
+    if (_totalTokensIn + _totalTokensOut > 0) {
+      try {
+        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+        const orgId = await resolveOrgIdFromUser(userId, svc);
+        if (orgId) {
+          settleCredits(svc, {
+            organizationId: orgId, userId,
+            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            tokensInput: _totalTokensIn, tokensOutput: _totalTokensOut,
+            description: _aiParams.description,
+          }).catch((e) => console.warn("[generate-outreach-message] settle error:", e));
+        }
+      } catch (e) { console.warn("[generate-outreach-message] settle skipped:", e); }
+    }
 
     return new Response(
       JSON.stringify({ success: true, ...parsed }),

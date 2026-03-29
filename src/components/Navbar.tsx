@@ -5,6 +5,7 @@ import { Menu, X, Bell, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { AuthSheet } from './AuthSheet';
 import { NotificationDropdown } from './NotificationDropdown';
+import { CreditBalanceIndicator } from './ai/CreditBalanceIndicator';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
@@ -233,7 +234,8 @@ export const Navbar: React.FC = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {/* Right group: notifications + sign out */}
+            {/* Right group: credits + notifications + sign out */}
+            <CreditBalanceIndicator />
             <NotificationDropdown />
             <button 
               onClick={async () => {
@@ -358,8 +360,9 @@ export const Navbar: React.FC = () => {
         </div>
       )}
       
-      {/* Mobile: Notification + Menu */}
+      {/* Mobile: Credits + Notification + Menu */}
       <div className="md:hidden flex items-center">
+        {user && <CreditBalanceIndicator />}
         {user && <NotificationDropdown />}
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}

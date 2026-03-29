@@ -1,6 +1,8 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +31,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
 
-    const { candidateProfile, jobContext, scoringDetails, interviewStage } = await req.json();
+    const body = await req.json();
+    const { candidateProfile, jobContext, scoringDetails, interviewStage } = body;
+    const _aiParams = extractAIParams(body, "generate_scorecard");
 
     if (!candidateProfile || !jobContext) {
       return new Response(
@@ -190,6 +194,8 @@ Génère la scorecard d'évaluation sur mesure.`;
     }
 
     const data = await response.json();
+    const _tokensIn = data.usage?.prompt_tokens ?? data.usage?.input_tokens ?? 0;
+    const _tokensOut = data.usage?.completion_tokens ?? data.usage?.output_tokens ?? 0;
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     
     if (!toolCall?.function?.arguments) {
@@ -231,6 +237,23 @@ Génère la scorecard d'évaluation sur mesure.`;
           }),
         }).catch(err => console.warn('[generate-scorecard] RAG ingest failed (non-blocking):', err));
       }
+    }
+
+    // Settle AI credits (fire-and-forget)
+    if (_tokensIn + _tokensOut > 0) {
+      try {
+        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+        const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const orgId = await resolveOrgIdFromUser(userId, adminClient);
+        if (orgId) {
+          settleCredits(adminClient, {
+            organizationId: orgId, userId,
+            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+            tokensInput: _tokensIn, tokensOutput: _tokensOut,
+            description: _aiParams.description,
+          }).catch((e) => console.warn("[generate-scorecard] settle error:", e));
+        }
+      } catch (e) { console.warn("[generate-scorecard] settle skipped:", e); }
     }
 
     return new Response(JSON.stringify({ success: true, criteria: parsed.criteria }), {
