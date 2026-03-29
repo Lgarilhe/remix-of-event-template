@@ -31,17 +31,24 @@ export const useNotifications = () => {
       return;
     }
 
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    try {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-    const notifs = (data || []) as Notification[];
-    setNotifications(notifs);
-    setUnreadCount(notifs.filter(n => !n.read_at).length);
-    setLoading(false);
+      const notifs = (data || []) as Notification[];
+      setNotifications(notifs);
+      setUnreadCount(notifs.filter(n => !n.read_at).length);
+    } catch (error) {
+      console.warn('[useNotifications] Failed to fetch notifications:', error);
+      setNotifications([]);
+      setUnreadCount(0);
+    } finally {
+      setLoading(false);
+    }
   }, [isReady, user]);
 
   useEffect(() => {
@@ -60,24 +67,28 @@ export const useNotifications = () => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     
     const setup = async () => {
-      channel = supabase
-        .channel('notifications-realtime')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            if (!isMounted) return;
-            const newNotif = payload.new as Notification;
-            setNotifications(prev => [newNotif, ...prev]);
-            setUnreadCount(prev => prev + 1);
-          }
-        )
-        .subscribe();
+      try {
+        channel = supabase
+          .channel('notifications-realtime')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
+              if (!isMounted) return;
+              const newNotif = payload.new as Notification;
+              setNotifications(prev => [newNotif, ...prev]);
+              setUnreadCount(prev => prev + 1);
+            }
+          )
+          .subscribe();
+      } catch (error) {
+        console.warn('[useNotifications] Failed to subscribe to notifications:', error);
+      }
     };
 
     void setup();

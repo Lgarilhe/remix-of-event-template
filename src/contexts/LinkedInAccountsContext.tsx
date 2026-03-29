@@ -67,15 +67,20 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     };
 
     // Initial check — safe to call async here (not inside onAuthStateChange)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!isMounted) return;
-      if (!session?.user) {
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (!isMounted) return;
+        if (!session?.user) {
+          resetState();
+          return;
+        }
+        prevUserId = session.user.id;
+        void reload();
+      })
+      .catch((error) => {
+        console.warn('[LinkedInAccountsContext] Initial session check failed:', error);
         resetState();
-        return;
-      }
-      prevUserId = session.user.id;
-      void reload();
-    });
+      });
 
     // Subsequent auth events — NO async Supabase calls inside callback
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
