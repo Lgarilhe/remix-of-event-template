@@ -189,39 +189,54 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   }, [profile?.id]);
 
   useEffect(() => {
-    if (!open || !profile || !accountId) return;
+    if (!open || !profile || !accountId) {
+      setIsEnriching(false);
+      return;
+    }
+
     const isPoolShell = (profile as any)._fromPool &&
       (!profile.work_experience || profile.work_experience.length === 0) &&
       (!profile.skills || profile.skills.length === 0);
-    if (!isPoolShell) return;
+
+    if (!isPoolShell) {
+      setIsEnriching(false);
+      return;
+    }
 
     const profileUrl = profile.public_profile_url || profile.profile_url;
-    if (!profileUrl) return;
+    if (!profileUrl) {
+      setIsEnriching(false);
+      return;
+    }
 
     let cancelled = false;
-    setIsEnriching(true);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    const timeout = setTimeout(() => {
-      if (!cancelled) {
-        cancelled = true;
-        setIsEnriching(false);
-        console.warn('[ProfileDetail] Auto-enrich timed out after 15s');
-      }
-    }, 15000);
+    setIsEnriching(true);
 
     (async () => {
       try {
-        const { data: response } = await invokeUnipile({
-          body: {
-            action: 'get_profile',
-            account_id: accountId,
-            profile_url: profileUrl,
-          },
-        });
+        const response = await Promise.race([
+          invokeUnipile({
+            body: {
+              action: 'get_profile',
+              account_id: accountId,
+              profile_url: profileUrl,
+            },
+          }),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error('Auto-enrich timeout after 15s'));
+            }, 15000);
+          }),
+        ]);
+
         if (cancelled) return;
-        if (response?.success && response.profile) {
+
+        const unipileResponse = response.data;
+        if (unipileResponse?.success && unipileResponse.profile) {
           emitQuotaAction('profileVisits', 1, accountId);
-          const p = response.profile as Record<string, any>;
+          const p = unipileResponse.profile as Record<string, any>;
           setEnrichedProfile({
             ...profile,
             summary: p.about || p.summary || profile.summary,
@@ -249,20 +264,29 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           const { error } = await supabase
             .from('job_candidate_status')
-            .update({ linkedin_profile_data: response.profile as any })
+            .update({ linkedin_profile_data: unipileResponse.profile as any })
             .eq('candidate_id', profile.id)
             .is('linkedin_profile_data', null);
-          if (error) console.warn('[ProfileDetail] Failed to persist enriched data:', error);
+
+          if (error) {
+            console.warn('[ProfileDetail] Failed to persist enriched data:', error);
+          }
         }
       } catch (err) {
-        console.warn('[ProfileDetail] Auto-enrich failed:', err);
+        if (!cancelled) {
+          console.warn('[ProfileDetail] Auto-enrich failed:', err);
+        }
       } finally {
-        clearTimeout(timeout);
+        if (timeoutId) clearTimeout(timeoutId);
         if (!cancelled) setIsEnriching(false);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      setIsEnriching(false);
+    };
   }, [open, profile?.id, accountId]);
 
   const effectiveProfile = enrichedProfile || profile;
