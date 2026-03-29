@@ -505,42 +505,23 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
     }
   }
 
-  // 3. Seniority mismatch + overcap detection (FREE)
-  if (profile.headline) {
+  // 3. Gross seniority mismatch (FREE)
+  if (job.seniority && profile.headline) {
     const headline = profile.headline.toLowerCase();
-    const jobSeniority = (job.seniority || "").toLowerCase();
-    const executiveRoles = ["director", "vp", "vice president", "vice-président", "head of", "c-level", "cto", "coo", "ceo", "cfo", "cpo", "cmo", "chief", "partner", "associé", "fondateur", "founder", "co-founder", "co-fondateur", "président", "president", "dg", "directeur général"];
-    const seniorLeadRoles = ["lead", "principal", "staff", "architect", "manager", "responsable", "directeur"];
-    const juniorRoles = ["junior", "intern", "stagiaire", "alternant", "apprenti", "student", "étudiant"];
-    const midRoles = ["senior", "confirmé", "expérimenté"];
+    const jobSeniority = job.seniority.toLowerCase();
+    const seniorRoles = ["director", "vp", "vice president", "head of", "c-level", "cto", "coo", "ceo"];
+    const juniorRoles = ["junior", "intern", "stagiaire", "alternant", "apprenti", "student"];
 
-    const isProfileExecutive = executiveRoles.some((r) => headline.includes(r));
-    const isProfileSeniorLead = seniorLeadRoles.some((r) => headline.includes(r));
+    const isJobSenior = seniorRoles.some((r) => jobSeniority.includes(r));
     const isProfileJunior = juniorRoles.some((r) => headline.includes(r));
-
     const isJobJunior = juniorRoles.some((r) => jobSeniority.includes(r));
-    const isJobMid = midRoles.some((r) => jobSeniority.includes(r)) || (!jobSeniority && !juniorRoles.some(r => jobSeniority.includes(r)));
-    const isJobSenior = executiveRoles.some((r) => jobSeniority.includes(r));
+    const isProfileSenior = seniorRoles.some((r) => headline.includes(r));
 
-    // Junior profile vs senior job
     if (isJobSenior && isProfileJunior) {
       return { passed: false, reason: `Mismatch séniorité: profil junior vs poste ${job.seniority}` };
     }
-    // Executive/C-level profile vs junior or mid-level job → overcap
-    if (isProfileExecutive && (isJobJunior || (isJobMid && !isJobSenior))) {
-      return { passed: false, reason: `Profil overcapé: ${headline.slice(0, 60)} — poste ${job.seniority || 'mid-level'} probablement sous-dimensionné` };
-    }
-  }
-
-  // 4. Overcap by experience years (FREE)
-  // Si le poste demande 3-5 ans et le candidat en a 20+, c'est overcap
-  if (job.xpMax && profile.yearsOfExperience !== undefined) {
-    const xpRatio = profile.yearsOfExperience / job.xpMax;
-    if (xpRatio >= 3 && profile.yearsOfExperience >= 15) {
-      return {
-        passed: false,
-        reason: `Profil overcapé: ${profile.yearsOfExperience} ans d'XP vs ${job.xpMax} ans max demandés (×${xpRatio.toFixed(1)})`,
-      };
+    if (isJobJunior && isProfileSenior) {
+      return { passed: false, reason: `Mismatch séniorité: profil senior vs poste junior` };
     }
   }
 
@@ -1055,18 +1036,14 @@ ${workExpText}
 
 5. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
 
-6. **Signaux d'alerte & overcap** :
-   → Job-hopping, expertise complètement hors-sujet.
-   → **Surqualification / overcap** : Si le candidat a un profil nettement au-dessus du poste (VP pour un poste senior, 20 ans d'XP pour un poste 3-5 ans, ex-GAFAM C-level pour un poste en PME), c'est un signal NÉGATIF fort. Ce candidat ne restera pas, ne sera pas motivé, et coûtera probablement bien au-dessus du budget.
-   → Si le poste a un budget salaire (salaryMin/salaryMax) et que le profil du candidat laisse penser qu'il coûte 50%+ de plus (au vu de son séniorité, ses boîtes, son titre), mentionne-le dans concerns.
-   → Ajoute "overcapRisk" dans ta réponse : "none", "moderate", "high".
+6. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
 
 7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste. Intègre la qualité du pedigree dans le score global — un candidat avec les bonnes compétences ET un parcours dans des boîtes exigeantes mérite un score supérieur à un profil équivalent dans des ESN.
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
-{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"overcapRisk":"none","matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3 noms"]}
-pedigreeScore: 0-100. overcapRisk: "none"/"moderate"/"high". mustHavePassed: "passed"/"failed"/"uncertain".`,
+{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3 noms d'entreprises notables du parcours, ou null"]}
+pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "failed" / "uncertain".`,
   );
 
   let lastError: Error | null = null;
@@ -1123,7 +1100,6 @@ pedigreeScore: 0-100. overcapRisk: "none"/"moderate"/"high". mustHavePassed: "pa
     techFitScore: parsed.techFitScore ?? 50,
     softSkillsScore: parsed.softSkillsScore ?? 50,
     pedigreeScore: parsed.pedigreeScore ?? null,
-    overcapRisk: parsed.overcapRisk || "none",
     matchedSkills: parsed.matchedSkills || [],
     missingCriticalSkills: parsed.missingCriticalSkills || [],
     summary: parsed.summary || "",
@@ -1566,7 +1542,6 @@ async function scoreProfile(
     semanticScore,
     llmScore: llmResult?.overallScore ?? null,
     pedigreeScore: (llmResult as any)?.pedigreeScore ?? null,
-    overcapRisk: (llmResult as any)?.overcapRisk ?? "none",
     notableCompanies: (llmResult as any)?.notableCompanies ?? null,
     finalScore,
     confidenceScore: weighted.confidenceScore,
