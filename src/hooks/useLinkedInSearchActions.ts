@@ -435,10 +435,10 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
 
   // AI-generated keyword-based skills → inject into Boolean keywords for broader matching
   if (filters.skills_keywords?.length) {
-    const currentKeywords = typeof baseParams.keywords === 'string' ? baseParams.keywords : '';
-    const existingKeywords = currentKeywords.toLowerCase();
+    const currentKeywords = String(baseParams.keywords ?? '');
+    const existingKeywordsLower = currentKeywords.toLowerCase();
     const newSkills = (filters.skills_keywords as string[])
-      .filter((skill) => !existingKeywords.includes(skill.toLowerCase()))
+      .filter((skill: string) => !existingKeywordsLower.includes(skill.toLowerCase()))
       .map((skill) => `"${skill.replace(/"/g, '')}"`) // Sanitize quotes
       .slice(0, 5); // Max 5 skills to avoid overly long Boolean
 
