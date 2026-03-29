@@ -76,6 +76,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
       animate={closing ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="mx-3 sm:mx-4 mt-3 mb-3 border-2 border-foreground bg-background"
+    style={{ maxHeight: 'calc(100dvh - 120px)' }}
     >
       {/* Brutal accent bar */}
       <motion.div
@@ -86,18 +87,18 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
       />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 border-b border-border gap-1.5">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border gap-1.5">
+        <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
           <span className="text-[11px] font-black text-foreground uppercase tracking-widest whitespace-nowrap">
             Scoring
           </span>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap hidden sm:inline">
             {entries.length} profils{durationLabel && ` · ${durationLabel}`}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Filter pills — brutal style */}
           {([
             { key: 'go' as const, count: counts.go, activeClass: 'bg-foreground text-background' },
@@ -122,10 +123,10 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
           {onClose && (
             <button
               onClick={handleClose}
-              className="p-0.5 ml-1 text-muted-foreground hover:text-foreground border border-transparent hover:border-foreground/30 transition-colors"
+              className="p-1 sm:p-0.5 ml-1 text-muted-foreground hover:text-foreground border border-foreground/30 sm:border-transparent hover:border-foreground/30 transition-colors"
               title="Échap"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             </button>
           )}
         </div>
@@ -160,7 +161,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
       )}
 
       {/* Entries */}
-      <ScrollArea className="max-h-[240px]">
+      <ScrollArea className="max-h-[180px] sm:max-h-[240px]">
         <div>
           {filtered.map((entry, i) => (
             <ReportEntryRow
