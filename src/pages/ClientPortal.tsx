@@ -229,60 +229,62 @@ export default function ClientPortal() {
               ) : (
                 <div className="divide-y divide-foreground/10">
                   {project.candidates.map(candidate => (
-                    <div key={candidate.id} className="px-4 py-3 flex items-center gap-4 hover:bg-muted/20 transition-colors">
-                      {/* Avatar placeholder */}
-                      <div className="w-8 h-8 bg-foreground/10 flex items-center justify-center shrink-0">
-                        <span className="text-[11px] font-bold text-foreground">
-                          {data.permissions.can_see_names
-                            ? (candidate.candidate_name?.[0] || '?').toUpperCase()
-                            : '#'}
-                        </span>
-                      </div>
+                    <React.Fragment key={candidate.id}>
+                      <div className="px-4 py-3 flex items-center gap-4 hover:bg-muted/20 transition-colors">
+                        {/* Avatar placeholder */}
+                        <div className="w-8 h-8 bg-foreground/10 flex items-center justify-center shrink-0">
+                          <span className="text-[11px] font-bold text-foreground">
+                            {data.permissions.can_see_names
+                              ? (candidate.candidate_name?.[0] || '?').toUpperCase()
+                              : '#'}
+                          </span>
+                        </div>
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">
-                          {data.permissions.can_see_names
-                            ? (candidate.candidate_name || 'Candidat')
-                            : `Candidat #${candidate.id.slice(0, 6)}`}
-                        </p>
-                        {candidate.candidate_headline && data.permissions.can_see_names && (
-                          <p className="text-[10px] text-muted-foreground truncate">{candidate.candidate_headline}</p>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-foreground truncate">
+                            {data.permissions.can_see_names
+                              ? (candidate.candidate_name || 'Candidat')
+                              : `Candidat #${candidate.id.slice(0, 6)}`}
+                          </p>
+                          {candidate.candidate_headline && data.permissions.can_see_names && (
+                            <p className="text-[10px] text-muted-foreground truncate">{candidate.candidate_headline}</p>
+                          )}
+                        </div>
+
+                        {/* Stage */}
+                        <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-foreground shrink-0">
+                          {candidate.pipeline_stage || 'Nouveau'}
+                        </span>
+
+                        {/* Score */}
+                        {candidate.score != null && (
+                          <span className={cn(
+                            "px-1.5 py-0.5 text-[10px] font-bold shrink-0",
+                            candidate.score >= 70 ? "bg-foreground text-background" :
+                            candidate.score >= 40 ? "bg-foreground/60 text-background" :
+                            "bg-foreground/30 text-foreground"
+                          )}>
+                            {candidate.score}
+                          </span>
                         )}
-                      </div>
 
-                      {/* Stage */}
-                      <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-foreground shrink-0">
-                        {candidate.pipeline_stage || 'Nouveau'}
-                      </span>
-
-                      {/* Score */}
-                      {candidate.score != null && (
-                        <span className={cn(
-                          "px-1.5 py-0.5 text-[10px] font-bold shrink-0",
-                          candidate.score >= 70 ? "bg-foreground text-background" :
-                          candidate.score >= 40 ? "bg-foreground/60 text-background" :
-                          "bg-foreground/30 text-foreground"
-                        )}>
-                          {candidate.score}
+                        {/* Time */}
+                        <span className="text-[9px] text-muted-foreground shrink-0 hidden sm:flex items-center gap-0.5">
+                          <Clock className="w-2.5 h-2.5" />
+                          {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
                         </span>
+                      </div>
+                      {/* Inline scoring */}
+                      {data.permissions.can_fill_scorecard && (
+                        <PortalCandidateScoring
+                          candidate={candidate}
+                          projectId={project.id}
+                          clientName={data.client_name}
+                          canFillScorecard={data.permissions.can_fill_scorecard}
+                        />
                       )}
-
-                      {/* Time */}
-                      <span className="text-[9px] text-muted-foreground shrink-0 hidden sm:flex items-center gap-0.5">
-                        <Clock className="w-2.5 h-2.5" />
-                        {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
-                      </span>
-                    </div>
-                    {/* Inline scoring */}
-                    {data.permissions.can_fill_scorecard && (
-                      <PortalCandidateScoring
-                        candidate={candidate}
-                        projectId={project.id}
-                        clientName={data.client_name}
-                        canFillScorecard={data.permissions.can_fill_scorecard}
-                      />
-                    )}
+                    </React.Fragment>
                   ))}
                 </div>
               )}
