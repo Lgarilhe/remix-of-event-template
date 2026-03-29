@@ -544,13 +544,31 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               </div>
 
               {/* ─── CONTACT INFO ─── */}
-              <div className="mt-2 pt-2 border-t border-foreground/10">
-                <CandidateContactInfo
-                  profile={displayProfile}
-                  airtableMatch={airtableMatch}
-                  historyCandidate={historyData?.candidate}
-                />
-              </div>
+              {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-foreground/10 pt-2">
+                  {contactInfo.emails.map((email) => (
+                    <Badge
+                      key={email}
+                      variant="outline"
+                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground"
+                    >
+                      <Mail className="h-3 w-3" />
+                      <span className="max-w-[180px] truncate">{email}</span>
+                    </Badge>
+                  ))}
+
+                  {contactInfo.phones.map((phone) => (
+                    <Badge
+                      key={phone}
+                      variant="outline"
+                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground"
+                    >
+                      <Phone className="h-3 w-3" />
+                      <span>{phone}</span>
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
