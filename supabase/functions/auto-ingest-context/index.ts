@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceKey}`,
+        Authorization: `Bearer ${svcKey}`,
       },
       body: JSON.stringify({
         organization_id: result.organization_id,
