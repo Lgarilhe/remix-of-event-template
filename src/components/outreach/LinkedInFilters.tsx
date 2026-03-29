@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { cn } from '@/lib/utils';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import {
   LinkedInFiltersState,
@@ -717,6 +718,48 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           activeFiltersPreview={companyFiltersPreview}
           bgColorClass="bg-emerald-50/40"
         >
+          {/* Smart filters — company type */}
+          <FilterGroup title="Filtres intelligents">
+            <div className="space-y-2">
+              {/* Exclude ESN/Consulting toggle */}
+              <label className="flex items-center justify-between px-2 py-1.5 border border-foreground/10 hover:border-foreground/30 cursor-pointer transition-colors">
+                <span className="text-[10px] font-medium text-foreground uppercase tracking-wider">Exclure ESN / Consulting</span>
+                <input
+                  type="checkbox"
+                  checked={filters.exclude_consulting || false}
+                  onChange={(e) => onChange({ ...filters, exclude_consulting: e.target.checked })}
+                  className="w-4 h-4 accent-foreground"
+                />
+              </label>
+
+              {/* Company category */}
+              <div className="space-y-1">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Type d'entreprise</span>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    { key: '', label: 'Tous' },
+                    { key: 'startup', label: '🚀 Startup' },
+                    { key: 'scaleup', label: '📈 Scale-up' },
+                    { key: 'enterprise', label: '🏛️ Enterprise' },
+                  ].map(opt => (
+                    <button
+                      key={opt.key}
+                      onClick={() => onChange({ ...filters, company_category: opt.key as any })}
+                      className={cn(
+                        "px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-colors",
+                        (filters.company_category || '') === opt.key
+                          ? "bg-foreground text-background border-foreground"
+                          : "border-foreground/20 text-foreground hover:border-foreground"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </FilterGroup>
+
           {/* Company */}
           <FilterGroup
             title="Nom de l'entreprise"
