@@ -466,9 +466,9 @@ function extractJsonRobust(raw: string): any {
 
 function getRecommendation(score: number): string {
   if (score >= 80) return "STRONG_MATCH";
-  if (score >= 61) return "GOOD_MATCH";
-  if (score >= 46) return "POSSIBLE_MATCH";
-  if (score >= 31) return "WEAK_MATCH";
+  if (score >= 65) return "GOOD_MATCH";
+  if (score >= 50) return "POSSIBLE_MATCH";
+  if (score >= 35) return "WEAK_MATCH";
   return "NO_MATCH";
 }
 
@@ -477,7 +477,7 @@ function getRecommendation(score: number): string {
 async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
   // 1. Minimum experience check (FREE — no API call)
   if (job.xpMin && profile.yearsOfExperience !== undefined) {
-    if (profile.yearsOfExperience < job.xpMin * 0.6) {
+    if (profile.yearsOfExperience < job.xpMin * 0.75) {
       return {
         passed: false,
         reason: `XP insuffisante: ${profile.yearsOfExperience}ans vs ${job.xpMin}ans min requis`,
@@ -983,6 +983,11 @@ ${workExpText}
 2. **Must-have** : Si des critères sont marqués must-have/obligatoires, le candidat les satisfait-il ?
    → Si les critères listent plusieurs options avec "parmi", "ou", "dont", au moins UNE suffit.
    → Sois intelligent sur les noms d'écoles, certifications, et synonymes techniques.
+   → IMPORTANT : 3 verdicts possibles :
+     - "passed" : le profil satisfait clairement le critère (preuve dans le profil)
+     - "failed" : le profil contredit clairement le critère (aucun indice, domaine totalement différent)
+     - "uncertain" : pas assez d'infos pour juger (profil LinkedIn minimal, pas de description de poste, etc.)
+     → En cas de doute, choisis "uncertain" plutôt que "failed". Mieux vaut vérifier qu'écarter à tort.
 
 3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
 
@@ -994,7 +999,8 @@ ${workExpText}
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
-{"techFitScore":N,"softSkillsScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":true,"mustHaveDetails":null}`,
+{"techFitScore":N,"softSkillsScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null}
+mustHavePassed: "passed" (critère validé), "failed" (clairement KO), ou "uncertain" (pas assez d'info → à vérifier manuellement)`,
   );
 
   let lastError: Error | null = null;
@@ -1055,7 +1061,8 @@ Réponds UNIQUEMENT en JSON compact :
     summary: parsed.summary || "",
     strengths: parsed.strengths || [],
     concerns: parsed.concerns || [],
-    mustHavePassed: parsed.mustHavePassed !== false, // default true if not present
+    mustHavePassed: parsed.mustHavePassed === "failed" ? false : true, // "passed" or "uncertain" → proceed, "failed" → KO
+    mustHaveUncertain: parsed.mustHavePassed === "uncertain", // Flag for manual review
     mustHaveDetails: parsed.mustHaveDetails || null,
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
@@ -1378,7 +1385,8 @@ async function scoreProfile(
       customScoringInstructions,
     );
 
-    // If LLM says must-have not passed, treat as hard filter KO
+    // If LLM says must-have clearly failed, treat as hard filter KO
+    // If "uncertain" (not enough info), keep but penalize score
     if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
       const koResult: ScoringResult = {
         name: profile.name,
@@ -1405,6 +1413,18 @@ async function scoreProfile(
       };
       await setCachedScore(supabase, candidateId, job.id, koResult);
       return koResult;
+    }
+
+    // If must-have is uncertain, penalize score and flag for review
+    if ((llmResult as any).mustHaveUncertain) {
+      llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 15);
+      llmResult.concerns = [
+        ...(llmResult.concerns || []),
+        "⚠️ Critère obligatoire à vérifier manuellement — pas assez d'infos sur le profil",
+      ];
+      if (llmResult.mustHaveDetails) {
+        llmResult.concerns.push(llmResult.mustHaveDetails);
+      }
     }
 
     // Inject LLM dimensions into weighted result for visibility
