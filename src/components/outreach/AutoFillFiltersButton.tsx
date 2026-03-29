@@ -205,47 +205,54 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       // IMPORTANT: never overwrite a location already selected by the user (and valid).
       const hasValidExistingLocation = (currentLocation || []).some((loc) => /^\d+$/.test(String(loc.id)));
 
-      const locationKeyword = (generated.location_keywords?.[0] || '').trim();
+      const locationKeywords = (generated.location_keywords || []).map((k: string) => k.trim()).filter(Boolean);
 
-      if (!hasValidExistingLocation && locationKeyword && accountId) {
-        try {
-          const { data: paramData } = await invokeUnipile({
-            body: {
-              action: 'get_parameters',
-              account_id: accountId,
-              type: 'LOCATION',
-              keywords: locationKeyword,
-              service: 'RECRUITER',
-            },
-          });
+      if (!hasValidExistingLocation && locationKeywords.length > 0 && accountId) {
+        // Try each location keyword in sequence until one resolves
+        const resolvedLocations: Array<{ id: string; name: string; priority: 'MUST_HAVE'; scope: 'CURRENT_OR_OPEN_TO_RELOCATE' }> = [];
 
-          const items = Array.isArray(paramData?.items) ? paramData.items as any[] : [];
-          if (paramData?.success && items.length > 0) {
-            const normalized = locationKeyword.toLowerCase();
-            const best =
-              items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
-              items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
-              items[0];
+        for (const keyword of locationKeywords.slice(0, 3)) { // Max 3 attempts
+          try {
+            const { data: paramData } = await invokeUnipile({
+              body: {
+                action: 'get_parameters',
+                account_id: accountId,
+                type: 'LOCATION',
+                keywords: keyword,
+                service: 'RECRUITER',
+              },
+            });
 
-            if (best?.id && best?.title) {
-              update.location = [
-                {
-                  id: String(best.id),
-                  name: String(best.title),
-                  priority: 'MUST_HAVE',
-                  scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
-                },
-              ];
+            const items = Array.isArray(paramData?.items) ? paramData.items as any[] : [];
+            if (paramData?.success && items.length > 0) {
+              const normalized = keyword.toLowerCase();
+              const best =
+                items.find((it: any) => String(it.title || '').toLowerCase() === normalized) ||
+                items.find((it: any) => String(it.title || '').toLowerCase().includes(normalized)) ||
+                items[0];
+
+              if (best?.id && best?.title) {
+                // Avoid duplicate IDs
+                if (!resolvedLocations.some(l => l.id === String(best.id))) {
+                  resolvedLocations.push({
+                    id: String(best.id),
+                    name: String(best.title),
+                    priority: 'MUST_HAVE',
+                    scope: 'CURRENT_OR_OPEN_TO_RELOCATE',
+                  });
+                }
+                break; // Found one valid location, stop (OR logic — one is enough)
+              }
             }
-          } else {
-            // Clear stale invalid location IDs (e.g. loc-0) if any.
-            update.location = [];
+          } catch (e) {
+            console.warn('[AutoFill] Failed to resolve location keyword:', keyword, e);
           }
-        } catch (e) {
-          console.warn('[AutoFill] Failed to resolve location keyword:', locationKeyword, e);
-          // Clear stale invalid location IDs (e.g. loc-0) if any.
-          update.location = [];
         }
+
+        if (resolvedLocations.length > 0) {
+          update.location = resolvedLocations;
+        }
+        // Don't set location = [] — preserve user's existing location if resolution fails
       }
 
       // Company keywords (e.g., exclude client)
@@ -264,6 +271,16 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
           name: s.name,
           priority: 'CAN_HAVE' as const, // Force CAN_HAVE for OR logic
         })) as PriorityFilterItem[];
+      }
+
+      // AI-generated keyword-based skills (skills + certifications + domain expertise)
+      if (generated.skills_keywords?.length) {
+        update.skills_keywords = generated.skills_keywords;
+      }
+
+      // AI-generated industry keywords
+      if (generated.industry_keywords?.length) {
+        update.industry_keywords = generated.industry_keywords;
       }
 
       // Open to work / Spotlight

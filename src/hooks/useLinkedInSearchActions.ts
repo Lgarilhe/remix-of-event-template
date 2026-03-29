@@ -397,6 +397,31 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
   if (filters.company_headcount.length) baseParams.company_headcount = filters.company_headcount;
   if (filters.company_type.length) baseParams.company_type = filters.company_type;
 
+  // Smart company filters — exclude consulting/ESN
+  if (filters.exclude_consulting) {
+    // Exclude IT Services & Consulting industry via industry filter
+    const consultingIndustries = ['96', '4', '104']; // IT Services, Staffing, Outsourcing LinkedIn IDs
+    const currentIndustry = baseParams.industry as any;
+    if (currentIndustry?.exclude) {
+      currentIndustry.exclude.push(...consultingIndustries);
+    } else {
+      baseParams.industry = { ...(currentIndustry || {}), exclude: consultingIndustries };
+    }
+  }
+
+  // Smart company filters — company category (startup/scaleup/enterprise)
+  if (filters.company_category) {
+    const headcountMap: Record<string, string[]> = {
+      startup: ['B', 'C', 'D'],      // 1-200 employees
+      scaleup: ['D', 'E', 'F'],      // 51-1000 employees
+      enterprise: ['G', 'H', 'I'],   // 1001+ employees
+    };
+    const codes = headcountMap[filters.company_category];
+    if (codes && !filters.company_headcount.length) {
+      baseParams.company_headcount = codes;
+    }
+  }
+
   // Past filters
   if (filters.past_company.length) {
     baseParams.past_company = { include: filters.past_company.map(f => f.id) };
@@ -406,6 +431,32 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
       id: item.id,
       priority: item.priority,
     }));
+  }
+
+  // AI-generated keyword-based skills → inject into Boolean keywords for broader matching
+  if (filters.skills_keywords?.length) {
+    const existingKeywords = (baseParams.keywords || '').toLowerCase();
+    const newSkills = (filters.skills_keywords as string[])
+      .filter(s => !existingKeywords.includes(s.toLowerCase()))
+      .map(s => `"${s.replace(/"/g, '')}"`) // Sanitize quotes
+      .slice(0, 5); // Max 5 skills to avoid overly long Boolean
+
+    if (newSkills.length > 0) {
+      const skillsGroup = newSkills.join(' OR ');
+      if (baseParams.keywords) {
+        baseParams.keywords = `(${baseParams.keywords}) AND (${skillsGroup})`;
+      } else {
+        baseParams.keywords = skillsGroup;
+      }
+    }
+  }
+
+  // AI-generated industry keywords → add as context in keywords if no ID-based industry
+  if (filters.industry_keywords?.length && !filters.industry?.length) {
+    // Industry keywords are best used as soft context, not hard filters
+    // We DON'T inject into Boolean (too restrictive) but we CAN use them
+    // to enrich the role filter or as metadata for scoring
+    baseParams.industry_keywords = filters.industry_keywords;
   }
 
   return baseParams;
