@@ -20,6 +20,7 @@ import {
   X, ExternalLink,
 } from 'lucide-react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { classifyFromProfile } from '@/lib/companyClassification';
 
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
@@ -58,6 +59,16 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   const profileData = useProfileData(profile);
   const switchResult = useMemo(() => computeLikelyToSwitch(profile), [profile]);
+  const companyType = useMemo(() => {
+    if (!currentCompany) return null;
+    return classifyFromProfile({
+      current_company: currentCompany,
+      company_description: (profile as any).company_description,
+      company_headcount: (profile as any).employee_count || (profile as any).company_headcount,
+      company_industry: (profile as any).industry,
+      company_type: (profile as any).organization_type,
+    });
+  }, [currentCompany, profile]);
   const {
     fullName, initials, currentCompany, currentRole, currentJobTenure,
     networkDistance, profileUrl, skills, education, educationPreview,
@@ -324,6 +335,11 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
+                  {companyType && companyType.type !== 'other' && (
+                    <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 border border-foreground/15 text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
+                      {companyType.label}
+                    </span>
+                  )}
                   {currentJobTenure && (
                     <span className="text-muted-foreground/40 font-normal shrink-0">• {currentJobTenure}</span>
                   )}

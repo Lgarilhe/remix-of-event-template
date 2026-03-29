@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { LinkedInFiltersState, LinkedInProfile, LinkedInApiType } from '@/components/outreach/types';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
+import { classifyFromProfile, CompanyType } from '@/lib/companyClassification';
 import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -576,8 +577,22 @@ export function useLinkedInSearchActions(
           ? filterByLocation(filteredBatch, currentFilters.location)
           : filteredBatch;
 
+        // Apply client-side company category filter
+        const companyFiltered = currentFilters.company_category
+          ? locationFiltered.filter(p => {
+              const classification = classifyFromProfile({
+                current_company: (p as any).current_company || (p as any).company,
+                company_headcount: (p as any).employee_count || (p as any).company_headcount,
+                company_industry: (p as any).industry,
+                company_type: (p as any).organization_type,
+              });
+              return classification.type === currentFilters.company_category
+                || classification.type === 'other'; // Keep "other" — can't classify = don't exclude
+            })
+          : locationFiltered;
+
         // Dedupe
-        for (const p of locationFiltered) {
+        for (const p of companyFiltered) {
           if (!p?.id) continue;
           if (seen.has(p.id)) continue;
           seen.add(p.id);
