@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { getActiveOrganizationId } from '@/lib/orgContext';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { AudioSetupGuide } from './AudioSetupGuide';
 import { Mic, Square, FileText, Copy, CheckCircle2, Loader2, X, Search, CircleDot, AlertTriangle, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -552,11 +553,14 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             </button>
           )}
           {callStopped && !report && (
-            <button onClick={generateReport} disabled={generatingReport}
-              className="h-[28px] px-3 flex items-center gap-1.5 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider disabled:opacity-50">
-              {generatingReport ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-              Générer le CR
-            </button>
+            <>
+              <button onClick={generateReport} disabled={generatingReport}
+                className="h-[28px] px-3 flex items-center gap-1.5 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider disabled:opacity-50">
+                {generatingReport ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                Générer le CR
+              </button>
+              <CreditCostBadge actionId="call_report" />
+            </>
           )}
           {onOpenProfile && (
             <button onClick={onOpenProfile} className="lg:hidden h-[28px] px-2 flex items-center gap-1 border border-foreground/20 text-muted-foreground text-[10px] font-medium uppercase tracking-wider hover:bg-foreground/5 transition-colors">
