@@ -155,6 +155,15 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn("[chat-filter-assistant] Failed to load settle-credits:", e);
     }
+    // Resolve Anthropic model ID from user selection
+    let resolvedModel = "claude-sonnet-4-6";
+    try {
+      const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
+      const candidate = getAnthropicModelId(_aiParams.modelId);
+      if (candidate && candidate.startsWith("claude-")) resolvedModel = candidate;
+    } catch (e) {
+      console.warn("[chat-filter-assistant] Failed to resolve model, using default:", e);
+    }
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -182,7 +191,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: resolvedModel,
           max_tokens: 2048,
           system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
           messages: messages.map((m: Message) => ({
