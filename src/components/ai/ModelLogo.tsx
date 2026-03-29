@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { useId } from 'react';
 
 interface ModelLogoProps {
   modelId: string;
@@ -7,21 +8,21 @@ interface ModelLogoProps {
 }
 
 /**
- * Official provider logos for AI models.
- * Anthropic Claude: the canonical "A\" mark.
- * Google Gemini: the 4-pointed star with gradient.
+ * Provider logos matching the Notion-style model picker.
+ * - Gemini: 4-pointed diamond star with blue→pink→orange gradient
+ * - Claude (Anthropic): starburst / sparkle icon in coral
  */
 export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => {
   const isGemini = modelId.startsWith('gemini');
   const isClaude = modelId.startsWith('claude');
-
-  // Use unique gradient IDs to avoid SVG conflicts when multiple instances render
-  const gradientId = `gemini_grad_${size}`;
+  const uid = useId();
 
   if (isGemini) {
+    // Gemini 4-pointed diamond star — matches the official Google Gemini icon
+    const gid = `gem${uid}`;
     return (
       <svg
-        viewBox="0 0 24 24"
+        viewBox="0 0 28 28"
         width={size}
         height={size}
         className={cn("shrink-0", className)}
@@ -30,14 +31,14 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
         aria-label="Google Gemini"
       >
         <path
-          d="M12 0C12 6.627 7.97 12.21 2.4 13.68L0 14.4v-4.8l2.4-.72C5.97 7.41 8.4 3.97 8.4 0h3.6Zm0 0c0 6.627 4.03 12.21 9.6 13.68L24 14.4v-4.8l-2.4-.72C17.03 7.41 15.6 3.97 15.6 0H12Zm0 24c0-6.627-4.03-12.21-9.6-13.68L0 9.6v4.8l2.4.72C6.97 16.59 8.4 20.03 8.4 24H12Zm0 0c0-6.627 4.03-12.21 9.6-13.68L24 9.6v4.8l-2.4.72C17.03 16.59 15.6 20.03 15.6 24H12Z"
-          fill={`url(#${gradientId})`}
+          d="M14 0C14 7.732 8.627 14 2 14c6.627 0 12 6.268 12 14 0-7.732 5.373-14 12-14-6.627 0-12-6.268-12-14Z"
+          fill={`url(#${gid})`}
         />
         <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#1A73E8" />
-            <stop offset="0.33" stopColor="#6C47B8" />
-            <stop offset="0.66" stopColor="#D63384" />
+          <linearGradient id={gid} x1="2" y1="2" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#4285F4" />
+            <stop offset="0.35" stopColor="#9B72CB" />
+            <stop offset="0.65" stopColor="#D96570" />
             <stop offset="1" stopColor="#E8710A" />
           </linearGradient>
         </defs>
@@ -46,7 +47,8 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
   }
 
   if (isClaude) {
-    // Official Anthropic Claude wordmark "A\" — coral brand color
+    // Anthropic Claude sparkle / starburst icon — coral brand color
+    const color = '#E87040';
     return (
       <svg
         viewBox="0 0 24 24"
@@ -57,13 +59,20 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
         xmlns="http://www.w3.org/2000/svg"
         aria-label="Anthropic Claude"
       >
+        {/* 8-ray starburst */}
         <path
-          d="M16.98 3.41h-3.27l6.57 17.18h3.27L16.98 3.41Z"
-          fill="#D97757"
+          d="M12 1l1.3 4.5a2 2 0 001.2 1.2L19 8l-4.5 1.3a2 2 0 00-1.2 1.2L12 15l-1.3-4.5a2 2 0 00-1.2-1.2L5 8l4.5-1.3a2 2 0 001.2-1.2L12 1z"
+          fill={color}
         />
         <path
-          d="M6.35 3.41.45 20.59h3.4l1.38-3.97h7.15l1.38 3.97h3.4L11.26 3.41H6.35Zm-.36 10.75L8.57 7.7l2.58 6.46H5.99Z"
-          fill="#D97757"
+          d="M18 14l.7 2.3a1 1 0 00.6.6L22 17.6l-2.7.7a1 1 0 00-.6.6L18 21.6l-.7-2.7a1 1 0 00-.6-.6L14 17.6l2.7-.7a1 1 0 00.6-.6L18 14z"
+          fill={color}
+          opacity="0.7"
+        />
+        <path
+          d="M7 14.5l.45 1.55a.75.75 0 00.5.5L9.5 17l-1.55.45a.75.75 0 00-.5.5L7 19.5l-.45-1.55a.75.75 0 00-.5-.5L4.5 17l1.55-.45a.75.75 0 00.5-.5L7 14.5z"
+          fill={color}
+          opacity="0.5"
         />
       </svg>
     );
@@ -72,17 +81,17 @@ export const ModelLogo = ({ modelId, className, size = 16 }: ModelLogoProps) => 
   // Fallback
   return (
     <div
-      className={cn("shrink-0 bg-muted-foreground/20", className)}
+      className={cn("shrink-0 bg-muted-foreground/20 rounded-full", className)}
       style={{ width: size, height: size }}
     />
   );
 };
 
-/** Small provider label */
+/** Small provider label as a muted badge */
 export const ProviderLabel = ({ modelId }: { modelId: string }) => {
   if (modelId.startsWith('gemini'))
-    return <span className="text-[9px] font-semibold text-[#1A73E8] uppercase tracking-wider">Google</span>;
+    return <span className="text-[9px] font-semibold text-[#4285F4] uppercase tracking-wider">Google</span>;
   if (modelId.startsWith('claude'))
-    return <span className="text-[9px] font-semibold text-[#D97757] uppercase tracking-wider">Anthropic</span>;
+    return <span className="text-[9px] font-semibold text-[#E87040] uppercase tracking-wider">Anthropic</span>;
   return null;
 };

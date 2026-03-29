@@ -163,28 +163,19 @@ export const AICreditsSettings = () => {
             </SelectTrigger>
             <SelectContent className="max-w-[calc(100vw-2rem)]">
               <SelectItem value="__auto__">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm shrink-0">🔄</span>
-                  <div className="min-w-0">
-                    <span className="font-medium text-sm">Auto (recommandé)</span>
-                    <p className="text-[10px] text-muted-foreground truncate">Le meilleur modèle est choisi par action</p>
-                  </div>
+                <div className="flex items-center gap-3 py-1">
+                  <span className="text-base shrink-0">✨</span>
+                  <span className="text-sm font-medium">Automatique</span>
                 </div>
               </SelectItem>
               {Object.values(MODEL_CATALOG).map((model) => (
                 <SelectItem key={model.id} value={model.id}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <ModelLogo modelId={model.id} size={18} className="shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium text-sm">{model.name}</span>
-                        <ProviderLabel modelId={model.id} />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground truncate">
-                        {model.description}
-                      </p>
-                    </div>
-                    <span className="text-xs font-bold shrink-0 ml-auto tabular-nums">×{model.multiplier}</span>
+                  <div className="flex items-center gap-3 py-1">
+                    <ModelLogo modelId={model.id} size={22} className="shrink-0" />
+                    <span className="text-sm font-medium">{model.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm">
+                      ×{model.multiplier}
+                    </span>
                   </div>
                 </SelectItem>
               ))}

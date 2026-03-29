@@ -80,9 +80,9 @@ export const ModelPicker = ({
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-80">
-        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Choisir le modèle IA
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel className="text-xs font-bold text-foreground pb-1">
+          Modèle
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
@@ -94,22 +94,10 @@ export const ModelPicker = ({
           }}
         >
           {/* Auto option */}
-          <DropdownMenuRadioItem value="__auto__" className="cursor-pointer py-2.5">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2.5">
-                <div className="w-5 h-5 rounded-sm bg-muted flex items-center justify-center">
-                  <span className="text-[10px]">🔄</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Auto</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {resolvedModel?.name} recommandé
-                  </p>
-                </div>
-              </div>
-              <span className="text-xs font-medium">
-                ~{estimateCredits(actionId, resolveModel(routingTier, null, orgDefault))} cr
-              </span>
+          <DropdownMenuRadioItem value="__auto__" className="cursor-pointer py-3">
+            <div className="flex items-center gap-3 w-full">
+              <span className="text-base shrink-0">✨</span>
+              <span className="text-sm font-medium">Automatique</span>
             </div>
           </DropdownMenuRadioItem>
 
@@ -119,33 +107,17 @@ export const ModelPicker = ({
             const model = MODEL_CATALOG[modelId];
             if (!model) return null;
             const cost = estimateCredits(actionId, modelId);
-            const isRecommended = modelId === resolveModel(routingTier, null, orgDefault);
 
             return (
               <DropdownMenuRadioItem
                 key={modelId}
                 value={modelId}
-                className="cursor-pointer py-2.5"
+                className="cursor-pointer py-3"
               >
-                <div className="flex items-center justify-between w-full gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <ModelLogo modelId={modelId} size={20} />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-medium">{model.name}</span>
-                        <ProviderLabel modelId={modelId} />
-                        {isRecommended && (
-                          <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-foreground/10 text-foreground">rec.</span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground truncate">{model.description}</p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "text-xs font-bold whitespace-nowrap shrink-0",
-                    model.tier === 'premium' && "text-amber-600",
-                    model.tier === 'budget' && "text-emerald-600"
-                  )}>
+                <div className="flex items-center gap-3 w-full">
+                  <ModelLogo modelId={modelId} size={22} />
+                  <span className="text-sm font-medium">{model.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm ml-auto shrink-0">
                     ~{cost} cr
                   </span>
                 </div>
@@ -153,11 +125,6 @@ export const ModelPicker = ({
             );
           })}
         </DropdownMenuRadioGroup>
-
-        <DropdownMenuSeparator />
-        <div className="px-2 py-1.5 text-[10px] text-muted-foreground">
-          1 cr = 1 000 tokens Sonnet. Coût réel basé sur les tokens consommés.
-        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
