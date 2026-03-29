@@ -373,9 +373,10 @@ function mapScoringResult(raw: any): JobMatchResult {
       contractMismatch: raw.contractMismatch || raw.contract_mismatch || null,
       skipReason: raw.skipReason || raw.skip_reason || null,
     },
-    // Pedigree (quality of companies)
+    // Pedigree & overcap
     pedigreeScore: raw.pedigreeScore ?? null,
     notableCompanies: raw.notableCompanies ?? null,
+    overcapRisk: raw.overcapRisk ?? 'none',
     // V2 fields passthrough
     hardFilterPassed: raw.hardFilterPassed,
     hardFilterKO: raw.hardFilterKO,
