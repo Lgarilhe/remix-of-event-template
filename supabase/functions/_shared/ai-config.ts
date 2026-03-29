@@ -381,7 +381,7 @@ export function getModel(
 export function getAnthropicModelId(modelId: string): string {
   const mapping: Record<string, string> = {
     "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-    "claude-sonnet-4-5": "claude-sonnet-4-5-20250514",
+    "claude-sonnet-4-5": "claude-sonnet-4-20250514",
     "claude-sonnet-4-6": "claude-sonnet-4-6-20250627",
     "claude-opus-4-6": "claude-opus-4-6-20250715",
   };
