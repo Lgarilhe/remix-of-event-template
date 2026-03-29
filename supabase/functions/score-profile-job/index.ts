@@ -1020,12 +1020,19 @@ ${workExpText}
 
 3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
 
-4. **Qualité des expériences & pedigree** : Évalue la QUALITÉ des entreprises où le candidat a travaillé.
-   → **Bonus** : scale-ups reconnues (Doctolib, Alan, Datadog, Contentsquare, Mirakl, etc.), GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1 (McKinsey, BCG, etc.), grandes écoles/universités prestigieuses.
-   → **Bonus modéré** : startups funded (même petites), entreprises tech reconnues dans leur niche, PME innovantes, cabinets spécialisés reconnus.
-   → **Neutre** : entreprises classiques (grands groupes CAC40, administrations, PME traditionnelles).
-   → **Signal négatif** : ESN/SSII de basse qualité connues pour le body shopping (Alten, Altran, Capgemini Engineering, Sopra, CGI = neutre-négatif), cabinets de recrutement/intérim généralistes, expériences exclusivement dans des pays low-cost (offshore).
-   → Un parcours dans des entreprises exigeantes indique un candidat sélectionné et formé à haut niveau. Mentionne les entreprises notables dans strengths.
+4. **Qualité des expériences & pedigree** : Évalue la QUALITÉ des entreprises ET la pertinence de l'expérience (durée + titre).
+   → **Bonus fort** : scale-ups reconnues (Doctolib, Alan, Datadog, Contentsquare, Mirakl, etc.), GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1 (McKinsey, BCG, etc.).
+   → **Bonus modéré** : startups funded, entreprises tech reconnues dans leur niche, PME innovantes.
+   → **Neutre** : grands groupes CAC40, administrations, PME traditionnelles.
+   → **Signal négatif** : ESN/SSII body shopping (Alten, Altran, Sopra, CGI = neutre-négatif), intérim généraliste, expériences exclusivement offshore.
+
+   ⚠️ IMPORTANT — La durée et le titre comptent autant que le nom de la boîte :
+   → Stage ou alternance dans une bonne boîte = bonus FAIBLE (formation mais pas de vraie responsabilité)
+   → < 6 mois dans une boîte top = bonus FAIBLE (période d'essai ou passage éclair, pas de vrai impact)
+   → 1-2 ans sur un poste pertinent dans une boîte exigeante = bonus FORT
+   → 3+ ans sur un poste senior/lead dans une boîte reconnue = bonus TRÈS FORT
+   → Titre non pertinent (support, admin, RH) dans une boîte tech ≠ bonus tech
+   → Seules les expériences sur des POSTES PERTINENTS pour le job évalué comptent pour le pedigree
 
 5. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
 
