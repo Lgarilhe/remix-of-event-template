@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { LinkedInFiltersState, RoleFilter, PriorityFilterItem, CompanyKeywordFilter, LocationFilterItem, SpotlightType } from './types';
 import { Job } from '@/types/jobs';
@@ -370,6 +371,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
                   <>
                     <Wand2 className="w-3.5 h-3.5" />
                     Auto-fill
+                    <CreditCostBadge actionId="filter_generation" />
                   </>
                 )}
               </Button>

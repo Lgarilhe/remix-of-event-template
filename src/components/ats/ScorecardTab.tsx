@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { useOrganization } from '@/hooks/useOrganization';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
@@ -1017,6 +1018,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
         <Plus className="w-3.5 h-3.5" />
         Nouvelle scorecard
+        <CreditCostBadge actionId="generate_scorecard" />
       </button>
 
       {evaluations.length === 0 && (

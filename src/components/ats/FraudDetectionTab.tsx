@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -77,13 +78,16 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
         <p className="text-[11px] text-muted-foreground mt-1 max-w-xs">
           Analyse automatique du profil pour détecter les incohérences : dates, titres gonflés, diplômes douteux.
         </p>
-        <button
-          onClick={runAnalysis}
-          className="relative overflow-hidden mt-4 h-[34px] px-6 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group"
-        >
-          <span className="relative z-10">Lancer l'analyse</span>
-          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-        </button>
+        <div className="flex items-center gap-2 mt-4">
+          <button
+            onClick={runAnalysis}
+            className="relative overflow-hidden h-[34px] px-6 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group"
+          >
+            <span className="relative z-10">Lancer l'analyse</span>
+            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          </button>
+          <CreditCostBadge actionId="screen_candidate" />
+        </div>
         {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
       </div>
     );
