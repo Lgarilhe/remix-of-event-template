@@ -74,7 +74,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
     }
     setIsAnalyzing(true);
     try {
-      const response = await invokeWithCredits('generate-search-filters', 'generate_filters', {
+      const response = await invokeWithCredits('generate-search-filters', 'filter_generation', {
         job: {
           id: project.id,
           title: jd.title || project.name,

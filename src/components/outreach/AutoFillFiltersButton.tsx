@@ -145,7 +145,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await invokeWithCredits<{ filters?: any }>('generate-search-filters', 'generate_filters', { job: selectedJob }, { modelOverride: selectedModel ?? undefined });
+      const { data, error } = await invokeWithCredits<{ filters?: any }>('generate-search-filters', 'filter_generation', { job: selectedJob }, { modelOverride: selectedModel ?? undefined });
 
       if (error) throw error;
 

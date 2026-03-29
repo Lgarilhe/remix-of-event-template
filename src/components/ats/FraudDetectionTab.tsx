@@ -45,7 +45,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fnError } = await invokeWithCredits('detect-profile-fraud', 'profile_fraud', {
+      const { data, error: fnError } = await invokeWithCredits('detect-profile-fraud', 'screen_candidate', {
         profileData: candidate.linkedinProfileData,
         candidateName: candidate.name,
         headline: candidate.headline,
