@@ -161,24 +161,30 @@ export const AICreditsSettings = () => {
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-w-[calc(100vw-2rem)]">
               <SelectItem value="__auto__">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">🔄</span>
-                  <div>
-                    <span className="font-medium">Auto (recommandé)</span>
-                    <span className="text-xs text-muted-foreground ml-2">Le meilleur modèle est choisi par action</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm shrink-0">🔄</span>
+                  <div className="min-w-0">
+                    <span className="font-medium text-sm">Auto (recommandé)</span>
+                    <p className="text-[10px] text-muted-foreground truncate">Le meilleur modèle est choisi par action</p>
                   </div>
                 </div>
               </SelectItem>
               {Object.values(MODEL_CATALOG).map((model) => (
                 <SelectItem key={model.id} value={model.id}>
-                  <div className="flex items-center gap-2">
-                    <ModelLogo modelId={model.id} size={16} />
-                    <span className="font-medium">{model.name}</span>
-                    <ProviderLabel modelId={model.id} />
-                    <span className="text-xs text-muted-foreground">— {model.description}</span>
-                    <span className="text-xs font-medium ml-auto">×{model.multiplier}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ModelLogo modelId={model.id} size={18} className="shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-sm">{model.name}</span>
+                        <ProviderLabel modelId={model.id} />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {model.description}
+                      </p>
+                    </div>
+                    <span className="text-xs font-bold shrink-0 ml-auto tabular-nums">×{model.multiplier}</span>
                   </div>
                 </SelectItem>
               ))}
