@@ -809,18 +809,25 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   };
 
   // --- Contract Fit (weight: 5%) ---
+  // Check headline + summary + currentRole for freelance indicators
   let contractFitScore = 70; // default: neutral-positive
   let contractDetails = "Neutre";
-  if (profile.headline && job.contractType) {
-    const headline = profile.headline.toLowerCase();
-    const isFreelance = ["freelance", "indépendant", "auto-entrepreneur", "consultant indépendant"].some((f) =>
-      headline.includes(f),
-    );
+  if (job.contractType) {
+    const freelanceKeywords = ["freelance", "indépendant", "auto-entrepreneur", "consultant indépendant", "micro-entrepreneur", "portage salarial"];
+    const textToCheck = [
+      profile.headline || "",
+      profile.summary || "",
+      profile.currentRole || "",
+      profile.currentCompany || "",
+    ].join(" ").toLowerCase();
+    const isFreelance = freelanceKeywords.some((f) => textToCheck.includes(f));
     const isCDI = ["cdi", "permanent"].includes(job.contractType.toLowerCase());
     const isFreelanceJob = ["freelance", "mission", "portage"].includes(job.contractType.toLowerCase());
     if (isFreelance && isCDI) {
-      contractFitScore = 20;
-      contractDetails = "Freelance vs CDI";
+      // Freelance qui candidate sur un CDI : signal faible, PAS rédhibitoire
+      // Beaucoup de freelances veulent redevenir salariés
+      contractFitScore = 50;
+      contractDetails = "Freelance (poste CDI — à vérifier en entretien)";
     } else if (isFreelance && isFreelanceJob) {
       contractFitScore = 100;
       contractDetails = "Freelance match";
@@ -1000,7 +1007,9 @@ ${workExpText}
 
 5. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
 
-6. **Score global** (0-100) : Ta note finale de correspondance candidat/poste.
+6. **Statut contractuel** : Si le candidat affiche "Freelance" / "Indépendant" et que le poste est en CDI, ce n'est PAS un critère d'exclusion. Beaucoup de freelances souhaitent revenir en CDI. Mentionne-le dans "concerns" mais ne pénalise PAS le score technique ou global pour ce seul motif. Évalue les compétences, pas le statut contractuel.
+
+7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste.
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
