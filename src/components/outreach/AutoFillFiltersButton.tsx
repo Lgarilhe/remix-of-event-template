@@ -145,12 +145,16 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await invokeWithCredits<{ filters?: any }>('generate-search-filters', 'filter_generation', { job: selectedJob }, { modelOverride: selectedModel ?? undefined });
+      const { data, error } = await invokeWithCredits<{ filters?: any; success?: boolean; error?: string }>('generate-search-filters', 'filter_generation', { job: selectedJob }, { modelOverride: selectedModel ?? undefined });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[AutoFill] invokeWithCredits error:', error.message);
+        throw error;
+      }
 
       if (!data?.success || !data?.filters) {
-        throw new Error('Réponse invalide de l\'API');
+        console.error('[AutoFill] Invalid response:', JSON.stringify(data).slice(0, 500));
+        throw new Error(data?.error || 'Réponse invalide de l\'API');
       }
 
       const generated: GeneratedFilters = data.filters;
@@ -308,18 +312,25 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       toast.success(`${filterCount} filtres appliqués depuis le poste`);
     } catch (error: any) {
-      console.error('Error auto-filling filters:', error);
-      
-      // Extract error message from edge function response if available
+      console.error('[AutoFill] Error:', error);
+
+      // Extract error message
       let errorMessage = 'Erreur lors de la génération des filtres';
-      if (error?.context?.json?.error) {
+      const msg = error?.message || '';
+      if (msg.includes('insufficient_credits')) {
+        errorMessage = 'Crédits IA insuffisants';
+      } else if (error?.context?.json?.error) {
         errorMessage = error.context.json.error;
-      } else if (error?.message?.includes('503') || error?.message?.includes('529')) {
+      } else if (msg.includes('503') || msg.includes('529') || msg.includes('surcharg')) {
         errorMessage = 'Service IA temporairement surchargé, réessayez dans 30 secondes';
-      } else if (error?.message?.includes('429')) {
+      } else if (msg.includes('429')) {
         errorMessage = 'Trop de requêtes, réessayez dans quelques secondes';
+      } else if (msg.includes('timeout') || msg.includes('aborted')) {
+        errorMessage = 'La requête a pris trop de temps. Réessayez.';
+      } else if (msg && msg !== 'Réponse invalide de l\'API' && msg.length < 200) {
+        errorMessage = msg;
       }
-      
+
       toast.error(errorMessage);
     } finally {
       setLoading(false);
