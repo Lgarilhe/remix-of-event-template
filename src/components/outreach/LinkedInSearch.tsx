@@ -215,7 +215,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     search.setTotal(cached.total);
     search.setCursor(cached.cursor);
     search.setHasMoreResults(cached.hasMoreResults);
-    search.setSelectedJob(cached.selectedJob);
+    // Don't override job from cache when in mission context — the hook auto-creates it from brief
+    if (!activeProject) {
+      search.setSelectedJob(cached.selectedJob);
+    }
     search.setJobScores(cached.jobScores);
     search.setSortByScore(cached.sortByScore);
     search.setStatusFilter(cached.statusFilter);
