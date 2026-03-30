@@ -128,10 +128,13 @@ const MissionWorkspace = () => {
   const isPrimaryTab = ['brief', 'process', 'sourcing', 'outreach'].includes(activeTab);
 
   return (
-    <div className="min-h-screen w-full max-w-full bg-background">
+    <div className="min-h-screen w-full max-w-full bg-background relative">
+      {/* Animated background paths */}
+      <BackgroundPaths className="fixed inset-0 pointer-events-none z-0 opacity-40" pathCount={6} />
+
       <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
       <Navbar />
-      <main className="pt-20 pb-14 w-full max-w-full">
+      <main className="pt-20 pb-14 w-full max-w-full relative z-10">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
@@ -149,7 +152,16 @@ const MissionWorkspace = () => {
                   {project.name}
                 </h1>
                 {project.client_name && (
-                  <p className="text-xs text-muted-foreground truncate">{project.client_name}</p>
+                  <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+                    {project.client_name}
+                    <span className="text-foreground/20">·</span>
+                    <TextRotate
+                      texts={['En cours', 'Mission active', statusConfig[project.status].label]}
+                      interval={4000}
+                      rotationType="blur"
+                      className="text-muted-foreground"
+                    />
+                  </p>
                 )}
               </div>
             </div>
