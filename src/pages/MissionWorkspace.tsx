@@ -272,6 +272,7 @@ const MissionWorkspace = () => {
         </div>
       </main>
 
+      <MissionAgentFAB project={project} activeTab={activeTab} />
       <MissionCopilot project={project} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
