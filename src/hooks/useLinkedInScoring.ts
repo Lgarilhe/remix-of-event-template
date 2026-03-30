@@ -780,7 +780,9 @@ export function useLinkedInScoring({
 
         // Build detailed per-profile report
         const reportEntries: BatchReportEntry[] = allResults.map((rawResult: any, index: number) => {
-          const profile = profilesToScore[index];
+          const profile = rawResult.profile_id
+            ? profilesToScore.find(p => p.id === rawResult.profile_id) || profilesToScore[index]
+            : profilesToScore[index];
           if (!profile) return null;
           const result = mapScoringResult(rawResult);
           const profileName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();

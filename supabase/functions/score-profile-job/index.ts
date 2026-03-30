@@ -1255,17 +1255,51 @@ JSON uniquement, sans markdown.`;
   const rawContent = data.content?.[0]?.text || "";
   console.log(`[llm-batch] Response (${rawContent.length} chars): ${rawContent.substring(0, 200)}...`);
 
-  // Parse the JSON array
+  // Parse the JSON array — robust extraction for LLM output
   let parsedArray: any[];
   try {
-    const cleanJson = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    parsedArray = JSON.parse(cleanJson);
-    if (!Array.isArray(parsedArray)) {
-      // Try wrapping in array if single object returned
-      parsedArray = [parsedArray];
+    let content = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // Find the array start
+    const arrStart = content.indexOf('[');
+    if (arrStart === -1) {
+      // No array found — try parsing as single object
+      const single = extractJsonRobust(content);
+      parsedArray = [single];
+    } else {
+      // Find matching closing bracket
+      let depth = 0;
+      let arrEnd = -1;
+      for (let i = arrStart; i < content.length; i++) {
+        if (content[i] === '[') depth++;
+        else if (content[i] === ']') {
+          depth--;
+          if (depth === 0) { arrEnd = i; break; }
+        }
+      }
+
+      let jsonStr: string;
+      if (arrEnd !== -1) {
+        jsonStr = content.substring(arrStart, arrEnd + 1);
+      } else {
+        // Truncated — attempt repair
+        jsonStr = content.substring(arrStart);
+        // Remove trailing incomplete object
+        jsonStr = jsonStr.replace(/,\s*\{[^}]*$/, '');
+        // Close unclosed brackets
+        const openBrackets = (jsonStr.match(/\[/g) || []).length - (jsonStr.match(/\]/g) || []).length;
+        for (let i = 0; i < openBrackets; i++) jsonStr += ']';
+        const openBraces = (jsonStr.match(/\{/g) || []).length - (jsonStr.match(/\}/g) || []).length;
+        for (let i = 0; i < openBraces; i++) jsonStr += '}';
+      }
+
+      parsedArray = JSON.parse(jsonStr);
+      if (!Array.isArray(parsedArray)) parsedArray = [parsedArray];
     }
+
+    console.log(`[llm-batch] Parsed ${parsedArray.length} results from response`);
   } catch (e) {
-    console.error(`[llm-batch] Failed to parse batch response, falling back to individual scoring`);
+    console.error(`[llm-batch] Failed to parse batch response:`, (e as Error).message, `raw: ${rawContent.substring(0, 300)}`);
     throw new Error("BATCH_PARSE_FAILED");
   }
 
