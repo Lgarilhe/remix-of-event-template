@@ -22,7 +22,6 @@ import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { MissionProgressBar } from '@/components/missions/MissionProgressBar';
 import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
-import { MissionAgentFAB } from '@/components/missions/MissionAgentFAB';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
@@ -305,7 +304,6 @@ const MissionWorkspace = () => {
         </div>
       </main>
 
-      <MissionAgentFAB project={project} activeTab={activeTab} />
       <MissionCopilot project={project} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
