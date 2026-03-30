@@ -475,13 +475,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
       {/* Results list */}
       <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
-        {loading && results.length === 0 ? (
+        {loading && displayResults.length === 0 ? (
           <BrutalLoader variant="search" rows={5} />
-        ) : results.length === 0 && !hasSearched ? (
+        ) : displayResults.length === 0 && !hasSearched ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             <SearchWelcomeMessage />
           </div>
-        ) : results.length === 0 && hasSearched ? (
+        ) : displayResults.length === 0 && hasSearched ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
               <Search className="w-10 h-10" />
