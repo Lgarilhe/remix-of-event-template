@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Plus, X, Check, Mic, Sparkles, FileText, ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
+import { X, Check, Plus, Sparkles, ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
@@ -69,232 +69,234 @@ const TagInput = ({ label, tags, onChange, color, placeholder }: {
   );
 };
 
-// ─── Wizard Steps Config ───────────────────────────────────
+// ─── Steps config ──────────────────────────────────────────
 
 const STEPS = [
   { key: 'poste', label: 'Le Poste', subtitle: 'Titre, contrat, localisation et contexte du recrutement', emoji: '1' },
   { key: 'client', label: 'Le Client', subtitle: "Informations sur l'entreprise et le hiring manager", emoji: '2' },
-  { key: 'profil', label: 'Le Profil', subtitle: 'Seniorite, experience, remuneration et langues', emoji: '3' },
-  { key: 'competences', label: 'Les Competences', subtitle: 'Competences techniques et soft skills par priorite', emoji: '4' },
-  { key: 'evaluation', label: "L'Evaluation", subtitle: 'Criteres du manager, deal-breakers et ponderations', emoji: '5' },
+  { key: 'profil', label: 'Le Profil', subtitle: 'Seniorité, expérience, rémunération et langues', emoji: '3' },
+  { key: 'competences', label: 'Les Compétences', subtitle: 'Compétences techniques et soft skills par priorité', emoji: '4' },
+  { key: 'evaluation', label: "L'Évaluation", subtitle: 'Critères du manager, deal-breakers et pondérations', emoji: '5' },
 ];
 
 // ─── Completion score ──────────────────────────────────────
 
-function computeCompletionScore(d: JobDetails): { score: number; items: Array<{ label: string; done: boolean }> } {
-  const checks: Array<[boolean, string]> = [
-    [!!d.title, 'Titre du poste'],
-    [!!d.contract_type, 'Type de contrat'],
-    [!!d.client?.name, 'Nom du client'],
-    [!!d.location, 'Localisation'],
-    [!!d.remote_policy, 'Politique remote'],
-    [!!d.seniority, 'Seniorite'],
-    [d.experience_min != null, 'Experience min'],
-    [d.salary_min != null, 'Salaire min'],
-    [(d.skills_must_have?.length || 0) > 0, 'Skills must-have'],
-    [!!d.mission_description || !!d.context, 'Description ou contexte'],
-    [(d.evaluation_criteria?.length || 0) > 0, "Criteres d'evaluation"],
+interface CompletionItem { label: string; done: boolean; critical: boolean }
+
+function computeCompletionScore(d: JobDetails): { score: number; items: CompletionItem[] } {
+  const checks: Array<[boolean, string, boolean]> = [
+    [!!d.title, 'Titre du poste', true],
+    [!!d.contract_type, 'Type de contrat', false],
+    [!!d.client?.name, 'Nom du client', false],
+    [!!d.location, 'Localisation', true],
+    [!!d.remote_policy, 'Politique remote', false],
+    [!!d.seniority, 'Seniorité', true],
+    [d.experience_min != null, 'Expérience min', false],
+    [d.salary_min != null, 'Salaire min', false],
+    [(d.skills_must_have?.length || 0) > 0, 'Skills must-have', true],
+    [!!d.mission_description || !!d.context, 'Description ou contexte', true],
+    [(d.evaluation_criteria?.length || 0) > 0, "Critères d'évaluation", false],
   ];
   const done = checks.filter(([ok]) => ok).length;
-  const items = checks.map(([ok, label]) => ({ label, done: ok }));
+  const items = checks.map(([ok, label, critical]) => ({ label, done: ok, critical }));
   return { score: Math.round((done / checks.length) * 100), items };
 }
 
-// Step required fields validation
-function isStepValid(stepIndex: number, d: JobDetails): boolean {
+function getStepCompletion(stepIndex: number, d: JobDetails): { filled: number; total: number; missingCritical: string[] } {
+  const missing: string[] = [];
   switch (stepIndex) {
-    case 0: return !!d.title;
-    case 1: return true;
-    case 2: return true;
-    case 3: return true;
-    case 4: return true;
-    default: return true;
+    case 0: {
+      const fields = [!!d.title, !!d.contract_type, !!d.location, !!d.remote_policy, !!d.mission_description || !!d.context];
+      if (!d.title) missing.push('Titre du poste');
+      if (!d.location) missing.push('Localisation');
+      if (!d.mission_description && !d.context) missing.push('Description ou contexte');
+      return { filled: fields.filter(Boolean).length, total: fields.length, missingCritical: missing };
+    }
+    case 1: {
+      const fields = [!!d.client?.name, !!d.client?.sector, !!d.client?.size];
+      return { filled: fields.filter(Boolean).length, total: fields.length, missingCritical: [] };
+    }
+    case 2: {
+      const fields = [!!d.seniority, d.experience_min != null, d.salary_min != null];
+      if (!d.seniority) missing.push('Seniorité');
+      return { filled: fields.filter(Boolean).length, total: fields.length, missingCritical: missing };
+    }
+    case 3: {
+      const fields = [(d.skills_must_have?.length || 0) > 0, (d.skills_should_have?.length || 0) > 0];
+      if (!(d.skills_must_have?.length)) missing.push('Skills must-have');
+      return { filled: fields.filter(Boolean).length, total: fields.length, missingCritical: missing };
+    }
+    case 4: {
+      const fields = [(d.evaluation_criteria?.length || 0) > 0];
+      return { filled: fields.filter(Boolean).length, total: fields.length, missingCritical: [] };
+    }
+    default:
+      return { filled: 0, total: 0, missingCritical: [] };
   }
 }
 
-// ─── Slide transition variants ─────────────────────────────
+// ─── Fullscreen step dialog ────────────────────────────────
 
-const slideVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? 60 : -60, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({ x: dir > 0 ? -60 : 60, opacity: 0 }),
-};
-
-// ─── Mini wizard stepper ───────────────────────────────────
-
-const WizardStepper: React.FC<{
-  activeStep: number;
-  steps: typeof STEPS;
-  completedSteps: boolean[];
-  onStepClick: (i: number) => void;
-}> = ({ activeStep, steps: stepList, completedSteps, onStepClick }) => (
-  <div className="flex items-center gap-0 px-4 py-3 bg-foreground/[0.03] border-b-2 border-foreground">
-    {stepList.map((step, i) => {
-      const isActive = activeStep === i;
-      const isDone = completedSteps[i];
-      return (
-        <React.Fragment key={step.key}>
-          {i > 0 && (
-            <div className="flex-1 h-[2px] bg-foreground/10 mx-1 sm:mx-2 overflow-hidden min-w-[12px]">
-              <motion.div
-                className="h-full bg-brutal-accent"
-                initial={{ width: '0%' }}
-                animate={{ width: isDone || i <= activeStep ? '100%' : '0%' }}
-                transition={{ duration: 0.4, delay: i * 0.05, ease: 'easeOut' as const }}
-              />
-            </div>
-          )}
-          <button
-            onClick={() => onStepClick(i)}
-            className="group flex items-center gap-1.5 shrink-0"
-            title={step.label}
-          >
-            <motion.div
-              className={cn(
-                "w-7 h-7 flex items-center justify-center text-[10px] font-black shrink-0 transition-all duration-200 border-2",
-                isActive
-                  ? "bg-brutal-accent text-foreground border-foreground"
-                  : isDone
-                    ? "bg-foreground text-background border-foreground"
-                    : "border-foreground/20 text-muted-foreground group-hover:border-foreground/50"
-              )}
-              animate={isActive ? { scale: [1, 1.08, 1] } : {}}
-              transition={isActive ? { duration: 2, repeat: Infinity, ease: 'easeInOut' as const } : {}}
-            >
-              {isDone && !isActive ? (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                >
-                  <Check className="w-3 h-3" />
-                </motion.div>
-              ) : (
-                step.emoji
-              )}
-            </motion.div>
-            <span className={cn(
-              "hidden sm:inline text-[9px] font-black uppercase tracking-wider transition-colors",
-              isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
-            )}>
-              {step.label}
-            </span>
-          </button>
-        </React.Fragment>
-      );
-    })}
-    {/* Step counter (mobile) */}
-    <span className="sm:hidden ml-auto text-[9px] font-black text-muted-foreground uppercase tracking-wider">
-      {activeStep + 1}/{stepList.length}
-    </span>
-  </div>
-);
-
-// ─── Completion panel ──────────────────────────────────────
-
-const CompletionPanel: React.FC<{
-  score: number;
-  items: Array<{ label: string; done: boolean }>;
+const FullscreenStepDialog: React.FC<{
+  stepIndex: number;
+  d: JobDetails;
+  updateField: (path: string, value: any) => void;
+  onUpdate: (patch: Partial<JobDetails>) => void;
+  readOnly: boolean;
+  onClose: () => void;
+  onNext: () => void;
+  onPrev: () => void;
+  isFirst: boolean;
+  isLast: boolean;
   onLaunchSourcing?: () => void;
-  activeStep: number;
-  onStepClick: (i: number) => void;
-}> = ({ score, items, onLaunchSourcing, activeStep, onStepClick }) => {
-  const progressColor = score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground';
-  const borderColor = score < 30 ? 'border-destructive' : score < 70 ? 'border-brutal-accent' : 'border-foreground';
+  score: number;
+  items: CompletionItem[];
+}> = ({ stepIndex, d, updateField, onUpdate, readOnly, onClose, onNext, onPrev, isFirst, isLast, onLaunchSourcing, score, items }) => {
+  const step = STEPS[stepIndex];
+  const { filled, total, missingCritical } = getStepCompletion(stepIndex, d);
+  const allCriticalMissing = items.filter(i => i.critical && !i.done);
 
   return (
-    <div className="border-2 border-foreground p-4 sticky top-24">
-      {/* Score */}
-      <div className="text-center mb-4">
-        <div className={cn("relative inline-flex items-center justify-center w-16 h-16 border-2 transition-colors duration-500", borderColor)}>
-          <div className="flex items-baseline">
-            <NumberTicker value={score} className={cn("text-lg font-black tabular-nums", score >= 70 ? "text-foreground" : "text-muted-foreground")} />
-            <span className={cn("text-sm font-black", score >= 70 ? "text-foreground" : "text-muted-foreground")}>%</span>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-[3000] bg-background flex flex-col"
+    >
+      {/* Header */}
+      <div className="shrink-0 border-b-2 border-foreground bg-background">
+        <div className="flex items-center justify-between px-4 sm:px-8 py-4">
+          <div className="flex items-center gap-4">
+            <motion.div
+              className="w-10 h-10 bg-foreground text-background flex items-center justify-center text-sm font-black border-2 border-foreground"
+              initial={{ scale: 0, rotate: -90 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            >
+              {step.emoji}
+            </motion.div>
+            <div>
+              <h2 className="text-base sm:text-lg font-black uppercase tracking-wider text-foreground">{step.label}</h2>
+              <p className="text-[11px] text-muted-foreground">{step.subtitle}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Step progress pills */}
+            <div className="hidden sm:flex items-center gap-1">
+              {STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "w-2 h-2 border transition-all",
+                    i === stepIndex
+                      ? "bg-foreground border-foreground scale-125"
+                      : i < stepIndex
+                        ? "bg-foreground/50 border-foreground/50"
+                        : "bg-transparent border-foreground/20"
+                  )}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">
+              {stepIndex + 1}/{STEPS.length}
+            </span>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mt-2">Completion</p>
-      </div>
-
-      {/* Color progress bar */}
-      <div className="h-2 w-full bg-foreground/10 mb-4 overflow-hidden border border-foreground/20">
-        <motion.div
-          className={cn("h-full transition-colors duration-500", progressColor)}
-          initial={{ width: 0 }}
-          animate={{ width: `${score}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' as const }}
-        />
-      </div>
-
-      {/* Checklist */}
-      <div className="space-y-1.5 mb-4">
-        <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground mb-2">Checklist</p>
-        {items.map((item) => (
+        {/* Step fill progress bar */}
+        <div className="h-1 bg-foreground/10">
           <motion.div
-            key={item.label}
-            className="flex items-center gap-2 text-[10px]"
-            initial={false}
-            animate={{ opacity: item.done ? 0.5 : 1 }}
-          >
-            <motion.div
-              className={cn(
-                "w-4 h-4 flex items-center justify-center shrink-0 border-2 transition-colors",
-                item.done ? "bg-foreground border-foreground" : "border-foreground/20 bg-background"
-              )}
-              animate={item.done ? { scale: [1, 1.2, 1] } : {}}
-              transition={{ duration: 0.3 }}
-            >
-              {item.done && (
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
-                  <Check className="w-2.5 h-2.5 text-background" />
-                </motion.div>
-              )}
-            </motion.div>
-            <span className={cn("transition-all font-medium uppercase tracking-wider", item.done ? "text-muted-foreground line-through" : "text-foreground")}>
-              {item.label}
-            </span>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* 100% celebration */}
-      {score === 100 && (
-        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-3 border-t-2 border-foreground/20">
-          <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 0.5, delay: 0.2 }} className="text-2xl mb-1">
-            <span role="img" aria-label="celebration">&#x1F389;</span>
-          </motion.div>
-          <p className="text-[10px] font-black uppercase tracking-wider text-foreground">Brief complet !</p>
-        </motion.div>
-      )}
-
-      {/* Launch sourcing CTA at 70%+ */}
-      {score >= 70 && onLaunchSourcing && (
-        <div className="mt-4 pt-4 border-t-2 border-foreground/20">
-          <ShimmerButton onClick={onLaunchSourcing} className="w-full h-[36px] text-[10px]" shimmerDuration="1.5s">
-            <Sparkles className="w-3 h-3" />
-            Lancer le sourcing
-            <ArrowRight className="w-3 h-3" />
-          </ShimmerButton>
+            className="h-full bg-foreground"
+            initial={{ width: 0 }}
+            animate={{ width: total > 0 ? `${(filled / total) * 100}%` : '0%' }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+          />
         </div>
-      )}
-
-      {/* Quick step nav */}
-      <div className="mt-4 pt-4 border-t-2 border-foreground/20 space-y-0.5">
-        {STEPS.map((step, i) => (
-          <button
-            key={step.key}
-            onClick={() => onStepClick(i)}
-            className={cn(
-              "w-full flex items-center gap-2 px-2 py-1.5 text-[10px] uppercase tracking-wider text-left transition-all",
-              activeStep === i
-                ? "text-foreground font-black bg-brutal-accent/20"
-                : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
-            )}
-          >
-            <span className="w-4 text-center font-black">{step.emoji}</span> {step.label}
-          </button>
-        ))}
       </div>
-    </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={stepIndex}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.25 }}
+            >
+              {stepIndex === 0 && <StepPoste d={d} updateField={updateField} readOnly={readOnly} />}
+              {stepIndex === 1 && <StepClient d={d} updateField={updateField} readOnly={readOnly} />}
+              {stepIndex === 2 && <StepProfil d={d} updateField={updateField} onUpdate={onUpdate} readOnly={readOnly} />}
+              {stepIndex === 3 && <StepCompetences d={d} onUpdate={onUpdate} readOnly={readOnly} />}
+              {stepIndex === 4 && <StepEvaluation d={d} onUpdate={onUpdate} readOnly={readOnly} />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Footer navigation */}
+      <div className="shrink-0 border-t-2 border-foreground bg-background">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between gap-4">
+          {/* Left: back */}
+          <button
+            onClick={isFirst ? onClose : onPrev}
+            className="flex items-center gap-1.5 h-[40px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            {isFirst ? 'Fermer' : 'Précédent'}
+          </button>
+
+          {/* Right: next or CTA */}
+          {isLast ? (
+            <div className="flex items-center gap-3">
+              {score >= 70 && onLaunchSourcing ? (
+                <ShimmerButton onClick={onLaunchSourcing} className="h-[40px] text-[10px] px-6" shimmerDuration="1.5s">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Lancer le sourcing
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </ShimmerButton>
+              ) : (
+                <div className="flex items-center gap-3">
+                  {allCriticalMissing.length > 0 && (
+                    <div className="hidden sm:flex items-center gap-2 text-destructive">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                        {allCriticalMissing.length} champ{allCriticalMissing.length > 1 ? 's' : ''} requis manquant{allCriticalMissing.length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    onClick={onClose}
+                    className="flex items-center gap-1.5 h-[40px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Terminer
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={onNext}
+              className="group relative overflow-hidden flex items-center gap-1.5 h-[40px] px-6 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
+            >
+              <span className="relative z-10 flex items-center gap-1.5">
+                Suivant
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 };
 
@@ -308,14 +310,8 @@ interface BriefWizardProps {
 }
 
 export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, readOnly = false, onLaunchSourcing }) => {
-  const [activeStep, setActiveStep] = useState(0);
-  const [direction, setDirection] = useState(0);
+  const [openStep, setOpenStep] = useState<number | null>(null);
   const d = jobDetails;
-
-  const goToStep = useCallback((newStep: number) => {
-    setDirection(newStep > activeStep ? 1 : -1);
-    setActiveStep(newStep);
-  }, [activeStep]);
 
   const updateField = useCallback((path: string, value: any) => {
     const parts = path.split('.');
@@ -328,210 +324,150 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
   }, [onUpdate]);
 
   const { score, items } = useMemo(() => computeCompletionScore(d), [d]);
-  const isBriefEmpty = !d.title && !d.mission_description && !d.raw_brief;
 
-  const completedSteps = useMemo(() => [
-    !!(d.title && (d.mission_description || d.context || d.raw_brief)),
-    !!d.client?.name,
-    !!(d.seniority || d.experience_min != null),
-    (d.skills_must_have?.length || 0) > 0,
-    (d.evaluation_criteria?.length || 0) > 0,
-  ], [d]);
+  const stepCompletions = useMemo(() =>
+    STEPS.map((_, i) => getStepCompletion(i, d)),
+  [d]);
 
-  const canGoNext = isStepValid(activeStep, d);
-  const currentStep = STEPS[activeStep];
+  const allCriticalMissing = items.filter(i => i.critical && !i.done);
+
+  const progressColor = score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground';
 
   return (
-    <div className="flex flex-col lg:flex-row gap-0 lg:gap-6">
-      {/* Left: Wizard */}
-      <div className="flex-1 min-w-0">
-        {/* Empty state hero */}
-        {isBriefEmpty && !readOnly && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="border-2 border-foreground border-b-0 p-6 sm:p-8 bg-brutal-accent/5"
-          >
-            <div className="flex flex-col sm:flex-row items-center gap-5">
-              <motion.div
-                className="w-14 h-14 bg-foreground text-background flex items-center justify-center shrink-0 border-2 border-foreground"
-                initial={{ scale: 0, rotate: -90 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-              >
-                <FileText className="w-7 h-7" />
-              </motion.div>
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-wider text-foreground mb-1">
-                  Decrivez votre besoin
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed max-w-md">
-                  L'IA structurera automatiquement votre brief. Remplissez les champs etape par etape ou utilisez la dictee vocale.
-                </p>
+    <>
+      {/* Step cards overview */}
+      <div className="space-y-0">
+        {/* Global completion header */}
+        <div className="border-2 border-foreground p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className={cn(
+              "relative w-14 h-14 flex items-center justify-center border-2 shrink-0 transition-colors",
+              score < 30 ? "border-destructive" : score < 70 ? "border-brutal-accent" : "border-foreground"
+            )}>
+              <div className="flex items-baseline">
+                <NumberTicker value={score} className={cn("text-lg font-black tabular-nums", score >= 70 ? "text-foreground" : "text-muted-foreground")} />
+                <span className={cn("text-sm font-black", score >= 70 ? "text-foreground" : "text-muted-foreground")}>%</span>
               </div>
             </div>
-          </motion.div>
-        )}
-
-        {/* Wizard stepper + content */}
-        <div className="border-2 border-foreground">
-          <WizardStepper
-            activeStep={activeStep}
-            steps={STEPS}
-            completedSteps={completedSteps}
-            onStepClick={goToStep}
-          />
-
-          {/* Section header */}
-          <div className="px-5 sm:px-6 pt-5 pb-3 border-b-2 border-foreground/15">
-            <motion.h3
-              key={`title-${activeStep}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
-              className="text-lg font-black uppercase tracking-wider text-foreground"
-            >
-              {currentStep.label}
-            </motion.h3>
-            <motion.p
-              key={`sub-${activeStep}`}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, delay: 0.05 }}
-              className="text-xs text-muted-foreground mt-1"
-            >
-              {currentStep.subtitle}
-            </motion.p>
-          </div>
-
-          {/* Step content with directional slide */}
-          <div className="px-5 sm:px-6 py-5 overflow-hidden min-h-[300px]">
-            <AnimatePresence mode="wait" custom={direction}>
-              <motion.div
-                key={activeStep}
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: 0.25, ease: 'easeOut' as const }}
-              >
-                {activeStep === 0 && <StepPoste d={d} updateField={updateField} readOnly={readOnly} />}
-                {activeStep === 1 && <StepClient d={d} updateField={updateField} readOnly={readOnly} />}
-                {activeStep === 2 && <StepProfil d={d} updateField={updateField} onUpdate={onUpdate} readOnly={readOnly} />}
-                {activeStep === 3 && <StepCompetences d={d} onUpdate={onUpdate} readOnly={readOnly} />}
-                {activeStep === 4 && <StepEvaluation d={d} onUpdate={onUpdate} readOnly={readOnly} />}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          {/* Navigation prev/next */}
-          {!readOnly && (
-            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-t-2 border-foreground bg-foreground/[0.03]">
-              <button
-                onClick={() => goToStep(Math.max(0, activeStep - 1))}
-                disabled={activeStep === 0}
-                className="flex items-center gap-1.5 h-[36px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-30 transition-all"
-              >
-                <ArrowLeft className="w-3 h-3" />
-                Precedent
-              </button>
-
-              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider">
-                {activeStep + 1} / {STEPS.length}
-              </span>
-
-              {activeStep < STEPS.length - 1 ? (
-                <button
-                  onClick={() => goToStep(activeStep + 1)}
-                  disabled={!canGoNext}
-                  className={cn(
-                    "relative overflow-hidden flex items-center gap-1.5 h-[36px] px-5 text-[10px] font-black uppercase tracking-wider border-2 transition-all",
-                    canGoNext
-                      ? "border-foreground bg-foreground text-background group"
-                      : "border-foreground/20 bg-foreground/10 text-muted-foreground cursor-not-allowed"
-                  )}
-                >
-                  <span className="relative z-10 flex items-center gap-1.5">
-                    Suivant
-                    <ArrowRight className="w-3 h-3" />
-                  </span>
-                  {canGoNext && (
-                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                  )}
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
-                    <Check className="w-4 h-4 text-foreground" />
-                  </motion.div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-foreground">Termine</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Right: Completion sidebar (desktop) */}
-      <div className="hidden lg:block lg:w-[240px] shrink-0">
-        <CompletionPanel
-          score={score}
-          items={items}
-          onLaunchSourcing={score >= 70 ? onLaunchSourcing : undefined}
-          activeStep={activeStep}
-          onStepClick={goToStep}
-        />
-      </div>
-
-      {/* Mobile: bottom completion bar */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t-2 border-foreground bg-background px-4 py-3">
-        <div className="flex items-center gap-3">
-          {/* Mini progress */}
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-black text-foreground">
-                <NumberTicker value={score} className="font-black" />%
-              </span>
-              <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">complete</span>
-            </div>
-            <div className="h-1.5 w-full bg-foreground/10 overflow-hidden border border-foreground/20">
-              <motion.div
-                className={cn("h-full", score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground')}
-                animate={{ width: `${score}%` }}
-                transition={{ duration: 0.5 }}
-              />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1.5">Complétude du brief</p>
+              <div className="h-2 w-full bg-foreground/10 overflow-hidden border border-foreground/20">
+                <motion.div
+                  className={cn("h-full transition-colors duration-500", progressColor)}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${score}%` }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+              </div>
             </div>
           </div>
-
-          {/* CTA */}
           {score >= 70 && onLaunchSourcing ? (
-            <ShimmerButton onClick={onLaunchSourcing} className="h-[34px] text-[9px] px-4 shrink-0" shimmerDuration="1.5s">
+            <ShimmerButton onClick={onLaunchSourcing} className="h-[36px] text-[10px] px-5 shrink-0" shimmerDuration="1.5s">
               <Sparkles className="w-3 h-3" />
-              Sourcing
+              Lancer le sourcing
+              <ArrowRight className="w-3 h-3" />
             </ShimmerButton>
-          ) : (
-            <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0 font-bold">
-              {items.filter(i => !i.done).length} restants
-            </span>
-          )}
+          ) : allCriticalMissing.length > 0 ? (
+            <div className="flex items-center gap-2 text-destructive shrink-0">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">
+                {allCriticalMissing.length} requis manquant{allCriticalMissing.length > 1 ? 's' : ''}
+              </span>
+            </div>
+          ) : null}
         </div>
+
+        {/* Step cards */}
+        {STEPS.map((step, i) => {
+          const comp = stepCompletions[i];
+          const pct = comp.total > 0 ? Math.round((comp.filled / comp.total) * 100) : 0;
+          const hasMissing = comp.missingCritical.length > 0;
+
+          return (
+            <motion.button
+              key={step.key}
+              onClick={() => !readOnly && setOpenStep(i)}
+              className={cn(
+                "w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group",
+                readOnly ? "cursor-default" : "hover:bg-foreground/[0.03] cursor-pointer"
+              )}
+              whileHover={readOnly ? {} : { x: 4 }}
+              transition={{ duration: 0.15 }}
+            >
+              {/* Step number */}
+              <div className={cn(
+                "w-10 h-10 flex items-center justify-center text-sm font-black shrink-0 border-2 transition-colors",
+                pct === 100
+                  ? "bg-foreground text-background border-foreground"
+                  : hasMissing
+                    ? "border-destructive/50 text-destructive"
+                    : "border-foreground/20 text-muted-foreground group-hover:border-foreground/50"
+              )}>
+                {pct === 100 ? <Check className="w-4 h-4" /> : step.emoji}
+              </div>
+
+              {/* Label + meta */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-black uppercase tracking-wider text-foreground">{step.label}</span>
+                  {pct > 0 && pct < 100 && (
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{pct}%</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground truncate">{step.subtitle}</p>
+                {hasMissing && (
+                  <div className="flex items-center gap-1 mt-1 text-destructive">
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider truncate">
+                      {comp.missingCritical.join(', ')}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Arrow */}
+              {!readOnly && (
+                <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+              )}
+            </motion.button>
+          );
+        })}
       </div>
-    </div>
+
+      {/* Fullscreen dialog for active step */}
+      <AnimatePresence>
+        {openStep !== null && (
+          <FullscreenStepDialog
+            stepIndex={openStep}
+            d={d}
+            updateField={updateField}
+            onUpdate={onUpdate}
+            readOnly={readOnly}
+            onClose={() => setOpenStep(null)}
+            onNext={() => setOpenStep(Math.min(openStep + 1, STEPS.length - 1))}
+            onPrev={() => setOpenStep(Math.max(openStep - 1, 0))}
+            isFirst={openStep === 0}
+            isLast={openStep === STEPS.length - 1}
+            onLaunchSourcing={onLaunchSourcing}
+            score={score}
+            items={items}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 
 // ─── Step 1: Le poste ──────────────────────────────────────
 
 const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
-  <div className="space-y-4">
+  <div className="space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="Titre du poste *" value={d.title} onChange={(v) => updateField('title', v)} placeholder="Ex: DevOps Senior" />
-      <Field label="Reference interne" value={d.reference} onChange={(v) => updateField('reference', v)} placeholder="Ex: SKL-2026-042" />
+      <Field label="Référence interne" value={d.reference} onChange={(v) => updateField('reference', v)} placeholder="Ex: SKL-2026-042" />
       <SelectField label="Type de contrat *" value={d.contract_type} onChange={(v) => updateField('contract_type', v)} options={CONTRACT_TYPE_LABELS} />
       <SelectField label="Urgence" value={d.urgency} onChange={(v) => updateField('urgency', v)} options={URGENCY_LABELS} />
-      <Field label="Date de demarrage" value={d.start_date} onChange={(v) => updateField('start_date', v)} placeholder="Ex: ASAP, Septembre 2026" />
+      <Field label="Date de démarrage" value={d.start_date} onChange={(v) => updateField('start_date', v)} placeholder="Ex: ASAP, Septembre 2026" />
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="Localisation *" value={d.location} onChange={(v) => updateField('location', v)} placeholder="Ex: Paris, Lyon" />
@@ -540,24 +476,24 @@ const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (
         <Field label="Jours remote / semaine" value={d.remote_days} onChange={(v) => updateField('remote_days', v ? Number(v) : undefined)} type="number" />
       )}
     </div>
-    <Field label="Contexte (pourquoi on recrute)" value={d.context} onChange={(v) => updateField('context', v)} type="textarea" placeholder="Creation de poste, remplacement, croissance..." />
-    <Field label="Description detaillee" value={d.mission_description} onChange={(v) => updateField('mission_description', v)} type="textarea" placeholder="Missions, responsabilites, environnement technique..." />
+    <Field label="Contexte (pourquoi on recrute)" value={d.context} onChange={(v) => updateField('context', v)} type="textarea" placeholder="Création de poste, remplacement, croissance..." />
+    <Field label="Description détaillée" value={d.mission_description} onChange={(v) => updateField('mission_description', v)} type="textarea" placeholder="Missions, responsabilités, environnement technique..." />
   </div>
 );
 
 // ─── Step 2: Le client ─────────────────────────────────────
 
 const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
-  <div className="space-y-4">
+  <div className="space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="Nom du client *" value={d.client?.name} onChange={(v) => updateField('client.name', v)} placeholder="Ex: Numspot" />
       <Field label="Secteur" value={d.client?.sector} onChange={(v) => updateField('client.sector', v)} placeholder="Ex: Cloud, Fintech" />
       <SelectField label="Taille" value={d.client?.size} onChange={(v) => updateField('client.size', v)} options={SIZE_LABELS} />
       <Field label="Site web" value={d.client?.website} onChange={(v) => updateField('client.website', v)} type="url" placeholder="https://..." />
     </div>
-    <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularites..." />
-    <div className="pt-4 border-t-2 border-foreground/15">
-      <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">Hiring Manager</p>
+    <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." />
+    <div className="pt-5 border-t-2 border-foreground/15">
+      <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} />
         <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" />
@@ -568,14 +504,14 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
   </div>
 );
 
-// ─── Step 3: Profil recherche ──────────────────────────────
+// ─── Step 3: Profil recherché ──────────────────────────────
 
 const StepProfil = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
-  <div className="space-y-4">
+  <div className="space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Seniorite *" value={d.seniority} onChange={(v) => updateField('seniority', v)} placeholder="Ex: Senior, Lead, Junior" />
+      <Field label="Seniorité *" value={d.seniority} onChange={(v) => updateField('seniority', v)} placeholder="Ex: Senior, Lead, Junior" />
       <div className="flex gap-2">
-        <Field label="XP min (annees)" value={d.experience_min} onChange={(v) => updateField('experience_min', v ? Number(v) : undefined)} type="number" className="flex-1" />
+        <Field label="XP min (années)" value={d.experience_min} onChange={(v) => updateField('experience_min', v ? Number(v) : undefined)} type="number" className="flex-1" />
         <Field label="XP max" value={d.experience_max} onChange={(v) => updateField('experience_max', v ? Number(v) : undefined)} type="number" className="flex-1" />
       </div>
     </div>
@@ -586,36 +522,36 @@ const StepProfil = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; upd
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="Equity / variable" value={d.equity} onChange={(v) => updateField('equity', v)} placeholder="Ex: BSPCE, 0.5%" />
-      <Field label="Avantages" value={d.benefits} onChange={(v) => updateField('benefits', v)} placeholder="Ex: TR, mutuelle, teletravail" />
+      <Field label="Avantages" value={d.benefits} onChange={(v) => updateField('benefits', v)} placeholder="Ex: TR, mutuelle, télétravail" />
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Taille de l'equipe" value={d.team_size} onChange={(v) => updateField('team_size', v ? Number(v) : undefined)} type="number" />
-      <Field label="Reporte a" value={d.reports_to} onChange={(v) => updateField('reports_to', v)} placeholder="Ex: CTO, VP Engineering" />
+      <Field label="Taille de l'équipe" value={d.team_size} onChange={(v) => updateField('team_size', v ? Number(v) : undefined)} type="number" />
+      <Field label="Reporte à" value={d.reports_to} onChange={(v) => updateField('reports_to', v)} placeholder="Ex: CTO, VP Engineering" />
     </div>
   </div>
 );
 
-// ─── Step 4: Competences ───────────────────────────────────
+// ─── Step 4: Compétences ───────────────────────────────────
 
 const StepCompetences = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
-  <div className="space-y-5">
+  <div className="space-y-6">
     <TagInput label="Must-have — indispensable" tags={d.skills_must_have || []} onChange={(tags) => onUpdate({ skills_must_have: tags })} color="bg-destructive text-destructive-foreground border-destructive" placeholder="Skill obligatoire" />
     <TagInput label="Should-have — important" tags={d.skills_should_have || []} onChange={(tags) => onUpdate({ skills_should_have: tags })} color="bg-brutal-accent/30 text-foreground border-brutal-accent" placeholder="Skill important" />
     <TagInput label="Nice-to-have — bonus" tags={d.skills_nice_to_have || []} onChange={(tags) => onUpdate({ skills_nice_to_have: tags })} color="bg-foreground text-background border-foreground" placeholder="Skill bonus" />
-    <TagInput label="A eviter" tags={d.skills_to_avoid || []} onChange={(tags) => onUpdate({ skills_to_avoid: tags })} color="bg-foreground/10 text-foreground line-through border-foreground/30" placeholder="Trait redhibitoire" />
-    <Field label="Certifications" value={d.certifications?.join(', ')} onChange={(v) => onUpdate({ certifications: v ? v.split(',').map(s => s.trim()).filter(Boolean) : [] })} placeholder="Ex: AWS, PMP, CISSP (separes par des virgules)" />
+    <TagInput label="À éviter" tags={d.skills_to_avoid || []} onChange={(tags) => onUpdate({ skills_to_avoid: tags })} color="bg-foreground/10 text-foreground line-through border-foreground/30" placeholder="Trait rédhibitoire" />
+    <Field label="Certifications" value={d.certifications?.join(', ')} onChange={(v) => onUpdate({ certifications: v ? v.split(',').map(s => s.trim()).filter(Boolean) : [] })} placeholder="Ex: AWS, PMP, CISSP (séparés par des virgules)" />
     <Field label="Brief brut (texte ou voice transcript)" value={d.raw_brief} onChange={(v) => onUpdate({ raw_brief: v })} type="textarea" placeholder="Collez un brief brut ou retrouvez ici le transcript vocal..." />
   </div>
 );
 
-// ─── Step 5: Evaluation ────────────────────────────────────
+// ─── Step 5: Évaluation ────────────────────────────────────
 
 const CATEGORY_OPTIONS: Record<string, string> = {
   technical: 'Technique',
   soft_skill: 'Soft skills',
   culture_fit: 'Culture fit',
   motivation: 'Motivation',
-  experience: 'Experience',
+  experience: 'Expérience',
 };
 
 const WEIGHT_OPTIONS: Record<string, string> = {
@@ -665,7 +601,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
       {/* Weight distribution */}
       <div>
         <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">
-          Repartition des poids (total = 100%)
+          Répartition des poids (total = 100%)
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
@@ -685,7 +621,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
         </div>
         {Object.values(weights).reduce((a, b) => a + b, 0) !== 100 && (
           <p className="text-[10px] text-destructive font-bold mt-1">
-            Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit etre 100%)
+            Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit être 100%)
           </p>
         )}
       </div>
@@ -694,7 +630,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-            Criteres ({criteria.length})
+            Critères ({criteria.length})
           </p>
           {!readOnly && !adding && (
             <button
@@ -719,11 +655,11 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 onChange={(e) => setNewLabel(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCriterion(); } }}
                 autoFocus
-                placeholder="Ex: Maitrise de Kubernetes, Leadership..."
+                placeholder="Ex: Maîtrise de Kubernetes, Leadership..."
                 className="w-full h-[34px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
               />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <SelectField label="Categorie" value={newCategory} onChange={setNewCategory} options={CATEGORY_OPTIONS} />
+                <SelectField label="Catégorie" value={newCategory} onChange={setNewCategory} options={CATEGORY_OPTIONS} />
                 <SelectField label="Importance" value={newWeight} onChange={setNewWeight} options={WEIGHT_OPTIONS} />
                 <div className="flex items-end gap-2">
                   <button onClick={addCriterion} disabled={!newLabel.trim()}
@@ -742,9 +678,9 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
 
         {criteria.length === 0 ? (
           <div className="border-2 border-dashed border-foreground/30 p-6 text-center">
-            <p className="text-sm text-muted-foreground mb-2 font-bold">Aucun critere defini</p>
+            <p className="text-sm text-muted-foreground mb-2 font-bold">Aucun critère défini</p>
             <p className="text-[10px] text-muted-foreground">
-              Ajoutez les criteres que le manager souhaite evaluer.
+              Ajoutez les critères que le manager souhaite évaluer.
             </p>
           </div>
         ) : (
@@ -780,16 +716,16 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                         <input
                           defaultValue={c.level_10 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_10: e.target.value || undefined })}
-                          placeholder="Excellence pour ce critere"
+                          placeholder="Excellence pour ce critère"
                           className="w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
                         />
                       </div>
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Redhibitoire si...</label>
+                        <label className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Rédhibitoire si...</label>
                         <input
                           defaultValue={c.level_1 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_1: e.target.value || undefined })}
-                          placeholder="Ce qui est eliminatoire"
+                          placeholder="Ce qui est éliminatoire"
                           className="w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
                         />
                       </div>
