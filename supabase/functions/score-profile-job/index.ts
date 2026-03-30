@@ -38,6 +38,7 @@ interface ProfileData {
   networkDistance?: number | null;
   profileUrl?: string;
   providerId?: string;
+  noAiScoring?: boolean;
 }
 
 interface JobData {
@@ -477,6 +478,11 @@ function getRecommendation(score: number): string {
 // ─── Layer 1: Hard Filters (cheapest first, AI last) ─────────────────────────
 
 async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ passed: boolean; reason?: string }> {
+  // 0. RGPD: candidate opted out of AI scoring
+  if (profile.noAiScoring) {
+    return { passed: false, reason: "Candidat a exercé son droit d'opposition au scoring IA (RGPD)" };
+  }
+
   // 1. Minimum experience check (FREE — no API call)
   if (job.xpMin && profile.yearsOfExperience !== undefined) {
     if (profile.yearsOfExperience < job.xpMin * 0.75) {

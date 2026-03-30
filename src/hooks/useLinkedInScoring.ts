@@ -337,6 +337,7 @@ export function buildProfileData(profile: LinkedInProfile) {
     networkDistance,
     profileUrl: profile.public_profile_url || profile.profile_url || undefined,
     providerId: profile.provider_id || profile.public_identifier || undefined,
+    noAiScoring: (profile as any).no_ai_scoring === true || undefined,
   };
 }
 
