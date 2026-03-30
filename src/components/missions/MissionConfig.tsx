@@ -2,6 +2,7 @@ import React from 'react';
 import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { MissionHuntMode } from './MissionHuntMode';
 import { MissionClientPortal } from './MissionClientPortal';
+import { useOrganization } from '@/hooks/useOrganization';
 import { Settings } from 'lucide-react';
 
 interface MissionConfigProps {
@@ -27,6 +28,7 @@ const EditField = ({ label, value, field, projectId }: {
 
 export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly = false }) => {
   const { updateProject } = useSourcingProjects();
+  const { isAgency } = useOrganization();
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6 space-y-6">
@@ -48,7 +50,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <EditField label="Nom de la mission" value={project.name} field="name" projectId={project.id} />
-          <EditField label="Client" value={project.client_name} field="client_name" projectId={project.id} />
+          {isAgency && <EditField label="Client" value={project.client_name} field="client_name" projectId={project.id} />}
           <EditField label="Lien Calendly" value={project.calendly_link} field="calendly_link" projectId={project.id} />
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut</label>
