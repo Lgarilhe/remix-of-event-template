@@ -50,7 +50,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <EditField label="Nom de la mission" value={project.name} field="name" projectId={project.id} />
-          <EditField label="Client" value={project.client_name} field="client_name" projectId={project.id} />
+          {isAgency && <EditField label="Client" value={project.client_name} field="client_name" projectId={project.id} />}
           <EditField label="Lien Calendly" value={project.calendly_link} field="calendly_link" projectId={project.id} />
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut</label>
