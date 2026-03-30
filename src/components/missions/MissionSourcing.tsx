@@ -88,9 +88,14 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       if (response.error) throw new Error(response.error.message || 'Erreur IA');
       if (!response.data?.success) throw new Error('Génération échouée');
 
+      const generatedFilters =
+        response.data.filters && typeof response.data.filters === 'object' && !Array.isArray(response.data.filters)
+          ? response.data.filters
+          : {};
+
       await updateProject({
         id: project.id,
-        filters_snapshot: { ...response.data.filters, generated_at: new Date().toISOString() },
+        filters_snapshot: { ...generatedFilters, generated_at: new Date().toISOString() },
       });
       toast.success('Filtres générés depuis votre brief');
     } catch (err: any) {
