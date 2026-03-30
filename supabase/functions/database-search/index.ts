@@ -408,9 +408,52 @@ Deno.serve(async (req) => {
       const data = await response.json();
       const rawPeople = data.people || [];
 
-      // Convert to LinkedInProfile format — identical to what unipile-search returns
-      // Convert and filter out low-quality profiles (no last name, no company, no experience)
-      const allProfiles = rawPeople.map(apolloToLinkedInProfile);
+      // Step 2: Enrich the results — the search endpoint returns basic data only.
+      // We call people/bulk_match with the IDs to get full profiles (experience, education, etc.)
+      let enrichedPeople = rawPeople;
+      if (rawPeople.length > 0) {
+        try {
+          const personIds = rawPeople.map((p: any) => p.id).filter(Boolean);
+          if (personIds.length > 0) {
+            const enrichResponse = await fetch(`${APOLLO_BASE}/v1/people/bulk_match`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Api-Key": apolloApiKey,
+              },
+              body: JSON.stringify({
+                details: personIds.map((id: string) => ({ id })),
+                reveal_personal_emails: false,
+                reveal_phone_number: false,
+              }),
+            });
+
+            if (enrichResponse.ok) {
+              const enrichData = await enrichResponse.json();
+              const enrichedMatches = enrichData.matches || enrichData.people || [];
+              if (enrichedMatches.length > 0) {
+                // Merge enriched data with search results
+                const enrichMap = new Map<string, Record<string, unknown>>();
+                for (const match of enrichedMatches) {
+                  if (match?.id) enrichMap.set(match.id, match);
+                }
+                enrichedPeople = rawPeople.map((p: any) => {
+                  const enriched = enrichMap.get(p.id);
+                  return enriched ? { ...p, ...enriched } : p;
+                });
+                console.log(`[database-search] Enriched ${enrichedMatches.length}/${rawPeople.length} profiles`);
+              }
+            } else {
+              console.warn("[database-search] Enrichment failed, using basic data:", enrichResponse.status);
+            }
+          }
+        } catch (e) {
+          console.warn("[database-search] Enrichment error (non-blocking):", e);
+        }
+      }
+
+      // Convert to LinkedInProfile format and filter low-quality profiles
+      const allProfiles = enrichedPeople.map(apolloToLinkedInProfile);
       const profiles = allProfiles.filter((p: Record<string, unknown>) => {
         const lastName = String(p.last_name || '').trim();
         const headline = String(p.headline || '').trim();
