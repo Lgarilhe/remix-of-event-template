@@ -136,7 +136,7 @@ const AnimatedStat: React.FC<{
 
 /* ─── Quick action card ─── */
 const QuickAction: React.FC<{
-  icon: typeof Sparkles;
+  icon: React.ComponentType<any>;
   title: string;
   description: string;
   accentVar: string;
