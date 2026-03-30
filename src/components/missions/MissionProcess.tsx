@@ -583,6 +583,15 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
+      {/* Contextual banner */}
+      <MissionContextBanner
+        icon="🏗️"
+        title="Structurez votre process"
+        description="Définissez les étapes d'évaluation. L'IA adaptera le scoring et les scorecards en fonction du process défini."
+        storageKey={`process-onboarding:${project.id}`}
+        variant="info"
+        className="mb-4"
+      />
       {readOnly && (
         <div className="mb-4 px-3 py-2 border border-foreground/20 bg-muted/30 flex items-center gap-2">
           <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
