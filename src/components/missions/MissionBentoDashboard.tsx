@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback } from 'react';
-import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjects';
 import { useProjectStats } from '@/hooks/useProjectStats';
 import { NumberTicker } from '@/components/magicui/number-ticker';
