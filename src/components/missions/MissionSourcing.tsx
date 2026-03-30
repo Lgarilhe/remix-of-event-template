@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MissionContextBanner } from './MissionContextBanner';
-import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { ProspectSearch } from '@/components/prospection/ProspectSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { countBriefFields } from '@/lib/missionUtils';
+import { Sparkles, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import type { JobDetails } from '@/types/jobDetails';
 
 interface MissionSourcingProps {
   project: SourcingProject;
@@ -54,6 +59,47 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
     window.localStorage.setItem(getSourcingTabStorageKey(project.id), sourcingTab);
   }, [project.id, sourcingTab]);
 
+  // Check if brief has data but no filters generated yet
+  const jd = (project.job_details || {}) as JobDetails;
+  const briefCompletion = countBriefFields(jd);
+  const hasBriefData = briefCompletion.filled >= 3 && !!jd.title;
+  const hasFilters = project.filters_snapshot && Object.keys(project.filters_snapshot).length > 0;
+  const showBriefToFiltersPrompt = hasBriefData && !hasFilters;
+
+  const { updateProject } = useSourcingProjects();
+  const [isGeneratingFilters, setIsGeneratingFilters] = useState(false);
+
+  const handleGenerateFilters = useCallback(async () => {
+    setIsGeneratingFilters(true);
+    try {
+      const response = await invokeWithCredits('generate-search-filters', 'filter_generation', {
+        job: {
+          id: project.id,
+          title: jd.title || project.name,
+          description: [jd.mission_description, jd.context, jd.raw_brief].filter(Boolean).join('\n\n'),
+          client: jd.client?.name ? { name: jd.client.name, sector: jd.client.sector } : (project.client_name ? { name: project.client_name } : null),
+          location: jd.location || null,
+          skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
+          seniority: jd.seniority || null,
+          xpMin: jd.experience_min,
+          xpMax: jd.experience_max,
+        },
+      });
+      if (response.error) throw new Error(response.error.message || 'Erreur IA');
+      if (!response.data?.success) throw new Error('Génération échouée');
+
+      await updateProject({
+        id: project.id,
+        filters_snapshot: { ...response.data.filters, generated_at: new Date().toISOString() },
+      });
+      toast.success('Filtres générés depuis votre brief');
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur lors de la génération des filtres');
+    } finally {
+      setIsGeneratingFilters(false);
+    }
+  }, [project, jd, updateProject]);
+
   // Check if any LinkedIn account has issues
   const hasLinkedInIssue = accounts.length === 0 || accounts.every(a => a.status !== 'OK');
 
@@ -84,15 +130,37 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   return (
     <div className="border border-foreground border-t-0 bg-background">
-      {/* Contextual onboarding banner */}
-      <MissionContextBanner
-        icon="💡"
-        title="Comment sourcer efficacement"
-        description="Sélectionnez un poste, configurez vos filtres ou utilisez Auto-fill IA, puis cliquez Rechercher. Après les résultats, scorez les profils pour que l'IA les évalue."
-        storageKey={`sourcing-onboarding:${project.id}`}
-        variant="info"
-        className="border-b border-foreground/10 m-0"
-      />
+      {/* Brief → Filters prompt */}
+      {showBriefToFiltersPrompt && (
+        <div className="border-b border-foreground bg-brutal-accent/10 p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wider text-foreground mb-0.5">
+                Brief rempli ({briefCompletion.filled}/{briefCompletion.total} champs)
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Générez les filtres de recherche automatiquement depuis votre brief.
+              </p>
+            </div>
+            <button
+              onClick={handleGenerateFilters}
+              disabled={isGeneratingFilters}
+              className={cn(
+                "shrink-0 flex items-center gap-2 h-[36px] px-5 text-[10px] font-bold uppercase tracking-wider border border-foreground transition-colors",
+                isGeneratingFilters
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-foreground text-background hover:bg-foreground/90"
+              )}
+            >
+              {isGeneratingFilters ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Génération...</>
+              ) : (
+                <><Sparkles className="w-3.5 h-3.5" /> Générer les filtres</>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">
