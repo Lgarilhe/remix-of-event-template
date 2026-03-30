@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MissionContextBanner } from './MissionContextBanner';
+import { MissionAssistantButton } from './MissionAssistantButton';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionProcess, ProcessStep } from '@/hooks/useMissionProcess';
 import { useMissionInvitations } from '@/hooks/useMissionInvitations';
