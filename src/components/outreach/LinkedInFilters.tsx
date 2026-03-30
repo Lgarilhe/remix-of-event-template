@@ -51,6 +51,7 @@ import { toast } from 'sonner';
 import { BasicFiltersSection } from './filters/BasicFiltersSection';
 import { PositionFiltersSection } from './filters/PositionFiltersSection';
 import { RecruiterFiltersSection } from './filters/RecruiterFiltersSection';
+import { DatabaseFiltersSection } from './filters/DatabaseFiltersSection';
 
 interface LinkedInFiltersProps {
   filters: LinkedInFiltersState;
@@ -71,6 +72,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     company: false,
     past: false,
     recruiter: false,
+    database: false,
   });
 
   // Autocomplete states
@@ -908,6 +910,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           activeFiltersPreview={recruiterFiltersPreview}
           countRecruiterFilters={countRecruiterFilters}
         />
+
+        {/* ===== BASE KONEKT FILTERS (database only) ===== */}
+        {filters.api === 'database' && (
+          <DatabaseFiltersSection
+            filters={filters}
+            onChange={onChange}
+            isOpen={openSections.database}
+            onToggle={() => toggleSection('database')}
+          />
+        )}
       </div>
     </div>
   );
