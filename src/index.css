@@ -271,4 +271,49 @@ All colors MUST be HSL.
   .glass-shine:hover::before {
     left: 100%;
   }
+
+  /* 21st.dev inspired glow utilities */
+  .glow-accent {
+    box-shadow: 0 0 40px -8px hsl(var(--brutal-accent) / 0.4);
+  }
+
+  .glow-accent-strong {
+    box-shadow: 0 0 60px -4px hsl(var(--brutal-accent) / 0.5),
+                0 0 120px -8px hsl(var(--brutal-accent) / 0.2);
+  }
+
+  .glow-accent-hover:hover {
+    box-shadow: 0 0 50px -8px hsl(var(--brutal-accent) / 0.5),
+                0 0 100px -12px hsl(var(--brutal-accent) / 0.25);
+  }
+
+  /* Animated gradient border */
+  @keyframes gradient-rotate {
+    0% { --angle: 0deg; }
+    100% { --angle: 360deg; }
+  }
+
+  /* Spotlight cursor effect */
+  .spotlight {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Perspective container for 3D children */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  .perspective-800 {
+    perspective: 800px;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .glow-accent,
+    .glow-accent-strong,
+    .glow-accent-hover:hover {
+      box-shadow: none;
+    }
+  }
 }

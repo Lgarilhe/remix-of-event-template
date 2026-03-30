@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Info } from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MissionContextBannerProps {
@@ -35,17 +35,18 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
   };
 
   const variantStyles = {
-    info: 'border-l-4 border-l-blue-500 bg-blue-500/5',
-    warning: 'border-l-4 border-l-yellow-500 bg-yellow-500/5',
-    success: 'border-l-4 border-l-green-500 bg-green-500/5',
+    info: 'border-l-4 border-l-brutal-accent bg-brutal-accent/5',
+    warning: 'border-l-4 border-l-destructive bg-destructive/5',
+    success: 'border-l-4 border-l-primary bg-primary/5',
   };
 
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
+        initial={{ opacity: 0, height: 0, y: -8 }}
+        animate={{ opacity: 1, height: 'auto', y: 0 }}
+        exit={{ opacity: 0, height: 0, y: -8 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
         className={cn(
           "border border-foreground/10 overflow-hidden",
           variantStyles[variant],
@@ -53,7 +54,16 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
         )}
       >
         <div className="flex items-start gap-3 p-3 sm:p-4">
-          {icon && <span className="text-lg shrink-0 mt-0.5">{icon}</span>}
+          {icon && (
+            <motion.span
+              className="text-lg shrink-0 mt-0.5"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 300, delay: 0.15 }}
+            >
+              {icon}
+            </motion.span>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wider text-foreground mb-0.5">
               {title}
@@ -63,12 +73,14 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
             </p>
           </div>
           {dismissible && (
-            <button
+            <motion.button
               onClick={handleDismiss}
               className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5"
+              whileHover={{ scale: 1.2, rotate: 90 }}
+              whileTap={{ scale: 0.9 }}
             >
               <X className="w-3.5 h-3.5" />
-            </button>
+            </motion.button>
           )}
         </div>
       </motion.div>

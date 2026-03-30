@@ -646,9 +646,15 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {displayResults.map((profile, index) => (
               <motion.div
                 key={profile.id || `profile-${index}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.03, 0.6), duration: 0.25, ease: 'easeOut' }}
+                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{
+                  delay: Math.min(index * 0.04, 0.8),
+                  duration: 0.35,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                }}
+                whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                className="transition-shadow duration-200 hover:shadow-md"
               >
                 <LinkedInResultCard
                   profile={profile}
@@ -823,60 +829,84 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 // Welcome message when no search has been performed
 const SearchWelcomeMessage: React.FC = () => (
   <div className="w-full max-w-lg">
-    <div className="text-center mb-8">
-      <div className="w-16 h-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+    <motion.div
+      className="text-center mb-8"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <motion.div
+        className="w-16 h-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4"
+        initial={{ scale: 0, rotate: -90 }}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+      >
         <Search className="w-8 h-8" />
-      </div>
+      </motion.div>
       <h3 className="text-xl font-semibold text-foreground mb-2">
         Recherche LinkedIn
       </h3>
       <p className="text-sm text-muted-foreground">
         Trouvez des candidats qualifiés en utilisant les filtres avancés
       </p>
-    </div>
+    </motion.div>
 
     <div className="space-y-4">
-      <div className="bg-muted/50 border border-foreground p-4">
-        <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">1</span>
-          Sélectionnez un poste
-        </h4>
-        <p className="text-sm text-muted-foreground ml-8">
-          Choisissez un <strong>poste de référence</strong> dans le panneau de gauche.
-        </p>
-      </div>
-
-      <div className="bg-muted/30 border border-foreground p-4">
-        <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">2</span>
-          Recherchez des profils
-        </h4>
-        <ul className="text-sm text-muted-foreground space-y-2 ml-8">
-          <li>• Configurez vos filtres ou utilisez <strong>Auto-fill</strong></li>
-          <li>• Cliquez sur <strong>Rechercher</strong></li>
-        </ul>
-      </div>
-
-      <div className="bg-muted border border-foreground/10 p-4">
-        <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">3</span>
-          Sélectionnez et scorez
-        </h4>
-        <p className="text-sm text-muted-foreground ml-8">
-          Sélectionnez les profils, puis cliquez sur <strong><Target className="w-3 h-3 inline" /> Scorer</strong>.
-        </p>
-      </div>
-
-      <div className="bg-muted/50 border border-foreground/10 p-4">
-        <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-          <span className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center">4</span>
-          Ajoutez ou archivez
-        </h4>
-        <ul className="text-sm text-muted-foreground space-y-1 ml-8">
-          <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong></li>
-          <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
-        </ul>
-      </div>
+      {[
+        {
+          num: '1',
+          title: 'Sélectionnez un poste',
+          content: <p className="text-sm text-muted-foreground ml-8">Choisissez un <strong>poste de référence</strong> dans le panneau de gauche.</p>,
+          bg: 'bg-muted/50 border-foreground',
+        },
+        {
+          num: '2',
+          title: 'Recherchez des profils',
+          content: (
+            <ul className="text-sm text-muted-foreground space-y-2 ml-8">
+              <li>• Configurez vos filtres ou utilisez <strong>Auto-fill</strong></li>
+              <li>• Cliquez sur <strong>Rechercher</strong></li>
+            </ul>
+          ),
+          bg: 'bg-muted/30 border-foreground',
+        },
+        {
+          num: '3',
+          title: 'Sélectionnez et scorez',
+          content: <p className="text-sm text-muted-foreground ml-8">Sélectionnez les profils, puis cliquez sur <strong><Target className="w-3 h-3 inline" /> Scorer</strong>.</p>,
+          bg: 'bg-muted border-foreground/10',
+        },
+        {
+          num: '4',
+          title: 'Ajoutez ou archivez',
+          content: (
+            <ul className="text-sm text-muted-foreground space-y-1 ml-8">
+              <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong></li>
+              <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
+            </ul>
+          ),
+          bg: 'bg-muted/50 border-foreground/10',
+        },
+      ].map((step, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3 + i * 0.1, duration: 0.4, ease: 'easeOut' }}
+          className={`${step.bg} border p-4 transition-all duration-200 hover:translate-x-1`}
+        >
+          <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
+            <motion.span
+              className="w-6 h-6 bg-foreground text-background text-xs flex items-center justify-center"
+              whileHover={{ scale: 1.2, rotate: 5 }}
+            >
+              {step.num}
+            </motion.span>
+            {step.title}
+          </h4>
+          {step.content}
+        </motion.div>
+      ))}
     </div>
   </div>
 );
