@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
