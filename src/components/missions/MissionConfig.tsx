@@ -2,6 +2,7 @@ import React from 'react';
 import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { MissionHuntMode } from './MissionHuntMode';
 import { MissionClientPortal } from './MissionClientPortal';
+import { useOrganization } from '@/hooks/useOrganization';
 import { Settings } from 'lucide-react';
 
 interface MissionConfigProps {
