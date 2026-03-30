@@ -3,6 +3,7 @@ import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/compo
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
 import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
+import { SourcingProject } from '@/hooks/useSourcingProjects';
 
 import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
