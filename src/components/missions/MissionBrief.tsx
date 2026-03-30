@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { deepMerge } from '@/lib/deepMerge';
 import { Sparkles, Loader2, Play, RefreshCw, Mic, Square } from 'lucide-react';
 import { MissionAssistantButton } from './MissionAssistantButton';
 import { cn } from '@/lib/utils';
@@ -238,17 +239,3 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   );
 };
 
-function deepMerge(target: any, source: any): any {
-  if (!source || typeof source !== 'object') return target;
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    const sv = source[key];
-    const tv = target?.[key];
-    if (sv != null && typeof sv === 'object' && !Array.isArray(sv) && tv != null && typeof tv === 'object' && !Array.isArray(tv)) {
-      result[key] = deepMerge(tv, sv);
-    } else {
-      result[key] = sv;
-    }
-  }
-  return result;
-}

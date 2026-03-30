@@ -1,47 +1,10 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Bot } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAgent } from '@/contexts/AgentContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { AGENT_TAB_CONFIG } from '@/lib/missionAgentConfig';
 import { cn } from '@/lib/utils';
-import type { JobDetails } from '@/types/jobDetails';
-
-function buildBriefContext(p: SourcingProject): string {
-  const jd = (p.job_details ?? {}) as JobDetails;
-  const parts: string[] = [];
-  if (jd.title) parts.push(`Poste : ${jd.title}`);
-  if (jd.client?.name) parts.push(`Client : ${jd.client.name}`);
-  if (jd.client?.sector) parts.push(`Secteur : ${jd.client.sector}`);
-  if (jd.location) parts.push(`Localisation : ${jd.location}`);
-  if (jd.contract_type) parts.push(`Contrat : ${jd.contract_type}`);
-  if (jd.skills_must_have?.length) parts.push(`Compétences clés : ${jd.skills_must_have.join(', ')}`);
-  if (jd.experience_min || jd.experience_max) parts.push(`Expérience : ${jd.experience_min ?? '?'}–${jd.experience_max ?? '?'} ans`);
-  if (jd.mission_description) parts.push(`Description : ${jd.mission_description.slice(0, 300)}`);
-  return parts.length > 0 ? `\n\nDonnées du brief :\n${parts.join('\n')}` : '';
-}
-
-const TAB_CONFIG: Record<string, { label: string; prompt: (p: SourcingProject) => string }> = {
-  brief: {
-    label: '💬 Discuter avec l\'assistant',
-    prompt: (p) =>
-      `Je vois que vous travaillez sur "${p.name}"${p.client_name ? ` pour ${p.client_name}` : ''}. Je peux vous aider à compléter votre brief. Que souhaitez-vous définir ?${buildBriefContext(p)}`,
-  },
-  process: {
-    label: "Suggère un process d'évaluation",
-    prompt: (p) =>
-      `Je travaille sur la mission "${p.name}"${p.client_name ? ` pour ${p.client_name}` : ''}. Suggère-moi un process d'évaluation adapté à ce poste.${buildBriefContext(p)}`,
-  },
-  sourcing: {
-    label: 'Aide-moi à trouver des candidats',
-    prompt: (p) =>
-      `Je travaille sur la mission "${p.name}"${p.client_name ? ` pour ${p.client_name}` : ''}. Aide-moi à définir une stratégie de sourcing efficace pour ce poste.${buildBriefContext(p)}`,
-  },
-  outreach: {
-    label: 'Aide-moi à rédiger mes messages',
-    prompt: (p) =>
-      `Je travaille sur la mission "${p.name}"${p.client_name ? ` pour ${p.client_name}` : ''}. Aide-moi à rédiger des messages d'approche personnalisés pour contacter les candidats.${buildBriefContext(p)}`,
-  },
-};
 
 interface MissionAgentFABProps {
   project: SourcingProject;
@@ -55,13 +18,12 @@ export const MissionAgentFAB: React.FC<MissionAgentFABProps> = ({
   isEmpty = false,
 }) => {
   const { isOpen, openAgentWithMessage } = useAgent();
-
-  const config = TAB_CONFIG[activeTab];
+  const config = AGENT_TAB_CONFIG[activeTab];
 
   if (!config || isOpen) return null;
 
   const handleClick = () => {
-    openAgentWithMessage(config.prompt(project));
+    openAgentWithMessage(config.buildPrompt(project));
   };
 
   return (

@@ -1,19 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MissionContextBanner } from './MissionContextBanner';
 import { MissionAssistantButton } from './MissionAssistantButton';
-import { useNavigate } from 'react-router-dom';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { LinkedInAccount } from '@/pages/Outreach';
-import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
-import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
-import { useOrganization } from '@/hooks/useOrganization';
-import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
+import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
+import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { ProspectSearch } from '@/components/prospection/ProspectSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { supabase } from '@/integrations/supabase/client';
-import { Users, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MissionSourcingProps {
@@ -27,46 +21,10 @@ const getDefaultSourcingTab = (project: SourcingProject): 'linkedin' | 'database
   return api === 'database' ? 'database' : 'linkedin';
 };
 
-// ── Empty state when no LinkedIn account is connected ──
-
-const EmptyAccountState = () => {
-  const navigate = useNavigate();
-  return (
-    <div className="bg-background border border-foreground border-t-0 p-6 sm:p-8">
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="w-12 h-12 border border-foreground flex items-center justify-center mb-4">
-          <Users className="w-5 h-5 text-muted-foreground" />
-        </div>
-        <h2 className="text-sm font-bold uppercase tracking-wider mb-2">
-          Connectez votre compte LinkedIn
-        </h2>
-        <p className="text-xs text-muted-foreground max-w-md mb-6">
-          Pour rechercher des candidats, connectez d'abord un compte LinkedIn Recruiter.
-        </p>
-        <button
-          onClick={() => navigate('/settings?tab=connectors')}
-          className="relative overflow-hidden h-[34px] px-6 bg-background text-foreground border border-foreground text-xs font-medium uppercase tracking-wider group"
-        >
-          <span className="relative z-10 flex items-center gap-2">
-            <Settings className="w-3.5 h-3.5" />
-            Aller dans les paramètres
-          </span>
-          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-        </button>
-      </div>
-    </div>
-  );
-};
-
 // ── Main component ──
 
 export const MissionSourcing = ({ project }: MissionSourcingProps) => {
-  const navigate = useNavigate();
-  const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
-  const { isAdmin, isOwner, isCollaborator } = useOrganization();
-  const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
-  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
   const [sourcingTab, setSourcingTab] = useState<'linkedin' | 'database'>(() => {
     if (typeof window === 'undefined') return getDefaultSourcingTab(project);
 
@@ -79,34 +37,6 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
   // Database sub-tab state
   const [prospectResults, setProspectResults] = useState<any[]>([]);
   const [prospectSearching, setProspectSearching] = useState(false);
-
-  // Get current user
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUserId(user.id);
-    });
-  }, []);
-
-  // Apply subscription overrides + filter by member mapping
-  const allAccounts = useMemo(
-    () => (rawAccounts as LinkedInAccount[]).map(applySubscriptionOverrides),
-    [rawAccounts]
-  );
-
-  const accounts = useMemo(() => {
-    if ((isAdmin || isOwner) && !isCollaborator) return allAccounts;
-    if (!currentUserId) return allAccounts;
-    const linkedAccountId = getUserLinkedAccountId(currentUserId);
-    if (!linkedAccountId) return allAccounts;
-    return allAccounts.filter(a => a.id === linkedAccountId);
-  }, [allAccounts, isAdmin, isOwner, isCollaborator, currentUserId, getUserLinkedAccountId]);
-
-  // Auto-select first OK account
-  useEffect(() => {
-    if (selectedAccount || accounts.length === 0) return;
-    const okAccount = accounts.find(a => a.status === 'OK');
-    setSelectedAccount(okAccount?.id || accounts[0]?.id || null);
-  }, [accounts, selectedAccount]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -228,7 +158,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
             />
           </OutreachSearchProvider>
         ) : (
-          <EmptyAccountState />
+          <EmptyLinkedInAccountState message="Pour rechercher des candidats, connectez d'abord un compte LinkedIn Recruiter." />
         )}
       </div>
 
