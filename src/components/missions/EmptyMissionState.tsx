@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion, useMotionValue, useTransform, animate, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useTransform, animate as fmAnimate } from 'framer-motion';
 import { Sparkles, Clock, MessageSquare, Pencil, List, Settings, ExternalLink, Zap, Brain, ArrowRight } from 'lucide-react';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import { cn } from '@/lib/utils';
