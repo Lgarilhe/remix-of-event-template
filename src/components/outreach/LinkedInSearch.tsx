@@ -28,6 +28,8 @@ interface LinkedInSearchProps {
   onAccountChange: (accountId: string | null) => void;
   activeProject?: SourcingProject | null;
   onProjectChange?: (project: SourcingProject | null) => void;
+  /** Search source: 'linkedin' (default) or 'database' (Base Konekt) */
+  searchSource?: 'linkedin' | 'database';
 }
 
 type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
@@ -59,6 +61,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onAccountChange,
   activeProject,
   onProjectChange,
+  searchSource = 'linkedin',
 }) => {
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -107,6 +110,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       results: search.results,
       activeProject,
       autoHideTreatedRef: search.autoHideTreatedRef,
+      searchSource,
       quota: {
         canPerformAction: search.quota.canPerformAction,
         recordAction: search.quota.recordAction,

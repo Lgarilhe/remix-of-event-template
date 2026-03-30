@@ -160,16 +160,17 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
         )}
       </div>
 
-      {/* Database sub-tab */}
+      {/* Database sub-tab — same UI as LinkedIn but powered by Base Konekt */}
       <div className={cn("p-4", sourcingTab !== 'database' && 'hidden')}>
-        <ProspectSearch
-          selectedICP={null}
-          onSelectICP={() => {}}
-          onResults={setProspectResults}
-          searching={prospectSearching}
-          onSearchingChange={setProspectSearching}
-          results={prospectResults}
-        />
+        <OutreachSearchProvider>
+          <LinkedInSearch
+            accounts={accounts}
+            selectedAccount={selectedAccount}
+            onAccountChange={setSelectedAccount}
+            activeProject={project}
+            searchSource="database"
+          />
+        </OutreachSearchProvider>
       </div>
     </div>
   );
