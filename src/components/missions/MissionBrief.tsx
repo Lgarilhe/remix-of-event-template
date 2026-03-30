@@ -4,7 +4,6 @@ import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProject
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { deepMerge } from '@/lib/deepMerge';
 import { Sparkles, Loader2, Play, RefreshCw, Mic, Square } from 'lucide-react';
-import { MissionAssistantButton } from './MissionAssistantButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BriefWizard } from './BriefWizard';
@@ -120,18 +119,9 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
-      {/* Assistant button + Voice toggle */}
+      {/* Voice toggle */}
       {!readOnly && (
-        <div className="flex items-center justify-between mb-4">
-          <MissionAssistantButton
-            project={project}
-            mode="brief"
-            pulse={(() => {
-              const jd = (project.job_details ?? {}) as any;
-              const checks = [!!jd.title, !!jd.contract_type, !!jd.client?.name, !!jd.location, !!jd.remote_policy, !!jd.seniority, jd.experience_min != null, jd.salary_min != null, (jd.skills_must_have?.length || 0) > 0, !!jd.mission_description || !!jd.context, (jd.evaluation_criteria?.length || 0) > 0];
-              return Math.round((checks.filter(Boolean).length / checks.length) * 100) < 30;
-            })()}
-          />
+        <div className="flex items-center justify-end mb-4">
           <button
             onClick={() => setShowVoice(!showVoice)}
             className={cn(
