@@ -1,4 +1,5 @@
 import React, { useRef, useState, useCallback } from 'react';
+import type { JobDetails } from '@/types/jobDetails';
 import { motion } from 'framer-motion';
 import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjects';
 import { useProjectStats } from '@/hooks/useProjectStats';
