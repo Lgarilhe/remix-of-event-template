@@ -160,7 +160,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   });
 
   // Pool view toggle
-  const [showPoolView, setShowPoolView] = useLocalState(true);
+  const [showPoolView, setShowPoolView] = useLocalState(false);
 
   // Scored sort
   const [scoredSortBy, setScoredSortBy] = useLocalState<ScoredSortBy>('score_desc');
@@ -221,7 +221,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     search.setStatusFilter(cached.statusFilter);
     search.setShowDismissed(cached.showDismissed);
     search.setSelectedProfiles(new Set(cached.selectedProfiles));
-    setShowPoolView(cached.showPoolView);
+    setShowPoolView(cached.hasSearched ? cached.showPoolView : false);
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
   }, [missionCacheKey, search]);
