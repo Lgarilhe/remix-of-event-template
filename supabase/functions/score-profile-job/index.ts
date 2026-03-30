@@ -1121,6 +1121,189 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
   };
 }
 
+// ─── Batch LLM Scoring ─────────────────────────────────────────────────────
+// Score multiple profiles in a single API call to reduce latency and token cost.
+// The job context + system prompt are sent ONCE, profiles are listed together.
+
+interface BatchLLMInput {
+  profile: ProfileData;
+  preComputedData: {
+    weightedScore: number;
+    dimensions: Record<string, DimensionScore>;
+    matchedSkills: string[];
+    missingSkills: string[];
+    semanticScore: number | null;
+  };
+}
+
+async function callLLMBatch(
+  inputs: BatchLLMInput[],
+  job: JobData,
+  customScoringInstructions?: string,
+  modelOverride?: string,
+): Promise<Map<string, LLMResult>> {
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
+
+  if (inputs.length === 0) return new Map();
+
+  // Build job context (shared across all profiles)
+  const jobContext = sanitizeText(
+    `=== POSTE ===
+${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}
+Skills requis: ${(job.skills || []).join(", ") || "Non spécifiés"}
+${job.description ? "Description: " + job.description.substring(0, 500) : ""}
+${job.requirements ? "Exigences: " + job.requirements.substring(0, 400) : ""}
+${job.mustHave ? "\n⚠️ CRITÈRES OBLIGATOIRES (must-have): " + job.mustHave : ""}
+${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
+${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
+${job.seniority ? "Séniorité: " + job.seniority : ""}
+${job.contractType ? "Contrat: " + job.contractType : ""}
+${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
+${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
+${job.bodyContent ? "Détails: " + job.bodyContent.substring(0, 400) : ""}
+${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 400) : ""}`
+  );
+
+  // Build per-profile sections
+  const profileSections = inputs.map(({ profile, preComputedData }, idx) => {
+    const workExpText = (profile.workExperience || []).length > 0
+      ? (profile.workExperience || []).slice(0, 6).map((w, i) =>
+        `  ${i + 1}. ${w.role} @ ${w.company}${w.duration ? " (" + w.duration + ")" : ""}${w.description ? "\n     " + w.description.substring(0, 200) : ""}${w.skills?.length ? "\n     Skills: " + w.skills.join(", ") : ""}`
+      ).join("\n") : "  Aucune expérience listée";
+
+    const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
+
+    const hasDescriptions = (profile.workExperience || []).some(w => w.description && w.description.length > 30);
+    const dataWarning = !hasDescriptions ? " [DONNÉES INCOMPLÈTES: évalue sur titres/entreprises/skills]" : "";
+
+    return sanitizeText(
+      `--- CANDIDAT ${idx + 1} (id: ${profile.id}) ---
+${profile.name} — ${profile.headline || profile.currentRole || "?"}${dataWarning}
+${profile.location ? "📍 " + profile.location : ""}
+${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
+Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
+Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
+Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
+${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 300) : ""}
+Formation: ${educationText}
+Expériences:
+${workExpText}`
+    );
+  }).join("\n\n");
+
+  const prompt = `${jobContext}
+
+=== ${inputs.length} CANDIDATS À ÉVALUER ===
+
+${profileSections}
+
+=== TA MISSION ===
+Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-100), pedigree (0-100), score global (0-100), must-have ("passed"/"failed"/"uncertain").
+
+Réponds UNIQUEMENT avec un JSON ARRAY, un objet par candidat dans l'ORDRE, format :
+[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"]}]
+JSON uniquement, sans markdown.`;
+
+  console.log(`[llm-batch] Scoring ${inputs.length} profiles in single call`);
+
+  let lastError: Error | null = null;
+  let data: any = null;
+
+  for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+      await new Promise((r) => setTimeout(r, backoffMs));
+      console.log(`[llm-batch] Retry ${attempt} after ${backoffMs}ms`);
+    }
+
+    const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
+      },
+      body: JSON.stringify({
+        model: modelOverride || CLAUDE_MODEL_DEFAULT,
+        system: [{ type: "text", text: "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Tu scores PLUSIEURS candidats en une seule passe. Réponds en JSON compact, sans markdown.", cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: inputs.length * 250 + 200, // ~250 tokens per profile + overhead
+        temperature: 0.1,
+      }),
+    }, 90000); // Longer timeout for batch
+
+    if (res.ok) {
+      data = await res.json();
+      break;
+    }
+
+    const status = res.status;
+    console.error(`[llm-batch] Anthropic error (attempt ${attempt}): ${status}`);
+    if (status === 429 && attempt < MAX_LLM_RETRIES) {
+      lastError = new Error("RATE_LIMITED");
+      continue;
+    }
+    if (status === 402 || status === 400) throw new Error("CREDITS_EXHAUSTED");
+    throw new Error(`Anthropic API error: ${status}`);
+  }
+
+  if (!data) throw lastError || new Error("LLM batch call failed after retries");
+
+  const rawContent = data.content?.[0]?.text || "";
+  console.log(`[llm-batch] Response (${rawContent.length} chars): ${rawContent.substring(0, 200)}...`);
+
+  // Parse the JSON array
+  let parsedArray: any[];
+  try {
+    const cleanJson = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    parsedArray = JSON.parse(cleanJson);
+    if (!Array.isArray(parsedArray)) {
+      // Try wrapping in array if single object returned
+      parsedArray = [parsedArray];
+    }
+  } catch (e) {
+    console.error(`[llm-batch] Failed to parse batch response, falling back to individual scoring`);
+    throw new Error("BATCH_PARSE_FAILED");
+  }
+
+  const tokensPerProfile = {
+    input: Math.round((data.usage?.input_tokens || 0) / inputs.length),
+    output: Math.round((data.usage?.output_tokens || 0) / inputs.length),
+  };
+
+  const resultMap = new Map<string, LLMResult>();
+
+  for (let i = 0; i < inputs.length; i++) {
+    const parsed = parsedArray[i] || parsedArray.find((p: any) => p.id === inputs[i].profile.id);
+    if (!parsed) {
+      console.warn(`[llm-batch] Missing result for profile ${inputs[i].profile.name} (index ${i})`);
+      continue;
+    }
+
+    resultMap.set(inputs[i].profile.id, {
+      overallScore: parsed.overallScore ?? 50,
+      techFitScore: parsed.techFitScore ?? 50,
+      softSkillsScore: parsed.softSkillsScore ?? 50,
+      pedigreeScore: parsed.pedigreeScore ?? null,
+      matchedSkills: parsed.matchedSkills || [],
+      missingCriticalSkills: parsed.missingCriticalSkills || [],
+      summary: parsed.summary || "",
+      strengths: parsed.strengths || [],
+      concerns: parsed.concerns || [],
+      notableCompanies: parsed.notableCompanies || null,
+      mustHavePassed: parsed.mustHavePassed === "failed" ? false : true,
+      mustHaveUncertain: parsed.mustHavePassed === "uncertain",
+      mustHaveDetails: parsed.mustHaveDetails || null,
+      tokensUsed: tokensPerProfile,
+    });
+  }
+
+  console.log(`[llm-batch] Parsed ${resultMap.size}/${inputs.length} results`);
+  return resultMap;
+}
+
 // ─── Score Combiner ──────────────────────────────────────────────────────────
 // LLM-First: The LLM now evaluates tech fit + soft skills + must-have,
 // so it gets 40% weight. The algo handles quantifiable dimensions (40%).
@@ -1700,7 +1883,11 @@ Deno.serve(async (req) => {
       console.log(`[enrichment] Context initialized: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT} used today`);
     }
 
-    // ─── Scoring ─────────────────────────────────────────────────────────────
+    // ─── Scoring (batch LLM approach) ──────────────────────────────────────
+    // Phase 1: Run fast layers (cache, hard filter, enrichment, weighted, semantic) per profile
+    // Phase 2: Batch LLM call for all profiles that need it
+    // Phase 3: Combine scores and return
+
     const results: ScoringResult[] = [];
     let totalTokensInput = 0;
     let totalTokensOutput = 0;
@@ -1708,71 +1895,242 @@ Deno.serve(async (req) => {
     let llmSkippedCount = 0;
     let llmCalledCount = 0;
 
-    for (let i = 0; i < profilesToScore.length; i += BATCH_SIZE) {
-      const batch = profilesToScore.slice(i, i + BATCH_SIZE);
+    // Phase 1: Pre-compute per profile (fast layers)
+    interface PreScoredProfile {
+      profile: ProfileData;
+      startTime: number;
+      cached?: ScoringResult;
+      hardFilterResult?: { passed: boolean; ko?: string; result?: ScoringResult };
+      weighted?: ReturnType<typeof computeWeightedScore>;
+      semanticScore?: number | null;
+      needsLLM: boolean;
+    }
 
-      // Note: with enrichment, we process sequentially to respect delays
-      const batchResults: ScoringResult[] = [];
-      for (const p of batch) {
-        try {
-            // Diagnostic: log work experience data received
-            const expCount = (p.workExperience || []).length;
-            const expWithDesc = (p.workExperience || []).filter((w: any) => w.description && w.description.length > 0).length;
-            const expWithSkills = (p.workExperience || []).filter((w: any) => w.skills && w.skills.length > 0).length;
-            console.log(`[scoring-input] ${p.name}: ${expCount} experiences, ${expWithDesc} with description, ${expWithSkills} with skills`);
-            if (expCount > 0) {
-              const sample = (p.workExperience || []).slice(0, 2).map((w: any) => ({
-                role: w.role,
-                company: w.company,
-                descLength: w.description?.length || 0,
-                descPreview: w.description?.substring(0, 80) || '(none)',
-                skillsCount: w.skills?.length || 0,
-              }));
-              console.log(`[scoring-input] ${p.name} sample:`, JSON.stringify(sample));
-            }
-            const result = await scoreProfile(supabase, p, job, customScoringInstructions, enrichmentCtx, CLAUDE_MODEL);
-            batchResults.push(result);
-          } catch (err) {
-            console.error(`[scoring] Error for ${p.name}:`, err);
-            batchResults.push({
-              name: p.name,
-              score: 0,
-              recommendation: "ERROR",
-              summary: "Erreur lors du scoring",
-              strengths: [],
-              concerns: [],
-              missingSkills: [],
-              hardFilterPassed: false,
-              weightedCriteriaScore: 0,
-              semanticScore: null,
-              llmScore: null,
-              finalScore: 0,
-              confidenceScore: 0,
-              dimensions: {},
-              dataCompleteness: "minimal" as const,
-              missingDataPoints: [],
-              skippedLLM: true,
-              processingTimeMs: 0,
-              tokensUsed: null,
-            } as ScoringResult);
-          }
+    const preScored: PreScoredProfile[] = [];
+
+    for (const p of profilesToScore) {
+      const startTime = Date.now();
+      const candidateId = p.id;
+
+      // Layer 0: Cache check
+      const cached = await getCachedScore(supabase, candidateId, job.id);
+      if (cached) {
+        console.log(`[cache] HIT for ${p.name} → score=${cached.finalScore}`);
+        preScored.push({ profile: p, startTime, cached, needsLLM: false });
+        continue;
       }
 
-      for (const r of batchResults) {
-        if (!r.hardFilterPassed) hardFilteredCount++;
-        if (r.skippedLLM) llmSkippedCount++;
-        else llmCalledCount++;
-        if (r.tokensUsed) {
-          totalTokensInput += r.tokensUsed.input;
-          totalTokensOutput += r.tokensUsed.output;
+      // Layer 1: Hard filters
+      const hardFilterResult = applyHardFilters(p, job);
+      if (!hardFilterResult.passed) {
+        const koResult: ScoringResult = {
+          name: p.name,
+          score: 0,
+          recommendation: "NO_MATCH",
+          summary: hardFilterResult.reason || "Hard filter KO",
+          strengths: [],
+          concerns: [hardFilterResult.reason || "Filtre automatique"],
+          missingSkills: [],
+          hardFilterPassed: false,
+          hardFilterKO: hardFilterResult.reason,
+          weightedCriteriaScore: 0,
+          semanticScore: null,
+          llmScore: null,
+          finalScore: 0,
+          confidenceScore: 100,
+          dimensions: {},
+          dataCompleteness: "minimal" as const,
+          missingDataPoints: [],
+          skippedLLM: true,
+          processingTimeMs: Date.now() - startTime,
+          tokensUsed: null,
+        };
+        await setCachedScore(supabase, candidateId, job.id, koResult);
+        preScored.push({ profile: p, startTime, hardFilterResult: { passed: false, result: koResult }, needsLLM: false });
+        continue;
+      }
+
+      // Enrichment
+      if (enrichmentCtx) {
+        await maybeEnrichProfile(p, enrichmentCtx);
+      }
+
+      // Layer 2: Weighted criteria
+      const weighted = computeWeightedScore(p, job);
+
+      // Layer 3: Semantic similarity
+      const semanticScore = await getSemanticScore(supabase, candidateId, job.id);
+
+      preScored.push({ profile: p, startTime, weighted, semanticScore, needsLLM: true });
+    }
+
+    // Phase 2: Batch LLM call for profiles that need scoring
+    const llmNeeded = preScored.filter(ps => ps.needsLLM && ps.weighted);
+    const batchInputs: BatchLLMInput[] = llmNeeded.map(ps => ({
+      profile: ps.profile,
+      preComputedData: {
+        weightedScore: ps.weighted!.score,
+        dimensions: ps.weighted!.dimensions,
+        matchedSkills: ps.weighted!.matchedSkills,
+        missingSkills: ps.weighted!.missingSkills,
+        semanticScore: ps.semanticScore ?? null,
+      },
+    }));
+
+    let llmResultMap = new Map<string, LLMResult>();
+    let batchFailed = false;
+
+    if (batchInputs.length > 0) {
+      // Process in sub-batches of BATCH_SIZE for the LLM
+      const LLM_BATCH_SIZE = 10;
+      for (let i = 0; i < batchInputs.length; i += LLM_BATCH_SIZE) {
+        const subBatch = batchInputs.slice(i, i + LLM_BATCH_SIZE);
+        try {
+          const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, CLAUDE_MODEL);
+          for (const [k, v] of subMap) llmResultMap.set(k, v);
+        } catch (err: any) {
+          if (err.message === "BATCH_PARSE_FAILED") {
+            console.warn(`[scoring] Batch LLM parse failed, falling back to individual scoring`);
+            batchFailed = true;
+            break;
+          }
+          throw err;
+        }
+
+        if (i + LLM_BATCH_SIZE < batchInputs.length) {
+          await sleep(DELAY_BETWEEN_BATCHES_MS);
         }
       }
 
-      results.push(...batchResults);
-
-      if (i + BATCH_SIZE < profilesToScore.length) {
-        await sleep(DELAY_BETWEEN_BATCHES_MS);
+      // Fallback: score individually for profiles that didn't get a result
+      for (const input of batchInputs) {
+        if (!llmResultMap.has(input.profile.id)) {
+          try {
+            console.log(`[scoring] Fallback individual LLM for ${input.profile.name}`);
+            const result = await callLLM(input.profile, job, input.preComputedData, customScoringInstructions, CLAUDE_MODEL);
+            llmResultMap.set(input.profile.id, result);
+          } catch (err) {
+            console.error(`[scoring] Individual LLM fallback failed for ${input.profile.name}:`, err);
+          }
+        }
       }
+    }
+
+    // Phase 3: Combine and build final results
+    for (const ps of preScored) {
+      // Cached results
+      if (ps.cached) {
+        results.push(ps.cached);
+        if (ps.cached.tokensUsed) {
+          totalTokensInput += ps.cached.tokensUsed.input;
+          totalTokensOutput += ps.cached.tokensUsed.output;
+        }
+        continue;
+      }
+
+      // Hard-filtered results
+      if (ps.hardFilterResult?.result) {
+        results.push(ps.hardFilterResult.result);
+        hardFilteredCount++;
+        llmSkippedCount++;
+        continue;
+      }
+
+      // LLM-scored results
+      const llmResult = llmResultMap.get(ps.profile.id) ?? null;
+      const weighted = ps.weighted!;
+      const semanticScore = ps.semanticScore ?? null;
+
+      if (llmResult) {
+        llmCalledCount++;
+        if (llmResult.tokensUsed) {
+          totalTokensInput += llmResult.tokensUsed.input;
+          totalTokensOutput += llmResult.tokensUsed.output;
+        }
+
+        // Must-have KO check
+        if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
+          const koResult: ScoringResult = {
+            name: ps.profile.name,
+            score: 0,
+            recommendation: "NO_MATCH",
+            summary: llmResult.mustHaveDetails || "Must-have non satisfait (évaluation IA)",
+            strengths: llmResult.strengths || [],
+            concerns: [llmResult.mustHaveDetails || "Must-have KO", ...(llmResult.concerns || [])],
+            missingSkills: llmResult.missingCriticalSkills || [],
+            hardFilterPassed: false,
+            hardFilterKO: llmResult.mustHaveDetails || "Must-have non satisfait",
+            weightedCriteriaScore: weighted.score,
+            semanticScore,
+            llmScore: llmResult.overallScore,
+            finalScore: 0,
+            confidenceScore: 100,
+            dimensions: weighted.dimensions,
+            dataCompleteness: weighted.dataCompleteness,
+            missingDataPoints: weighted.missingDataPoints,
+            skippedLLM: false,
+            processingTimeMs: Date.now() - ps.startTime,
+            tokensUsed: llmResult.tokensUsed,
+            skipReason: llmResult.mustHaveDetails,
+          };
+          await setCachedScore(supabase, ps.profile.id, job.id, koResult);
+          results.push(koResult);
+          hardFilteredCount++;
+          continue;
+        }
+
+        // Must-have uncertain penalty
+        if ((llmResult as any).mustHaveUncertain) {
+          llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 15);
+          llmResult.concerns = [
+            ...(llmResult.concerns || []),
+            "⚠️ Critère obligatoire à vérifier manuellement",
+          ];
+        }
+
+        // Inject LLM dimensions
+        weighted.dimensions.tech_fit_llm = { score: llmResult.techFitScore, weight: 0, details: "Évaluation technique IA" };
+        weighted.dimensions.soft_skills_llm = { score: llmResult.softSkillsScore, weight: 0, details: "Évaluation soft skills IA" };
+      } else {
+        llmSkippedCount++;
+      }
+
+      const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
+      const recommendation = getRecommendation(finalScore, llmResult);
+      const confidenceScore = computeConfidence(weighted, llmResult !== null, semanticScore);
+
+      const result: ScoringResult = {
+        name: ps.profile.name,
+        score: finalScore,
+        recommendation,
+        summary: llmResult?.summary || `Score: ${finalScore}/100`,
+        strengths: llmResult?.strengths || [],
+        concerns: llmResult?.concerns || [],
+        missingSkills: llmResult?.missingCriticalSkills || weighted.missingSkills,
+        matchedSkills: llmResult?.matchedSkills || weighted.matchedSkills,
+        matchedSkillCount: (llmResult?.matchedSkills || weighted.matchedSkills).length,
+        totalRequiredSkills: (job.skills || []).length,
+        seniorityMatch: weighted.dimensions.seniority?.details,
+        locationMatch: weighted.dimensions.location?.details,
+        experienceMatch: weighted.dimensions.experience?.details,
+        tenureAnalysis: weighted.dimensions.tenure?.details,
+        receptivityScore: weighted.dimensions.receptivity?.score ?? null,
+        hardFilterPassed: true,
+        weightedCriteriaScore: weighted.score,
+        semanticScore,
+        llmScore: llmResult?.overallScore ?? null,
+        finalScore,
+        confidenceScore,
+        dimensions: weighted.dimensions,
+        dataCompleteness: weighted.dataCompleteness,
+        missingDataPoints: weighted.missingDataPoints,
+        skippedLLM: llmResult === null,
+        processingTimeMs: Date.now() - ps.startTime,
+        tokensUsed: llmResult?.tokensUsed ?? null,
+      };
+
+      await setCachedScore(supabase, ps.profile.id, job.id, result);
+      results.push(result);
     }
 
     // Persist enrichment daily count

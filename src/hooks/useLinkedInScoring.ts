@@ -545,9 +545,9 @@ export function useLinkedInScoring({
       return;
     }
 
-    // Batch settings to avoid AI rate limits
+    // Batch settings — now with parallelization
     const BATCH_SIZE = 10;
-    const DELAY_BETWEEN_BATCHES_MS = 500;
+    const PARALLEL_BATCHES = 3;
 
     try {
       const profilesData = profilesToScore.map(buildProfileData);
@@ -580,63 +580,82 @@ export function useLinkedInScoring({
       const batchStartTime = Date.now();
       const totalBatches = Math.ceil(profilesData.length / BATCH_SIZE);
 
+      // Split profiles into batches
+      const batches: typeof profilesData[] = [];
       for (let i = 0; i < profilesData.length; i += BATCH_SIZE) {
-        const batch = profilesData.slice(i, i + BATCH_SIZE);
-        const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+        batches.push(profilesData.slice(i, i + BATCH_SIZE));
+      }
+
+      // Process batches in parallel waves (PARALLEL_BATCHES at a time)
+      for (let wave = 0; wave < batches.length; wave += PARALLEL_BATCHES) {
+        if (rateLimited) break;
+
+        const waveBatches = batches.slice(wave, wave + PARALLEL_BATCHES);
+        const waveStart = wave + 1;
+        const waveEnd = Math.min(wave + PARALLEL_BATCHES, batches.length);
 
         if (totalBatches > 1) {
-          toast.info(`Scoring lot ${batchIndex}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
+          toast.info(`Scoring lots ${waveStart}-${waveEnd}/${totalBatches}...`, { id: 'batch-scoring-progress', duration: 3000 });
         }
 
-        const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
-          profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
-        });
+        const waveResults = await Promise.allSettled(
+          waveBatches.map(batch =>
+            invokeWithCredits('score-profile-job', 'scoring', {
+              profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
+            })
+          )
+        );
 
-        if (error) {
-          const errMsg = error.message || '';
-          if (errMsg.includes('CREDITS_EXHAUSTED') || errMsg.includes('402')) {
-            toast.error('Crédits IA épuisés.', { duration: 8000 });
-            return;
+        for (let j = 0; j < waveResults.length; j++) {
+          const result = waveResults[j];
+          const batchIndex = wave + j + 1;
+
+          if (result.status === 'rejected') {
+            console.error(`Batch ${batchIndex} rejected:`, result.reason);
+            toast.warning(`Lot ${batchIndex}/${totalBatches} échoué, passage au suivant...`);
+            continue;
           }
-          if (errMsg.includes('RATE_LIMITED') || errMsg.includes('429')) {
-            rateLimited = true;
-            // Fill fallback for this batch
-            batch.forEach(() => allResults.push({
-              match_score: 0,
-              matching_skills: [],
-              missing_skills: [],
-              experience_match: 'incertain',
-              location_match: false,
-              summary: 'Rate limited - réessayez plus tard',
-              recommendation: 'maybe',
-            } as any));
-            break;
+
+          const { data, error } = result.value;
+
+          if (error) {
+            const errMsg = error.message || '';
+            if (errMsg.includes('CREDITS_EXHAUSTED') || errMsg.includes('402')) {
+              toast.error('Crédits IA épuisés.', { duration: 8000 });
+              return;
+            }
+            if (errMsg.includes('RATE_LIMITED') || errMsg.includes('429')) {
+              rateLimited = true;
+              waveBatches[j].forEach(() => allResults.push({
+                match_score: 0,
+                matching_skills: [],
+                missing_skills: [],
+                experience_match: 'incertain',
+                location_match: false,
+                summary: 'Rate limited - réessayez plus tard',
+                recommendation: 'maybe',
+              } as any));
+              break;
+            }
+            console.error(`Batch ${batchIndex} error:`, error);
+            toast.warning(`Lot ${batchIndex}/${totalBatches} échoué, passage au suivant...`);
+            continue;
           }
-          // For other errors (including Failed to fetch), skip this batch gracefully
-          console.error(`Batch ${batchIndex} error:`, error);
-          toast.warning(`Lot ${batchIndex}/${totalBatches} échoué, passage au suivant...`);
-          continue;
-        }
 
-        if (data?.results && Array.isArray(data.results)) {
-          allResults.push(...data.results);
-        }
-        // Capture batch stats from response
-        if ((data as any)?.stats) {
-          const stats = (data as any).stats;
-          aggregatedStats = {
-            total: (aggregatedStats?.total || 0) + (stats.total || 0),
-            hardFiltered: (aggregatedStats?.hardFiltered || 0) + (stats.hardFiltered || 0),
-            llmSkipped: (aggregatedStats?.llmSkipped || 0) + (stats.llmSkipped || 0),
-            llmCalled: (aggregatedStats?.llmCalled || 0) + (stats.llmCalled || 0),
-            avgScore: stats.avgScore || 0,
-            totalTokens: (aggregatedStats?.totalTokens || 0) + (stats.totalTokens || 0),
-          };
-        }
-
-        // Delay between batches
-        if (i + BATCH_SIZE < profilesData.length && !rateLimited) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
+          if (data?.results && Array.isArray(data.results)) {
+            allResults.push(...data.results);
+          }
+          if ((data as any)?.stats) {
+            const stats = (data as any).stats;
+            aggregatedStats = {
+              total: (aggregatedStats?.total || 0) + (stats.total || 0),
+              hardFiltered: (aggregatedStats?.hardFiltered || 0) + (stats.hardFiltered || 0),
+              llmSkipped: (aggregatedStats?.llmSkipped || 0) + (stats.llmSkipped || 0),
+              llmCalled: (aggregatedStats?.llmCalled || 0) + (stats.llmCalled || 0),
+              avgScore: stats.avgScore || 0,
+              totalTokens: (aggregatedStats?.totalTokens || 0) + (stats.totalTokens || 0),
+            };
+          }
         }
       }
 
