@@ -559,9 +559,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     {/* Left: bold typographic count */}
                     <div className="flex items-baseline gap-2 min-w-0">
-                      <span className="text-3xl sm:text-4xl font-black text-foreground tabular-nums tracking-tighter leading-none">
-                        {total.toLocaleString()}
-                      </span>
+                      <NumberTicker
+                        value={total}
+                        className="text-3xl sm:text-4xl font-black text-foreground tabular-nums tracking-tighter leading-none"
+                      />
                       <div className="flex flex-col gap-0.5">
                         <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                           profils trouvés
