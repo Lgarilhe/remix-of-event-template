@@ -13,7 +13,7 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
 import landingDashboard from '@/assets/landing-dashboard.webp';
 import { getValidatedSession } from '@/lib/authSession';
-import { withPreviewAccessToken } from '@/lib/previewToken';
+import { withPreviewAccessToken, withPreviewAccessTokenFromSearch } from '@/lib/previewToken';
 
 const useRedirectIfAuthenticated = () => {
   const navigate = useNavigate();
@@ -31,7 +31,7 @@ const useRedirectIfAuthenticated = () => {
       const { session } = await getValidatedSession();
 
       if (!isMounted || !session?.user) return;
-      navigate(withPreviewAccessToken('/missions'), { replace: true });
+      navigate(withPreviewAccessTokenFromSearch('/missions', window.location.search), { replace: true });
     };
 
     validateSessionInBackground().catch(() => {
@@ -42,7 +42,7 @@ const useRedirectIfAuthenticated = () => {
       if (!isMounted) return;
 
       if ((event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && !!session?.user)) && session?.user) {
-        navigate(withPreviewAccessToken('/missions'), { replace: true });
+        navigate(withPreviewAccessTokenFromSearch('/missions', window.location.search), { replace: true });
       }
     });
 

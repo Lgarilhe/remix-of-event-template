@@ -12,7 +12,7 @@ import { AgentProvider } from "@/contexts/AgentContext";
 import { AgentDrawer } from "@/components/agent";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
-import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken } from "@/lib/previewToken";
+import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
@@ -65,7 +65,7 @@ const AppContent = () => {
       return;
     }
 
-    const nextLocation = withPreviewAccessToken(location.pathname, location.search, location.hash);
+    const nextLocation = withPreviewAccessTokenFromSearch(location.pathname, location.search, location.search, location.hash);
     if (nextLocation.search === location.search) {
       return;
     }
