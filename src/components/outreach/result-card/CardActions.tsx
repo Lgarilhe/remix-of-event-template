@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive, Users } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
+import { ShimmerButton } from '@/components/magicui/shimmer-button';
 
 interface CardActionsProps {
   profile: LinkedInProfile;
@@ -55,12 +56,10 @@ export const CardActions: React.FC<CardActionsProps> = ({
     <div className={`flex items-center gap-0.5 ${compact ? '' : 'gap-1'}`}>
       {/* Score */}
       {selectedJob && onScoreProfile && !jobScore && (
-        <Button
-          variant="ghost"
-          size="sm"
+        <ShimmerButton
           onClick={onScoreProfile}
           disabled={isScoring}
-          className={`text-purple-600 hover:text-purple-700 hover:bg-purple-50 ${compact ? buttonSize : 'h-8 px-2 gap-1'}`}
+          className={compact ? 'h-7 px-2 text-[10px]' : 'h-8 px-3 text-[10px]'}
           title={`Scorer pour ${selectedJob.title}`}
         >
           {isScoring ? (
@@ -68,10 +67,10 @@ export const CardActions: React.FC<CardActionsProps> = ({
           ) : (
             <>
               <Target className={iconSize} />
-              {!compact && <span className="text-xs hidden sm:inline">Score</span>}
+              {!compact && <span className="hidden sm:inline">Score</span>}
             </>
           )}
-        </Button>
+        </ShimmerButton>
       )}
 
       {/* Message */}
