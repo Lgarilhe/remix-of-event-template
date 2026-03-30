@@ -556,9 +556,17 @@ export function useLinkedInSearchActions(
 
         if (isDatabase) {
           // Database search (Base Konekt) — uses database-search edge function
-          const { data: dbData } = await invokeEdgeFunction<Record<string, unknown>>('database-search', {
+          console.log('[LinkedInSearch] Calling database-search with params:', JSON.stringify(params).slice(0, 500));
+          const { data: dbData, error: dbError } = await invokeEdgeFunction<Record<string, unknown>>('database-search', {
             ...params,
             action: 'search',
+          });
+          console.log('[LinkedInSearch] database-search response:', {
+            success: dbData?.success,
+            itemsCount: Array.isArray(dbData?.items) ? (dbData.items as unknown[]).length : 0,
+            total: dbData?.total,
+            cursor: dbData?.cursor,
+            error: dbError?.message || dbData?.error,
           });
           data = dbData || {};
         } else {
