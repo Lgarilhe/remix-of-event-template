@@ -490,21 +490,25 @@ Deno.serve(async (req) => {
 
       // Convert to LinkedInProfile format and filter low-quality profiles
       const allProfiles = enrichedPeople.map(apolloToLinkedInProfile);
+      console.log(`[database-search] Converted ${allProfiles.length} profiles`);
+
       const profiles = allProfiles.filter((p: Record<string, unknown>) => {
         const lastName = String(p.last_name || '').trim();
         const headline = String(p.headline || '').trim();
-        const company = ((p.current_positions as any[]) || [])[0]?.company;
-        const workExp = (p.work_experience as any[]) || [];
+        const name = String(p.name || '').trim();
 
-        // Must have at least a last name
-        if (!lastName || lastName.length < 2) return false;
-        // Must have a headline or current position
-        if (!headline && !company) return false;
-        // Must have at least 1 work experience
-        if (workExp.length === 0) return false;
+        // Must have a real name (not just a first name initial)
+        if (!lastName || lastName.length < 2) {
+          // Allow if full name has at least 2 words
+          if (!name || name.split(' ').length < 2) return false;
+        }
+        // Must have a headline or title
+        if (!headline) return false;
 
         return true;
       });
+
+      console.log(`[database-search] After quality filter: ${profiles.length}/${allProfiles.length}`);
 
       // Pagination
       const pagination = data.pagination || {};
