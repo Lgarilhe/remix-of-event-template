@@ -96,6 +96,19 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           seniority: jd.seniority || null,
           xpMin: jd.experience_min,
           xpMax: jd.experience_max,
+          // Additional brief data for better filter generation
+          remote: jd.remote_policy || null,
+          contractType: jd.contract_type || null,
+          salaryMin: jd.salary_min,
+          salaryMax: jd.salary_max,
+          mustHave: jd.skills_must_have?.join(', ') || null,
+          shouldHave: jd.skills_should_have?.join(', ') || null,
+          niceToHave: jd.skills_nice_to_have?.join(', ') || null,
+          sourcingCriteria: jd.skills_to_avoid?.length ? `Compétences à éviter : ${jd.skills_to_avoid.join(', ')}` : null,
+          requirements: [
+            ...(jd.certifications?.length ? [`Certifications : ${jd.certifications.join(', ')}`] : []),
+            ...(jd.languages?.length ? [`Langues : ${jd.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}`] : []),
+          ].join('. ') || null,
         },
       });
       if (response.error) throw new Error(response.error.message || 'Erreur IA');
@@ -125,7 +138,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
     }
   }, [project, jd, updateProject]);
 
-  // Add a suggestion to the brief's skills
+  // Add a suggestion to the brief and update filters_snapshot
   const handleAddSuggestion = useCallback((category: keyof Suggestions, value: string) => {
     // Remove the chip from suggestions
     setSuggestions(prev => {
@@ -133,17 +146,73 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       return { ...prev, [category]: prev[category].filter((v: string) => v !== value) };
     });
 
-    // Add to the appropriate brief field
-    if (category === 'alt_skills' || category === 'alt_certifications') {
-      const currentSkills = jd.skills_should_have || [];
-      if (!currentSkills.includes(value)) {
+    const currentSnapshot = (project.filters_snapshot || {}) as Record<string, any>;
+    const currentJobDetails = (project.job_details || {}) as Record<string, any>;
+
+    switch (category) {
+      case 'alt_skills':
+      case 'alt_certifications': {
+        // Add to brief skills_should_have
+        const currentSkills = (jd.skills_should_have || []) as string[];
+        if (!currentSkills.includes(value)) {
+          const updatedSkills = [...currentSkills, value];
+          updateProject({
+            id: project.id,
+            job_details: { ...currentJobDetails, skills_should_have: updatedSkills } as any,
+            // Also add to skills_keywords in filters_snapshot for immediate search impact
+            filters_snapshot: {
+              ...currentSnapshot,
+              skills_keywords: [...(currentSnapshot.skills_keywords || []), value],
+            },
+          });
+        }
+        break;
+      }
+      case 'alt_titles': {
+        // Add to role filter keywords in filters_snapshot
+        const existingRole = Array.isArray(currentSnapshot.role) ? currentSnapshot.role : [];
+        const currentKeywords = existingRole[0]?.keywords || '';
+        const updatedKeywords = currentKeywords ? `${currentKeywords} OR "${value}"` : `"${value}"`;
         updateProject({
           id: project.id,
-          job_details: { ...project.job_details, skills_should_have: [...currentSkills, value] } as any,
+          filters_snapshot: {
+            ...currentSnapshot,
+            role: [{ keywords: updatedKeywords, priority: 'MUST_HAVE', scope: 'CURRENT' }],
+          },
         });
+        break;
+      }
+      case 'alt_locations': {
+        // Add to location_keywords in filters_snapshot
+        const currentLocations = currentSnapshot.location_keywords || [];
+        if (!currentLocations.includes(value)) {
+          updateProject({
+            id: project.id,
+            filters_snapshot: {
+              ...currentSnapshot,
+              location_keywords: [...currentLocations, value],
+            },
+          });
+        }
+        break;
+      }
+      case 'alt_companies': {
+        // Add as company to target (CAN_HAVE = inclusive filter, not exclusive)
+        const existingCompanies = Array.isArray(currentSnapshot.company_keywords) ? currentSnapshot.company_keywords : [];
+        updateProject({
+          id: project.id,
+          filters_snapshot: {
+            ...currentSnapshot,
+            company_keywords: [
+              ...existingCompanies,
+              { keywords: value, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' },
+            ],
+          },
+        });
+        break;
       }
     }
-    toast.success(`"${value}" ajouté`);
+    toast.success(`"${value}" ajouté aux filtres`);
   }, [project, jd, updateProject]);
 
   const handleDismissSuggestion = useCallback((category: keyof Suggestions, value: string) => {
