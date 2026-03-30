@@ -224,18 +224,21 @@ const MissionWorkspace = () => {
 
               {activeTab === 'brief' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
+                  <MissionAgentHelpCard project={project} activeTab="brief" className="mb-4 mt-4" />
                   <MissionBrief project={project} readOnly={!canEditBrief} />
                 </SectionErrorBoundary>
               )}
 
               {activeTab === 'process' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
+                  <MissionAgentHelpCard project={project} activeTab="process" className="mb-4 mt-4" />
                   <MissionProcess project={project} readOnly={!canEditProcess} />
                 </SectionErrorBoundary>
               )}
 
               {activeTab === 'sourcing' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
+                  <MissionAgentHelpCard project={project} activeTab="sourcing" className="mb-4 mt-4" />
                   <MissionSourcing project={project} />
                 </SectionErrorBoundary>
               )}
@@ -248,6 +251,7 @@ const MissionWorkspace = () => {
 
               {activeTab === 'outreach' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans l'Outreach">
+                  <MissionAgentHelpCard project={project} activeTab="outreach" className="mb-4 mt-4" />
                   <MissionOutreach project={project} />
                 </SectionErrorBoundary>
               )}
