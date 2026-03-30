@@ -528,7 +528,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <BrutalLoader variant="search" rows={5} />
         ) : !hasSearched ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
-            <SearchWelcomeMessage />
+            {activeProject ? (
+              <SourcingReadinessPanel
+                project={activeProject}
+                selectedAccount={selectedAccount}
+              />
+            ) : (
+              <SearchWelcomeMessage />
+            )}
           </div>
         ) : displayResults.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
