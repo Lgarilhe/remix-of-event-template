@@ -644,40 +644,46 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
             {/* Profile cards */}
             {displayResults.map((profile, index) => (
-              <LinkedInResultCard
+              <motion.div
                 key={profile.id || `profile-${index}`}
-                profile={profile}
-                selectedJob={selectedJob}
-                isSelected={selectedProfiles.has(profile.id)}
-                isBatchScoring={scoringInProgress}
-                onToggleSelect={() => onToggleProfileSelection(profile.id)}
-                jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
-                  profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
-                  match_score: treatedCandidates.get(profile.id)!.score!,
-                  matching_skills: [],
-                  missing_skills: [],
-                  experience_match: 'incertain' as const,
-                  location_match: false,
-                  summary: '',
-                  recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
-                } : undefined)}
-                onScoreProfile={() => onScoreProfile(profile)}
-                accountId={selectedAccount || undefined}
-                onMessageSent={onMessageSent}
-                activeProject={activeProject}
-                onProfileTreated={() => onProfileTreated(profile.id)}
-                onArchive={selectedJob ? () => onArchive(profile) : undefined}
-                candidateStatus={treatedCandidates.get(profile.id) ? {
-                  status: treatedCandidates.get(profile.id)!.status,
-                  score: treatedCandidates.get(profile.id)!.score,
-                  recommendation: treatedCandidates.get(profile.id)!.recommendation,
-                  updated_at: treatedCandidates.get(profile.id)!.updated_at,
-                } : null}
-                airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
-                notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
-                onOpenDetail={() => openProfileDetail(profile)}
-                onFindSimilar={onFindSimilar}
-              />
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.03, 0.6), duration: 0.25, ease: 'easeOut' }}
+              >
+                <LinkedInResultCard
+                  profile={profile}
+                  selectedJob={selectedJob}
+                  isSelected={selectedProfiles.has(profile.id)}
+                  isBatchScoring={scoringInProgress}
+                  onToggleSelect={() => onToggleProfileSelection(profile.id)}
+                  jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
+                    profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
+                    match_score: treatedCandidates.get(profile.id)!.score!,
+                    matching_skills: [],
+                    missing_skills: [],
+                    experience_match: 'incertain' as const,
+                    location_match: false,
+                    summary: '',
+                    recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
+                  } : undefined)}
+                  onScoreProfile={() => onScoreProfile(profile)}
+                  accountId={selectedAccount || undefined}
+                  onMessageSent={onMessageSent}
+                  activeProject={activeProject}
+                  onProfileTreated={() => onProfileTreated(profile.id)}
+                  onArchive={selectedJob ? () => onArchive(profile) : undefined}
+                  candidateStatus={treatedCandidates.get(profile.id) ? {
+                    status: treatedCandidates.get(profile.id)!.status,
+                    score: treatedCandidates.get(profile.id)!.score,
+                    recommendation: treatedCandidates.get(profile.id)!.recommendation,
+                    updated_at: treatedCandidates.get(profile.id)!.updated_at,
+                  } : null}
+                  airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
+                  notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
+                  onOpenDetail={() => openProfileDetail(profile)}
+                  onFindSimilar={onFindSimilar}
+                />
+              </motion.div>
             ))}
 
             {/* Next batch / Load more */}
