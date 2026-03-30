@@ -303,6 +303,10 @@ function apolloToLinkedInProfile(p: Record<string, unknown>): Record<string, unk
   const fullName = p.name || `${firstName} ${lastName}`.trim();
 
   return {
+    // Source marker for client-side behaviors (detail enrichment, badges, etc.)
+    source: "database",
+    _source: "database",
+
     // Core identity — same as LinkedIn format
     id: p.id || crypto.randomUUID(),
     provider_id: p.id,
