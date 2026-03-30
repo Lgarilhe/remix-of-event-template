@@ -16,54 +16,54 @@ export type LinkedInApiMode = 'classic' | 'recruiter' | 'sales_navigator';
  * - Sales Navigator: Higher limits for sales activities
  */
 /**
- * SAFE MODE LinkedIn quotas — conservative limits to protect accounts.
- * Based on real LinkedIn limits (2026) + Unipile recommendations.
- * We operate at ~50% of max to stay under LinkedIn's radar.
+ * SAFE MODE LinkedIn quotas — operating at ~50-60% of real limits.
  *
- * Key facts:
- * - LinkedIn uses a dynamic Trust Score, not just hard caps
- * - Acceptance rate must stay > 30% or limits tighten
- * - Warm-up required for new/inactive accounts
+ * Real limits (2026):
+ * - Free: 80-100 invites/week, 80 profile views/day, 5 InMails/month
+ * - Premium: 100-150 invites/week, 100 profile views/day, 15 InMails/month
+ * - Sales Nav: 150-200 invites/week, 1000 profile views/day (SN interface), 50 InMails/month + 800 Open Profile/month
+ * - Recruiter Lite: 150-200 invites/week, 30 InMails/month + 100 Open Profile/month
+ * - Recruiter Corporate: 150-200 invites/week, 150 InMails/month + 1000 Open Profile/month, 1000 InMails/day hard cap
  *
  * Sources:
- * - https://developer.unipile.com/docs/provider-limits-and-restrictions
+ * - https://www.linkedin.com/help/recruiter/answer/a745199
  * - https://evaboot.com/blog/linkedin-limits
- * - https://phantombuster.com/blog/linkedin-automation/linkedin-automation-safe-limits-2026/
+ * - https://www.salesrobot.co/blogs/how-many-inmails-can-you-send-on-linkedin
  */
 export const LINKEDIN_LIMITS = {
   // Profile visits/retrieval per day
-  // Real limits: Free 80-100, SN 600-800. Safe = ~50%
+  // Free: 80, Premium: 100, SN: 1000 (via SN interface), Recruiter: 1000+
   PROFILE_VISITS: {
     classic: 50,
-    recruiter: 150,
-    sales_navigator: 300,
+    recruiter: 500,
+    sales_navigator: 500,
   },
-  // Search results fetched per day
+  // Search results fetched per day — SN and Recruiter are practically unlimited
   SEARCH_RESULTS: {
-    classic: 999999,
+    classic: 300,
     recruiter: 999999,
     sales_navigator: 999999,
   },
   // Connection requests (invitations) per day
-  // Real limits: ~100/week = ~14/day free, 150-200/week = 25-30/day paid
-  // Safe = stay well under to maintain > 30% acceptance rate
+  // Real: ~100/week free, 150-200/week paid. Safe = ~60%
   INVITATIONS: {
-    classic: 10,
-    recruiter: 25,
-    sales_navigator: 25,
+    classic: 15,
+    recruiter: 30,
+    sales_navigator: 30,
   },
   // InMail daily limits
-  // Recruiter: 150 credits/month + Open Profile messages are FREE and unlimited
-  // Sales Nav: 50 credits/month + Open Profiles free
-  // Unipile recommends spreading across the day, 30-50/day is safe
+  // Free: 5/month, Premium: 15/month, SN: 50/month + 800 Open Profile
+  // Recruiter Lite: 30/month + 100 Open Profile
+  // Recruiter Corporate: 150/month + 1000 Open Profile, hard cap 1000/day
+  // Open Profile messages are FREE and don't count against credits
   INMAIL_DAILY: {
-    classic: 0,
-    recruiter: 40,
-    sales_navigator: 20,
+    classic: 3,
+    recruiter: 150,
+    sales_navigator: 50,
   },
-  // InMail monthly credits (for tracking)
+  // InMail monthly credits (for tracking, excludes Open Profile which are free)
   INMAIL_MONTHLY: {
-    classic: 0,
+    classic: 5,
     recruiter: 150,
     sales_navigator: 50,
   },
@@ -74,18 +74,17 @@ export const LINKEDIN_LIMITS = {
     sales_navigator: 0,
   },
   // Messages to 1st-degree connections per day
-  // Real limits: 80-100 free, 100-150 paid. Safe = ~60%
+  // No official daily limit but 50-100/day is safe for all account types
   MESSAGES: {
     classic: 50,
-    recruiter: 80,
-    sales_navigator: 80,
+    recruiter: 100,
+    sales_navigator: 100,
   },
   // Other actions (comments, likes, etc.) per day
-  // Unipile recommends 100/day max per action type
   OTHER_ACTIONS: {
     classic: 60,
-    recruiter: 80,
-    sales_navigator: 80,
+    recruiter: 100,
+    sales_navigator: 100,
   },
   // Min delay between actions (ms) — SAFE MODE: 45-90 seconds
   // Simulates human behavior. LinkedIn detects sub-10s action patterns.

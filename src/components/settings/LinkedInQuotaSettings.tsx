@@ -56,10 +56,10 @@ export function getEffectiveDelay(): { min: number; max: number } {
 }
 
 const FIELDS = [
-  { key: 'invitations' as const, label: 'Invitations / jour', default: LINKEDIN_LIMITS.INVITATIONS.recruiter, max: 35, help: 'Max recommandé : 25-35/jour (LinkedIn limite à ~100/semaine)' },
-  { key: 'messages' as const, label: 'Messages / jour', default: LINKEDIN_LIMITS.MESSAGES.recruiter, max: 150, help: 'Messages 1st degree. Max réel : 100-150/jour' },
-  { key: 'inmailDaily' as const, label: 'InMails / jour', default: LINKEDIN_LIMITS.INMAIL_DAILY.recruiter, max: 50, help: 'Recruiter: 150 crédits/mois. Répartir sur le mois.' },
-  { key: 'profileVisits' as const, label: 'Visites profils / jour', default: LINKEDIN_LIMITS.PROFILE_VISITS.recruiter, max: 800, help: 'Free: 80-100, Sales Nav: 600-800' },
+  { key: 'invitations' as const, label: 'Invitations / jour', default: LINKEDIN_LIMITS.INVITATIONS.recruiter, max: 40, help: 'Réel : ~150-200/semaine Recruiter. Safe : 30/jour' },
+  { key: 'messages' as const, label: 'Messages / jour', default: LINKEDIN_LIMITS.MESSAGES.recruiter, max: 150, help: 'Pas de limite officielle. Safe : 100/jour' },
+  { key: 'inmailDaily' as const, label: 'InMails / jour', default: LINKEDIN_LIMITS.INMAIL_DAILY.recruiter, max: 1000, help: 'Recruiter : 150 crédits/mois + Open Profiles illimités. Hard cap : 1000/jour' },
+  { key: 'profileVisits' as const, label: 'Visites profils / jour', default: LINKEDIN_LIMITS.PROFILE_VISITS.recruiter, max: 1000, help: 'SN/Recruiter : 1000/jour via interface dédiée' },
   { key: 'minDelayMs' as const, label: 'Délai min entre actions (sec)', default: LINKEDIN_LIMITS.MIN_DELAY_MS / 1000, max: 300, help: 'LinkedIn détecte les patterns < 10s', isDelay: true },
   { key: 'maxDelayMs' as const, label: 'Délai max entre actions (sec)', default: LINKEDIN_LIMITS.MAX_DELAY_MS / 1000, max: 600, help: 'Varier les délais simule un comportement humain', isDelay: true },
 ];
