@@ -394,6 +394,14 @@ Retourne UNIQUEMENT un objet JSON avec:
 - experience_rationale: string - Explication de la plage d'expérience (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase (mentionner Role/Work/Context)
 
+=== SUGGESTIONS D'AFFINAGE (OBLIGATOIRE) ===
+En plus des filtres, tu DOIS retourner un objet "suggestions" avec des alternatives que l'utilisateur peut ajouter en un clic pour affiner sa recherche:
+- alt_skills: string[] - Technologies/compétences ALTERNATIVES non incluses dans les filtres principaux mais pertinentes (max 8). Ex: si le filtre a "Kubernetes", suggérer "Docker", "Helm", "Rancher"
+- alt_titles: string[] - Titres de poste alternatifs non inclus dans role_keywords (max 5). Ex: si le filtre a "SRE", suggérer "Platform Engineer", "Cloud Engineer"
+- alt_locations: string[] - Villes ou régions proches ou alternatives (max 4). Ex: si le filtre a "Paris", suggérer "Île-de-France", "Lyon", "Remote France"
+- alt_companies: string[] - Feeder companies ciblées où trouver ce type de profil (max 6). Ex: pour un SRE, suggérer "Datadog", "OVH", "Scaleway"
+- alt_certifications: string[] - Certifications complémentaires pertinentes (max 4). Ex: "CKA", "AWS Solutions Architect"
+
 NOTE: Ne PAS retourner de champ "seniority_levels" - utiliser uniquement years_experience_min/max.
 JSON uniquement, sans markdown.`;
 
@@ -736,6 +744,13 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
           years_experience_min: parsed.years_experience_min ?? null,
           years_experience_max: parsed.years_experience_max ?? null,
           suggested_title: parsed.suggested_title || null,
+        },
+        suggestions: {
+          alt_skills: parsed.alt_skills || [],
+          alt_titles: parsed.alt_titles || [],
+          alt_locations: parsed.alt_locations || [],
+          alt_companies: parsed.alt_companies || [],
+          alt_certifications: parsed.alt_certifications || [],
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
