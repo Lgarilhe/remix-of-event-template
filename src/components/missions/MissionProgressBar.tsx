@@ -1,16 +1,32 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Settings2, Search, Send, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { NumberTicker } from '@/components/magicui/number-ticker';
 import type { JobDetails } from '@/types/jobDetails';
+
+/* ─── Step configuration ─── */
 
 interface StepConfig {
   value: string;
   label: string;
   icon: typeof FileText;
-  getSummary: (project: SourcingProject) => string;
+  getFilledCount: (project: SourcingProject) => number;
+  getTotalCount: (project: SourcingProject) => number;
+  getSummary: (project: SourcingProject) => React.ReactNode;
   getCompletion: (project: SourcingProject) => boolean;
+}
+
+function countBriefFields(p: SourcingProject): { filled: number; total: number } {
+  const jd = (p.job_details || {}) as JobDetails;
+  const fields = [
+    jd.title, jd.mission_description || jd.raw_brief, jd.seniority, jd.location,
+    jd.contract_type, jd.remote_policy, jd.client?.name, jd.salary_min,
+    jd.experience_min, (jd.skills_must_have?.length || 0) > 0 ? true : null,
+    jd.context, jd.languages?.length ? true : null,
+  ];
+  return { filled: fields.filter(Boolean).length, total: fields.length };
 }
 
 const steps: StepConfig[] = [
@@ -18,11 +34,17 @@ const steps: StepConfig[] = [
     value: 'brief',
     label: 'Brief',
     icon: FileText,
+    getFilledCount: (p) => countBriefFields(p).filled,
+    getTotalCount: (p) => countBriefFields(p).total,
     getSummary: (p) => {
-      const jd = (p.job_details || {}) as JobDetails;
-      const fields = [jd.title, jd.mission_description, jd.seniority, jd.location, jd.contract_type, jd.remote_policy, jd.client?.name, jd.salary_min, jd.experience_min, (jd.skills_must_have?.length || 0) > 0 ? 'skills' : null, jd.context || jd.mission_description].filter(Boolean);
-      const total = 11;
-      return fields.length > 0 ? `${fields.length}/${total} champs` : 'À compléter';
+      const { filled, total } = countBriefFields(p);
+      return (
+        <span className="flex items-center gap-1.5">
+          <NumberTicker value={filled} className="font-bold text-foreground" />
+          <span>/{total} champs</span>
+          <MiniProgressBar value={filled} max={total} />
+        </span>
+      );
     },
     getCompletion: (p) => {
       const jd = (p.job_details || {}) as JobDetails;
@@ -33,11 +55,24 @@ const steps: StepConfig[] = [
     value: 'process',
     label: 'Process',
     icon: Settings2,
+    getFilledCount: (p) => {
+      const jd = (p.job_details || {}) as JobDetails;
+      const s = (jd as any).process_steps;
+      return Array.isArray(s) ? s.length : 0;
+    },
+    getTotalCount: () => 0,
     getSummary: (p) => {
       const jd = (p.job_details || {}) as JobDetails;
-      const steps = (jd as any).process_steps;
-      if (Array.isArray(steps) && steps.length > 0) return `${steps.length} étapes définies`;
-      return 'Optionnel';
+      const s = (jd as any).process_steps;
+      if (Array.isArray(s) && s.length > 0) {
+        return (
+          <span className="flex items-center gap-1">
+            <NumberTicker value={s.length} className="font-bold text-foreground" />
+            <span>etapes definies</span>
+          </span>
+        );
+      }
+      return <span className="italic">Optionnel</span>;
     },
     getCompletion: (p) => {
       const jd = (p.job_details || {}) as JobDetails;
@@ -48,12 +83,17 @@ const steps: StepConfig[] = [
     value: 'sourcing',
     label: 'Sourcing',
     icon: Search,
+    getFilledCount: (p) => p.stats_total_found || 0,
+    getTotalCount: () => 0,
     getSummary: (p) => {
       const total = p.stats_total_found || 0;
-      const scored = p.stats_scored || 0;
-      if (total === 0) return 'Pas encore sourcé';
-      if (scored > 0) return `${total} trouvés · ${scored} scorés`;
-      return `${total} candidats trouvés`;
+      if (total === 0) return <span>Pas encore source</span>;
+      return (
+        <span className="flex items-center gap-1">
+          <NumberTicker value={total} className="font-bold text-foreground" />
+          <span>candidats sources</span>
+        </span>
+      );
     },
     getCompletion: (p) => (p.stats_total_found || 0) > 0,
   },
@@ -61,14 +101,120 @@ const steps: StepConfig[] = [
     value: 'outreach',
     label: 'Outreach',
     icon: Send,
+    getFilledCount: (p) => p.stats_messaged || 0,
+    getTotalCount: () => 0,
     getSummary: (p) => {
       const msg = p.stats_messaged || 0;
-      if (msg === 0) return 'Aucun message envoyé';
-      return `${msg} candidats contactés`;
+      if (msg === 0) return <span>Aucun message</span>;
+      return (
+        <span className="flex items-center gap-1">
+          <NumberTicker value={msg} className="font-bold text-foreground" />
+          <span>messages envoyes</span>
+        </span>
+      );
     },
     getCompletion: (p) => (p.stats_messaged || 0) > 0,
   },
 ];
+
+/* ─── Mini progress bar for Brief ─── */
+
+const MiniProgressBar: React.FC<{ value: number; max: number }> = ({ value, max }) => {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  return (
+    <div className="w-12 h-1.5 bg-foreground/10 overflow-hidden ml-1">
+      <motion.div
+        className="h-full"
+        style={{ background: pct >= 80 ? 'hsl(142 71% 45%)' : 'hsl(var(--brutal-accent))' }}
+        initial={{ width: 0 }}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: 0.8, ease: 'easeOut' as const }}
+      />
+    </div>
+  );
+};
+
+/* ─── Connector line between steps ─── */
+
+const ConnectorLine: React.FC<{ filled: boolean; index: number }> = ({ filled, index }) => (
+  <div className="flex-1 flex items-center px-0 min-w-[20px] sm:min-w-[32px]">
+    <div className="w-full h-[2px] bg-foreground/10 relative overflow-hidden">
+      <motion.div
+        className="absolute inset-y-0 left-0"
+        style={{
+          background: 'linear-gradient(90deg, hsl(142 71% 45%), hsl(var(--brutal-accent)))',
+        }}
+        initial={{ width: '0%' }}
+        animate={{ width: filled ? '100%' : '0%' }}
+        transition={{ duration: 0.6, delay: index * 0.15, ease: 'easeOut' as const }}
+      />
+    </div>
+  </div>
+);
+
+/* ─── Step circle ─── */
+
+const StepCircle: React.FC<{
+  index: number;
+  isActive: boolean;
+  isCompleted: boolean;
+  icon: typeof FileText;
+}> = ({ index, isActive, isCompleted, icon: Icon }) => {
+  if (isCompleted && !isActive) {
+    return (
+      <motion.div
+        className="relative w-10 h-10 flex items-center justify-center text-background shrink-0"
+        style={{ background: 'hsl(142 71% 45%)' }}
+        initial={{ scale: 0.8 }}
+        animate={{ scale: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+      >
+        <motion.div
+          initial={{ scale: 0, rotate: -180 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
+        >
+          <Check className="w-4.5 h-4.5" />
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  if (isActive) {
+    return (
+      <div className="relative w-10 h-10 shrink-0">
+        {/* Pulse rings */}
+        <motion.div
+          className="absolute inset-[-4px] border-2 border-brutal-accent/30"
+          animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0, 0.4] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' as const }}
+        />
+        <motion.div
+          className="absolute inset-[-8px] border border-brutal-accent/15"
+          animate={{ scale: [1, 1.3, 1], opacity: [0.2, 0, 0.2] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' as const, delay: 0.3 }}
+        />
+        <div
+          className="relative w-full h-full flex items-center justify-center text-background"
+          style={{ background: 'hsl(var(--brutal-accent))' }}
+        >
+          <Icon className="w-4.5 h-4.5" />
+        </div>
+      </div>
+    );
+  }
+
+  // Future step
+  return (
+    <div className="w-10 h-10 flex items-center justify-center border border-foreground/20 text-muted-foreground shrink-0 transition-colors group-hover:border-foreground/40">
+      <span className="text-xs font-black">{index + 1}</span>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════ */
 
 interface MissionProgressBarProps {
   project: SourcingProject;
@@ -81,149 +227,141 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
   activeTab,
   onTabChange,
 }) => {
-  const activeIndex = steps.findIndex(s => s.value === activeTab);
-
   return (
-    <div className="border border-foreground bg-background mb-0 relative overflow-hidden">
-      {/* Animated progress line at top */}
-      <motion.div
-        className="absolute top-0 left-0 h-[2px] z-20"
-        style={{ background: 'linear-gradient(90deg, hsl(var(--brutal-accent)), hsl(var(--brutal-accent) / 0.5))' }}
-        initial={false}
-        animate={{ width: `${((activeIndex + 1) / steps.length) * 100}%` }}
-        transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-      />
-
-      {/* Desktop */}
-      <div className="hidden sm:flex items-stretch relative">
+    <div className="border border-foreground bg-background/80 backdrop-blur-sm mb-0 relative overflow-hidden">
+      {/* ── Desktop: horizontal stepper ── */}
+      <div className="hidden sm:flex items-center px-6 py-4 gap-0">
         {steps.map((step, index) => {
           const isActive = activeTab === step.value;
           const isCompleted = step.getCompletion(project);
-          const StepIcon = step.icon;
-          const summary = step.getSummary(project);
+          const isPast = steps.slice(0, index).every(s => s.getCompletion(project));
+
+          return (
+            <React.Fragment key={step.value}>
+              {/* Connector before (except first) */}
+              {index > 0 && (
+                <ConnectorLine
+                  filled={isCompleted || (isPast && isActive)}
+                  index={index}
+                />
+              )}
+
+              {/* Step */}
+              <button
+                onClick={() => onTabChange(step.value)}
+                className={cn(
+                  "group flex items-center gap-3 px-3 py-1.5 transition-all duration-200 shrink-0",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brutal-accent",
+                  isActive && "relative"
+                )}
+              >
+                <StepCircle
+                  index={index}
+                  isActive={isActive}
+                  isCompleted={isCompleted}
+                  icon={step.icon}
+                />
+                <div className="flex flex-col items-start min-w-0">
+                  <span
+                    className={cn(
+                      "text-[10px] font-black uppercase tracking-wider transition-colors whitespace-nowrap",
+                      isActive
+                        ? "text-foreground"
+                        : isCompleted
+                          ? "text-foreground/80"
+                          : "text-muted-foreground group-hover:text-foreground"
+                    )}
+                  >
+                    {step.label}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground/70 whitespace-nowrap">
+                    {step.getSummary(project)}
+                  </span>
+                </div>
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* ── Mobile: vertical stepper ── */}
+      <div className="sm:hidden p-4 space-y-1">
+        {steps.map((step, index) => {
+          const isActive = activeTab === step.value;
+          const isCompleted = step.getCompletion(project);
 
           return (
             <React.Fragment key={step.value}>
               <button
                 onClick={() => onTabChange(step.value)}
                 className={cn(
-                  "relative flex-1 flex items-center gap-3 px-4 py-3.5 transition-all duration-200 group overflow-hidden",
-                  index > 0 && "border-l border-foreground/10"
+                  "w-full flex items-center gap-3 px-3 py-2.5 transition-all",
+                  isActive && "bg-brutal-accent/10"
                 )}
               >
-                {/* Active background */}
-                {isActive && (
-                  <motion.div
-                    layoutId="step-active-bg"
-                    className="absolute inset-0"
-                    style={{ background: 'hsl(var(--brutal-accent) / 0.15)' }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
-
-                {/* Pulse ring for active */}
-                {isActive && (
-                  <motion.div
-                    className="absolute inset-0 border-2 border-brutal-accent/20"
-                    animate={{ opacity: [0.3, 0, 0.3] }}
-                    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                )}
-
-                {/* Step number/check */}
-                <div className="relative z-10">
-                  <motion.div
-                    className={cn(
-                      "relative w-9 h-9 flex items-center justify-center text-xs font-black shrink-0 transition-colors",
-                      isCompleted && !isActive
-                        ? "text-background"
-                        : isActive
-                          ? "bg-foreground text-background"
-                          : "border border-foreground/30 text-muted-foreground group-hover:border-foreground/50"
-                    )}
-                    style={isCompleted && !isActive ? { background: 'hsl(142 71% 45%)' } : undefined}
-                    animate={isActive ? { scale: [1, 1.06, 1] } : { scale: 1 }}
-                    transition={isActive ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-                  >
-                    {isCompleted && !isActive ? (
-                      <motion.div
-                        initial={{ scale: 0, rotate: -180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-                      >
-                        <Check className="w-4 h-4" />
-                      </motion.div>
-                    ) : (
-                      <span>{index + 1}</span>
-                    )}
-                  </motion.div>
-
-                  {/* Active bottom arrow */}
-                  {isActive && (
-                    <motion.div
-                      layoutId="step-arrow"
-                      className="absolute -bottom-[16px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-foreground"
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    />
+                {/* Small circle */}
+                <div
+                  className={cn(
+                    "w-7 h-7 flex items-center justify-center shrink-0 text-[10px] font-black",
+                    isCompleted && !isActive && "text-background",
+                    isActive && "text-background",
+                    !isCompleted && !isActive && "border border-foreground/20 text-muted-foreground"
+                  )}
+                  style={
+                    isCompleted && !isActive
+                      ? { background: 'hsl(142 71% 45%)' }
+                      : isActive
+                        ? { background: 'hsl(var(--brutal-accent))' }
+                        : undefined
+                  }
+                >
+                  {isCompleted && !isActive ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    <span>{index + 1}</span>
                   )}
                 </div>
 
-                {/* Label + summary */}
-                <div className="relative z-10 flex flex-col items-start min-w-0">
+                <div className="flex flex-col items-start min-w-0">
                   <span
                     className={cn(
-                      "text-[10px] font-black uppercase tracking-wider truncate transition-colors",
-                      isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                      "text-[10px] font-black uppercase tracking-wider",
+                      isActive ? "text-foreground" : "text-muted-foreground"
                     )}
                   >
                     {step.label}
                   </span>
-                  <motion.span
-                    className="text-[9px] text-muted-foreground/70 truncate max-w-[160px]"
-                    key={summary}
-                    initial={{ opacity: 0, y: 3 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    {summary}
-                  </motion.span>
+                  <span className="text-[9px] text-muted-foreground/70">
+                    {step.getSummary(project)}
+                  </span>
                 </div>
+
+                {isActive && (
+                  <motion.div
+                    layoutId="mobile-active-indicator"
+                    className="ml-auto w-1.5 h-1.5 bg-brutal-accent shrink-0"
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  />
+                )}
               </button>
 
-              {/* Animated connector line */}
+              {/* Vertical connector */}
               {index < steps.length - 1 && (
-                <div className="flex items-center w-0 shrink-0 relative">
-                  {/* Filled connector for completed steps */}
-                  <motion.div
-                    className="absolute top-0 bottom-0 w-[2px] -translate-x-1/2"
-                    style={{ background: 'hsl(142 71% 45%)' }}
-                    initial={{ scaleY: 0 }}
-                    animate={{ scaleY: isCompleted ? 1 : 0 }}
-                    transition={{ duration: 0.5, ease: 'easeOut' }}
-                  />
+                <div className="flex pl-[22px]">
+                  <div className="w-[2px] h-3 bg-foreground/10 relative overflow-hidden">
+                    <motion.div
+                      className="absolute inset-x-0 top-0"
+                      style={{ background: 'hsl(142 71% 45%)' }}
+                      initial={{ height: '0%' }}
+                      animate={{ height: isCompleted ? '100%' : '0%' }}
+                      transition={{ duration: 0.4 }}
+                    />
+                  </div>
                 </div>
               )}
             </React.Fragment>
           );
         })}
-      </div>
-
-      {/* Mobile dropdown */}
-      <div className="sm:hidden p-3">
-        <select
-          value={activeTab}
-          onChange={(e) => onTabChange(e.target.value)}
-          className="w-full h-[36px] px-3 text-xs font-bold uppercase tracking-wider border border-foreground bg-background text-foreground"
-        >
-          {steps.map((step, index) => {
-            const isCompleted = step.getCompletion(project);
-            return (
-              <option key={step.value} value={step.value}>
-                {isCompleted ? '✅' : `${index + 1}.`} {step.label} — {step.getSummary(project)}
-              </option>
-            );
-          })}
-        </select>
       </div>
     </div>
   );
