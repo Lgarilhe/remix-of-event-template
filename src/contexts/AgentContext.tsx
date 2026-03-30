@@ -73,6 +73,8 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         conversationId,
         setConversationId,
         initialJobId,
+        initialMessage,
+        openAgentWithMessage,
         unreadCount,
         setUnreadCount,
       }}
