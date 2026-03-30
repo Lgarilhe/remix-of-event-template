@@ -768,8 +768,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           selectedAccount={selectedAccount}
           activeProject={activeProject}
           searchSource={searchSource}
-          onAutoFill={() => handleAutoFillFilters(search.selectedJob)}
-          autoFillLoading={false}
           filtersReady={!!(search.filters.keywords?.trim() || (search.filters as any).role?.length > 0)}
           accountName={selectedAccountData?.name || selectedAccountData?.identifier || null}
           accountStatus={selectedAccountData?.status || null}
