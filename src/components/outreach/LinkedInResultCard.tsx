@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { LinkedInProfile } from './types';
 import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
 import { computeLikelyToSwitch } from '@/hooks/linkedin/likelyToSwitch';
