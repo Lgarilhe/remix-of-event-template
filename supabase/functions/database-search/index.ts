@@ -38,9 +38,25 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     page: params.page ? Number(params.page) : 1,
   };
 
-  // Keywords → full-profile search
+  // Keywords → extract simple terms from LinkedIn Boolean query
+  // Apollo does NOT support Boolean syntax (AND, OR, NOT, parentheses, quotes).
+  // We extract the meaningful terms and send them as simple keywords.
   if (params.keywords) {
-    payload.q_keywords = String(params.keywords);
+    const raw = String(params.keywords);
+    // Strip Boolean operators and special chars, extract clean terms
+    const cleaned = raw
+      .replace(/\bAND\b/gi, " ")
+      .replace(/\bOR\b/gi, " ")
+      .replace(/\bNOT\b/gi, " ")
+      .replace(/[()]/g, " ")
+      .replace(/"/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    // Take the first few meaningful terms (skip very short ones)
+    const terms = cleaned.split(" ").filter(t => t.length >= 3).slice(0, 8);
+    if (terms.length > 0) {
+      payload.q_keywords = terms.join(" ");
+    }
   }
 
   // Role / Boolean title keywords → person_titles
@@ -186,9 +202,11 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   }
 
   // SAFETY: cap q_keywords length to avoid Apollo "Value too long" error
-  if (payload.q_keywords && String(payload.q_keywords).length > 200) {
-    payload.q_keywords = String(payload.q_keywords).slice(0, 200).trim();
-    console.warn("[database-search] q_keywords truncated to 200 chars");
+  if (payload.q_keywords && String(payload.q_keywords).length > 500) {
+    // Truncate at last complete word
+    const truncated = String(payload.q_keywords).slice(0, 500);
+    payload.q_keywords = truncated.slice(0, truncated.lastIndexOf(" ")).trim();
+    console.warn("[database-search] q_keywords truncated to ~500 chars");
   }
 
   // Years of experience → not directly in Apollo, but can filter seniority
