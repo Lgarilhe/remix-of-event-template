@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
       console.warn("[chat-filter-assistant] Failed to load settle-credits:", e);
     }
     // Resolve Anthropic model ID from user selection
-    let resolvedModel = "claude-sonnet-4-6";
+    let resolvedModel = "claude-sonnet-4-6-20260217";
     try {
       const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
       const candidate = getAnthropicModelId(_aiParams.modelId);
