@@ -263,10 +263,18 @@ export function useLinkedInSearch({
     const savedFilters = activeProject.filters_snapshot;
     if (!savedFilters || Object.keys(savedFilters).length === 0) return;
 
-    // Avoid re-applying the same filters (check by generated_at timestamp)
-    const snapshotKey = savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
+    // Avoid re-applying the same filters (check by timestamp)
+    const snapshotKey = savedFilters.last_manual_edit || savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
     if (filtersSnapshotRef.current === snapshotKey) return;
     filtersSnapshotRef.current = snapshotKey;
+
+    // If filters were manually edited (UI format already), load directly
+    if (savedFilters.last_manual_edit) {
+      const { last_manual_edit, generated_at, suggestions, skills_keywords, location_keywords, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
+      setFilters({ ...INITIAL_FILTERS, ...uiFilters });
+      toast.info(`Filtres du projet "${activeProject.name}" restaurés`);
+      return;
+    }
 
     // Detect AI-generated format (has skills_keywords / location_keywords / role array)
     // and transform to LinkedInFiltersState format
