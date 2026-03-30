@@ -684,7 +684,10 @@ export function useLinkedInScoring({
         }> = [];
 
         allResults.forEach((rawResult: any, index: number) => {
-          const profile = profilesToScore[index];
+          // Match by profile_id when available (batch scoring), fallback to index
+          const profile = rawResult.profile_id
+            ? profilesToScore.find(p => p.id === rawResult.profile_id) || profilesToScore[index]
+            : profilesToScore[index];
           if (!profile) return;
           const result = mapScoringResult(rawResult);
           newScores[profile.id] = result;
