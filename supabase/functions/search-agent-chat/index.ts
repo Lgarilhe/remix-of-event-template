@@ -282,7 +282,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id, message, job_context } = body;
+    const { conversation_id, message, job_context, context_mode, brief_context } = body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -387,6 +387,67 @@ Deno.serve(async (req) => {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
+    // Select system prompt based on context_mode
+    const briefSystemPrompt = `Tu es un assistant recrutement expert. Tu aides à structurer un brief de poste.
+
+STYLE:
+- Conversationnel, comme un collègue senior.
+- Pose UNE question à la fois, claire et précise.
+- Quand l'utilisateur répond, reformule et valide avant de passer à la suite.
+- Ultra concis. 2-3 phrases max par message.
+
+${brief_context ? `CONTEXTE DU BRIEF ACTUEL:
+${JSON.stringify(brief_context, null, 2).slice(0, 2000)}
+` : ''}
+
+OBJECTIF: Aider l'utilisateur à compléter son brief de poste. Les champs à remplir sont:
+1. Titre du poste + type de contrat
+2. Client (nom, secteur, taille, culture)
+3. Profil recherché (séniorité, XP, salaire)
+4. Compétences (must-have, should-have, nice-to-have)
+5. Critères d'évaluation du manager
+6. Contexte (pourquoi ce recrutement, équipe, enjeux)
+
+COMPORTEMENT:
+- Si le brief est vide, commence par demander de décrire le poste en quelques phrases. Tu structureras ensuite.
+- Si des champs sont déjà remplis, identifie ce qui manque et pose des questions ciblées.
+- Propose des suggestions concrètes basées sur ton expertise recrutement.
+- Quand un champ est complété, confirme et passe au suivant.
+- À la fin, récapitule le brief complet.
+
+FORMAT: Réponds en texte naturel. Pas de JSON, pas de markdown complexe. Juste un dialogue fluide.`;
+
+    const processSystemPrompt = `Tu es un assistant recrutement expert. Tu aides à définir le process d'évaluation des candidats.
+
+STYLE: Conversationnel, concis, une question à la fois.
+
+Aide l'utilisateur à définir:
+1. Les étapes du process (Phone Screen, Technique, Culture Fit, Final)
+2. Les critères d'évaluation par étape
+3. Les questions à poser
+4. Les deal-breakers à chaque étape
+
+Propose des suggestions adaptées au poste.`;
+
+    const sourcingSystemPrompt = systemPrompt; // Default sourcing behavior
+
+    const outreachSystemPrompt = `Tu es un assistant recrutement expert en approche candidat.
+
+STYLE: Conversationnel, concis, pratico-pratique.
+
+Aide l'utilisateur à:
+1. Définir la stratégie d'approche (LinkedIn, email, multicanal)
+2. Rédiger des messages personnalisés
+3. Créer des séquences de relance
+4. Adapter le ton selon le profil cible
+
+Propose des exemples concrets de messages.`;
+
+    const activeSystemPrompt = context_mode === 'brief' ? briefSystemPrompt
+      : context_mode === 'process' ? processSystemPrompt
+      : context_mode === 'outreach' ? outreachSystemPrompt
+      : sourcingSystemPrompt;
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -402,7 +463,7 @@ Deno.serve(async (req) => {
           type: "enabled",
           budget_tokens: 16000,
         },
-        system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } }],
         messages,
         stream: true,
       }),

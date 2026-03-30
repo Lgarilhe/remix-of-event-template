@@ -44,9 +44,23 @@ function LoadingMessages() {
 
 interface AgentChatPanelProps {
   onClose?: () => void;
+  /** Contextual mode: adapts the agent's behavior per mission step */
+  contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null;
+  /** Brief data to inject as context when contextMode='brief' */
+  briefContext?: Record<string, unknown> | null;
+  /** Initial message to send automatically when agent opens */
+  initialMessage?: string | null;
+  /** Job to auto-select (skip job selector) */
+  autoJob?: Job | null;
 }
 
-export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
+export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
+  onClose,
+  contextMode,
+  briefContext,
+  initialMessage,
+  autoJob,
+}) => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
   const [input, setInput] = useState('');
@@ -75,6 +89,27 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     };
   }, []);
+
+  // Auto-start conversation in contextual mode (brief, process, etc.)
+  const contextInitRef = useRef(false);
+  useEffect(() => {
+    if (contextMode && initialMessage && !contextInitRef.current) {
+      contextInitRef.current = true;
+      const initContextAgent = async () => {
+        const job = autoJob || null;
+        const id = await createConversation(job);
+        if (id) {
+          setConversationId(id);
+          setShowList(false);
+          setJobSentForConv(null);
+          setTimeout(() => {
+            sendMessage(initialMessage, job, id, selectedModel, contextMode, briefContext);
+          }, 200);
+        }
+      };
+      initContextAgent();
+    }
+  }, [contextMode, initialMessage, autoJob, createConversation, sendMessage, selectedModel, briefContext]);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
     const id = await createConversation(job);
@@ -107,10 +142,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     const msg = text || input.trim();
     if (!msg || sending) return;
     setInput('');
-    const jobCtx = conversationId !== jobSentForConv ? selectedJob : null;
+    const jobCtx = conversationId !== jobSentForConv ? (autoJob || selectedJob) : null;
     if (jobCtx) setJobSentForConv(conversationId);
-    await sendMessage(msg, jobCtx, undefined, selectedModel);
-  }, [input, sending, sendMessage, selectedJob, conversationId, jobSentForConv, selectedModel]);
+    await sendMessage(msg, jobCtx, undefined, selectedModel, contextMode, briefContext);
+  }, [input, sending, sendMessage, selectedJob, autoJob, conversationId, jobSentForConv, selectedModel, contextMode, briefContext]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }

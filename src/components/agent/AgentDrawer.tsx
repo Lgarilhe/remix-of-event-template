@@ -57,7 +57,7 @@ const AgentFAB: React.FC = () => {
 };
 
 export const AgentDrawer: React.FC = () => {
-  const { isOpen, closeAgent, toggleAgent } = useAgent();
+  const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob } = useAgent();
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -79,7 +79,13 @@ export const AgentDrawer: React.FC = () => {
           side="right"
           className="w-full sm:w-[420px] p-0 glass-strong border-l border-foreground/10 border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
         >
-          <AgentChatPanel onClose={closeAgent} />
+          <AgentChatPanel
+            onClose={closeAgent}
+            contextMode={contextMode}
+            briefContext={briefContext}
+            initialMessage={initialMessage}
+            autoJob={autoJob}
+          />
         </SheetContent>
       </Sheet>
     </>
