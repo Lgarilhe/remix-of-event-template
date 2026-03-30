@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
@@ -197,6 +197,22 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const [detailOpen, setDetailOpen] = useState(false);
 
   const [enriching, setEnriching] = useState(false);
+
+  // Contextual hints (dismissible, persisted in localStorage)
+  const [hintSearchDismissed, setHintSearchDismissed] = useState(() =>
+    localStorage.getItem('hint:after-first-search') === 'dismissed'
+  );
+  const [hintScoringDismissed, setHintScoringDismissed] = useState(() =>
+    localStorage.getItem('hint:after-first-scoring') === 'dismissed'
+  );
+  const dismissHint = useCallback((key: string, setter: (v: boolean) => void) => {
+    localStorage.setItem(key, 'dismissed');
+    setter(true);
+  }, []);
+
+  const hasScoredProfiles = useMemo(() =>
+    Object.keys(jobScores).length > 0, [jobScores]
+  );
 
   const openProfileDetail = useCallback(async (profile: LinkedInProfile) => {
     setDetailProfile(profile);
@@ -674,6 +690,48 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               />
             )}
 
+            {/* Contextual hint: after first search */}
+            <AnimatePresence>
+              {hasSearched && !hintSearchDismissed && !hasScoredProfiles && displayResults.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="border border-brutal-accent/30 bg-brutal-accent/5 p-3 flex items-start gap-2.5"
+                >
+                  <span className="text-sm shrink-0">🎯</span>
+                  <p className="text-[11px] text-foreground/80 leading-relaxed flex-1">
+                    Sélectionnez les profils intéressants et cliquez <strong className="text-foreground">Score</strong> pour que l'IA les évalue selon votre brief.
+                  </p>
+                  <button
+                    onClick={() => dismissHint('hint:after-first-search', setHintSearchDismissed)}
+                    className="text-muted-foreground hover:text-foreground text-xs shrink-0"
+                  >✕</button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Contextual hint: after first scoring batch */}
+            <AnimatePresence>
+              {hasScoredProfiles && !hintScoringDismissed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
+                >
+                  <span className="text-sm shrink-0">🟢</span>
+                  <p className="text-[11px] text-foreground/80 leading-relaxed flex-1">
+                    Les profils sont scorés ! Les <strong className="text-accent">Go</strong> sont les meilleurs matchs. Envoyez-leur un message ou ajoutez-les au pipeline.
+                  </p>
+                  <button
+                    onClick={() => dismissHint('hint:after-first-scoring', setHintScoringDismissed)}
+                    className="text-muted-foreground hover:text-foreground text-xs shrink-0"
+                  >✕</button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Profile cards */}
             {displayResults.map((profile, index) => (
               <motion.div
@@ -681,7 +739,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 initial={{ opacity: 0, y: 12, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{
-                  delay: Math.min(index * 0.04, 0.8),
+                  delay: Math.min(index * 0.05, 1.2),
                   duration: 0.35,
                   ease: [0.25, 0.46, 0.45, 0.94],
                 }}
