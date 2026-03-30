@@ -72,6 +72,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     company: false,
     past: false,
     recruiter: false,
+    database: false,
   });
 
   // Autocomplete states
