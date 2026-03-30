@@ -6,6 +6,8 @@ import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { Badge } from '@/components/ui/badge';
+import { BackgroundPaths } from '@/components/ui/background-paths';
+import { TextRotate } from '@/components/ui/text-rotate';
 import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -19,6 +21,7 @@ import { MissionProcess } from '@/components/missions/MissionProcess';
 import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { MissionProgressBar } from '@/components/missions/MissionProgressBar';
+import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
@@ -39,7 +42,7 @@ const secondaryTabs = [
 ];
 
 // All valid tab values
-const allTabs = ['brief', 'process', 'sourcing', 'outreach', 'pipeline', 'insights', 'config'];
+const allTabs = ['overview', 'brief', 'process', 'sourcing', 'outreach', 'pipeline', 'insights', 'config'];
 
 // Animation variant for tab content
 const tabVariants = {
@@ -68,7 +71,7 @@ const MissionWorkspace = () => {
   const canEditProcess = hasFeature(orgType, 'edit_process') && isOwnMission;
 
   const tabFromUrl = searchParams.get('tab');
-  const activeTab = allTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'brief';
+  const activeTab = allTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'overview';
 
   const setActiveTab = useCallback((tab: string) => {
     setSearchParams(prev => {
@@ -125,10 +128,13 @@ const MissionWorkspace = () => {
   const isPrimaryTab = ['brief', 'process', 'sourcing', 'outreach'].includes(activeTab);
 
   return (
-    <div className="min-h-screen w-full max-w-full bg-background">
+    <div className="min-h-screen w-full max-w-full bg-background relative">
+      {/* Animated background paths */}
+      <BackgroundPaths className="fixed inset-0 pointer-events-none z-0 opacity-40" pathCount={6} />
+
       <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
       <Navbar />
-      <main className="pt-20 pb-14 w-full max-w-full">
+      <main className="pt-20 pb-14 w-full max-w-full relative z-10">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
@@ -146,7 +152,16 @@ const MissionWorkspace = () => {
                   {project.name}
                 </h1>
                 {project.client_name && (
-                  <p className="text-xs text-muted-foreground truncate">{project.client_name}</p>
+                  <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+                    {project.client_name}
+                    <span className="text-foreground/20">·</span>
+                    <TextRotate
+                      texts={['En cours', 'Mission active', statusConfig[project.status].label]}
+                      interval={4000}
+                      rotationType="blur"
+                      className="text-muted-foreground"
+                    />
+                  </p>
                 )}
               </div>
             </div>
@@ -199,6 +214,12 @@ const MissionWorkspace = () => {
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="mt-0 min-w-0"
             >
+              {activeTab === 'overview' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans le Dashboard">
+                  <MissionBentoDashboard project={project} onTabChange={setActiveTab} />
+                </SectionErrorBoundary>
+              )}
+
               {activeTab === 'brief' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
                   <MissionBrief project={project} readOnly={!canEditBrief} />
