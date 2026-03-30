@@ -158,9 +158,13 @@ const QuickAction: React.FC<{
 
       <div className="flex items-start gap-3">
         <div className="relative">
-          <div className="w-10 h-10 flex items-center justify-center border border-foreground/20 bg-foreground/5">
+          <motion.div
+            className="w-10 h-10 flex items-center justify-center border border-foreground/20 bg-foreground/5"
+            animate={{ rotate: [0, -6, 6, -3, 0] }}
+            transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
+          >
             <Icon className="w-4 h-4 text-foreground" />
-          </div>
+          </motion.div>
           <PulseRing color="hsl(var(--foreground) / 0.1)" />
         </div>
         <div className="flex-1 min-w-0">
