@@ -256,136 +256,142 @@ export function useLinkedInSearch({
     quota.setApiMode(filters.api);
   }, [filters.api]);
 
-  // Load filters from active project
+  // Load filters from active project's filters_snapshot
+  const filtersSnapshotRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeProject) {
-      const savedFilters = activeProject.filters_snapshot;
-      if (savedFilters && Object.keys(savedFilters).length > 0) {
-        // Detect AI-generated format (has skills_keywords / location_keywords / role array)
-        // and transform to LinkedInFiltersState format
-        const isAIFormat = savedFilters.skills_keywords || savedFilters.location_keywords || (Array.isArray(savedFilters.role) && savedFilters.role[0]?.keywords);
-        
-        if (isAIFormat) {
-          const transformed: Partial<typeof INITIAL_FILTERS> = {
-            keywords: savedFilters.keywords || '',
-            role: Array.isArray(savedFilters.role) ? savedFilters.role.map((r: any) => ({
-              keywords: r.keywords,
-              priority: r.priority || 'MUST_HAVE',
-              scope: r.scope || 'CURRENT',
-            })) : [],
-            calculated_experience_min: savedFilters.years_of_experience_min ?? null,
-            calculated_experience_max: savedFilters.years_of_experience_max ?? null,
-            years_of_experience_min: null,
-            years_of_experience_max: null,
-            company_keywords: Array.isArray(savedFilters.company_keywords) ? savedFilters.company_keywords.map((c: any) => ({
-              keywords: c.keywords,
-              priority: c.priority || 'DOESNT_HAVE',
-              scope: c.scope || 'CURRENT_OR_PAST',
-            })) : [],
-            school: Array.isArray(savedFilters.school) ? savedFilters.school.map((s: any) => ({
-              id: s.id,
-              name: s.name,
-              priority: s.priority || 'CAN_HAVE',
-            })) : [],
-            location_within_area: savedFilters.location_within_area ?? null,
-            spotlight: savedFilters.spotlight || '',
-            open_to_work: savedFilters.open_to_work ?? null,
-          };
-          setFilters({ ...INITIAL_FILTERS, ...transformed });
-          
-          // Store pending location for deferred resolution
-          const locationKeyword = savedFilters.location_keywords?.[0]?.trim();
-          if (locationKeyword) {
-            pendingLocationRef.current = locationKeyword;
-            // Try resolving now if account is available
-            if (selectedAccount) {
-              resolveLocation(locationKeyword, selectedAccount);
-            }
-          }
-        } else {
-          setFilters({ ...INITIAL_FILTERS, ...savedFilters });
-        }
-        toast.info(`Filtres du projet "${activeProject.name}" chargés`);
-      }
-      
-      // Build synthetic job from project + job_details for scoring
-      const jd = (activeProject as any).job_details || {};
+    if (!activeProject) return;
+    const savedFilters = activeProject.filters_snapshot;
+    if (!savedFilters || Object.keys(savedFilters).length === 0) return;
 
-      // Helper: build complete job fields from job_details brief
-      const buildJobFromBrief = (base: Record<string, any>): Record<string, any> => {
-        const job = { ...base };
-        // Skills
-        job.skills = [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])];
-        // Description: combine mission + context for richer scoring
-        const descParts = [jd.mission_description, jd.context].filter(Boolean);
-        if (descParts.length) job.description = descParts.join('\n\n');
-        // Must/should/nice-to-have
-        if (jd.skills_must_have?.length) job.mustHave = jd.skills_must_have.join(', ');
-        if (jd.skills_should_have?.length) job.shouldHave = jd.skills_should_have.join(', ');
-        if (jd.skills_nice_to_have?.length) job.niceToHave = jd.skills_nice_to_have.join(', ');
-        // Basic fields
-        if (jd.seniority) job.seniority = jd.seniority;
-        if (jd.location) job.location = jd.location;
-        if (jd.experience_min != null) job.xpMin = jd.experience_min;
-        if (jd.experience_max != null) job.xpMax = jd.experience_max;
-        // Fields that were missing from the brief mapping
-        if (jd.remote_policy) job.remote = jd.remote_policy;
-        if (jd.contract_type) job.contractType = jd.contract_type;
-        if (jd.salary_min != null) job.salaryMin = jd.salary_min;
-        if (jd.salary_max != null) job.salaryMax = jd.salary_max;
-        if (jd.salary_type === 'daily' && jd.salary_min != null) job.tjmMin = jd.salary_min;
-        // Certifications & requirements as extra context
-        const reqParts: string[] = [];
-        if (jd.certifications?.length) reqParts.push(`Certifications requises : ${jd.certifications.join(', ')}`);
-        if (jd.languages?.length) reqParts.push(`Langues : ${jd.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}`);
-        if (reqParts.length) job.requirements = reqParts.join('. ');
-        // Evaluation criteria from the brief → bodyContent for the LLM
-        if (jd.evaluation_criteria?.length && Array.isArray(jd.evaluation_criteria)) {
-          const criteriaText = jd.evaluation_criteria
-            .filter((c: any) => c && c.label)
-            .slice(0, 15) // max 15 criteria to limit token usage
-            .map((c: any) => `[${c.category || '?'}${c.deal_breaker ? ' DEAL-BREAKER' : ''} poids:${c.weight || 1}] ${c.label}: ${(c.description || '').slice(0, 150)}${c.level_10 ? ` (10/10: ${c.level_10.slice(0, 80)})` : ''}${c.level_1 ? ` (rédhibitoire: ${c.level_1.slice(0, 80)})` : ''}`)
-            .join('\n');
-          job.bodyContent = (job.bodyContent ? job.bodyContent + '\n\n' : '') + `=== CRITÈRES D'ÉVALUATION DU MANAGER ===\n${criteriaText}`;
-        }
-        // Raw brief as additional context
-        if (jd.raw_brief && !job.bodyContent) {
-          job.bodyContent = jd.raw_brief.slice(0, 1000);
-        }
-        // Safety: cap bodyContent total length
-        if (job.bodyContent && job.bodyContent.length > 2000) {
-          job.bodyContent = job.bodyContent.slice(0, 2000);
-        }
-        // Target companies as transversal context
-        if (jd.target_companies?.length) {
-          const companies = jd.target_companies.flatMap((cat: any) => cat.companies?.map((c: any) => c.name) || []).filter(Boolean);
-          if (companies.length && !job.transversalCriteria) {
-            job.transversalCriteria = { context: `Entreprises cibles / feeders : ${companies.join(', ')}` };
-          }
-        }
-        return job;
+    // Avoid re-applying the same filters (check by generated_at timestamp)
+    const snapshotKey = savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
+    if (filtersSnapshotRef.current === snapshotKey) return;
+    filtersSnapshotRef.current = snapshotKey;
+
+    // Detect AI-generated format (has skills_keywords / location_keywords / role array)
+    // and transform to LinkedInFiltersState format
+    const isAIFormat = savedFilters.skills_keywords || savedFilters.location_keywords || (Array.isArray(savedFilters.role) && savedFilters.role[0]?.keywords);
+
+    if (isAIFormat) {
+      const transformed: Partial<typeof INITIAL_FILTERS> = {
+        keywords: savedFilters.keywords || '',
+        role: Array.isArray(savedFilters.role) ? savedFilters.role.map((r: any) => ({
+          keywords: r.keywords,
+          priority: r.priority || 'MUST_HAVE',
+          scope: r.scope || 'CURRENT',
+        })) : [],
+        calculated_experience_min: savedFilters.years_of_experience_min ?? null,
+        calculated_experience_max: savedFilters.years_of_experience_max ?? null,
+        years_of_experience_min: null,
+        years_of_experience_max: null,
+        company_keywords: Array.isArray(savedFilters.company_keywords) ? savedFilters.company_keywords.map((c: any) => ({
+          keywords: c.keywords,
+          priority: c.priority || 'DOESNT_HAVE',
+          scope: c.scope || 'CURRENT_OR_PAST',
+        })) : [],
+        school: Array.isArray(savedFilters.school) ? savedFilters.school.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          priority: s.priority || 'CAN_HAVE',
+        })) : [],
+        location_within_area: savedFilters.location_within_area ?? null,
+        spotlight: savedFilters.spotlight || '',
+        open_to_work: savedFilters.open_to_work ?? null,
       };
+      setFilters({ ...INITIAL_FILTERS, ...transformed });
 
-      if (activeProject.job_id && activeProject.job_title) {
-        // Real job linked — use it as base, enrich with job_details
-        const enriched = buildJobFromBrief({
-          id: activeProject.job_id,
-          title: jd.title || activeProject.job_title,
-          client: activeProject.client_name ? { name: activeProject.client_name, sector: jd.client?.sector } : undefined,
-        });
-        setSelectedJob(enriched as Job);
-      } else {
-        // Build synthetic job from mission brief — always, even without name
-        const synthetic = buildJobFromBrief({
-          id: `project:${activeProject.id}`,
-          title: jd.title || activeProject.name || 'Mission sans titre',
-          description: activeProject.description || '',
-          client: activeProject.client_name ? { name: activeProject.client_name, sector: jd.client?.sector } : undefined,
-        });
-        setSelectedJob(synthetic as Job);
+      // Store pending location for deferred resolution
+      const locationKeyword = savedFilters.location_keywords?.[0]?.trim();
+      if (locationKeyword) {
+        pendingLocationRef.current = locationKeyword;
+        // Try resolving now if account is available
+        if (selectedAccount) {
+          resolveLocation(locationKeyword, selectedAccount);
+        }
       }
+    } else {
+      setFilters({ ...INITIAL_FILTERS, ...savedFilters });
     }
-  }, [activeProject?.id, activeProject?.job_details]); // Also re-run when brief data changes
+    toast.info(`Filtres du projet "${activeProject.name}" chargés`);
+  }, [activeProject?.id, activeProject?.filters_snapshot]); // Re-run when filters are generated
+
+  // Build synthetic job from project brief for scoring
+  useEffect(() => {
+    if (!activeProject) return;
+    const jd = (activeProject as any).job_details || {};
+
+    // Helper: build complete job fields from job_details brief
+    const buildJobFromBrief = (base: Record<string, any>): Record<string, any> => {
+      const job = { ...base };
+      // Skills
+      job.skills = [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])];
+      // Description: combine mission + context for richer scoring
+      const descParts = [jd.mission_description, jd.context].filter(Boolean);
+      if (descParts.length) job.description = descParts.join('\n\n');
+      // Must/should/nice-to-have
+      if (jd.skills_must_have?.length) job.mustHave = jd.skills_must_have.join(', ');
+      if (jd.skills_should_have?.length) job.shouldHave = jd.skills_should_have.join(', ');
+      if (jd.skills_nice_to_have?.length) job.niceToHave = jd.skills_nice_to_have.join(', ');
+      // Basic fields
+      if (jd.seniority) job.seniority = jd.seniority;
+      if (jd.location) job.location = jd.location;
+      if (jd.experience_min != null) job.xpMin = jd.experience_min;
+      if (jd.experience_max != null) job.xpMax = jd.experience_max;
+      // Fields that were missing from the brief mapping
+      if (jd.remote_policy) job.remote = jd.remote_policy;
+      if (jd.contract_type) job.contractType = jd.contract_type;
+      if (jd.salary_min != null) job.salaryMin = jd.salary_min;
+      if (jd.salary_max != null) job.salaryMax = jd.salary_max;
+      if (jd.salary_type === 'daily' && jd.salary_min != null) job.tjmMin = jd.salary_min;
+      // Certifications & requirements as extra context
+      const reqParts: string[] = [];
+      if (jd.certifications?.length) reqParts.push(`Certifications requises : ${jd.certifications.join(', ')}`);
+      if (jd.languages?.length) reqParts.push(`Langues : ${jd.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}`);
+      if (reqParts.length) job.requirements = reqParts.join('. ');
+      // Evaluation criteria from the brief → bodyContent for the LLM
+      if (jd.evaluation_criteria?.length && Array.isArray(jd.evaluation_criteria)) {
+        const criteriaText = jd.evaluation_criteria
+          .filter((c: any) => c && c.label)
+          .slice(0, 15) // max 15 criteria to limit token usage
+          .map((c: any) => `[${c.category || '?'}${c.deal_breaker ? ' DEAL-BREAKER' : ''} poids:${c.weight || 1}] ${c.label}: ${(c.description || '').slice(0, 150)}${c.level_10 ? ` (10/10: ${c.level_10.slice(0, 80)})` : ''}${c.level_1 ? ` (rédhibitoire: ${c.level_1.slice(0, 80)})` : ''}`)
+          .join('\n');
+        job.bodyContent = (job.bodyContent ? job.bodyContent + '\n\n' : '') + `=== CRITÈRES D'ÉVALUATION DU MANAGER ===\n${criteriaText}`;
+      }
+      // Raw brief as additional context
+      if (jd.raw_brief && !job.bodyContent) {
+        job.bodyContent = jd.raw_brief.slice(0, 1000);
+      }
+      // Safety: cap bodyContent total length
+      if (job.bodyContent && job.bodyContent.length > 2000) {
+        job.bodyContent = job.bodyContent.slice(0, 2000);
+      }
+      // Target companies as transversal context
+      if (jd.target_companies?.length) {
+        const companies = jd.target_companies.flatMap((cat: any) => cat.companies?.map((c: any) => c.name) || []).filter(Boolean);
+        if (companies.length && !job.transversalCriteria) {
+          job.transversalCriteria = { context: `Entreprises cibles / feeders : ${companies.join(', ')}` };
+        }
+      }
+      return job;
+    };
+
+    if (activeProject.job_id && activeProject.job_title) {
+      const enriched = buildJobFromBrief({
+        id: activeProject.job_id,
+        title: jd.title || activeProject.job_title,
+        client: activeProject.client_name ? { name: activeProject.client_name, sector: jd.client?.sector } : undefined,
+      });
+      setSelectedJob(enriched as Job);
+    } else {
+      const synthetic = buildJobFromBrief({
+        id: `project:${activeProject.id}`,
+        title: jd.title || activeProject.name || 'Mission sans titre',
+        description: activeProject.description || '',
+        client: activeProject.client_name ? { name: activeProject.client_name, sector: jd.client?.sector } : undefined,
+      });
+      setSelectedJob(synthetic as Job);
+    }
+  }, [activeProject?.id, activeProject?.job_details]); // Re-run when brief data changes
 
   // Deferred location resolution: when selectedAccount becomes available and we have a pending location
   useEffect(() => {

@@ -78,6 +78,7 @@ interface DimensionScore {
 }
 
 interface ScoringResult {
+  profile_id?: string;
   name: string;
   score: number;
   recommendation: string;
@@ -1978,7 +1979,7 @@ Deno.serve(async (req) => {
     }));
 
     let llmResultMap = new Map<string, LLMResult>();
-    let batchFailed = false;
+
 
     if (batchInputs.length > 0) {
       // Process in sub-batches of BATCH_SIZE for the LLM
@@ -1991,7 +1992,7 @@ Deno.serve(async (req) => {
         } catch (err: any) {
           if (err.message === "BATCH_PARSE_FAILED") {
             console.warn(`[scoring] Batch LLM parse failed, falling back to individual scoring`);
-            batchFailed = true;
+
             break;
           }
           throw err;
@@ -2016,11 +2017,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Phase 3: Combine and build final results
+    // Phase 3: Combine and build final results (always include profile_id for safe matching)
     for (const ps of preScored) {
       // Cached results
       if (ps.cached) {
-        results.push(ps.cached);
+        results.push({ ...ps.cached, profile_id: ps.profile.id });
         if (ps.cached.tokensUsed) {
           totalTokensInput += ps.cached.tokensUsed.input;
           totalTokensOutput += ps.cached.tokensUsed.output;
@@ -2030,7 +2031,7 @@ Deno.serve(async (req) => {
 
       // Hard-filtered results
       if (ps.hardFilterResult?.result) {
-        results.push(ps.hardFilterResult.result);
+        results.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
         hardFilteredCount++;
         llmSkippedCount++;
         continue;
@@ -2051,6 +2052,7 @@ Deno.serve(async (req) => {
         // Must-have KO check
         if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
           const koResult: ScoringResult = {
+            profile_id: ps.profile.id,
             name: ps.profile.name,
             score: 0,
             recommendation: "NO_MATCH",
@@ -2096,10 +2098,11 @@ Deno.serve(async (req) => {
       }
 
       const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
-      const recommendation = getRecommendation(finalScore, llmResult);
-      const confidenceScore = computeConfidence(weighted, llmResult !== null, semanticScore);
+      const recommendation = getRecommendation(finalScore);
+      const confidenceScore = weighted.confidenceScore;
 
       const result: ScoringResult = {
+        profile_id: ps.profile.id,
         name: ps.profile.name,
         score: finalScore,
         recommendation,
