@@ -22,6 +22,8 @@ const AgentContext = createContext<AgentContextValue>({
   conversationId: null,
   setConversationId: () => {},
   initialJobId: null,
+  initialMessage: null,
+  openAgentWithMessage: () => {},
   unreadCount: 0,
   setUnreadCount: () => {},
 });
