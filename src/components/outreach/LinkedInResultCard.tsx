@@ -58,6 +58,22 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 }) => {
   const [isScoring, setIsScoring] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [scoreFlash, setScoreFlash] = useState<'go' | 'maybe' | 'skip' | null>(null);
+  const prevRecommendationRef = useRef<string | undefined>(undefined);
+
+  // Score flash effect when recommendation changes
+  useEffect(() => {
+    const currentRec = jobScore?.recommendation;
+    if (currentRec && currentRec !== prevRecommendationRef.current && prevRecommendationRef.current === undefined && jobScore) {
+      // Only flash on initial score arrival (not on mount with existing score from DB)
+      if (prevRecommendationRef.current !== undefined || !jobScore) {
+        setScoreFlash(currentRec as 'go' | 'maybe' | 'skip');
+        const timer = setTimeout(() => setScoreFlash(null), 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+    prevRecommendationRef.current = currentRec;
+  }, [jobScore?.recommendation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const profileData = useProfileData(profile);
   const switchResult = useMemo(() => computeLikelyToSwitch(profile), [profile]);
