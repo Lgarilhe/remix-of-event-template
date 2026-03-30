@@ -910,6 +910,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           activeFiltersPreview={recruiterFiltersPreview}
           countRecruiterFilters={countRecruiterFilters}
         />
+
+        {/* ===== BASE KONEKT FILTERS (database only) ===== */}
+        {filters.api === 'database' && (
+          <DatabaseFiltersSection
+            filters={filters}
+            onChange={onChange}
+            isOpen={openSections.database}
+            onToggle={() => toggleSection('database')}
+          />
+        )}
       </div>
     </div>
   );
