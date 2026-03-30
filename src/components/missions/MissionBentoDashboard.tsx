@@ -204,7 +204,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 bg-foreground flex items-center justify-center">
-                    <FileText className="w-3.5 h-3.5 text-background" />
+                    <FileText className="w-3.5 h-3.5 text-background" weight="duotone" />
                   </div>
                   <div>
                     <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Brief Mission</h3>
