@@ -1,9 +1,28 @@
 import React from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, Info, Search, User, MessageSquare, UserPlus, Mail } from 'lucide-react';
+import { AlertTriangle, Info, Search, User, MessageSquare, UserPlus, Mail, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LinkedInApiMode, LINKEDIN_LIMITS } from '@/hooks/useUnipileQuota';
+
+const SafeModeBadge = () => (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 cursor-help">
+          <Shield className="w-2.5 h-2.5" />
+          Safe mode
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs">
+        <p className="text-xs">
+          Quotas conservateurs activés pour protéger votre compte LinkedIn.
+          Limites réduites, délais de 45-90s entre actions, warm-up progressif sur 2 semaines.
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 
 interface QuotaItemProps {
   label: string;
@@ -115,7 +134,10 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             </div>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="w-64 p-3">
-            <p className="text-xs font-medium mb-3">Quotas LinkedIn ({getApiModeLabel(apiMode)})</p>
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-xs font-medium">Quotas LinkedIn ({getApiModeLabel(apiMode)})</p>
+              <SafeModeBadge />
+            </div>
             <div className="space-y-2.5">
               <QuotaItem
                 label="Résultats recherche"
@@ -161,7 +183,10 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   return (
     <div className="bg-background border border-foreground p-4">
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-medium">Quotas LinkedIn ({getApiModeLabel(apiMode)})</h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-sm font-medium">Quotas LinkedIn ({getApiModeLabel(apiMode)})</h4>
+          <SafeModeBadge />
+        </div>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
@@ -169,8 +194,8 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs">
               <p className="text-xs">
-              Limites pour {getApiModeLabel(apiMode)} - se réinitialisent chaque jour.
-              Ces quotas sont recommandés par Unipile pour éviter les restrictions LinkedIn.
+              Safe mode activé : quotas conservateurs pour protéger votre compte LinkedIn.
+              Limites réduites vs les maximums techniques. Réinitialisation quotidienne.
               </p>
             </TooltipContent>
           </Tooltip>
