@@ -362,31 +362,20 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
 
       {/* Projects list */}
       {sortedProjects.length === 0 ? (
-        <div className="bg-background border border-foreground p-12 text-center">
+        <div>
           {searchQuery || statusFilter ? (
-            <>
+            <div className="bg-background border border-foreground p-12 text-center">
               <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
                 <FolderOpen className="w-8 h-8" />
               </div>
               <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">Aucun projet trouvé</h3>
               <p className="text-muted-foreground mb-6 text-sm">Essayez de modifier vos filtres</p>
-            </>
+            </div>
           ) : (
-            <>
-              <div className="text-4xl mb-4">📂</div>
-              <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">Votre première mission</h3>
-              <p className="text-muted-foreground mb-6 text-sm max-w-md mx-auto">
-                Une mission = un poste à pourvoir. Créez-en une pour commencer à sourcer des candidats.
-                Si vos postes sont dans Notion, ils apparaîtront automatiquement.
-              </p>
-              <button
-                onClick={() => { setCreateInitialTab(undefined); setShowCreateModal(true); }}
-                className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
-              >
-                <span className="relative z-10">Créer une mission</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-              </button>
-            </>
+            <EmptyMissionState
+              onCreateAI={() => { setCreateInitialTab('brief'); setShowCreateModal(true); }}
+              onCreateManual={() => { setCreateInitialTab('manual'); setShowCreateModal(true); }}
+            />
           )}
         </div>
       ) : (
