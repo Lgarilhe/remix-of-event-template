@@ -291,7 +291,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
                     />
                   </h3>
                 </div>
-                <Brain className="w-4 h-4 text-muted-foreground/30" />
+                <Brain className="w-4 h-4 text-muted-foreground/30" weight="duotone" />
               </div>
 
               <AnimatedStat value={totalCandidates} label="Sourcés" icon={Users} accentColor="text-primary border-primary/20 bg-primary/5" delay={0.2} max={50} />
