@@ -62,6 +62,15 @@ interface SearchResultsPanelProps {
   selectedAccount: string | null;
   activeProject?: SourcingProject | null;
   
+  // Readiness panel props
+  searchSource?: 'linkedin' | 'database';
+  onSourceChange?: (source: 'linkedin' | 'database') => void;
+  onAutoFill?: () => void;
+  autoFillLoading?: boolean;
+  filtersReady?: boolean;
+  accountName?: string | null;
+  accountStatus?: string | null;
+  
   // Treated candidates from DB
   treatedCandidates: Map<string, JobCandidateStatus>;
   onRestoreCandidate?: (candidateId: string) => void;
