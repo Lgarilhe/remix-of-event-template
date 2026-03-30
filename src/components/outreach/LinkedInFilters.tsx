@@ -51,6 +51,7 @@ import { toast } from 'sonner';
 import { BasicFiltersSection } from './filters/BasicFiltersSection';
 import { PositionFiltersSection } from './filters/PositionFiltersSection';
 import { RecruiterFiltersSection } from './filters/RecruiterFiltersSection';
+import { DatabaseFiltersSection } from './filters/DatabaseFiltersSection';
 
 interface LinkedInFiltersProps {
   filters: LinkedInFiltersState;
