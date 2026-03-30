@@ -504,7 +504,7 @@ export function useLinkedInSearchActions(
       return;
     }
 
-    if (!quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
+    if (!isDatabase && !quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
       toast.error('Quota de recherche journalier atteint. Réessayez demain.');
       return;
     }
