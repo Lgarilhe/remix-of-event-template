@@ -4,14 +4,24 @@ import { Bot, MessageSquare, X } from 'lucide-react';
 import { useAgent } from '@/contexts/AgentContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { cn } from '@/lib/utils';
+import type { JobDetails } from '@/types/jobDetails';
+
+function buildBriefSummary(p: SourcingProject): string {
+  const jd = (p.job_details ?? {}) as JobDetails;
+  const parts: string[] = [];
+  if (jd.title) parts.push(`Poste : ${jd.title}`);
+  if (jd.client?.name) parts.push(`Client : ${jd.client.name}`);
+  if (jd.skills_must_have?.length) parts.push(`Compétences : ${jd.skills_must_have.join(', ')}`);
+  return parts.length > 0 ? `\n\nBrief actuel :\n${parts.join('\n')}` : '';
+}
 
 const HELP_CONFIG: Record<string, { title: string; description: string; cta: string; prompt: (p: SourcingProject) => string }> = {
   brief: {
     title: "L'assistant Konekt peut vous aider",
     description: 'Décrivez votre besoin en quelques mots et je structure votre brief automatiquement.',
-    cta: 'Démarrer avec l\'assistant',
+    cta: '💬 Discuter avec l\'assistant',
     prompt: (p) =>
-      `Je travaille sur la mission "${p.name}"${p.client_name ? ` pour ${p.client_name}` : ''}. Aide-moi à structurer le brief de cette mission à partir de zéro.`,
+      `Je vois que vous travaillez sur "${p.name}"${p.client_name ? ` pour ${p.client_name}` : ''}. Je peux vous aider à compléter votre brief. Que souhaitez-vous définir ?${buildBriefSummary(p)}`,
   },
   process: {
     title: "Besoin d'un process d'évaluation ?",
