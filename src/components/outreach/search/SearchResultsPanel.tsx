@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
