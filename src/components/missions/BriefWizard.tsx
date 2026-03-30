@@ -384,15 +384,13 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
           const hasMissing = comp.missingCritical.length > 0;
 
           return (
-            <motion.button
+            <button
               key={step.key}
-              onClick={() => !readOnly && setOpenStep(i)}
+              onClick={() => { if (!readOnly) setOpenStep(i); }}
               className={cn(
                 "w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group",
-                readOnly ? "cursor-default" : "hover:bg-foreground/[0.03] cursor-pointer"
+                readOnly ? "cursor-default" : "hover:bg-foreground/[0.03] active:bg-foreground/[0.06] cursor-pointer"
               )}
-              whileHover={readOnly ? {} : { x: 4 }}
-              transition={{ duration: 0.15 }}
             >
               {/* Step number */}
               <div className={cn(
@@ -429,7 +427,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               {!readOnly && (
                 <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
               )}
-            </motion.button>
+            </button>
           );
         })}
       </div>
