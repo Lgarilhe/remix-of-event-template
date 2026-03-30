@@ -294,9 +294,9 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
                 <Brain className="w-4 h-4 text-muted-foreground/30" weight="duotone" />
               </div>
 
-              <AnimatedStat value={totalCandidates} label="Sourcés" icon={Users} accentColor="text-primary border-primary/20 bg-primary/5" delay={0.2} max={50} />
-              <AnimatedStat value={messaged} label="Contactés" icon={Send} accentColor="text-accent border-accent/20 bg-accent/5" delay={0.4} max={totalCandidates || 10} />
-              <AnimatedStat value={shortlisted} label="Shortlistés" icon={Target} accentColor="text-brutal-accent border-brutal-accent/20 bg-brutal-accent/5" delay={0.6} max={totalCandidates || 10} />
+              <AnimatedStat value={totalCandidates} label="Sourcés" icon={(p: any) => <Users {...p} weight="duotone" />} accentColor="text-primary border-primary/20 bg-primary/5" delay={0.2} max={50} />
+              <AnimatedStat value={messaged} label="Contactés" icon={(p: any) => <PaperPlaneTilt {...p} weight="duotone" />} accentColor="text-accent border-accent/20 bg-accent/5" delay={0.4} max={totalCandidates || 10} />
+              <AnimatedStat value={shortlisted} label="Shortlistés" icon={(p: any) => <Crosshair {...p} weight="duotone" />} accentColor="text-brutal-accent border-brutal-accent/20 bg-brutal-accent/5" delay={0.6} max={totalCandidates || 10} />
             </div>
           </div>
         </TiltCard>
