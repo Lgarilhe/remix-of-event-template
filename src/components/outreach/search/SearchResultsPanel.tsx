@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
+import { invokeUnipile } from '@/lib/invokeUnipile';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
 import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
@@ -176,10 +177,54 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const [detailProfile, setDetailProfile] = useState<LinkedInProfile | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  const openProfileDetail = (profile: LinkedInProfile) => {
+  const [enriching, setEnriching] = useState(false);
+
+  const openProfileDetail = useCallback(async (profile: LinkedInProfile) => {
     setDetailProfile(profile);
     setDetailOpen(true);
-  };
+
+    // If profile comes from Base Konekt and has a LinkedIn URL, enrich via Unipile
+    const source = (profile as any)._source;
+    const linkedinUrl = profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url;
+
+    if (source === 'database' && linkedinUrl && selectedAccount) {
+      setEnriching(true);
+      try {
+        const { data } = await invokeUnipile({
+          body: {
+            action: 'get_profile',
+            account_id: selectedAccount,
+            profile_url: linkedinUrl,
+          },
+        });
+
+        if (data?.success && data?.profile) {
+          const enriched = data.profile as Record<string, unknown>;
+          // Merge enriched data into the profile (keep existing, add missing)
+          const merged: LinkedInProfile = {
+            ...profile,
+            summary: (enriched.summary as string) || profile.summary,
+            skills: (enriched.skills as any[])?.length ? enriched.skills as any[] : profile.skills,
+            profile_picture_url: (enriched.profile_picture_url as string) || profile.profile_picture_url,
+            headline: (enriched.headline as string) || profile.headline,
+            location: (enriched.location as string) || profile.location,
+            work_experience: (enriched.work_experience as any[])?.length
+              ? enriched.work_experience as any[]
+              : profile.work_experience,
+            education: (enriched.education as any[])?.length
+              ? enriched.education as any[]
+              : profile.education,
+          };
+          setDetailProfile(merged);
+          console.log('[SearchResults] Enriched Base Konekt profile via Unipile');
+        }
+      } catch (e) {
+        console.warn('[SearchResults] Unipile enrichment failed (non-blocking):', e);
+      } finally {
+        setEnriching(false);
+      }
+    }
+  }, [selectedAccount]);
 
   // Navigation helpers for profile detail sheet
   const detailIndex = useMemo(() => {
