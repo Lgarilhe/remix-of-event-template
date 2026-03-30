@@ -321,6 +321,8 @@ export function useLinkedInSearch({
     } else {
       setFilters({ ...INITIAL_FILTERS, ...savedFilters });
     }
+    // Mark as initial load so the save effect skips this filter change
+    initialFilterLoadRef.current = true;
     toast.info(`Filtres du projet "${activeProject.name}" chargés`);
   }, [activeProject?.id, activeProject?.filters_snapshot]); // Re-run when filters are generated
 
