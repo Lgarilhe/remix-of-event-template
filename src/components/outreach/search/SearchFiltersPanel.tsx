@@ -42,6 +42,9 @@ interface SearchFiltersPanelProps {
   
   // Mission context
   activeProject?: SourcingProject | null;
+
+  // Search source
+  searchSource?: 'linkedin' | 'database';
   
   // Quota
   quota: {
@@ -84,6 +87,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   isApiModeAvailable,
   subscriptions,
   activeProject,
+  searchSource,
   quota,
   onSearch,
   onClearFilters,
@@ -382,7 +386,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       <div className="flex gap-2">
         <Button
           onClick={onSearch}
-          disabled={loading || !selectedAccount || !selectedJob || needsReconnection || !isApiModeAvailable}
+          disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
           className="flex-1 bg-foreground text-background hover:bg-foreground/90"
         >
           {loading ? (

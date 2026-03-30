@@ -692,6 +692,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       isApiModeAvailable={isApiModeAvailable}
       subscriptions={subscriptions}
       activeProject={activeProject || null}
+      searchSource={searchSource}
       quota={{
         quotas: search.quota.quotas,
         apiMode: search.quota.apiMode,
