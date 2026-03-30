@@ -38,34 +38,30 @@ const TiltCard: React.FC<{
 }> = ({ children, className, glowColor = 'var(--brutal-accent)', onClick }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [hovering, setHovering] = useState(false);
-  const mouseX = useMotionValue(0.5);
-  const mouseY = useMotionValue(0.5);
-
-  const rotateX = useSpring(useTransform(mouseY, [0, 1], [8, -8]), { stiffness: 300, damping: 30 });
-  const rotateY = useSpring(useTransform(mouseX, [0, 1], [-8, 8]), { stiffness: 300, damping: 30 });
-  const glowX = useTransform(mouseX, [0, 1], [0, 100]);
-  const glowY = useTransform(mouseY, [0, 1], [0, 100]);
+  const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
-    mouseX.set((e.clientX - rect.left) / rect.width);
-    mouseY.set((e.clientY - rect.top) / rect.height);
-  }, [mouseX, mouseY]);
+    setMousePos({
+      x: ((e.clientX - rect.left) / rect.width) * 100,
+      y: ((e.clientY - rect.top) / rect.height) * 100,
+    });
+  }, []);
 
   return (
     <motion.div
       ref={ref}
       onMouseMove={handleMouseMove}
-      onMouseEnter={() => { setHovering(true); }}
-      onMouseLeave={() => { setHovering(false); mouseX.set(0.5); mouseY.set(0.5); }}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => { setHovering(false); setMousePos({ x: 50, y: 50 }); }}
       onClick={onClick}
-      style={{
-        rotateX: hovering ? rotateX : 0,
-        rotateY: hovering ? rotateY : 0,
-        transformStyle: 'preserve-3d',
-        perspective: '1000px',
+      animate={{
+        rotateX: hovering ? (mousePos.y - 50) * -0.15 : 0,
+        rotateY: hovering ? (mousePos.x - 50) * 0.15 : 0,
       }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      style={{ transformStyle: 'preserve-3d', perspective: '1000px' }}
       className={cn(
         'relative group cursor-pointer transition-shadow duration-500',
         hovering && 'shadow-2xl',
@@ -73,29 +69,11 @@ const TiltCard: React.FC<{
       )}
     >
       {/* Spotlight glow */}
-      <motion.div
+      <div
         className="absolute -inset-px pointer-events-none transition-opacity duration-500 z-0"
         style={{
-          opacity: hovering ? 0.8 : 0,
-          background: useTransform(
-            [glowX, glowY],
-            ([x, y]) => `radial-gradient(600px circle at ${x}% ${y}%, ${glowColor}20 0%, transparent 60%)`
-          ),
-        }}
-      />
-      {/* Border glow */}
-      <motion.div
-        className="absolute -inset-[1px] pointer-events-none z-0 transition-opacity duration-500"
-        style={{
-          opacity: hovering ? 1 : 0,
-          background: useTransform(
-            [glowX, glowY],
-            ([x, y]) => `radial-gradient(400px circle at ${x}% ${y}%, ${glowColor}40 0%, transparent 50%)`
-          ),
-          mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          maskComposite: 'exclude',
-          WebkitMaskComposite: 'xor',
-          padding: '1px',
+          opacity: hovering ? 0.7 : 0,
+          background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${glowColor}20 0%, transparent 60%)`,
         }}
       />
       <div className="relative z-10">{children}</div>
