@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { Job } from '@/types/jobs';
+
+export type AgentContextMode = 'brief' | 'process' | 'sourcing' | 'outreach' | null;
 
 interface AgentContextValue {
   isOpen: boolean;
@@ -8,10 +11,21 @@ interface AgentContextValue {
   conversationId: string | null;
   setConversationId: (id: string | null) => void;
   initialJobId: string | null;
-  initialMessage: string | null;
-  openAgentWithMessage: (message: string) => void;
   unreadCount: number;
   setUnreadCount: (count: number) => void;
+  // Simple message-based open (Lovable's addition)
+  initialMessage: string | null;
+  openAgentWithMessage: (message: string) => void;
+  // Contextual agent (our addition)
+  contextMode: AgentContextMode;
+  briefContext: Record<string, unknown> | null;
+  autoJob: Job | null;
+  openContextualAgent: (params: {
+    mode: AgentContextMode;
+    briefContext?: Record<string, unknown>;
+    initialMessage?: string;
+    job?: Job;
+  }) => void;
 }
 
 const AgentContext = createContext<AgentContextValue>({
@@ -22,10 +36,14 @@ const AgentContext = createContext<AgentContextValue>({
   conversationId: null,
   setConversationId: () => {},
   initialJobId: null,
-  initialMessage: null,
-  openAgentWithMessage: () => {},
   unreadCount: 0,
   setUnreadCount: () => {},
+  initialMessage: null,
+  openAgentWithMessage: () => {},
+  contextMode: null,
+  briefContext: null,
+  autoJob: null,
+  openContextualAgent: () => {},
 });
 
 export const useAgent = () => useContext(AgentContext);
@@ -37,8 +55,16 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [initialMessage, setInitialMessage] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Contextual agent state
+  const [contextMode, setContextMode] = useState<AgentContextMode>(null);
+  const [briefContext, setBriefContext] = useState<Record<string, unknown> | null>(null);
+  const [autoJob, setAutoJob] = useState<Job | null>(null);
+
   const openAgent = useCallback((jobId?: string) => {
     if (jobId) setInitialJobId(jobId);
+    setContextMode(null);
+    setBriefContext(null);
+    setAutoJob(null);
     setIsOpen(true);
   }, []);
 
@@ -47,10 +73,27 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsOpen(true);
   }, []);
 
+  const openContextualAgent = useCallback((params: {
+    mode: AgentContextMode;
+    briefContext?: Record<string, unknown>;
+    initialMessage?: string;
+    job?: Job;
+  }) => {
+    setContextMode(params.mode);
+    setBriefContext(params.briefContext || null);
+    setInitialMessage(params.initialMessage || null);
+    setAutoJob(params.job || null);
+    setConversationId(null);
+    setIsOpen(true);
+  }, []);
+
   const closeAgent = useCallback(() => {
     setIsOpen(false);
     setInitialJobId(null);
     setInitialMessage(null);
+    setContextMode(null);
+    setBriefContext(null);
+    setAutoJob(null);
   }, []);
 
   const toggleAgent = useCallback(() => {
@@ -58,6 +101,9 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (prev) {
         setInitialJobId(null);
         setInitialMessage(null);
+        setContextMode(null);
+        setBriefContext(null);
+        setAutoJob(null);
       }
       return !prev;
     });
@@ -77,6 +123,10 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         openAgentWithMessage,
         unreadCount,
         setUnreadCount,
+        contextMode,
+        briefContext,
+        autoJob,
+        openContextualAgent,
       }}
     >
       {children}
