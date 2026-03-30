@@ -182,6 +182,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const showScoringOverlay = isBatchScoring && isSelected;
   const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
   const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
+  const hasHighScore = jobScore && jobScore.match_score > 80;
+  const flashColorMap = {
+    go: 'hsl(var(--accent))',
+    maybe: 'hsl(var(--brutal-accent))',
+    skip: 'hsl(var(--destructive))',
+  };
 
   return (
     <div
@@ -194,6 +200,30 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
         onOpenDetail?.();
       }}
     >
+      {/* BorderBeam for high-score profiles */}
+      {hasHighScore && (
+        <BorderBeam
+          size={300}
+          duration={6}
+          colorFrom="hsl(var(--accent))"
+          colorTo="hsl(var(--brutal-accent))"
+          borderWidth={2}
+        />
+      )}
+
+      {/* Score flash overlay */}
+      <AnimatePresence>
+        {scoreFlash && (
+          <motion.div
+            initial={{ opacity: 0.5 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1, ease: 'easeOut' }}
+            className="absolute inset-0 z-10 pointer-events-none"
+            style={{ backgroundColor: flashColorMap[scoreFlash] }}
+          />
+        )}
+      </AnimatePresence>
       {/* Scoring overlay */}
       {showScoringOverlay && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 backdrop-blur-[8px]">
