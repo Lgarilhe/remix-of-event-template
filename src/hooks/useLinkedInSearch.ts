@@ -400,6 +400,38 @@ export function useLinkedInSearch({
     }
   }, [selectedAccount, resolveLocation]);
 
+  // ── Auto-persist filter changes to filters_snapshot (debounced) ──
+  const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialFilterLoadRef = useRef(true);
+  useEffect(() => {
+    // Skip the first render (initial load from filters_snapshot)
+    if (initialFilterLoadRef.current) {
+      initialFilterLoadRef.current = false;
+      return;
+    }
+    if (!activeProject?.id) return;
+    // Don't save default/empty filters
+    if (JSON.stringify(filters) === JSON.stringify(INITIAL_FILTERS)) return;
+
+    if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
+    filterSaveTimerRef.current = setTimeout(() => {
+      // Preserve existing snapshot fields (suggestions, generated_at, etc.) and merge UI filters
+      const currentSnapshot = (activeProject.filters_snapshot || {}) as Record<string, any>;
+      updateProject({
+        id: activeProject.id,
+        filters_snapshot: {
+          ...currentSnapshot,
+          ...filters,
+          last_manual_edit: new Date().toISOString(),
+        },
+      });
+    }, 2000);
+
+    return () => {
+      if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
+    };
+  }, [filters, activeProject?.id]);
+
   // Seed jobScores from DB statuses (so pool profiles show their scores without re-scoring)
   useEffect(() => {
     if (!candidateStatus.statuses || candidateStatus.statuses.size === 0) return;
