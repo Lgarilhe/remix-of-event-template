@@ -66,13 +66,16 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   }
 
   // Job title (priority-based) → person_titles
-  const jobTitles = params.job_title as Array<{ id: string; priority: string }> | undefined;
+  // IMPORTANT: t.id is a numeric LinkedIn ID (e.g. "25764"), NOT a title string.
+  // Apollo needs text titles, not IDs. Skip numeric IDs.
+  const jobTitles = params.job_title as Array<{ id: string; name?: string; priority: string }> | undefined;
   if (jobTitles?.length) {
     const existing = (payload.person_titles as string[]) || [];
     const newTitles = jobTitles
       .filter((t) => t.priority !== "DOESNT_HAVE")
-      .map((t) => t.id);
-    payload.person_titles = [...existing, ...newTitles];
+      .map((t) => t.name || t.id)
+      .filter((t) => t && !/^\d+$/.test(t)); // Exclude pure numeric IDs
+    payload.person_titles = [...existing, ...newTitles].slice(0, 10);
   }
 
   // Seniority → person_seniorities
@@ -113,12 +116,14 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   }
 
   // Skills → q_keywords (Apollo searches skills in full profile text)
+  // Only use text-based skills, skip numeric IDs, limit to top 5
   const skills = params.skills as Array<{ id: string; keywords?: string; name?: string; priority: string }> | undefined;
   if (skills?.length) {
     const skillKeywords = skills
       .filter((s) => s.priority !== "DOESNT_HAVE")
       .map((s) => s.keywords || s.name || s.id)
-      .filter(Boolean);
+      .filter((s) => s && !/^\d+$/.test(s)) // Skip numeric IDs
+      .slice(0, 5); // Limit to avoid "Value too long"
     if (skillKeywords.length) {
       const existing = payload.q_keywords ? String(payload.q_keywords) + " " : "";
       payload.q_keywords = existing + skillKeywords.join(" ");
@@ -163,19 +168,27 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     if (tags.length) payload.q_organization_keyword_tags = tags;
   }
 
-  // School
+  // School — only use text names, skip numeric LinkedIn IDs
   const school = params.school;
   if (school && Array.isArray(school) && school.length) {
-    // Apollo uses q_keywords for school matching
     const schoolNames = school.map((s: unknown) => {
-      if (typeof s === "string") return s;
-      if (typeof s === "object" && s !== null) return (s as Record<string, string>).name || (s as Record<string, string>).id;
-      return "";
-    }).filter(Boolean);
+      if (typeof s === "string" && !/^\d+$/.test(s)) return s;
+      if (typeof s === "object" && s !== null) {
+        const obj = s as Record<string, string>;
+        return obj.name && !/^\d+$/.test(obj.name) ? obj.name : null;
+      }
+      return null;
+    }).filter(Boolean).slice(0, 3);
     if (schoolNames.length) {
       const existing = payload.q_keywords ? String(payload.q_keywords) + " " : "";
       payload.q_keywords = existing + schoolNames.join(" ");
     }
+  }
+
+  // SAFETY: cap q_keywords length to avoid Apollo "Value too long" error
+  if (payload.q_keywords && String(payload.q_keywords).length > 200) {
+    payload.q_keywords = String(payload.q_keywords).slice(0, 200).trim();
+    console.warn("[database-search] q_keywords truncated to 200 chars");
   }
 
   // Years of experience → not directly in Apollo, but can filter seniority
