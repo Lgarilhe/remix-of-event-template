@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
@@ -17,6 +18,7 @@ import { MissionInsights } from '@/components/missions/MissionInsights';
 import { MissionProcess } from '@/components/missions/MissionProcess';
 import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
+import { MissionProgressBar } from '@/components/missions/MissionProgressBar';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
@@ -28,19 +30,23 @@ const statusConfig: Record<SourcingProject['status'], { label: string; color: st
   archived: { label: 'Archivé', color: 'bg-gray-100 text-gray-500', icon: Archive },
 };
 
-// ── Tabs config ──
+// ── Tabs config (for secondary tabs) ──
 
-const tabs = [
-  { value: 'brief', label: 'Brief', emoji: '📋', description: "Analysez le poste avec l'IA, définissez l'ICP et la stratégie d'approche." },
-  { value: 'process', label: 'Process', emoji: '🏗️', description: 'Définissez les étapes du recrutement, les interviewers et les objectifs.' },
-  { value: 'sourcing', label: 'Sourcing', emoji: '🔍', description: 'Lancez des recherches LinkedIn, Apollo ou PDL pour trouver les meilleurs candidats.' },
-  { value: 'pipeline', label: 'Pipeline', emoji: '📊', description: 'Suivez la progression des candidats dans le processus de recrutement.' },
-  { value: 'outreach', label: 'Outreach', emoji: '🚀', description: 'Gérez vos séquences de messages et suivez les réponses.' },
-  { value: 'insights', label: 'Insights', emoji: '💡', description: 'Statistiques et analyses de performance de cette mission.' },
-  { value: 'config', label: 'Config', emoji: '⚙️', description: 'Paramètres de la mission, marketplace et portail client.' },
+const secondaryTabs = [
+  { value: 'pipeline', label: 'Pipeline', emoji: '📊' },
+  { value: 'insights', label: 'Insights', emoji: '💡' },
+  { value: 'config', label: 'Config', emoji: '⚙️' },
 ];
 
-const validTabs = tabs.map(t => t.value);
+// All valid tab values
+const allTabs = ['brief', 'process', 'sourcing', 'outreach', 'pipeline', 'insights', 'config'];
+
+// Animation variant for tab content
+const tabVariants = {
+  enter: { opacity: 0, x: 12 },
+  center: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -12 },
+};
 
 // ── Main component ──
 
@@ -57,13 +63,12 @@ const MissionWorkspace = () => {
     [projects, id]
   );
 
-  // Read-only logic: can't edit if org_type doesn't allow it OR if mission belongs to another org (marketplace)
   const isOwnMission = project?.organization_id === organizationId;
   const canEditBrief = hasFeature(orgType, 'edit_brief') && isOwnMission;
   const canEditProcess = hasFeature(orgType, 'edit_process') && isOwnMission;
 
   const tabFromUrl = searchParams.get('tab');
-  const activeTab = validTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'brief';
+  const activeTab = allTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'brief';
 
   const setActiveTab = useCallback((tab: string) => {
     setSearchParams(prev => {
@@ -117,6 +122,7 @@ const MissionWorkspace = () => {
   }
 
   const StatusIcon = statusConfig[project.status].icon;
+  const isPrimaryTab = ['brief', 'process', 'sourcing', 'outreach'].includes(activeTab);
 
   return (
     <div className="min-h-screen w-full max-w-full bg-background">
@@ -125,7 +131,7 @@ const MissionWorkspace = () => {
       <main className="pt-20 pb-14 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => navigate('/missions')}
@@ -152,73 +158,90 @@ const MissionWorkspace = () => {
             </div>
           </div>
 
-          {/* Tabs — brutal style */}
-          <div className="flex gap-0 w-full min-w-0 overflow-x-auto no-scrollbar">
-            {tabs.map((tab, index) => {
+          {/* ── Progress bar (4 primary steps) ── */}
+          <MissionProgressBar
+            project={project}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+
+          {/* ── Secondary tabs (Pipeline, Insights, Config) ── */}
+          <div className="flex items-center border border-foreground border-t-0 bg-muted/20">
+            {secondaryTabs.map((tab, index) => {
               const isActive = activeTab === tab.value;
               return (
                 <button
                   key={tab.value}
                   onClick={() => setActiveTab(tab.value)}
                   className={cn(
-                    "relative overflow-hidden flex items-center justify-center gap-1 h-[34px] px-2 sm:px-4 text-[10px] sm:text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
-                    index > 0 && "border-l-0",
+                    "flex items-center gap-1 h-[30px] px-3 text-[9px] font-medium uppercase tracking-wider transition-colors shrink-0",
+                    index > 0 && "border-l border-foreground/10",
                     isActive
-                      ? "bg-brutal-accent text-foreground"
-                      : "bg-background text-foreground"
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <span className="text-sm shrink-0 relative z-10">{tab.emoji}</span>
-                  <span className="relative z-10 whitespace-nowrap">{tab.label}</span>
-                  {!isActive && (
-                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-                  )}
+                  <span className="text-xs">{tab.emoji}</span>
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'brief' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
-              <MissionBrief project={project} readOnly={!canEditBrief} />
-            </SectionErrorBoundary>
-          </div>
+          {/* ── Tab content with animations ── */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              variants={tabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="mt-0 min-w-0"
+            >
+              {activeTab === 'brief' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
+                  <MissionBrief project={project} readOnly={!canEditBrief} />
+                </SectionErrorBoundary>
+              )}
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'process' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
-              <MissionProcess project={project} readOnly={!canEditProcess} />
-            </SectionErrorBoundary>
-          </div>
+              {activeTab === 'process' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
+                  <MissionProcess project={project} readOnly={!canEditProcess} />
+                </SectionErrorBoundary>
+              )}
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'sourcing' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
-              <MissionSourcing project={project} />
-            </SectionErrorBoundary>
-          </div>
+              {activeTab === 'sourcing' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
+                  <MissionSourcing project={project} />
+                </SectionErrorBoundary>
+              )}
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'pipeline' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans le Pipeline">
-              <MissionPipeline project={project} />
-            </SectionErrorBoundary>
-          </div>
+              {activeTab === 'pipeline' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans le Pipeline">
+                  <MissionPipeline project={project} />
+                </SectionErrorBoundary>
+              )}
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'outreach' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans l'Outreach">
-              <MissionOutreach project={project} />
-            </SectionErrorBoundary>
-          </div>
+              {activeTab === 'outreach' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans l'Outreach">
+                  <MissionOutreach project={project} />
+                </SectionErrorBoundary>
+              )}
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'insights' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans les Insights">
-              <MissionInsights project={project} />
-            </SectionErrorBoundary>
-          </div>
+              {activeTab === 'insights' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans les Insights">
+                  <MissionInsights project={project} />
+                </SectionErrorBoundary>
+              )}
 
-          <div className={cn("mt-0 min-w-0", activeTab !== 'config' && 'hidden')}>
-            <SectionErrorBoundary fallbackTitle="Erreur dans la Config">
-              <MissionConfig project={project} readOnly={!canEditBrief} />
-            </SectionErrorBoundary>
-          </div>
+              {activeTab === 'config' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans la Config">
+                  <MissionConfig project={project} readOnly={!canEditBrief} />
+                </SectionErrorBoundary>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
 
