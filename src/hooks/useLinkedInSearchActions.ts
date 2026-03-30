@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { LinkedInFiltersState, LinkedInProfile, LinkedInApiType } from '@/components/outreach/types';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
 import { classifyFromProfile, CompanyType } from '@/lib/companyClassification';
@@ -84,6 +85,8 @@ interface SearchContext {
   results: LinkedInProfile[];
   activeProject?: SourcingProject | null;
   autoHideTreatedRef: React.MutableRefObject<boolean>;
+  /** Search source: 'linkedin' (default) or 'database' (Konekt base) */
+  searchSource?: 'linkedin' | 'database';
   quota: {
     canPerformAction: (action: string, count: number) => boolean;
     recordAction: (action: string, count: number) => void;
@@ -489,7 +492,9 @@ export function useLinkedInSearchActions(
   } = setters;
 
   const handleSearch = useCallback(async (appendMode = false, retryCount = 0) => {
-    if (!selectedAccount) {
+    const isDatabase = context.searchSource === 'database';
+
+    if (!isDatabase && !selectedAccount) {
       toast.error('Sélectionnez un compte LinkedIn');
       return;
     }
@@ -545,9 +550,22 @@ export function useLinkedInSearchActions(
           console.log('[LinkedInSearch] Search params:', params);
         }
 
-        const { data } = await invokeUnipile({
-          body: params,
-        });
+        // Call the right search backend based on source
+        let data: Record<string, unknown>;
+        const isDatabase = context.searchSource === 'database';
+
+        if (isDatabase) {
+          // Database search (Base Konekt) — uses database-search edge function
+          const { data: dbData } = await invokeEdgeFunction<Record<string, unknown>>('database-search', {
+            ...params,
+            action: 'search',
+          });
+          data = dbData || {};
+        } else {
+          // LinkedIn search (default) — uses unipile-search edge function
+          const result = await invokeUnipile({ body: params });
+          data = result.data || {};
+        }
 
         if (!data?.success) {
           const apiError = new Error(data?.error as string || 'Erreur lors de la recherche');
@@ -556,7 +574,8 @@ export function useLinkedInSearchActions(
           throw apiError;
         }
 
-        const batch: LinkedInProfile[] = (data.results as LinkedInProfile[]) || [];
+        // Normalize result format (database-search returns 'items', unipile returns 'results')
+        const batch: LinkedInProfile[] = ((isDatabase ? data.items : data.results) as LinkedInProfile[]) || [];
         const batchCursor: string | null = (data.cursor as string) || null;
         const fetchedTotal: number | null = (data.total as number) || null;
 
@@ -720,11 +739,10 @@ export function useLinkedInSearchActions(
         errorMessage.toLowerCase().includes('multiple sessions') ||
         errorMessage.toLowerCase().includes('unable to process');
 
-      // NEVER auto-retry on session conflicts — it makes LinkedIn angrier
-      // and creates a terrible UX with 20s+ wait loops
+      // NEVER auto-retry on session conflicts
       if (isMultipleSessionsError) {
         toast.error(
-          "Conflit de session LinkedIn détecté. Attendez 2-3 minutes sans rien faire, puis réessayez. Si le problème persiste, reconnectez votre compte.",
+          "Conflit de session LinkedIn. Utilisez l'onglet « Base de données » pour continuer à sourcer, ou attendez 2-3 minutes.",
           {
             id: 'search-error',
             duration: 15000,
