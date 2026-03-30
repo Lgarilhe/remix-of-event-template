@@ -9,10 +9,18 @@ import { ProspectSearch } from '@/components/prospection/ProspectSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { countBriefFields } from '@/lib/missionUtils';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
+
+interface Suggestions {
+  alt_skills: string[];
+  alt_titles: string[];
+  alt_locations: string[];
+  alt_companies: string[];
+  alt_certifications: string[];
+}
 
 interface MissionSourcingProps {
   project: SourcingProject;
@@ -68,6 +76,11 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   const { updateProject } = useSourcingProjects();
   const [isGeneratingFilters, setIsGeneratingFilters] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestions | null>(() => {
+    // Load from filters_snapshot if available
+    const snap = project.filters_snapshot as any;
+    return snap?.suggestions || null;
+  });
 
   const handleGenerateFilters = useCallback(async () => {
     setIsGeneratingFilters(true);
@@ -93,9 +106,16 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           ? response.data.filters
           : {};
 
+      const sug = response.data.suggestions || null;
+      setSuggestions(sug);
+
       await updateProject({
         id: project.id,
-        filters_snapshot: { ...generatedFilters, generated_at: new Date().toISOString() },
+        filters_snapshot: {
+          ...generatedFilters,
+          suggestions: sug,
+          generated_at: new Date().toISOString(),
+        },
       });
       toast.success('Filtres générés depuis votre brief');
     } catch (err: any) {
@@ -104,6 +124,43 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       setIsGeneratingFilters(false);
     }
   }, [project, jd, updateProject]);
+
+  // Add a suggestion to the brief's skills
+  const handleAddSuggestion = useCallback((category: keyof Suggestions, value: string) => {
+    // Remove the chip from suggestions
+    setSuggestions(prev => {
+      if (!prev) return prev;
+      return { ...prev, [category]: prev[category].filter((v: string) => v !== value) };
+    });
+
+    // Add to the appropriate brief field
+    if (category === 'alt_skills' || category === 'alt_certifications') {
+      const currentSkills = jd.skills_should_have || [];
+      if (!currentSkills.includes(value)) {
+        updateProject({
+          id: project.id,
+          job_details: { ...project.job_details, skills_should_have: [...currentSkills, value] } as any,
+        });
+      }
+    }
+    toast.success(`"${value}" ajouté`);
+  }, [project, jd, updateProject]);
+
+  const handleDismissSuggestion = useCallback((category: keyof Suggestions, value: string) => {
+    setSuggestions(prev => {
+      if (!prev) return prev;
+      return { ...prev, [category]: prev[category].filter((v: string) => v !== value) };
+    });
+  }, []);
+
+  // Check if there are any suggestions to show
+  const hasSuggestions = suggestions && (
+    suggestions.alt_skills.length > 0 ||
+    suggestions.alt_titles.length > 0 ||
+    suggestions.alt_locations.length > 0 ||
+    suggestions.alt_companies.length > 0 ||
+    suggestions.alt_certifications.length > 0
+  );
 
   // Check if any LinkedIn account has issues
   const hasLinkedInIssue = accounts.length === 0 || accounts.every(a => a.status !== 'OK');
@@ -166,6 +223,44 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           </div>
         </div>
       )}
+      {/* AI Suggestions chips */}
+      {hasSuggestions && (
+        <div className="border-b border-foreground/10 px-4 py-3 space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+            Affiner les filtres
+          </p>
+          {([
+            { key: 'alt_skills' as const, label: 'Skills', items: suggestions!.alt_skills },
+            { key: 'alt_titles' as const, label: 'Titres', items: suggestions!.alt_titles },
+            { key: 'alt_locations' as const, label: 'Localisation', items: suggestions!.alt_locations },
+            { key: 'alt_companies' as const, label: 'Entreprises cibles', items: suggestions!.alt_companies },
+            { key: 'alt_certifications' as const, label: 'Certifications', items: suggestions!.alt_certifications },
+          ]).filter(g => g.items.length > 0).map(group => (
+            <div key={group.key} className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70 mr-1 shrink-0">
+                {group.label}:
+              </span>
+              {group.items.map(item => (
+                <button
+                  key={item}
+                  onClick={() => handleAddSuggestion(group.key, item)}
+                  className="group flex items-center gap-1 h-[24px] px-2 text-[10px] font-medium border border-foreground/20 bg-background text-foreground hover:border-foreground hover:bg-foreground hover:text-background transition-colors"
+                >
+                  <Plus className="w-2.5 h-2.5 text-brutal-accent group-hover:text-background" />
+                  {item}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); handleDismissSuggestion(group.key, item); }}
+                    className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">
