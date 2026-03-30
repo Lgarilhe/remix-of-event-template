@@ -92,9 +92,24 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
     setSelectedAccount(okAccount?.id || accounts[0]?.id || null);
   }, [accounts, selectedAccount]);
 
+  // Check if any LinkedIn account has issues
+  const hasLinkedInIssue = accounts.length === 0 || accounts.every(a => a.status !== 'OK');
+
   const subTabs = [
-    { value: 'linkedin', label: 'LinkedIn', emoji: '🔗' },
-    { value: 'database', label: 'Base de données', emoji: '🗄️' },
+    {
+      value: 'linkedin',
+      label: 'LinkedIn',
+      icon: '🔗',
+      description: 'Recherche via votre compte LinkedIn',
+      badge: hasLinkedInIssue ? '⚠️' : null,
+    },
+    {
+      value: 'database',
+      label: 'Base Konekt',
+      icon: '🌐',
+      description: 'Recherche dans notre base de +200M profils',
+      badge: null,
+    },
   ];
 
   if (accountsLoading) {
@@ -123,25 +138,36 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
         </div>
       )}
 
-      {/* Sub-tabs */}
-      <div className="flex gap-0 px-4 pt-3 pb-0">
-        {subTabs.map((sub, idx) => (
-          <button
-            key={sub.value}
-            onClick={() => setSourcingTab(sub.value as 'linkedin' | 'database')}
-            className={cn(
-              "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
-              idx > 0 && "border-l-0",
-              sourcingTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
-            )}
-          >
-            <span className="relative z-10">{sub.emoji}</span>
-            <span className="relative z-10">{sub.label}</span>
-            {sourcingTab !== sub.value && (
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-            )}
-          </button>
-        ))}
+      {/* Source toggle */}
+      <div className="px-4 pt-3 pb-0">
+        <div className="flex gap-0">
+          {subTabs.map((sub, idx) => (
+            <button
+              key={sub.value}
+              onClick={() => setSourcingTab(sub.value as 'linkedin' | 'database')}
+              className={cn(
+                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[10px] font-bold uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+                idx > 0 && "border-l-0",
+                sourcingTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
+              )}
+            >
+              <span className="relative z-10">{sub.icon}</span>
+              <span className="relative z-10">{sub.label}</span>
+              {sub.badge && <span className="relative z-10 text-[9px]">{sub.badge}</span>}
+              {sourcingTab !== sub.value && (
+                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              )}
+            </button>
+          ))}
+        </div>
+        {/* Contextual description */}
+        <p className="text-[10px] text-muted-foreground mt-1.5 mb-1">
+          {sourcingTab === 'linkedin'
+            ? accounts.length > 0
+              ? 'Recherche directe via votre compte LinkedIn. Nécessite une connexion active.'
+              : '⚠️ Aucun compte LinkedIn connecté. Connectez-en un dans Paramètres ou utilisez la Base Konekt.'
+            : 'Recherche dans notre base de données de profils. Mêmes filtres, sans connexion LinkedIn requise.'}
+        </p>
       </div>
 
       {/* LinkedIn sub-tab */}
