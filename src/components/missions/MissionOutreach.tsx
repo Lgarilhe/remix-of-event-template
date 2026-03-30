@@ -61,9 +61,11 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations'>('sequences');
+  const [showEmptyState, setShowEmptyState] = useState(true);
 
   // Enrollment stats
   const [enrollmentStats, setEnrollmentStats] = useState({ active: 0, completed: 0, replied: 0, total: 0 });
+  const [goCount, setGoCount] = useState(0);
 
   // Get current user
   useEffect(() => {
