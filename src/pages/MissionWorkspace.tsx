@@ -71,7 +71,7 @@ const MissionWorkspace = () => {
   const canEditProcess = hasFeature(orgType, 'edit_process') && isOwnMission;
 
   const tabFromUrl = searchParams.get('tab');
-  const activeTab = allTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'brief';
+  const activeTab = allTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'overview';
 
   const setActiveTab = useCallback((tab: string) => {
     setSearchParams(prev => {
