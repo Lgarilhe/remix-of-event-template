@@ -9,6 +9,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
+import { OutreachEmptyState } from './OutreachEmptyState';
 
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
