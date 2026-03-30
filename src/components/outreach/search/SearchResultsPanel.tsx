@@ -200,21 +200,22 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
         if (data?.success && data?.profile) {
           const enriched = data.profile as Record<string, unknown>;
-          // Merge enriched data into the profile (keep existing, add missing)
+          console.log('[SearchResults] Enrichment data keys:', Object.keys(enriched));
+          console.log('[SearchResults] Enrichment work_exp:', (enriched.work_experience as any[])?.length || 0);
+          console.log('[SearchResults] Enrichment education:', (enriched.education as any[])?.length || 0);
+          console.log('[SearchResults] Enrichment skills:', (enriched.skills as any[])?.length || 0);
+          console.log('[SearchResults] Enrichment summary:', (enriched.summary as string)?.slice(0, 100) || 'none');
+
+          // Merge enriched data — spread ALL enriched fields over the base profile
+          // This ensures we pick up any field Unipile returns (work_experience,
+          // education, skills, summary, current_positions, past_positions, etc.)
           const merged: LinkedInProfile = {
-            ...profile,
-            summary: (enriched.summary as string) || profile.summary,
-            skills: (enriched.skills as any[])?.length ? enriched.skills as any[] : profile.skills,
-            profile_picture_url: (enriched.profile_picture_url as string) || profile.profile_picture_url,
-            headline: (enriched.headline as string) || profile.headline,
-            location: (enriched.location as string) || profile.location,
-            work_experience: (enriched.work_experience as any[])?.length
-              ? enriched.work_experience as any[]
-              : profile.work_experience,
-            education: (enriched.education as any[])?.length
-              ? enriched.education as any[]
-              : profile.education,
-          };
+            ...profile,       // Base Konekt data (keep as fallback)
+            ...enriched,      // Unipile data (overrides everything)
+            // Keep original ID and source flag
+            id: profile.id,
+            _source: (profile as any)._source,
+          } as LinkedInProfile;
           setDetailProfile(merged);
           console.log('[SearchResults] Enriched Base Konekt profile via Unipile');
         }
