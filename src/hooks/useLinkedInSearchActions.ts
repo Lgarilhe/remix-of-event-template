@@ -743,7 +743,7 @@ export function useLinkedInSearchActions(
 
       if (isMultipleSessionsError) {
         toast.error(
-          ‘Session Recruiter verrouillée. Passez temporairement en « LinkedIn Classic » ou reconnectez le compte dans l’onglet « Comptes ».’,
+          "Session Recruiter verrouillée. Passez temporairement en LinkedIn Classic ou reconnectez le compte dans l'onglet Comptes.",
           { id: ‘search-error’, duration: 15000 }
         );
       } else if (
