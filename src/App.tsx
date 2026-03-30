@@ -42,21 +42,6 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
 
-const IndexRedirect = () => {
-  const location = useLocation();
-
-  if (location.pathname === '/index') {
-    return <SkalrLanding />;
-  }
-
-  return (
-    <Navigate
-      to={withPreviewAccessToken('/', location.search, location.hash)}
-      replace
-    />
-  );
-};
-
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
   const location = useLocation();
@@ -127,14 +112,25 @@ const AppContent = () => {
     }
   };
 
+  const suspenseFallback = (
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="w-9 h-9 rounded-full border-2 border-foreground/20 border-t-foreground animate-spin" />
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          Chargement en cours
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <Toaster />
       <Sonner />
-      <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" /></div>}>
+      <Suspense fallback={suspenseFallback}>
         <Routes>
           <Route path="/" element={<SkalrLanding />} />
-          <Route path="/index" element={<IndexRedirect />} />
+          <Route path="/index" element={<Navigate to={withPreviewAccessToken('/')} replace />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
