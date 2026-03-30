@@ -62,6 +62,15 @@ interface SearchResultsPanelProps {
   selectedAccount: string | null;
   activeProject?: SourcingProject | null;
   
+  // Readiness panel props
+  searchSource?: 'linkedin' | 'database';
+  onSourceChange?: (source: 'linkedin' | 'database') => void;
+  onAutoFill?: () => void;
+  autoFillLoading?: boolean;
+  filtersReady?: boolean;
+  accountName?: string | null;
+  accountStatus?: string | null;
+  
   // Treated candidates from DB
   treatedCandidates: Map<string, JobCandidateStatus>;
   onRestoreCandidate?: (candidateId: string) => void;
@@ -141,6 +150,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   dismissedCount,
   selectedAccount,
   activeProject,
+  searchSource,
+  onSourceChange,
+  onAutoFill,
+  autoFillLoading,
+  filtersReady,
+  accountName,
+  accountStatus,
   treatedCandidates,
   onRestoreCandidate,
   showBulkInMailModal,
@@ -532,6 +548,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <SourcingReadinessPanel
                 project={activeProject}
                 selectedAccount={selectedAccount}
+                searchSource={searchSource}
+                onSourceChange={onSourceChange}
+                onAutoFill={onAutoFill}
+                autoFillLoading={autoFillLoading}
+                onSearch={onSearch}
+                filtersReady={filtersReady}
+                accountName={accountName}
+                accountStatus={accountStatus}
               />
             ) : (
               <SearchWelcomeMessage />
