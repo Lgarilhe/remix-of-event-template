@@ -549,9 +549,15 @@ Deno.serve(async (req) => {
 
       // Pagination
       const pagination = data.pagination || {};
-      const totalEntries = pagination.total_entries || profiles.length;
-      const currentPage = pagination.page || 1;
-      const totalPages = pagination.total_pages || 1;
+      const totalEntries = Number(
+        pagination.total_entries ??
+        pagination.total ??
+        pagination.total_results ??
+        pagination.total_people ??
+        profiles.length
+      );
+      const currentPage = Number(pagination.page || pagination.current_page || 1);
+      const totalPages = Number(pagination.total_pages || pagination.pages || 1);
       const hasMore = currentPage < totalPages;
 
       return json({
