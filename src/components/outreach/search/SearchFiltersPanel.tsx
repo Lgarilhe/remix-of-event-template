@@ -83,6 +83,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   needsReconnection,
   isApiModeAvailable,
   subscriptions,
+  activeProject,
   quota,
   onSearch,
   onClearFilters,
