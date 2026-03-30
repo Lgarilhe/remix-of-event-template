@@ -583,6 +583,10 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
+      {/* Assistant button */}
+      <div className="flex items-center justify-between mb-4">
+        <MissionAssistantButton project={project} mode="process" />
+      </div>
       {/* Contextual banner */}
       <MissionContextBanner
         icon="🏗️"
