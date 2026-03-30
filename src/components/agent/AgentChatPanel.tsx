@@ -10,6 +10,7 @@ import { AgentJobSelector } from './AgentJobSelector';
 import { AgentThinkingDisplay } from './AgentThinkingDisplay';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { useAgent } from '@/contexts/AgentContext';
 import { cn } from '@/lib/utils';
 
 const CHAT_LOADING_MESSAGES = [
@@ -157,7 +158,17 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     }
   }, [createConversation, sendMessage]);
 
-  // ── List view ──
+  // ── Handle initialMessage from AgentContext ──
+  const { initialMessage } = useAgent();
+  const initialMessageHandledRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initialMessage && initialMessage !== initialMessageHandledRef.current) {
+      initialMessageHandledRef.current = initialMessage;
+      handleQuickAction(initialMessage);
+    }
+  }, [initialMessage, handleQuickAction]);
+
   if (showList) {
     return (
       <div className="flex flex-col h-full bg-background animate-slide-in-left">

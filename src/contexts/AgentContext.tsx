@@ -8,6 +8,8 @@ interface AgentContextValue {
   conversationId: string | null;
   setConversationId: (id: string | null) => void;
   initialJobId: string | null;
+  initialMessage: string | null;
+  openAgentWithMessage: (message: string) => void;
   unreadCount: number;
   setUnreadCount: (count: number) => void;
 }
@@ -20,6 +22,8 @@ const AgentContext = createContext<AgentContextValue>({
   conversationId: null,
   setConversationId: () => {},
   initialJobId: null,
+  initialMessage: null,
+  openAgentWithMessage: () => {},
   unreadCount: 0,
   setUnreadCount: () => {},
 });
@@ -30,6 +34,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isOpen, setIsOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [initialJobId, setInitialJobId] = useState<string | null>(null);
+  const [initialMessage, setInitialMessage] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const openAgent = useCallback((jobId?: string) => {
@@ -37,14 +42,23 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsOpen(true);
   }, []);
 
+  const openAgentWithMessage = useCallback((message: string) => {
+    setInitialMessage(message);
+    setIsOpen(true);
+  }, []);
+
   const closeAgent = useCallback(() => {
     setIsOpen(false);
     setInitialJobId(null);
+    setInitialMessage(null);
   }, []);
 
   const toggleAgent = useCallback(() => {
     setIsOpen(prev => {
-      if (prev) setInitialJobId(null);
+      if (prev) {
+        setInitialJobId(null);
+        setInitialMessage(null);
+      }
       return !prev;
     });
   }, []);
@@ -59,6 +73,8 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         conversationId,
         setConversationId,
         initialJobId,
+        initialMessage,
+        openAgentWithMessage,
         unreadCount,
         setUnreadCount,
       }}
