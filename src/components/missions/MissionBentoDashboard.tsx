@@ -305,7 +305,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
       {/* ── Row 2: Quick Actions ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <QuickAction
-          icon={Sparkles}
+          icon={(p: any) => <Sparkle {...p} weight="duotone" />}
           title="Sourcing"
           description="Rechercher des profils avec l'IA et les filtres avancés"
           accentVar="var(--brutal-accent)"
@@ -313,7 +313,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           delay={0.3}
         />
         <QuickAction
-          icon={Zap}
+          icon={(p: any) => <Lightning {...p} weight="fill" />}
           title="Outreach"
           description="Envoyer des messages personnalisés aux candidats"
           accentVar="var(--accent)"
@@ -321,7 +321,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           delay={0.4}
         />
         <QuickAction
-          icon={TrendingUp}
+          icon={(p: any) => <TrendUp {...p} weight="duotone" />}
           title="Pipeline"
           description="Suivre et gérer l'avancement des candidats"
           accentVar="var(--primary)"
