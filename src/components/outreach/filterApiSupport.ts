@@ -138,6 +138,38 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     activity: { supported: false, tooltip: "Les filtres d'activité ne sont disponibles qu'en mode Recruiter" },
     tags: { supported: false, tooltip: "Les tags ne sont disponibles qu'en mode Recruiter" },
   },
+  database: {
+    keywords: { supported: true },
+    location: { supported: true },
+    company: { supported: true },
+    industry: { supported: true },
+    school: { supported: false, tooltip: "Le filtre école n'est pas disponible en Base Konekt. Utilisez les mots-clés." },
+    job_title: { supported: true },
+    skills: { supported: false, tooltip: "Les compétences sont recherchées via les mots-clés en Base Konekt" },
+    role: { supported: true }, // Mapped to person_titles
+    function: { supported: true }, // Mapped to person_departments
+    degree: { supported: false, tooltip: "Le niveau d'études n'est pas disponible en Base Konekt" },
+    seniority: { supported: true },
+    network_distance: { supported: false, tooltip: "Le degré de connexion n'est pas disponible en Base Konekt" },
+    profile_language: { supported: false, tooltip: "La langue du profil n'est pas disponible en Base Konekt" },
+    years_of_experience: { supported: false, tooltip: "L'expérience est estimée après enrichissement, pas filtrable directement" },
+    tenure_at_company: { supported: false, tooltip: "L'ancienneté n'est pas disponible en Base Konekt" },
+    tenure_at_role: { supported: false, tooltip: "L'ancienneté n'est pas disponible en Base Konekt" },
+    open_to_work: { supported: false, tooltip: "Open to Work est une donnée LinkedIn uniquement" },
+    open_to: { supported: false, tooltip: "Open to est une donnée LinkedIn uniquement" },
+    spotlight: { supported: false, tooltip: "Spotlight est une donnée LinkedIn uniquement" },
+    hiring_project: { supported: false, tooltip: "Les projets de recrutement ne sont disponibles qu'en mode LinkedIn Recruiter" },
+    talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode LinkedIn Recruiter" },
+    company_headcount: { supported: true }, // organization_num_employees_ranges
+    company_type: { supported: false, tooltip: "Le type d'entreprise n'est pas filtrable en Base Konekt" },
+    company_location: { supported: true }, // organization_locations
+    groups: { supported: false, tooltip: "Les groupes LinkedIn ne sont pas disponibles en Base Konekt" },
+    past_company: { supported: false, tooltip: "L'entreprise passée n'est pas filtrable directement en Base Konekt" },
+    past_job_title: { supported: false, tooltip: "Le titre passé n'est pas filtrable directement en Base Konekt" },
+    advanced_keywords: { supported: true }, // q_keywords
+    activity: { supported: false, tooltip: "Les filtres d'activité ne sont pas disponibles en Base Konekt" },
+    tags: { supported: false, tooltip: "Les tags ne sont pas disponibles en Base Konekt" },
+  },
 };
 
 // Helper to check if a filter is supported for current API
