@@ -28,7 +28,7 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-const APOLLO_BASE = "https://api.apollo.io";
+const APOLLO_BASE = "https://api.apollo.io/api";
 
 // ─── Map LinkedIn filters to Apollo API format ─────────────────────────────
 
@@ -82,16 +82,29 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   }
 
   // Job title (priority-based) → person_titles
-  // IMPORTANT: t.id is a numeric LinkedIn ID (e.g. "25764"), NOT a title string.
-  // Apollo needs text titles, not IDs. Skip numeric IDs.
   const jobTitles = params.job_title as Array<{ id: string; name?: string; priority: string }> | undefined;
   if (jobTitles?.length) {
     const existing = (payload.person_titles as string[]) || [];
     const newTitles = jobTitles
       .filter((t) => t.priority !== "DOESNT_HAVE")
-      .map((t) => t.name || t.id)
-      .filter((t) => t && !/^\d+$/.test(t)); // Exclude pure numeric IDs
+      .map((t) => {
+        // Use name (text) over id (numeric LinkedIn ID)
+        const val = t.name || t.id;
+        // Skip pure numeric IDs, split "X/Y" format titles
+        if (!val || /^\d+$/.test(val)) return [];
+        return val.split("/").map((s: string) => s.trim()).filter(Boolean);
+      })
+      .flat();
     payload.person_titles = [...existing, ...newTitles].slice(0, 10);
+  }
+
+  // If still no person_titles, try to extract from the job context
+  if (!(payload.person_titles as string[])?.length) {
+    // Fallback: use keywords as title search if they look like job titles
+    const kw = payload.q_keywords ? String(payload.q_keywords) : "";
+    if (kw && kw.length < 50) {
+      payload.person_titles = [kw];
+    }
   }
 
   // Seniority → person_seniorities
@@ -457,49 +470,55 @@ Deno.serve(async (req) => {
         }));
       }
 
-      // Step 2: Enrich the results — the search endpoint returns basic data only.
-      // We call people/bulk_match with the IDs to get full profiles (experience, education, etc.)
+      // Step 2: Enrich in batches of 10 (Apollo limit)
       let enrichedPeople = rawPeople;
       if (rawPeople.length > 0) {
         try {
           const personIds = rawPeople.map((p: any) => p.id).filter(Boolean);
-          console.log(`[database-search] Enriching ${personIds.length} profiles via bulk_match...`);
-          if (personIds.length > 0) {
-            const enrichResponse = await fetch(`${APOLLO_BASE}/v1/people/bulk_match`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Api-Key": apolloApiKey,
-              },
-              body: JSON.stringify({
-                details: personIds.map((id: string) => ({ id })),
-                reveal_personal_emails: false,
-                reveal_phone_number: false,
-              }),
-            });
+          console.log(`[database-search] Enriching ${personIds.length} profiles via bulk_match (batches of 10)...`);
 
-            console.log(`[database-search] bulk_match response status: ${enrichResponse.status}`);
-            if (enrichResponse.ok) {
-              const enrichData = await enrichResponse.json();
-              console.log(`[database-search] bulk_match response keys:`, Object.keys(enrichData));
-              const enrichedMatches = enrichData.matches || enrichData.people || [];
-              console.log(`[database-search] Enriched matches: ${enrichedMatches.length}`);
-              if (enrichedMatches.length > 0) {
-                // Merge enriched data with search results
-                const enrichMap = new Map<string, Record<string, unknown>>();
-                for (const match of enrichedMatches) {
+          const enrichMap = new Map<string, Record<string, unknown>>();
+          const BATCH_SIZE = 10;
+
+          for (let i = 0; i < personIds.length; i += BATCH_SIZE) {
+            const batch = personIds.slice(i, i + BATCH_SIZE);
+            try {
+              const enrichResponse = await fetch(`${APOLLO_BASE}/v1/people/bulk_match`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Cache-Control": "no-cache",
+                  "X-Api-Key": apolloApiKey,
+                },
+                body: JSON.stringify({
+                  details: batch.map((id: string) => ({ id })),
+                  reveal_personal_emails: false,
+                  reveal_phone_number: false,
+                }),
+              });
+
+              if (enrichResponse.ok) {
+                const enrichData = await enrichResponse.json();
+                const matches = enrichData.matches || enrichData.people || [];
+                for (const match of matches) {
                   if (match?.id) enrichMap.set(match.id, match);
                 }
-                enrichedPeople = rawPeople.map((p: any) => {
-                  const enriched = enrichMap.get(p.id);
-                  return enriched ? { ...p, ...enriched } : p;
-                });
-                console.log(`[database-search] Enriched ${enrichedMatches.length}/${rawPeople.length} profiles`);
+                console.log(`[database-search] Batch ${Math.floor(i / BATCH_SIZE) + 1}: enriched ${matches.length}/${batch.length}`);
+              } else {
+                const errText = await enrichResponse.text();
+                console.warn(`[database-search] Batch enrichment failed ${enrichResponse.status}:`, errText.slice(0, 200));
               }
-            } else {
-              const errText = await enrichResponse.text();
-              console.error(`[database-search] Enrichment failed ${enrichResponse.status}:`, errText.slice(0, 500));
+            } catch (batchErr) {
+              console.warn(`[database-search] Batch enrichment error:`, batchErr);
             }
+          }
+
+          if (enrichMap.size > 0) {
+            enrichedPeople = rawPeople.map((p: any) => {
+              const enriched = enrichMap.get(p.id);
+              return enriched ? { ...p, ...enriched } : p;
+            });
+            console.log(`[database-search] Total enriched: ${enrichMap.size}/${rawPeople.length}`);
           }
         } catch (e) {
           console.warn("[database-search] Enrichment error (non-blocking):", e);
