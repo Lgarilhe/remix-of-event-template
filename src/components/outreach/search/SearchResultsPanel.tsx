@@ -739,7 +739,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 initial={{ opacity: 0, y: 12, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{
-                  delay: Math.min(index * 0.04, 0.8),
+                  delay: Math.min(index * 0.05, 1.2),
                   duration: 0.35,
                   ease: [0.25, 0.46, 0.45, 0.94],
                 }}
