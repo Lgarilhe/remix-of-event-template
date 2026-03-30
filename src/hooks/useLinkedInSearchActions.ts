@@ -720,31 +720,19 @@ export function useLinkedInSearchActions(
         errorMessage.toLowerCase().includes('multiple sessions') ||
         errorMessage.toLowerCase().includes('unable to process');
 
-      // Le backend gère déjà les retries sur multiple_sessions :
-      // côté client on n'insiste pas si l'erreur est explicite.
-      const shouldRetry =
-        isMultipleSessionsError &&
-        !errorType.includes('multiple_sessions') &&
-        error?.retryable !== false &&
-        retryCount < 3;
-
-      if (shouldRetry) {
-        const delays = [8, 20, 35]; // longer progressive delays
-        const delay = delays[retryCount];
-        toast.info(`Conflit de session LinkedIn détecté. Tentative ${retryCount + 2}/4 dans ${delay}s...`, { id: 'search-retry', duration: delay * 1000 });
-        await new Promise(resolve => setTimeout(resolve, delay * 1000));
-        if (appendMode) {
-          setLoadingMore(false);
-        } else {
-          setLoading(false);
-        }
-        return handleSearch(appendMode, retryCount + 1);
-      }
-
+      // NEVER auto-retry on session conflicts — it makes LinkedIn angrier
+      // and creates a terrible UX with 20s+ wait loops
       if (isMultipleSessionsError) {
         toast.error(
-          "Session Recruiter verrouillee. Passez temporairement en LinkedIn Classic ou reconnectez le compte dans l'onglet Comptes.",
-          { id: "search-error", duration: 15000 }
+          "Conflit de session LinkedIn détecté. Attendez 2-3 minutes sans rien faire, puis réessayez. Si le problème persiste, reconnectez votre compte.",
+          {
+            id: 'search-error',
+            duration: 15000,
+            action: {
+              label: 'Reconnecter',
+              onClick: () => window.location.href = '/settings?tab=account',
+            },
+          }
         );
       } else if (
         errorMessage?.includes("not found") ||
