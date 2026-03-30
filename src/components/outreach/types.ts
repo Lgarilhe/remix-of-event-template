@@ -228,6 +228,13 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   activity_notes: null,
   activity_notes_days: null,
   tags: [],
+  // Base Konekt defaults
+  db_technologies: [],
+  db_email_verified: null,
+  db_revenue_min: '',
+  db_revenue_max: '',
+  db_funding_stage: '',
+  db_company_domain: '',
 };
 
 // Predefined day ranges for activity filters
