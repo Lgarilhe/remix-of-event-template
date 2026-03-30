@@ -286,7 +286,9 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
             <div className="p-6 space-y-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ChartBar className="w-4 h-4 text-muted-foreground" weight="duotone" />
+                  <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 5, ease: 'easeInOut' }}>
+                    <ChartBar className="w-4 h-4 text-muted-foreground" weight="duotone" />
+                  </motion.div>
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     <TextRotate
                       texts={['Vue d\'ensemble', 'Métriques', 'Statistiques']}
