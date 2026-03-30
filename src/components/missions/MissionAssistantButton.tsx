@@ -51,12 +51,7 @@ export const MissionAssistantButton: React.FC<MissionAssistantButtonProps> = ({
       mode,
       briefContext: project.job_details as Record<string, unknown> ?? {},
       initialMessage: config.buildMessage(name),
-      job: {
-        id: project.id,
-        title: jd.title || project.name || '',
-        description: jd.mission_description || '',
-        status: project.status || 'active',
-      } as any,
+      job: undefined,
     });
   };
 
