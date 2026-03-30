@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAICredits } from '@/hooks/useAICredits';
+import { NumberTicker } from '@/components/magicui/number-ticker';
 import { Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -38,7 +39,7 @@ export const CreditBalanceIndicator = () => {
               isLow && !isOut && "text-amber-500",
               !isLow && !isOut && "text-muted-foreground"
             )} />
-            <span className="font-bold tabular-nums">{displayCredits}</span>
+            <NumberTicker value={creditsRemaining} className="font-bold" />
             <span className="hidden sm:inline text-[10px] text-muted-foreground font-normal">cr</span>
           </button>
         </TooltipTrigger>
