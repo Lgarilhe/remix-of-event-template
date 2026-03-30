@@ -157,6 +157,28 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
     return <EmptyAccountState />;
   }
 
+  if (showEmptyState && enrollmentStats.total === 0) {
+    return (
+      <div className="border border-foreground border-t-0 bg-background">
+        <OutreachEmptyState
+          goCount={goCount}
+          onLinkedInMessage={() => {
+            setShowEmptyState(false);
+            setOutreachTab('sequences');
+          }}
+          onInMail={() => {
+            setShowEmptyState(false);
+            setOutreachTab('sequences');
+          }}
+          onSequence={() => {
+            setShowEmptyState(false);
+            setOutreachTab('sequences');
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="border border-foreground border-t-0 bg-background">
       {/* Contextual banner */}
