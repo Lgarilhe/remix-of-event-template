@@ -22,6 +22,8 @@ import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { MissionProgressBar } from '@/components/missions/MissionProgressBar';
 import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
+import { MissionAgentFAB } from '@/components/missions/MissionAgentFAB';
+import { MissionAgentHelpCard } from '@/components/missions/MissionAgentHelpCard';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
