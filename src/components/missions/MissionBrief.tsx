@@ -112,16 +112,12 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
     }
   };
 
+  const handleLaunchSourcing = useCallback(() => {
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', 'sourcing'); return next; }, { replace: true });
+  }, [setSearchParams]);
+
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
-      {readOnly && (
-        <div className="mb-4 px-3 py-2 border border-foreground/20 bg-muted/30">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            👁️ Lecture seule — vous n'avez pas les droits d'édition sur ce brief
-          </span>
-        </div>
-      )}
-
       {/* Voice toggle */}
       {!readOnly && (
         <div className="flex items-center justify-between mb-4">
@@ -163,6 +159,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
         jobDetails={deepMerge(project.job_details || {}, pendingPatchRef.current) as JobDetails}
         onUpdate={handleJobDetailsUpdate}
         readOnly={readOnly}
+        onLaunchSourcing={handleLaunchSourcing}
       />
 
       {/* AI Analysis */}
