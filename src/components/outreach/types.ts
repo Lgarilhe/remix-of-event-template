@@ -165,6 +165,14 @@ export interface LinkedInFiltersState {
   activity_notes: ActivityNoteType;        // with_note, without_note
   activity_notes_days: number | null;      // Since X days (null = all time)
   tags: string[];                          // Tag IDs
+
+  // ── Base Konekt (database) only ──
+  db_technologies: string[];              // Multi-select free text
+  db_email_verified: boolean | null;      // Toggle: null = indifferent
+  db_revenue_min: string;                 // e.g. "1M"
+  db_revenue_max: string;
+  db_funding_stage: string;              // Seed | Series A | B | C | D | IPO
+  db_company_domain: string;             // Free text
 }
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
