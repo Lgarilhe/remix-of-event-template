@@ -155,7 +155,8 @@ Deno.serve(async (req) => {
     }
 
     const _body = await req.json();
-    const { job } = _body as { job: Job };
+    const { job, search_source } = _body as { job: Job; search_source?: string };
+    const isDatabase = search_source === 'database';
 
     // Lazy import to avoid crashing the function if _shared modules have issues
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
@@ -190,7 +191,20 @@ Deno.serve(async (req) => {
     }
 
     // Build the prompt for AI
-    const systemPrompt = `Tu es un expert en recrutement LinkedIn et en Boolean Search avancé. À partir d'une fiche de poste, tu génères des filtres de recherche LinkedIn ÉQUILIBRÉS (ni trop larges, ni trop restrictifs).
+    const databaseAddon = isDatabase ? `
+
+⚠️ MODE BASE DE DONNÉES (pas LinkedIn) :
+La recherche utilise une base de données de profils (pas LinkedIn). Les différences :
+- Le champ "keywords" doit contenir des MOTS SIMPLES séparés par des espaces (PAS de syntaxe Boolean, PAS de AND/OR/NOT, PAS de guillemets, PAS de parenthèses)
+- Exemple BON : "Python Kubernetes MLOps Data Engineer"
+- Exemple MAUVAIS : "(Python OR Python3) AND (Kubernetes OR K8s)"
+- Le champ "role_keywords" doit contenir des TITRES DE POSTE en texte simple, séparés par des virgules
+- Pas de filtre école (school) — utilise les mots-clés à la place
+- Pas de filtre skills structuré — inclus dans les mots-clés
+- Privilégie des mots-clés LARGES pour avoir plus de résultats
+` : '';
+
+    const systemPrompt = `Tu es un expert en recrutement ${isDatabase ? '' : 'LinkedIn et en Boolean Search avancé. '}À partir d'une fiche de poste, tu génères des filtres de recherche ${isDatabase ? 'SIMPLES et LARGES' : 'LinkedIn ÉQUILIBRÉS'} (ni trop larges, ni trop restrictifs).${databaseAddon}
 
 ⚠️ RÈGLE CRITIQUE - SÉPARATION DES FILTRES:
 Le champ "keywords" sert UNIQUEMENT à affiner la recherche avec des TECHNOLOGIES/COMPÉTENCES (= le "Work").

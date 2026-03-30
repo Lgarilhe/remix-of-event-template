@@ -258,6 +258,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             accountId={selectedAccount}
             currentLocation={filters.location}
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+            searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           />
 
 

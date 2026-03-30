@@ -19,6 +19,8 @@ interface AutoFillFiltersButtonProps {
   currentLocation?: LocationFilterItem[];
   onApplyFilters: (filters: Partial<LinkedInFiltersState>) => void;
   disabled?: boolean;
+  /** Search source: affects which filters are generated */
+  searchSource?: 'linkedin' | 'database';
 }
 
 interface GeneratedFilters {
@@ -105,6 +107,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   currentLocation,
   onApplyFilters,
   disabled,
+  searchSource = 'linkedin',
 }) => {
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -135,7 +138,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       return;
     }
 
-    if (!accountId) {
+    if (!accountId && searchSource !== 'database') {
       toast.error('Compte LinkedIn non connecté');
       return;
     }
@@ -145,7 +148,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await invokeWithCredits<{ filters?: any; success?: boolean; error?: string }>('generate-search-filters', 'filter_generation', { job: selectedJob }, { modelOverride: selectedModel ?? undefined });
+      const { data, error } = await invokeWithCredits<{ filters?: any; success?: boolean; error?: string }>('generate-search-filters', 'filter_generation', { job: selectedJob, search_source: searchSource || 'linkedin' }, { modelOverride: selectedModel ?? undefined });
 
       if (error) {
         console.error('[AutoFill] invokeWithCredits error:', error.message);
