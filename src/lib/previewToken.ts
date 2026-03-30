@@ -1,10 +1,12 @@
 const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
 const PREVIEW_ACCESS_TOKEN_PARAM = '__lovable_token';
 
+const getTokenFromSearch = (search = '') => new URLSearchParams(search).get(PREVIEW_ACCESS_TOKEN_PARAM);
+
 export const persistPreviewAccessToken = (search = ''): string | null => {
   if (typeof window === 'undefined') return null;
 
-  const token = new URLSearchParams(search).get(PREVIEW_ACCESS_TOKEN_PARAM);
+  const token = getTokenFromSearch(search);
   if (token) {
     window.sessionStorage.setItem(PREVIEW_ACCESS_TOKEN_STORAGE_KEY, token);
   }
@@ -25,6 +27,27 @@ export const withPreviewAccessToken = (pathname: string, search = '', hash = '')
   }
 
   const params = new URLSearchParams(search);
+  params.set(PREVIEW_ACCESS_TOKEN_PARAM, token);
+
+  return {
+    pathname,
+    search: `?${params.toString()}`,
+    hash,
+  };
+};
+
+export const withPreviewAccessTokenFromSearch = (
+  pathname: string,
+  currentSearch = '',
+  nextSearch = '',
+  hash = '',
+) => {
+  const token = getTokenFromSearch(currentSearch) ?? getPreviewAccessToken();
+  if (!token) {
+    return { pathname, search: nextSearch, hash };
+  }
+
+  const params = new URLSearchParams(nextSearch);
   params.set(PREVIEW_ACCESS_TOKEN_PARAM, token);
 
   return {
