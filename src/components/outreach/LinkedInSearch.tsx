@@ -293,6 +293,30 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setFilters: search.setFilters,
   });
 
+  // Auto-fill trigger for readiness panel
+  const [readinessAutoFillLoading, setReadinessAutoFillLoading] = useState(false);
+  const handleReadinessAutoFill = useCallback(async () => {
+    if (!search.selectedJob) {
+      toast.error('Aucun poste sélectionné');
+      return;
+    }
+    setReadinessAutoFillLoading(true);
+    try {
+      const { data, error } = await invokeEdgeFunction<{ filters?: any; success?: boolean; error?: string }>(
+        'generate-search-filters',
+        { job: search.selectedJob, search_source: searchSource || 'linkedin' }
+      );
+      if (error) throw error;
+      if (!data?.success || !data?.filters) throw new Error(data?.error || 'Réponse invalide');
+      handleAutoFillFilters(data.filters);
+      toast.success('Filtres générés par l\'IA !');
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur lors de la génération des filtres');
+    } finally {
+      setReadinessAutoFillLoading(false);
+    }
+  }, [search.selectedJob, searchSource, handleAutoFillFilters]);
+
   // Account data helpers
   const selectedAccountData = useMemo(() => 
     accounts.find(a => a.id === selectedAccount),
