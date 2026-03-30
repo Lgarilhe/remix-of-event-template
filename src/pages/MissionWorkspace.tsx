@@ -214,6 +214,12 @@ const MissionWorkspace = () => {
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="mt-0 min-w-0"
             >
+              {activeTab === 'overview' && (
+                <SectionErrorBoundary fallbackTitle="Erreur dans le Dashboard">
+                  <MissionBentoDashboard project={project} onTabChange={setActiveTab} />
+                </SectionErrorBoundary>
+              )}
+
               {activeTab === 'brief' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
                   <MissionBrief project={project} readOnly={!canEditBrief} />
