@@ -9,6 +9,32 @@ import { reloadWithPreviewAccessToken } from "@/lib/previewToken";
 import App from "./App.tsx";
 import "./index.css";
 
+const isRecoverableImportError = (value: unknown) => {
+  const message =
+    typeof value === 'string'
+      ? value
+      : value instanceof Error
+        ? value.message
+        : typeof value === 'object' && value !== null && 'message' in value
+          ? String((value as { message?: unknown }).message ?? '')
+          : '';
+
+  return [
+    'Failed to fetch dynamically imported module',
+    'Importing a module script failed',
+    'Failed to load module script',
+    'ChunkLoadError',
+  ].some((needle) => message.includes(needle));
+};
+
+const recoverFromImportError = () => {
+  const reloaded = sessionStorage.getItem('chunk-reload');
+  if (!reloaded) {
+    sessionStorage.setItem('chunk-reload', '1');
+    reloadWithPreviewAccessToken();
+  }
+};
+
 // ── Sentry error monitoring ──
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN;
 if (SENTRY_DSN) {
@@ -24,10 +50,7 @@ if (SENTRY_DSN) {
     replaysOnErrorSampleRate: 0.5, // Record 50% of sessions with errors
     beforeSend(event) {
       // Don't send chunk reload errors (handled by the auto-reload below)
-      if (event.exception?.values?.some(v =>
-        v.value?.includes('Failed to fetch dynamically imported module') ||
-        v.value?.includes('Importing a module script failed')
-      )) {
+      if (event.exception?.values?.some(v => isRecoverableImportError(v.value))) {
         return null;
       }
       return event;
@@ -37,17 +60,18 @@ if (SENTRY_DSN) {
 
 // Auto-reload on stale chunk errors (after deploys)
 window.addEventListener('error', (e) => {
-  if (
-    e.message?.includes('Failed to fetch dynamically imported module') ||
-    e.message?.includes('Importing a module script failed')
-  ) {
-    const reloaded = sessionStorage.getItem('chunk-reload');
-    if (!reloaded) {
-      sessionStorage.setItem('chunk-reload', '1');
-      reloadWithPreviewAccessToken();
-    }
+  if (isRecoverableImportError(e.error ?? e.message)) {
+    recoverFromImportError();
   }
 });
+
+window.addEventListener('unhandledrejection', (e) => {
+  if (isRecoverableImportError(e.reason)) {
+    e.preventDefault();
+    recoverFromImportError();
+  }
+});
+
 window.addEventListener('load', () => sessionStorage.removeItem('chunk-reload'));
 
 const queryClient = new QueryClient({
