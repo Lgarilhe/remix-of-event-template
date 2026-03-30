@@ -28,6 +28,7 @@ const EditField = ({ label, value, field, projectId }: {
 
 export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly = false }) => {
   const { updateProject } = useSourcingProjects();
+  const { isAgency } = useOrganization();
 
   return (
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6 space-y-6">
