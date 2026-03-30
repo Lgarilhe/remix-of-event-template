@@ -37,6 +37,7 @@ const Marketplace = lazy(() => import("./pages/Marketplace"));
 const ClientPortalPage = lazy(() => import("./pages/ClientPortal"));
 const AcceptMissionInvite = lazy(() => import("./pages/AcceptMissionInvite"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
+const PrivacyPage = lazy(() => import("./pages/Privacy"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
@@ -158,6 +159,7 @@ const AppContent = () => {
           <Route path="/client/:token" element={<ClientPortalPage />} />
           <Route path="/mission-invite/:token" element={<ProtectedRoute><AcceptMissionInvite /></ProtectedRoute>} />
           <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
+          <Route path="/privacy" element={<Suspense fallback={null}><PrivacyPage /></Suspense>} />
           <Route path="/r/:slug" element={<RecruiterPublicProfile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
