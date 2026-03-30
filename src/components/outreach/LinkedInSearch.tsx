@@ -160,7 +160,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   });
 
   // Pool view toggle
-  const [showPoolView, setShowPoolView] = useLocalState(true);
+  const [showPoolView, setShowPoolView] = useLocalState(false);
 
   // Scored sort
   const [scoredSortBy, setScoredSortBy] = useLocalState<ScoredSortBy>('score_desc');
