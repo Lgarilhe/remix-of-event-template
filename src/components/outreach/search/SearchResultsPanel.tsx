@@ -690,6 +690,48 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               />
             )}
 
+            {/* Contextual hint: after first search */}
+            <AnimatePresence>
+              {hasSearched && !hintSearchDismissed && !hasScoredProfiles && displayResults.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="border border-brutal-accent/30 bg-brutal-accent/5 p-3 flex items-start gap-2.5"
+                >
+                  <span className="text-sm shrink-0">🎯</span>
+                  <p className="text-[11px] text-foreground/80 leading-relaxed flex-1">
+                    Sélectionnez les profils intéressants et cliquez <strong className="text-foreground">Score</strong> pour que l'IA les évalue selon votre brief.
+                  </p>
+                  <button
+                    onClick={() => dismissHint('hint:after-first-search', setHintSearchDismissed)}
+                    className="text-muted-foreground hover:text-foreground text-xs shrink-0"
+                  >✕</button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Contextual hint: after first scoring batch */}
+            <AnimatePresence>
+              {hasScoredProfiles && !hintScoringDismissed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
+                >
+                  <span className="text-sm shrink-0">🟢</span>
+                  <p className="text-[11px] text-foreground/80 leading-relaxed flex-1">
+                    Les profils sont scorés ! Les <strong className="text-accent">Go</strong> sont les meilleurs matchs. Envoyez-leur un message ou ajoutez-les au pipeline.
+                  </p>
+                  <button
+                    onClick={() => dismissHint('hint:after-first-scoring', setHintScoringDismissed)}
+                    className="text-muted-foreground hover:text-foreground text-xs shrink-0"
+                  >✕</button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Profile cards */}
             {displayResults.map((profile, index) => (
               <motion.div
