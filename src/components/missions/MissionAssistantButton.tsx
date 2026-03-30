@@ -9,7 +9,7 @@ import type { JobDetails } from '@/types/jobDetails';
 const MODE_CONFIG: Record<string, { label: string; buildMessage: (name: string) => string }> = {
   brief: {
     label: 'Discuter avec l\'assistant IA',
-    buildMessage: (name) => `Aide-moi à compléter mon brief pour le poste ${name}`,
+    buildMessage: (name) => `Aide-moi à compléter mon brief pour le poste ${name}. Voici ce qui est déjà rempli, dis-moi ce qui manque et pose-moi des questions pour compléter.`,
   },
   process: {
     label: 'Suggérer un process d\'évaluation',
@@ -51,12 +51,7 @@ export const MissionAssistantButton: React.FC<MissionAssistantButtonProps> = ({
       mode,
       briefContext: project.job_details as Record<string, unknown> ?? {},
       initialMessage: config.buildMessage(name),
-      job: {
-        id: project.id,
-        title: jd.title || project.name || '',
-        description: jd.mission_description || '',
-        status: project.status || 'active',
-      } as any,
+      job: undefined,
     });
   };
 
