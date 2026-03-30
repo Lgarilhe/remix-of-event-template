@@ -93,6 +93,7 @@ const getApiModeLabel = (mode: LinkedInApiMode): string => {
   switch (mode) {
     case 'recruiter': return 'Recruiter';
     case 'sales_navigator': return 'Sales Nav';
+    case 'database': return 'Base Konekt';
     default: return 'Classic';
   }
 };
@@ -106,13 +107,22 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   apiMode = 'classic',
   compact = false,
 }) => {
-  const searchLimit = LINKEDIN_LIMITS.SEARCH_RESULTS[apiMode];
-  const profileLimit = LINKEDIN_LIMITS.PROFILE_VISITS[apiMode];
-  const messageLimit = LINKEDIN_LIMITS.MESSAGES[apiMode];
-  const inviteLimit = LINKEDIN_LIMITS.INVITATIONS[apiMode];
-  const inmailLimit = LINKEDIN_LIMITS.INMAIL_DAILY[apiMode];
+  const isDatabaseMode = apiMode === 'database';
+  const searchLimit = isDatabaseMode ? 999999 : LINKEDIN_LIMITS.SEARCH_RESULTS[apiMode];
+  const profileLimit = isDatabaseMode ? 1 : LINKEDIN_LIMITS.PROFILE_VISITS[apiMode];
+  const messageLimit = isDatabaseMode ? 1 : LINKEDIN_LIMITS.MESSAGES[apiMode];
+  const inviteLimit = isDatabaseMode ? 1 : LINKEDIN_LIMITS.INVITATIONS[apiMode];
+  const inmailLimit = isDatabaseMode ? 1 : LINKEDIN_LIMITS.INMAIL_DAILY[apiMode];
 
   if (compact) {
+    if (isDatabaseMode) {
+      return (
+        <div className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium border bg-muted text-foreground border-foreground">
+          <span>Base Konekt</span>
+        </div>
+      );
+    }
+
     const totalUsed = searchResultsFetched + profileVisits + messagesSent;
     const totalLimit = searchLimit + profileLimit + messageLimit;
     const percentUsed = Math.min(100, (totalUsed / totalLimit) * 100);

@@ -221,7 +221,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     search.setStatusFilter(cached.statusFilter);
     search.setShowDismissed(cached.showDismissed);
     search.setSelectedProfiles(new Set(cached.selectedProfiles));
-    setShowPoolView(cached.showPoolView);
+    setShowPoolView(cached.hasSearched ? cached.showPoolView : false);
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
   }, [missionCacheKey, search]);
