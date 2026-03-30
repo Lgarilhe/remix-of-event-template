@@ -40,6 +40,9 @@ interface SearchFiltersPanelProps {
   isApiModeAvailable: boolean;
   subscriptions?: { recruiter?: boolean; sales_navigator?: boolean };
   
+  // Mission context
+  activeProject?: SourcingProject | null;
+  
   // Quota
   quota: {
     quotas: {
