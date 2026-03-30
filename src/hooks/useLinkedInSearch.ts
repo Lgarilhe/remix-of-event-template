@@ -374,18 +374,18 @@ export function useLinkedInSearch({
           client: activeProject.client_name ? { name: activeProject.client_name, sector: jd.client?.sector } : undefined,
         });
         setSelectedJob(enriched as Job);
-      } else if (activeProject.name) {
-        // Brief-based project without a real job
+      } else {
+        // Build synthetic job from mission brief — always, even without name
         const synthetic = buildJobFromBrief({
           id: `project:${activeProject.id}`,
-          title: jd.title || activeProject.name,
+          title: jd.title || activeProject.name || 'Mission sans titre',
           description: activeProject.description || '',
           client: activeProject.client_name ? { name: activeProject.client_name, sector: jd.client?.sector } : undefined,
         });
         setSelectedJob(synthetic as Job);
       }
     }
-  }, [activeProject?.id]);
+  }, [activeProject?.id, activeProject?.job_details]); // Also re-run when brief data changes
 
   // Deferred location resolution: when selectedAccount becomes available and we have a pending location
   useEffect(() => {
