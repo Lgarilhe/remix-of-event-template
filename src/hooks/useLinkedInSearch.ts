@@ -271,8 +271,9 @@ export function useLinkedInSearch({
     // If filters were manually edited (UI format already), load directly
     if (savedFilters.last_manual_edit) {
       const { last_manual_edit, generated_at, suggestions, skills_keywords, location_keywords, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
+      // Mark as initial load so the save effect skips this change
+      initialFilterLoadRef.current = true;
       setFilters({ ...INITIAL_FILTERS, ...uiFilters });
-      toast.info(`Filtres du projet "${activeProject.name}" restaurés`);
       return;
     }
 
