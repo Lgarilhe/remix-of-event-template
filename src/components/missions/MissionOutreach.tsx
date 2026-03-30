@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MissionContextBanner } from './MissionContextBanner';
+import { MissionAssistantButton } from './MissionAssistantButton';
 import { useNavigate } from 'react-router-dom';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInAccount } from '@/pages/Outreach';
@@ -181,6 +182,10 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   return (
     <div className="border border-foreground border-t-0 bg-background">
+      {/* Assistant button */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/10">
+        <MissionAssistantButton project={project} mode="outreach" />
+      </div>
       {/* Contextual banner */}
       {enrollmentStats.total === 0 && (
         <MissionContextBanner
