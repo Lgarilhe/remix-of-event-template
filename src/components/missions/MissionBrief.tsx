@@ -118,17 +118,17 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   }, [setSearchParams]);
 
   return (
-    <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
+    <div className="bg-background border-2 border-foreground border-t-0 p-4 sm:p-6">
       {/* Voice toggle */}
       {!readOnly && (
         <div className="flex items-center justify-end mb-4">
           <button
             onClick={() => setShowVoice(!showVoice)}
             className={cn(
-              "flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border transition-colors",
+              "flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 transition-all",
               showVoice
                 ? "bg-foreground text-background border-foreground"
-                : "bg-background text-muted-foreground border-foreground/20 hover:border-foreground hover:text-foreground"
+                : "bg-background text-muted-foreground border-foreground/30 hover:border-foreground hover:text-foreground"
             )}
           >
             <Mic className="w-3 h-3" /> {showVoice ? 'Masquer la dictée' : 'Dicter le brief'}
@@ -138,7 +138,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
 
       {/* Voice mode */}
       {showVoice && !readOnly && (
-        <div className="mb-6 border border-foreground/20 p-4 space-y-3">
+        <div className="mb-6 border-2 border-foreground/30 p-4 space-y-3">
           <VoiceDictation
             onTranscript={(chunk) => setVoiceTranscript(prev => (prev ? prev + ' ' : '') + chunk)}
             onComplete={(fullText) => {
@@ -147,7 +147,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
             }}
           />
           {voiceTranscript && (
-            <div className="border border-foreground/10 bg-muted/10 p-3 max-h-[150px] overflow-y-auto">
+            <div className="border-2 border-foreground/15 bg-foreground/[0.03] p-3 max-h-[150px] overflow-y-auto">
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{voiceTranscript}</p>
             </div>
           )}
@@ -168,7 +168,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
           onClick={handleAnalyze}
           disabled={isAnalyzing}
           className={cn(
-            "relative overflow-hidden flex items-center gap-2 h-[36px] px-5 text-[10px] font-medium uppercase tracking-wider border border-foreground group",
+            "relative overflow-hidden flex items-center gap-2 h-[36px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground group",
             isAnalyzing ? "bg-muted text-muted-foreground" : "bg-foreground text-background"
           )}
         >
@@ -182,42 +182,42 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
       </div>
 
       {analysis && (
-        <div className="border border-foreground mt-4 bg-muted/20">
+        <div className="border-2 border-foreground mt-4">
           <div className="border-l-4 border-brutal-accent p-4 sm:p-6 space-y-4">
             <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">🎯 Stratégie de recherche</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">🎯 Stratégie de recherche</h3>
               <p className="text-sm text-foreground">{analysis.analysis.search_rationale || 'Analyse générée'}</p>
             </div>
             <div className="space-y-2">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">👤 Profil idéal</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">👤 Profil idéal</h3>
               {analysis.analysis.role_keywords.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Titres:</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mr-1 self-center">Titres:</span>
                   {analysis.analysis.role_keywords.map((kw, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider">{kw}</span>
+                    <span key={i} className="px-2 py-0.5 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider border-2 border-foreground">{kw}</span>
                   ))}
                 </div>
               )}
               {analysis.filters.skills_keywords.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Skills:</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mr-1 self-center">Skills:</span>
                   {analysis.filters.skills_keywords.map((skill, i) => (
-                    <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">{skill}</span>
+                    <span key={i} className="px-2 py-0.5 border-2 border-foreground/30 text-foreground text-[10px] font-bold uppercase tracking-wider">{skill}</span>
                   ))}
                 </div>
               )}
             </div>
             <div>
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">🔍 Boolean</h3>
-              <code className="block text-[11px] text-foreground/80 bg-muted p-3 border border-foreground/10 break-all">{analysis.filters.keywords}</code>
+              <h3 className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-2">🔍 Boolean</h3>
+              <code className="block text-[11px] text-foreground/80 bg-foreground/[0.03] p-3 border-2 border-foreground/15 break-all font-mono">{analysis.filters.keywords}</code>
             </div>
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-foreground/10">
+            <div className="flex flex-wrap gap-2 pt-3 border-t-2 border-foreground/15">
               <button onClick={handleAcceptAndSource}
-                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group">
+                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background group">
                 <Play className="w-3.5 h-3.5 relative z-10" /><span className="relative z-10">Accepter & lancer le sourcing</span>
               </button>
               <button onClick={() => setAnalysis(null)}
-                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group">
+                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground group">
                 <RefreshCw className="w-3.5 h-3.5 relative z-10" /><span className="relative z-10">Regénérer</span>
                 <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>

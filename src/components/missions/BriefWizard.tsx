@@ -12,14 +12,14 @@ const Field = ({ label, value, onChange, type = 'text', placeholder, className }
   label: string; value: string | number | undefined | null; onChange: (val: string) => void;
   type?: 'text' | 'number' | 'textarea' | 'email' | 'tel' | 'url'; placeholder?: string; className?: string;
 }) => (
-  <div className={cn("space-y-1", className)}>
-    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+  <div className={cn("space-y-1.5", className)}>
+    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
     {type === 'textarea' ? (
       <textarea defaultValue={value ?? ''} onBlur={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full min-h-[80px] px-3 py-2 text-sm border border-foreground/20 bg-background text-foreground resize-y focus:border-foreground focus:outline-none transition-colors" />
+        className="w-full min-h-[80px] px-3 py-2 text-sm border-2 border-foreground/30 bg-background text-foreground resize-y focus:border-foreground focus:outline-none transition-colors placeholder:text-muted-foreground/40" />
     ) : (
       <input type={type} defaultValue={value ?? ''} onBlur={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full h-[36px] px-3 text-sm border border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors" />
+        className="w-full h-[38px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors placeholder:text-muted-foreground/40" />
     )}
   </div>
 );
@@ -28,10 +28,10 @@ const SelectField = ({ label, value, onChange, options, placeholder }: {
   label: string; value: string | undefined | null; onChange: (val: string) => void;
   options: Record<string, string>; placeholder?: string;
 }) => (
-  <div className="space-y-1">
-    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+  <div className="space-y-1.5">
+    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
     <select value={value || ''} onChange={(e) => onChange(e.target.value)}
-      className="w-full h-[36px] px-3 text-sm border border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors">
+      className="w-full h-[38px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors">
       <option value="">{placeholder || '---'}</option>
       {Object.entries(options).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
     </select>
@@ -44,8 +44,8 @@ const TagInput = ({ label, tags, onChange, color, placeholder }: {
   const [input, setInput] = useState('');
   const addTag = () => { const v = input.trim(); if (v && !tags.includes(v)) onChange([...tags, v]); setInput(''); };
   return (
-    <div className="space-y-1.5">
-      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+    <div className="space-y-2">
+      <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag, i) => (
           <motion.span
@@ -53,7 +53,7 @@ const TagInput = ({ label, tags, onChange, color, placeholder }: {
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
-            className={cn("flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider", color)}
+            className={cn("flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border-2", color)}
           >
             {tag}
             <button onClick={() => onChange(tags.filter((_, j) => j !== i))} className="hover:opacity-60"><X className="w-2.5 h-2.5" /></button>
@@ -63,7 +63,7 @@ const TagInput = ({ label, tags, onChange, color, placeholder }: {
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
           onBlur={() => { if (input.trim()) addTag(); }}
           placeholder={placeholder || 'Ajouter...'}
-          className="h-[28px] w-32 px-2 text-[11px] border border-dashed border-foreground/15 bg-transparent text-foreground focus:border-foreground/40 focus:outline-none" />
+          className="h-[30px] w-32 px-2 text-[11px] border-2 border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground transition-colors focus:outline-none" />
       </div>
     </div>
   );
@@ -104,10 +104,10 @@ function computeCompletionScore(d: JobDetails): { score: number; items: Array<{ 
 function isStepValid(stepIndex: number, d: JobDetails): boolean {
   switch (stepIndex) {
     case 0: return !!d.title;
-    case 1: return true; // optional
-    case 2: return true; // optional
-    case 3: return true; // optional
-    case 4: return true; // optional
+    case 1: return true;
+    case 2: return true;
+    case 3: return true;
+    case 4: return true;
     default: return true;
   }
 }
@@ -128,7 +128,7 @@ const WizardStepper: React.FC<{
   completedSteps: boolean[];
   onStepClick: (i: number) => void;
 }> = ({ activeStep, steps: stepList, completedSteps, onStepClick }) => (
-  <div className="flex items-center gap-0 px-4 py-3 bg-muted/20 border-b border-foreground/10">
+  <div className="flex items-center gap-0 px-4 py-3 bg-foreground/[0.03] border-b-2 border-foreground">
     {stepList.map((step, i) => {
       const isActive = activeStep === i;
       const isDone = completedSteps[i];
@@ -137,8 +137,7 @@ const WizardStepper: React.FC<{
           {i > 0 && (
             <div className="flex-1 h-[2px] bg-foreground/10 mx-1 sm:mx-2 overflow-hidden min-w-[12px]">
               <motion.div
-                className="h-full"
-                style={{ background: isDone || i <= activeStep ? 'hsl(var(--brutal-accent))' : 'transparent' }}
+                className="h-full bg-brutal-accent"
                 initial={{ width: '0%' }}
                 animate={{ width: isDone || i <= activeStep ? '100%' : '0%' }}
                 transition={{ duration: 0.4, delay: i * 0.05, ease: 'easeOut' as const }}
@@ -152,14 +151,13 @@ const WizardStepper: React.FC<{
           >
             <motion.div
               className={cn(
-                "w-7 h-7 flex items-center justify-center text-[10px] font-black shrink-0 transition-all duration-200",
+                "w-7 h-7 flex items-center justify-center text-[10px] font-black shrink-0 transition-all duration-200 border-2",
                 isActive
-                  ? "bg-brutal-accent text-background"
+                  ? "bg-brutal-accent text-foreground border-foreground"
                   : isDone
-                    ? "text-background"
-                    : "border border-foreground/20 text-muted-foreground group-hover:border-foreground/40"
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-foreground/20 text-muted-foreground group-hover:border-foreground/50"
               )}
-              style={isDone && !isActive ? { background: 'hsl(142 71% 45%)' } : undefined}
               animate={isActive ? { scale: [1, 1.08, 1] } : {}}
               transition={isActive ? { duration: 2, repeat: Infinity, ease: 'easeInOut' as const } : {}}
             >
@@ -176,7 +174,7 @@ const WizardStepper: React.FC<{
               )}
             </motion.div>
             <span className={cn(
-              "hidden sm:inline text-[9px] font-bold uppercase tracking-wider transition-colors",
+              "hidden sm:inline text-[9px] font-black uppercase tracking-wider transition-colors",
               isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
             )}>
               {step.label}
@@ -186,7 +184,7 @@ const WizardStepper: React.FC<{
       );
     })}
     {/* Step counter (mobile) */}
-    <span className="sm:hidden ml-auto text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+    <span className="sm:hidden ml-auto text-[9px] font-black text-muted-foreground uppercase tracking-wider">
       {activeStep + 1}/{stepList.length}
     </span>
   </div>
@@ -201,24 +199,24 @@ const CompletionPanel: React.FC<{
   activeStep: number;
   onStepClick: (i: number) => void;
 }> = ({ score, items, onLaunchSourcing, activeStep, onStepClick }) => {
-  const progressColor = score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-primary';
-  const borderColor = score < 30 ? 'border-destructive' : score < 70 ? 'border-brutal-accent' : 'border-primary';
+  const progressColor = score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground';
+  const borderColor = score < 30 ? 'border-destructive' : score < 70 ? 'border-brutal-accent' : 'border-foreground';
 
   return (
-    <div className="border border-foreground/20 p-4 sticky top-24">
+    <div className="border-2 border-foreground p-4 sticky top-24">
       {/* Score */}
       <div className="text-center mb-4">
         <div className={cn("relative inline-flex items-center justify-center w-16 h-16 border-2 transition-colors duration-500", borderColor)}>
           <div className="flex items-baseline">
-            <NumberTicker value={score} className={cn("text-lg font-bold tabular-nums", score >= 70 ? "text-foreground" : "text-muted-foreground")} />
-            <span className={cn("text-sm font-bold", score >= 70 ? "text-foreground" : "text-muted-foreground")}>%</span>
+            <NumberTicker value={score} className={cn("text-lg font-black tabular-nums", score >= 70 ? "text-foreground" : "text-muted-foreground")} />
+            <span className={cn("text-sm font-black", score >= 70 ? "text-foreground" : "text-muted-foreground")}>%</span>
           </div>
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-2">Completion</p>
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mt-2">Completion</p>
       </div>
 
       {/* Color progress bar */}
-      <div className="h-2 w-full bg-foreground/10 mb-4 overflow-hidden">
+      <div className="h-2 w-full bg-foreground/10 mb-4 overflow-hidden border border-foreground/20">
         <motion.div
           className={cn("h-full transition-colors duration-500", progressColor)}
           initial={{ width: 0 }}
@@ -229,7 +227,7 @@ const CompletionPanel: React.FC<{
 
       {/* Checklist */}
       <div className="space-y-1.5 mb-4">
-        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Checklist</p>
+        <p className="text-[9px] font-black uppercase tracking-wider text-muted-foreground mb-2">Checklist</p>
         {items.map((item) => (
           <motion.div
             key={item.label}
@@ -239,19 +237,19 @@ const CompletionPanel: React.FC<{
           >
             <motion.div
               className={cn(
-                "w-4 h-4 flex items-center justify-center shrink-0 border transition-colors",
-                item.done ? "bg-primary border-primary" : "border-foreground/20 bg-background"
+                "w-4 h-4 flex items-center justify-center shrink-0 border-2 transition-colors",
+                item.done ? "bg-foreground border-foreground" : "border-foreground/20 bg-background"
               )}
               animate={item.done ? { scale: [1, 1.2, 1] } : {}}
               transition={{ duration: 0.3 }}
             >
               {item.done && (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 400, damping: 15 }}>
-                  <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                  <Check className="w-2.5 h-2.5 text-background" />
                 </motion.div>
               )}
             </motion.div>
-            <span className={cn("transition-all", item.done ? "text-muted-foreground line-through" : "text-foreground")}>
+            <span className={cn("transition-all font-medium uppercase tracking-wider", item.done ? "text-muted-foreground line-through" : "text-foreground")}>
               {item.label}
             </span>
           </motion.div>
@@ -260,17 +258,17 @@ const CompletionPanel: React.FC<{
 
       {/* 100% celebration */}
       {score === 100 && (
-        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-3 border-t border-foreground/10">
+        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-3 border-t-2 border-foreground/20">
           <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 0.5, delay: 0.2 }} className="text-2xl mb-1">
             <span role="img" aria-label="celebration">&#x1F389;</span>
           </motion.div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Brief complet !</p>
+          <p className="text-[10px] font-black uppercase tracking-wider text-foreground">Brief complet !</p>
         </motion.div>
       )}
 
       {/* Launch sourcing CTA at 70%+ */}
       {score >= 70 && onLaunchSourcing && (
-        <div className="mt-4 pt-4 border-t border-foreground/10">
+        <div className="mt-4 pt-4 border-t-2 border-foreground/20">
           <ShimmerButton onClick={onLaunchSourcing} className="w-full h-[36px] text-[10px]" shimmerDuration="1.5s">
             <Sparkles className="w-3 h-3" />
             Lancer le sourcing
@@ -280,17 +278,19 @@ const CompletionPanel: React.FC<{
       )}
 
       {/* Quick step nav */}
-      <div className="mt-4 pt-4 border-t border-foreground/10 space-y-1">
+      <div className="mt-4 pt-4 border-t-2 border-foreground/20 space-y-0.5">
         {STEPS.map((step, i) => (
           <button
             key={step.key}
             onClick={() => onStepClick(i)}
             className={cn(
-              "w-full flex items-center gap-2 px-2 py-1.5 text-[10px] uppercase tracking-wider text-left transition-colors",
-              activeStep === i ? "text-foreground font-bold" : "text-muted-foreground hover:text-foreground"
+              "w-full flex items-center gap-2 px-2 py-1.5 text-[10px] uppercase tracking-wider text-left transition-all",
+              activeStep === i
+                ? "text-foreground font-black bg-brutal-accent/20"
+                : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
             )}
           >
-            <span className="w-4 text-center">{step.emoji}</span> {step.label}
+            <span className="w-4 text-center font-black">{step.emoji}</span> {step.label}
           </button>
         ))}
       </div>
@@ -351,11 +351,11 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="border border-foreground/20 border-b-0 p-6 sm:p-8 bg-muted/20"
+            className="border-2 border-foreground border-b-0 p-6 sm:p-8 bg-brutal-accent/5"
           >
             <div className="flex flex-col sm:flex-row items-center gap-5">
               <motion.div
-                className="w-14 h-14 bg-foreground text-background flex items-center justify-center shrink-0"
+                className="w-14 h-14 bg-foreground text-background flex items-center justify-center shrink-0 border-2 border-foreground"
                 initial={{ scale: 0, rotate: -90 }}
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 15 }}
@@ -374,8 +374,8 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
           </motion.div>
         )}
 
-        {/* Wizard stepper */}
-        <div className="border border-foreground/20">
+        {/* Wizard stepper + content */}
+        <div className="border-2 border-foreground">
           <WizardStepper
             activeStep={activeStep}
             steps={STEPS}
@@ -384,7 +384,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
           />
 
           {/* Section header */}
-          <div className="px-5 sm:px-6 pt-5 pb-3 border-b border-foreground/10">
+          <div className="px-5 sm:px-6 pt-5 pb-3 border-b-2 border-foreground/15">
             <motion.h3
               key={`title-${activeStep}`}
               initial={{ opacity: 0, y: 8 }}
@@ -428,17 +428,17 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 
           {/* Navigation prev/next */}
           {!readOnly && (
-            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-t border-foreground/10 bg-muted/10">
+            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-t-2 border-foreground bg-foreground/[0.03]">
               <button
                 onClick={() => goToStep(Math.max(0, activeStep - 1))}
                 disabled={activeStep === 0}
-                className="flex items-center gap-1.5 h-[36px] px-4 text-[10px] font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-30 transition-colors"
+                className="flex items-center gap-1.5 h-[36px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-30 transition-all"
               >
                 <ArrowLeft className="w-3 h-3" />
                 Precedent
               </button>
 
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider">
                 {activeStep + 1} / {STEPS.length}
               </span>
 
@@ -447,7 +447,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
                   onClick={() => goToStep(activeStep + 1)}
                   disabled={!canGoNext}
                   className={cn(
-                    "relative overflow-hidden flex items-center gap-1.5 h-[36px] px-5 text-[10px] font-bold uppercase tracking-wider border transition-all",
+                    "relative overflow-hidden flex items-center gap-1.5 h-[36px] px-5 text-[10px] font-black uppercase tracking-wider border-2 transition-all",
                     canGoNext
                       ? "border-foreground bg-foreground text-background group"
                       : "border-foreground/20 bg-foreground/10 text-muted-foreground cursor-not-allowed"
@@ -466,7 +466,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
                   <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
                     <Check className="w-4 h-4 text-foreground" />
                   </motion.div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">Termine</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-foreground">Termine</span>
                 </div>
               )}
             </div>
@@ -486,19 +486,19 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
       </div>
 
       {/* Mobile: bottom completion bar */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-foreground/20 bg-background/95 backdrop-blur-sm px-4 py-3">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t-2 border-foreground bg-background px-4 py-3">
         <div className="flex items-center gap-3">
           {/* Mini progress */}
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-bold text-foreground">
-                <NumberTicker value={score} className="font-bold" />%
+              <span className="text-[10px] font-black text-foreground">
+                <NumberTicker value={score} className="font-black" />%
               </span>
-              <span className="text-[9px] text-muted-foreground uppercase tracking-wider">complete</span>
+              <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">complete</span>
             </div>
-            <div className="h-1.5 w-full bg-foreground/10 overflow-hidden">
+            <div className="h-1.5 w-full bg-foreground/10 overflow-hidden border border-foreground/20">
               <motion.div
-                className={cn("h-full", score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-primary')}
+                className={cn("h-full", score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground')}
                 animate={{ width: `${score}%` }}
                 transition={{ duration: 0.5 }}
               />
@@ -512,7 +512,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               Sourcing
             </ShimmerButton>
           ) : (
-            <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0">
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wider shrink-0 font-bold">
               {items.filter(i => !i.done).length} restants
             </span>
           )}
@@ -556,8 +556,8 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
       <Field label="Site web" value={d.client?.website} onChange={(v) => updateField('client.website', v)} type="url" placeholder="https://..." />
     </div>
     <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularites..." />
-    <div className="pt-4 border-t border-foreground/10">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Hiring Manager</p>
+    <div className="pt-4 border-t-2 border-foreground/15">
+      <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} />
         <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" />
@@ -599,10 +599,10 @@ const StepProfil = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; upd
 
 const StepCompetences = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
   <div className="space-y-5">
-    <TagInput label="Must-have --- indispensable" tags={d.skills_must_have || []} onChange={(tags) => onUpdate({ skills_must_have: tags })} color="bg-destructive text-destructive-foreground" placeholder="Skill obligatoire" />
-    <TagInput label="Should-have --- important" tags={d.skills_should_have || []} onChange={(tags) => onUpdate({ skills_should_have: tags })} color="bg-brutal-accent text-foreground" placeholder="Skill important" />
-    <TagInput label="Nice-to-have --- bonus" tags={d.skills_nice_to_have || []} onChange={(tags) => onUpdate({ skills_nice_to_have: tags })} color="bg-primary text-primary-foreground" placeholder="Skill bonus" />
-    <TagInput label="A eviter" tags={d.skills_to_avoid || []} onChange={(tags) => onUpdate({ skills_to_avoid: tags })} color="bg-foreground/10 text-foreground line-through border border-foreground/20" placeholder="Trait redhibitoire" />
+    <TagInput label="Must-have — indispensable" tags={d.skills_must_have || []} onChange={(tags) => onUpdate({ skills_must_have: tags })} color="bg-destructive text-destructive-foreground border-destructive" placeholder="Skill obligatoire" />
+    <TagInput label="Should-have — important" tags={d.skills_should_have || []} onChange={(tags) => onUpdate({ skills_should_have: tags })} color="bg-brutal-accent/30 text-foreground border-brutal-accent" placeholder="Skill important" />
+    <TagInput label="Nice-to-have — bonus" tags={d.skills_nice_to_have || []} onChange={(tags) => onUpdate({ skills_nice_to_have: tags })} color="bg-foreground text-background border-foreground" placeholder="Skill bonus" />
+    <TagInput label="A eviter" tags={d.skills_to_avoid || []} onChange={(tags) => onUpdate({ skills_to_avoid: tags })} color="bg-foreground/10 text-foreground line-through border-foreground/30" placeholder="Trait redhibitoire" />
     <Field label="Certifications" value={d.certifications?.join(', ')} onChange={(v) => onUpdate({ certifications: v ? v.split(',').map(s => s.trim()).filter(Boolean) : [] })} placeholder="Ex: AWS, PMP, CISSP (separes par des virgules)" />
     <Field label="Brief brut (texte ou voice transcript)" value={d.raw_brief} onChange={(v) => onUpdate({ raw_brief: v })} type="textarea" placeholder="Collez un brief brut ou retrouvez ici le transcript vocal..." />
   </div>
@@ -664,27 +664,27 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
     <div className="space-y-6">
       {/* Weight distribution */}
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">
           Repartition des poids (total = 100%)
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
             <div key={key} className="space-y-1">
-              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+              <label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
               <div className="flex items-center gap-1">
                 <input
                   type="number" min={0} max={100}
                   value={(weights as any)[key] || 0}
                   onChange={(e) => updateWeightVal(key, Number(e.target.value) || 0)}
-                  className="w-full h-[34px] px-2 text-sm text-center border border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
+                  className="w-full h-[34px] px-2 text-sm text-center border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
                 />
-                <span className="text-[10px] text-muted-foreground">%</span>
+                <span className="text-[10px] text-muted-foreground font-bold">%</span>
               </div>
             </div>
           ))}
         </div>
         {Object.values(weights).reduce((a, b) => a + b, 0) !== 100 && (
-          <p className="text-[10px] text-destructive mt-1">
+          <p className="text-[10px] text-destructive font-bold mt-1">
             Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit etre 100%)
           </p>
         )}
@@ -693,13 +693,13 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
       {/* Criteria list */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
             Criteres ({criteria.length})
           </p>
           {!readOnly && !adding && (
             <button
               onClick={() => setAdding(true)}
-              className="flex items-center gap-1 h-[28px] px-3 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-foreground hover:border-foreground transition-colors"
+              className="flex items-center gap-1 h-[28px] px-3 text-[9px] font-black uppercase tracking-wider border-2 border-foreground text-foreground hover:bg-foreground hover:text-background transition-all"
             >
               <Plus className="w-3 h-3" /> Ajouter
             </button>
@@ -712,7 +712,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="border border-foreground/20 p-3 mb-3 space-y-3 overflow-hidden"
+              className="border-2 border-foreground p-3 mb-3 space-y-3 overflow-hidden"
             >
               <input
                 value={newLabel}
@@ -720,18 +720,18 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCriterion(); } }}
                 autoFocus
                 placeholder="Ex: Maitrise de Kubernetes, Leadership..."
-                className="w-full h-[34px] px-3 text-sm border border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
+                className="w-full h-[34px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
               />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <SelectField label="Categorie" value={newCategory} onChange={setNewCategory} options={CATEGORY_OPTIONS} />
                 <SelectField label="Importance" value={newWeight} onChange={setNewWeight} options={WEIGHT_OPTIONS} />
                 <div className="flex items-end gap-2">
                   <button onClick={addCriterion} disabled={!newLabel.trim()}
-                    className="h-[34px] px-4 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider border border-foreground disabled:opacity-50">
+                    className="h-[34px] px-4 bg-foreground text-background text-[10px] font-black uppercase tracking-wider border-2 border-foreground disabled:opacity-50">
                     Ajouter
                   </button>
                   <button onClick={() => { setAdding(false); setNewLabel(''); }}
-                    className="h-[34px] px-3 text-[10px] font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground hover:text-foreground">
+                    className="h-[34px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all">
                     X
                   </button>
                 </div>
@@ -741,8 +741,8 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
         </AnimatePresence>
 
         {criteria.length === 0 ? (
-          <div className="border border-dashed border-foreground/20 p-6 text-center">
-            <p className="text-sm text-muted-foreground mb-2">Aucun critere defini</p>
+          <div className="border-2 border-dashed border-foreground/30 p-6 text-center">
+            <p className="text-sm text-muted-foreground mb-2 font-bold">Aucun critere defini</p>
             <p className="text-[10px] text-muted-foreground">
               Ajoutez les criteres que le manager souhaite evaluer.
             </p>
@@ -755,42 +755,42 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="border border-foreground/15 px-4 py-3"
+                className="border-2 border-foreground/20 px-4 py-3 hover:border-foreground/40 transition-colors"
               >
                 <div className="flex items-start gap-3">
                   <span className={cn(
-                    "mt-0.5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shrink-0",
-                    c.weight === 3 ? "bg-destructive text-destructive-foreground" :
-                    c.weight === 2 ? "bg-brutal-accent text-foreground" :
-                    "bg-foreground/10 text-foreground"
+                    "mt-0.5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shrink-0 border-2",
+                    c.weight === 3 ? "bg-destructive text-destructive-foreground border-destructive" :
+                    c.weight === 2 ? "bg-brutal-accent/30 text-foreground border-brutal-accent" :
+                    "bg-foreground/5 text-foreground border-foreground/20"
                   )}>
                     {c.weight === 3 ? 'Critique' : c.weight === 2 ? 'Important' : 'Bonus'}
                   </span>
                   <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">{c.label}</span>
-                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{CATEGORY_OPTIONS[c.category] || c.category}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-foreground">{c.label}</span>
+                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">{CATEGORY_OPTIONS[c.category] || c.category}</span>
                       {c.deal_breaker && (
-                        <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground">Deal breaker</span>
+                        <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground border border-destructive">Deal breaker</span>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
+                        <label className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
                         <input
                           defaultValue={c.level_10 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_10: e.target.value || undefined })}
                           placeholder="Excellence pour ce critere"
-                          className="w-full h-[30px] px-2 text-[11px] border border-foreground/15 bg-background text-foreground focus:border-foreground focus:outline-none"
+                          className="w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
                         />
                       </div>
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Redhibitoire si...</label>
+                        <label className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Redhibitoire si...</label>
                         <input
                           defaultValue={c.level_1 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_1: e.target.value || undefined })}
                           placeholder="Ce qui est eliminatoire"
-                          className="w-full h-[30px] px-2 text-[11px] border border-foreground/15 bg-background text-foreground focus:border-foreground focus:outline-none"
+                          className="w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
                         />
                       </div>
                     </div>
