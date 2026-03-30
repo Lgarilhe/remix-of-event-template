@@ -118,17 +118,17 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   }, [setSearchParams]);
 
   return (
-    <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6">
+    <div className="bg-background border-2 border-foreground border-t-0 p-4 sm:p-6">
       {/* Voice toggle */}
       {!readOnly && (
         <div className="flex items-center justify-end mb-4">
           <button
             onClick={() => setShowVoice(!showVoice)}
             className={cn(
-              "flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border transition-colors",
+              "flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 transition-all",
               showVoice
                 ? "bg-foreground text-background border-foreground"
-                : "bg-background text-muted-foreground border-foreground/20 hover:border-foreground hover:text-foreground"
+                : "bg-background text-muted-foreground border-foreground/30 hover:border-foreground hover:text-foreground"
             )}
           >
             <Mic className="w-3 h-3" /> {showVoice ? 'Masquer la dictée' : 'Dicter le brief'}
