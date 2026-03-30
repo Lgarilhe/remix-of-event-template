@@ -49,9 +49,9 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
   const jd = (project.job_details || {}) as JobDetails;
   const briefPct = getBriefCompletion(project);
 
-  const totalCandidates = stats?.total_found || candidates.length || 0;
-  const messaged = stats?.total_messaged || 0;
-  const shortlisted = stats?.total_shortlisted || 0;
+  const totalCandidates = stats?.total || candidates.length || 0;
+  const messaged = stats?.messaged || 0;
+  const shortlisted = stats?.shortlisted || 0;
 
   return (
     <BentoGrid columns={3} className="mt-4">
