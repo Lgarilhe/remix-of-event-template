@@ -88,7 +88,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
           pendingTimerRef.current = null;
           sendMessage(
             `Analyse cette fiche de poste et propose-moi un plan de recherche LinkedIn optimisé.`,
-            job, id
+            job, id, selectedModel
           );
         }, 100);
         setJobSentForConv(id);
@@ -108,8 +108,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
     setInput('');
     const jobCtx = conversationId !== jobSentForConv ? selectedJob : null;
     if (jobCtx) setJobSentForConv(conversationId);
-    await sendMessage(msg, jobCtx);
-  }, [input, sending, sendMessage, selectedJob, conversationId, jobSentForConv]);
+    await sendMessage(msg, jobCtx, undefined, selectedModel);
+  }, [input, sending, sendMessage, selectedJob, conversationId, jobSentForConv, selectedModel]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -152,7 +152,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({ onClose }) => {
       if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
       pendingTimerRef.current = setTimeout(() => {
         pendingTimerRef.current = null;
-        sendMessage(prompt, null, id);
+        sendMessage(prompt, null, id, selectedModel);
       }, 100);
     }
   }, [createConversation, sendMessage]);
