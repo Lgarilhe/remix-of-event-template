@@ -18,7 +18,8 @@ interface CopilotSuggestion {
 
 function computeSuggestion(project: SourcingProject, activeTab: string): CopilotSuggestion | null {
   const hasFilters = project.filters_snapshot && Object.keys(project.filters_snapshot).length > 0;
-  const hasBrief = project.description && project.description.trim().length > 20;
+  const jd = (project.job_details || {}) as Record<string, any>;
+  const hasBrief = !!(jd.title && (jd.mission_description || jd.context || jd.raw_brief));
   const daysSinceLastSearch = project.last_search_at
     ? Math.floor((Date.now() - new Date(project.last_search_at).getTime()) / (1000 * 60 * 60 * 24))
     : null;
