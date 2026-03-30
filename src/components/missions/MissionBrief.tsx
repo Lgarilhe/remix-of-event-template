@@ -138,7 +138,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
 
       {/* Voice mode */}
       {showVoice && !readOnly && (
-        <div className="mb-6 border border-foreground/20 p-4 space-y-3">
+        <div className="mb-6 border-2 border-foreground/30 p-4 space-y-3">
           <VoiceDictation
             onTranscript={(chunk) => setVoiceTranscript(prev => (prev ? prev + ' ' : '') + chunk)}
             onComplete={(fullText) => {
@@ -147,7 +147,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
             }}
           />
           {voiceTranscript && (
-            <div className="border border-foreground/10 bg-muted/10 p-3 max-h-[150px] overflow-y-auto">
+            <div className="border-2 border-foreground/15 bg-foreground/[0.03] p-3 max-h-[150px] overflow-y-auto">
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{voiceTranscript}</p>
             </div>
           )}
