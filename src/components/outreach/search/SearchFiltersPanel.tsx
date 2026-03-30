@@ -250,13 +250,30 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Job Selector — hidden when in mission context (job auto-selected) */}
       {!activeProject && (
-      <div className="space-y-3">
-        <JobSelector
-          selectedJob={selectedJob}
-          onJobChange={onJobChange}
-          onAutoFillFilters={onAutoFillFilters}
-        />
+        <div className="space-y-3">
+          <JobSelector
+            selectedJob={selectedJob}
+            onJobChange={onJobChange}
+            onAutoFillFilters={onAutoFillFilters}
+          />
+        </div>
+      )}
 
+      {/* Mission context: show selected job info */}
+      {activeProject && selectedJob && (
+        <div className="bg-background border border-foreground p-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🎯</span>
+            <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Poste actif</span>
+          </div>
+          <p className="text-sm font-medium text-foreground truncate">{selectedJob.title}</p>
+          {(selectedJob as any).client?.name && (
+            <p className="text-[11px] text-muted-foreground truncate">@ {(selectedJob as any).client.name}</p>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-3">
         {/* Filter actions */}
         <div className="flex flex-wrap items-center gap-2">
           <AutoFillFiltersButton
@@ -267,31 +284,29 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           />
 
-
           <FilterPresetsManager
             currentFilters={filters}
             onApplyFilters={setFilters}
             selectedJob={selectedJob}
             onApplyPresetJob={handleApplyPresetJob}
           />
-      </div>
-
-      {/* Custom scoring instructions (visible when job selected) */}
-      {selectedJob && onScoringInstructionsChange && (
-        <div className="bg-background border border-foreground p-3">
-          <label className="text-[10px] font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
-            Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
-          </label>
-          <textarea
-            value={scoringInstructions}
-            onChange={(e) => onScoringInstructionsChange(e.target.value)}
-            placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer le critère localisation, bonus si exp. scale-up..."
-            rows={2}
-            className="w-full px-3 py-2 text-sm border border-foreground/30 bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground resize-none"
-          />
         </div>
-      )}
 
+        {/* Custom scoring instructions (visible when job selected) */}
+        {selectedJob && onScoringInstructionsChange && (
+          <div className="bg-background border border-foreground p-3">
+            <label className="text-[10px] font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
+              Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
+            </label>
+            <textarea
+              value={scoringInstructions}
+              onChange={(e) => onScoringInstructionsChange(e.target.value)}
+              placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer le critère localisation, bonus si exp. scale-up..."
+              rows={2}
+              className="w-full px-3 py-2 text-sm border border-foreground/30 bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground resize-none"
+            />
+          </div>
+        )}
       </div>
 
       {/* Search History */}
