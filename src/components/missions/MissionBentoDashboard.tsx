@@ -207,9 +207,13 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 bg-foreground flex items-center justify-center">
+                  <motion.div
+                    className="w-8 h-8 bg-foreground flex items-center justify-center"
+                    animate={{ y: [0, -3, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, repeatDelay: 3, ease: 'easeInOut' }}
+                  >
                     <FileText className="w-3.5 h-3.5 text-background" weight="duotone" />
-                  </div>
+                  </motion.div>
                   <div>
                     <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Brief Mission</h3>
                     <p className="text-[9px] text-muted-foreground/60">Cliquez pour compléter</p>
