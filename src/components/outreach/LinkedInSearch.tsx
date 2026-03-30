@@ -335,6 +335,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, selectedAccount]);
 
+  // Force API type to 'database' when using Base Konekt
+  useEffect(() => {
+    if (searchSource === 'database' && search.filters.api !== 'database') {
+      search.setFilters(f => ({ ...f, api: 'database' }));
+    }
+  }, [searchSource, search.filters.api]);
+
   // Treated/dismissed counts
   const treatedCount = useMemo(() => {
     return search.results.filter(p => search.candidateStatus.treatedIds.has(p.id)).length;

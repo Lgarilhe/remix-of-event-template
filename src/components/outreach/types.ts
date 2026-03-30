@@ -34,8 +34,8 @@ export interface RoleFilter {
   scope: FilterScope;
 }
 
-// LinkedIn API type (service)
-export type LinkedInApiType = 'classic' | 'recruiter' | 'sales_navigator';
+// API type (service) — includes 'database' for Base Konekt search
+export type LinkedInApiType = 'classic' | 'recruiter' | 'sales_navigator' | 'database';
 
 // Search category
 export type SearchCategory = 'people' | 'companies' | 'jobs' | 'posts';
