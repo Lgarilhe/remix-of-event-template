@@ -53,12 +53,13 @@ export const LINKEDIN_LIMITS = {
     sales_navigator: 25,
   },
   // InMail daily limits
-  // Real limits: 5/month Career, 50/month SN, 150/month Recruiter
-  // Unipile recommends 30-50/day max to spread monthly allocation
+  // Recruiter: 150 credits/month + Open Profile messages are FREE and unlimited
+  // Sales Nav: 50 credits/month + Open Profiles free
+  // Unipile recommends spreading across the day, 30-50/day is safe
   INMAIL_DAILY: {
     classic: 0,
-    recruiter: 10,
-    sales_navigator: 5,
+    recruiter: 40,
+    sales_navigator: 20,
   },
   // InMail monthly credits (for tracking)
   INMAIL_MONTHLY: {
