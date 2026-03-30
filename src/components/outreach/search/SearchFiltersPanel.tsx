@@ -390,7 +390,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           ) : (
             <Search className="w-4 h-4 mr-2" />
           )}
-          {!selectedJob ? 'Sélectionnez un poste' : loading ? 'Recherche...' : 'Rechercher'}
+          {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
         </Button>
         <Button
           variant="outline"
