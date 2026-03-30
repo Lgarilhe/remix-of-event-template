@@ -194,15 +194,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   }, [createConversation, sendMessage]);
 
   // ── Handle initialMessage from AgentContext ──
-  const { initialMessage } = useAgent();
+  const { initialMessage: agentCtxMessage } = useAgent();
   const initialMessageHandledRef = useRef<string | null>(null);
+  const effectiveInitialMessage = initialMessage ?? agentCtxMessage;
 
   useEffect(() => {
-    if (initialMessage && initialMessage !== initialMessageHandledRef.current) {
-      initialMessageHandledRef.current = initialMessage;
-      handleQuickAction(initialMessage);
+    if (effectiveInitialMessage && effectiveInitialMessage !== initialMessageHandledRef.current) {
+      initialMessageHandledRef.current = effectiveInitialMessage;
+      handleQuickAction(effectiveInitialMessage);
     }
-  }, [initialMessage, handleQuickAction]);
+  }, [effectiveInitialMessage, handleQuickAction]);
 
   if (showList) {
     return (
