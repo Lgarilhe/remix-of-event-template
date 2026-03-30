@@ -152,6 +152,7 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     if (filters.api === 'recruiter') {
       baseParams.location = filters.location.map(f => ({
         id: f.id,
+        name: f.name,
         priority: f.priority || 'MUST_HAVE',
         scope: f.scope || 'CURRENT_OR_OPEN_TO_RELOCATE',
       }));
@@ -160,6 +161,9 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
       if (filters.location_within_area !== null && !hasCountryLocation) {
         baseParams.location_within_area = filters.location_within_area;
       }
+    } else if (filters.api === 'database') {
+      // Database mode: send name + id so Apollo gets text locations
+      baseParams.location = filters.location.map(f => ({ id: f.id, name: f.name }));
     } else {
       baseParams.location = filters.location.map(f => f.id);
     }
