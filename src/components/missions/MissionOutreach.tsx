@@ -128,8 +128,8 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
     // Count Go-scored candidates in project
     const fetchGoCount = async () => {
-      const { count } = await (supabase
-        .from('sourcing_project_candidates') as any)
+      const { count } = await (supabase as any)
+        .from('sourcing_project_candidates')
         .select('*', { count: 'exact', head: true })
         .eq('project_id', project.id)
         .eq('recommendation', 'go');
