@@ -314,7 +314,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       </div>
 
       {/* TOOLBAR: Status filters + actions — single compact row */}
-      {selectedJob && hasSearched && results.length > 0 && (
+      {selectedJob && hasSearched && displayResults.length > 0 && (
         <div className="flex items-center gap-1 px-2 sm:px-3 py-1 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
           {/* Status filter pills */}
           <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
@@ -475,13 +475,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
       {/* Results list */}
       <div className="flex-1 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
-        {loading && results.length === 0 && displayResults.length === 0 ? (
+        {loading && results.length === 0 ? (
           <BrutalLoader variant="search" rows={5} />
-        ) : !hasSearched && displayResults.length === 0 ? (
+        ) : !hasSearched ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             <SearchWelcomeMessage />
           </div>
-        ) : hasSearched && results.length === 0 && displayResults.length === 0 ? (
+        ) : displayResults.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground px-8">
             <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
               <Search className="w-10 h-10" />
@@ -520,9 +520,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-muted-foreground/70">
-                            {results.length} affichés sur {total}
+                            {displayResults.length} affichés sur {total}
                           </span>
-                          {statusCounts.untreated === 0 && results.length > 0 && cursor && (
+                          {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-500">
                               <CheckCircle2 className="w-3 h-3" />
                               traité
