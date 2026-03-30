@@ -9,24 +9,12 @@ import {
   Lightning, TrendUp, ChartBar, Brain,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import type { JobDetails } from '@/types/jobDetails';
+import { getBriefCompletionPercent } from '@/lib/missionUtils';
 
 /* ─── Props ─── */
 interface MissionBentoDashboardProps {
   project: SourcingProject;
   onTabChange: (tab: string) => void;
-}
-
-/* ─── Brief completion ─── */
-function getBriefCompletion(p: SourcingProject) {
-  const jd = (p.job_details || {}) as JobDetails;
-  const fields = [
-    jd.title, jd.mission_description || jd.raw_brief, jd.seniority, jd.location,
-    jd.contract_type, jd.remote_policy, jd.client?.name, jd.salary_min,
-    jd.experience_min, (jd.skills_must_have?.length || 0) > 0 ? true : null,
-    jd.context, jd.languages?.length ? true : null,
-  ];
-  return Math.round((fields.filter(Boolean).length / fields.length) * 100);
 }
 
 /* ─── 3D Tilt Card ─── */
@@ -185,7 +173,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
   const { data: candidates = [] } = useProjectCandidates(project.id);
   const { data: stats } = useProjectStats(project.id);
   const jd = (project.job_details || {}) as JobDetails;
-  const briefPct = getBriefCompletion(project);
+  const briefPct = getBriefCompletionPercent(project);
 
   const totalCandidates = stats?.total || candidates.length || 0;
   const messaged = stats?.messaged || 0;

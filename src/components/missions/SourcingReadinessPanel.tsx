@@ -9,6 +9,7 @@ import {
   Sparkle, MagnifyingGlass, CaretDown, Lightning,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { countBriefFields } from '@/lib/missionUtils';
 import type { JobDetails } from '@/types/jobDetails';
 
 /* ─── Props ─── */
@@ -30,20 +31,6 @@ interface SourcingReadinessPanelProps {
   accountName?: string | null;
   /** Account status */
   accountStatus?: string | null;
-}
-
-/* ─── Brief field counter ─── */
-function countBriefFields(jd: Partial<JobDetails>): { filled: number; total: number } {
-  const fields = [
-    jd.title, jd.contract_type, jd.location, jd.remote_policy,
-    jd.seniority, jd.experience_min, jd.salary_min,
-    jd.mission_description || jd.context || jd.raw_brief,
-    jd.skills_must_have?.length ? jd.skills_must_have : null,
-    jd.skills_should_have?.length ? jd.skills_should_have : null,
-    jd.client?.name,
-    jd.languages?.length ? jd.languages : null,
-  ];
-  return { filled: fields.filter(Boolean).length, total: fields.length };
 }
 
 /* ─── Check item ─── */

@@ -3,27 +3,9 @@ import { Bot } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAgent, AgentContextMode } from '@/contexts/AgentContext';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { AGENT_TAB_CONFIG } from '@/lib/missionAgentConfig';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
-
-const MODE_CONFIG: Record<string, { label: string; buildMessage: (name: string) => string }> = {
-  brief: {
-    label: 'Discuter avec l\'assistant IA',
-    buildMessage: (name) => `Aide-moi à compléter mon brief pour le poste ${name}. Voici ce qui est déjà rempli, dis-moi ce qui manque et pose-moi des questions pour compléter.`,
-  },
-  process: {
-    label: 'Suggérer un process d\'évaluation',
-    buildMessage: (name) => `Suggère-moi un process d'évaluation adapté pour "${name}"`,
-  },
-  sourcing: {
-    label: 'Aide-moi à sourcer des candidats',
-    buildMessage: (name) => `Aide-moi à définir une stratégie de sourcing pour "${name}"`,
-  },
-  outreach: {
-    label: 'Aide-moi à rédiger mes messages',
-    buildMessage: (name) => `Aide-moi à rédiger des messages d'approche pour "${name}"`,
-  },
-};
 
 interface MissionAssistantButtonProps {
   project: SourcingProject;
@@ -39,7 +21,7 @@ export const MissionAssistantButton: React.FC<MissionAssistantButtonProps> = ({
   className,
 }) => {
   const { openContextualAgent, isOpen } = useAgent();
-  const config = MODE_CONFIG[mode || 'brief'];
+  const config = AGENT_TAB_CONFIG[mode || 'brief'];
 
   if (!config || isOpen) return null;
 
@@ -50,7 +32,7 @@ export const MissionAssistantButton: React.FC<MissionAssistantButtonProps> = ({
     openContextualAgent({
       mode,
       briefContext: project.job_details as Record<string, unknown> ?? {},
-      initialMessage: config.buildMessage(name),
+      initialMessage: config.buildShortPrompt(name),
       job: undefined,
     });
   };

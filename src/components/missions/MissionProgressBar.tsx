@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Settings2, Search, Send, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { countBriefFields } from '@/lib/missionUtils';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import type { JobDetails } from '@/types/jobDetails';
@@ -18,26 +19,15 @@ interface StepConfig {
   getCompletion: (project: SourcingProject) => boolean;
 }
 
-function countBriefFields(p: SourcingProject): { filled: number; total: number } {
-  const jd = (p.job_details || {}) as JobDetails;
-  const fields = [
-    jd.title, jd.mission_description || jd.raw_brief, jd.seniority, jd.location,
-    jd.contract_type, jd.remote_policy, jd.client?.name, jd.salary_min,
-    jd.experience_min, (jd.skills_must_have?.length || 0) > 0 ? true : null,
-    jd.context, jd.languages?.length ? true : null,
-  ];
-  return { filled: fields.filter(Boolean).length, total: fields.length };
-}
-
 const steps: StepConfig[] = [
   {
     value: 'brief',
     label: 'Brief',
     icon: FileText,
-    getFilledCount: (p) => countBriefFields(p).filled,
-    getTotalCount: (p) => countBriefFields(p).total,
+    getFilledCount: (p) => countBriefFields((p.job_details || {}) as JobDetails).filled,
+    getTotalCount: (p) => countBriefFields((p.job_details || {}) as JobDetails).total,
     getSummary: (p) => {
-      const { filled, total } = countBriefFields(p);
+      const { filled, total } = countBriefFields((p.job_details || {}) as JobDetails);
       return (
         <span className="flex items-center gap-1.5">
           <NumberTicker value={filled} className="font-bold text-foreground" />
