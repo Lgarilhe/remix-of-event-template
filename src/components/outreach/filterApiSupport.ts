@@ -8,7 +8,7 @@ export interface FilterSupport {
   tooltip?: string;
 }
 
-export type FilterKey = 
+export type FilterKey =
   | 'keywords'
   | 'location'
   | 'company'
@@ -38,7 +38,13 @@ export type FilterKey =
   | 'past_job_title'
   | 'advanced_keywords'
   | 'activity'
-  | 'tags';
+  | 'tags'
+  // Base Konekt exclusive filters
+  | 'technologies'
+  | 'email_verified'
+  | 'revenue_range'
+  | 'funding_stage'
+  | 'company_domain';
 
 // Filter support matrix based on Unipile API documentation
 export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, FilterSupport>> = {
@@ -73,6 +79,12 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     advanced_keywords: { supported: true }, // first_name, last_name, title, company, school
     activity: { supported: false, tooltip: "Les filtres d'activité ne sont disponibles qu'en mode Recruiter" },
     tags: { supported: false, tooltip: "Les tags ne sont disponibles qu'en mode Recruiter" },
+    // Base Konekt exclusive filters — not available on LinkedIn
+    technologies: { supported: false, tooltip: "Filtre technologique disponible uniquement en Base Konekt" },
+    email_verified: { supported: false, tooltip: "Vérification email disponible uniquement en Base Konekt" },
+    revenue_range: { supported: false, tooltip: "Filtre chiffre d'affaires disponible uniquement en Base Konekt" },
+    funding_stage: { supported: false, tooltip: "Filtre stade de levée disponible uniquement en Base Konekt" },
+    company_domain: { supported: false, tooltip: "Filtre domaine web disponible uniquement en Base Konekt" },
   },
   recruiter: {
     keywords: { supported: true },
@@ -105,6 +117,11 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de rôle et titre de poste en mode Recruiter" },
     activity: { supported: true }, // recruiting_activity with id, priority, timespan
     tags: { supported: true }, // Via recruiting_activity with id='tags'
+    technologies: { supported: false, tooltip: "Filtre technologique disponible uniquement en Base Konekt" },
+    email_verified: { supported: false, tooltip: "Vérification email disponible uniquement en Base Konekt" },
+    revenue_range: { supported: false, tooltip: "Filtre chiffre d'affaires disponible uniquement en Base Konekt" },
+    funding_stage: { supported: false, tooltip: "Filtre stade de levée disponible uniquement en Base Konekt" },
+    company_domain: { supported: false, tooltip: "Filtre domaine web disponible uniquement en Base Konekt" },
   },
   sales_navigator: {
     keywords: { supported: true },
@@ -137,6 +154,11 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     advanced_keywords: { supported: false, tooltip: "Utilisez les filtres de nom et titre en mode Sales Navigator" },
     activity: { supported: false, tooltip: "Les filtres d'activité ne sont disponibles qu'en mode Recruiter" },
     tags: { supported: false, tooltip: "Les tags ne sont disponibles qu'en mode Recruiter" },
+    technologies: { supported: false, tooltip: "Filtre technologique disponible uniquement en Base Konekt" },
+    email_verified: { supported: false, tooltip: "Vérification email disponible uniquement en Base Konekt" },
+    revenue_range: { supported: false, tooltip: "Filtre chiffre d'affaires disponible uniquement en Base Konekt" },
+    funding_stage: { supported: false, tooltip: "Filtre stade de levée disponible uniquement en Base Konekt" },
+    company_domain: { supported: false, tooltip: "Filtre domaine web disponible uniquement en Base Konekt" },
   },
   database: {
     keywords: { supported: true },
@@ -169,6 +191,12 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     advanced_keywords: { supported: true }, // q_keywords
     activity: { supported: false, tooltip: "Les filtres d'activité ne sont pas disponibles en Base Konekt" },
     tags: { supported: false, tooltip: "Les tags ne sont pas disponibles en Base Konekt" },
+    // Base Konekt exclusive filters
+    technologies: { supported: true }, // currently_using_any_of_technology_uids — 1500+ technologies
+    email_verified: { supported: true }, // contact_email_status: ["verified"]
+    revenue_range: { supported: true }, // revenue_range.min / revenue_range.max
+    funding_stage: { supported: true }, // organization_latest_funding_stage_cd
+    company_domain: { supported: true }, // q_organization_domains
   },
 };
 
