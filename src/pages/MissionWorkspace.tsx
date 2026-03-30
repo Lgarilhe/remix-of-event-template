@@ -6,6 +6,8 @@ import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { Badge } from '@/components/ui/badge';
+import { BackgroundPaths } from '@/components/ui/background-paths';
+import { TextRotate } from '@/components/ui/text-rotate';
 import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -19,6 +21,7 @@ import { MissionProcess } from '@/components/missions/MissionProcess';
 import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { MissionProgressBar } from '@/components/missions/MissionProgressBar';
+import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 
 // ── Status config ──
