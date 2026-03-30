@@ -274,82 +274,34 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
         })}
       </div>
 
-      {/* ── Mobile: vertical stepper ── */}
-      <div className="sm:hidden p-4 space-y-1">
+      {/* ── Mobile: compact horizontal chips ── */}
+      <div className="sm:hidden flex items-center gap-0 overflow-x-auto scrollbar-hide">
         {steps.map((step, index) => {
           const isActive = activeTab === step.value;
           const isCompleted = step.getCompletion(project);
 
           return (
-            <React.Fragment key={step.value}>
-              <button
-                onClick={() => onTabChange(step.value)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 transition-all",
-                  isActive && "bg-brutal-accent/10"
-                )}
-              >
-                {/* Small circle */}
-                <div
-                  className={cn(
-                    "w-7 h-7 flex items-center justify-center shrink-0 text-[10px] font-black",
-                    isCompleted && !isActive && "text-background",
-                    isActive && "text-background",
-                    !isCompleted && !isActive && "border border-foreground/20 text-muted-foreground"
-                  )}
-                  style={
-                    isCompleted && !isActive
-                      ? { background: 'hsl(142 71% 45%)' }
-                      : isActive
-                        ? { background: 'hsl(var(--brutal-accent))' }
-                        : undefined
-                  }
-                >
-                  {isCompleted && !isActive ? (
-                    <Check className="w-3 h-3" />
-                  ) : (
-                    <span>{index + 1}</span>
-                  )}
-                </div>
-
-                <div className="flex flex-col items-start min-w-0">
-                  <span
-                    className={cn(
-                      "text-[10px] font-black uppercase tracking-wider",
-                      isActive ? "text-foreground" : "text-muted-foreground"
-                    )}
-                  >
-                    {step.label}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground/70">
-                    {step.getSummary(project)}
-                  </span>
-                </div>
-
-                {isActive && (
-                  <motion.div
-                    layoutId="mobile-active-indicator"
-                    className="ml-auto w-1.5 h-1.5 bg-brutal-accent shrink-0"
-                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  />
-                )}
-              </button>
-
-              {/* Vertical connector */}
-              {index < steps.length - 1 && (
-                <div className="flex pl-[22px]">
-                  <div className="w-[2px] h-3 bg-foreground/10 relative overflow-hidden">
-                    <motion.div
-                      className="absolute inset-x-0 top-0"
-                      style={{ background: 'hsl(142 71% 45%)' }}
-                      initial={{ height: '0%' }}
-                      animate={{ height: isCompleted ? '100%' : '0%' }}
-                      transition={{ duration: 0.4 }}
-                    />
-                  </div>
-                </div>
+            <button
+              key={step.value}
+              onClick={() => onTabChange(step.value)}
+              className={cn(
+                "flex items-center gap-1.5 h-[38px] px-3 shrink-0 transition-colors",
+                "text-[10px] font-bold uppercase tracking-wider",
+                index > 0 && "border-l border-foreground/10",
+                isActive
+                  ? "bg-foreground text-background"
+                  : isCompleted
+                    ? "text-foreground/80"
+                    : "text-muted-foreground"
               )}
-            </React.Fragment>
+            >
+              {isCompleted && !isActive ? (
+                <Check className="w-3 h-3 text-green-500" />
+              ) : (
+                <step.icon className="w-3 h-3" />
+              )}
+              <span>{step.label}</span>
+            </button>
           );
         })}
       </div>

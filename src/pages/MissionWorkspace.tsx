@@ -174,34 +174,72 @@ const MissionWorkspace = () => {
             </div>
           </div>
 
-          {/* ── Progress bar (4 primary steps) ── */}
-          <MissionProgressBar
-            project={project}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-          />
+          {/* ── Navigation: progress bar + secondary tabs ── */}
+          {/* Desktop: separate rows */}
+          <div className="hidden sm:block">
+            <MissionProgressBar
+              project={project}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+            />
+            <div className="flex items-center border border-foreground border-t-0 bg-muted/20">
+              {secondaryTabs.map((tab, index) => {
+                const isActive = activeTab === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setActiveTab(tab.value)}
+                    className={cn(
+                      "flex items-center gap-1 h-[30px] px-3 text-[9px] font-medium uppercase tracking-wider transition-colors shrink-0",
+                      index > 0 && "border-l border-foreground/10",
+                      isActive
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <span className="text-xs">{tab.emoji}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-          {/* ── Secondary tabs (Pipeline, Insights, Config) ── */}
-          <div className="flex items-center border border-foreground border-t-0 bg-muted/20">
-            {secondaryTabs.map((tab, index) => {
-              const isActive = activeTab === tab.value;
-              return (
-                <button
-                  key={tab.value}
-                  onClick={() => setActiveTab(tab.value)}
-                  className={cn(
-                    "flex items-center gap-1 h-[30px] px-3 text-[9px] font-medium uppercase tracking-wider transition-colors shrink-0",
-                    index > 0 && "border-l border-foreground/10",
-                    isActive
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <span className="text-xs">{tab.emoji}</span>
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+          {/* Mobile: single scrollable row combining all tabs */}
+          <div className="sm:hidden border border-foreground bg-background/80 backdrop-blur-sm overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-0 min-w-max">
+              {allTabs.filter(t => t !== 'overview').map((tab, index) => {
+                const isActive = activeTab === tab;
+                const tabMeta: Record<string, { label: string; emoji: string }> = {
+                  brief: { label: 'Brief', emoji: '📋' },
+                  process: { label: 'Process', emoji: '🏗️' },
+                  sourcing: { label: 'Sourcing', emoji: '🔍' },
+                  outreach: { label: 'Outreach', emoji: '✉️' },
+                  pipeline: { label: 'Pipeline', emoji: '📊' },
+                  insights: { label: 'Insights', emoji: '💡' },
+                  config: { label: 'Config', emoji: '⚙️' },
+                };
+                const meta = tabMeta[tab];
+                if (!meta) return null;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "flex items-center gap-1.5 h-[38px] px-3 shrink-0 transition-colors",
+                      "text-[10px] font-bold uppercase tracking-wider",
+                      index > 0 && "border-l border-foreground/10",
+                      isActive
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    <span className="text-xs">{meta.emoji}</span>
+                    <span>{meta.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* ── Tab content with animations ── */}
