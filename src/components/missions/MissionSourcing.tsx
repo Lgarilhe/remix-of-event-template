@@ -154,6 +154,15 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   return (
     <div className="border border-foreground border-t-0 bg-background">
+      {/* Contextual onboarding banner */}
+      <MissionContextBanner
+        icon="💡"
+        title="Comment sourcer efficacement"
+        description="Sélectionnez un poste, configurez vos filtres ou utilisez Auto-fill IA, puis cliquez Rechercher. Après les résultats, scorez les profils pour que l'IA les évalue."
+        storageKey={`sourcing-onboarding:${project.id}`}
+        variant="info"
+        className="border-b border-foreground/10 m-0"
+      />
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">

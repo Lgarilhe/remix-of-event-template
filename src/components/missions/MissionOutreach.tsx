@@ -139,6 +139,17 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   return (
     <div className="border border-foreground border-t-0 bg-background">
+      {/* Contextual banner */}
+      {enrollmentStats.total === 0 && (
+        <MissionContextBanner
+          icon="✉️"
+          title="Contactez vos candidats"
+          description="Créez une séquence de messages personnalisés. L'IA adapte chaque message en fonction du profil et du poste."
+          storageKey={`outreach-onboarding:${project.id}`}
+          variant="info"
+          className="border-b border-foreground/10"
+        />
+      )}
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">
