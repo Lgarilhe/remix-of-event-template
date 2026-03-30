@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { Sparkles, Loader2, Play, RefreshCw, Mic, Square } from 'lucide-react';
+import { MissionAssistantButton } from './MissionAssistantButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BriefWizard } from './BriefWizard';
