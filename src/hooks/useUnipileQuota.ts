@@ -4,7 +4,7 @@ import { onQuotaAction } from '@/lib/quotaEvents';
 /**
  * LinkedIn API modes
  */
-export type LinkedInApiMode = 'classic' | 'recruiter' | 'sales_navigator';
+export type LinkedInApiMode = 'classic' | 'recruiter' | 'sales_navigator' | 'database';
 
 /**
  * Unipile/LinkedIn API Quota Limits per account per day
