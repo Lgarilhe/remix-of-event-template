@@ -17,15 +17,26 @@ export type LinkedInApiMode = 'classic' | 'recruiter' | 'sales_navigator';
  */
 /**
  * SAFE MODE LinkedIn quotas — conservative limits to protect accounts.
- * These are intentionally LOWER than Unipile's technical limits.
- * LinkedIn detects automation and bans accounts with high-volume activity.
+ * Based on real LinkedIn limits (2026) + Unipile recommendations.
+ * We operate at ~50% of max to stay under LinkedIn's radar.
+ *
+ * Key facts:
+ * - LinkedIn uses a dynamic Trust Score, not just hard caps
+ * - Acceptance rate must stay > 30% or limits tighten
+ * - Warm-up required for new/inactive accounts
+ *
+ * Sources:
+ * - https://developer.unipile.com/docs/provider-limits-and-restrictions
+ * - https://evaboot.com/blog/linkedin-limits
+ * - https://phantombuster.com/blog/linkedin-automation/linkedin-automation-safe-limits-2026/
  */
 export const LINKEDIN_LIMITS = {
   // Profile visits/retrieval per day
+  // Real limits: Free 80-100, SN 600-800. Safe = ~50%
   PROFILE_VISITS: {
-    classic: 80,
-    recruiter: 250,
-    sales_navigator: 200,
+    classic: 50,
+    recruiter: 150,
+    sales_navigator: 300,
   },
   // Search results fetched per day
   SEARCH_RESULTS: {
@@ -33,17 +44,21 @@ export const LINKEDIN_LIMITS = {
     recruiter: 999999,
     sales_navigator: 999999,
   },
-  // Connection requests (invitations) per day — SAFE MODE: max 20
+  // Connection requests (invitations) per day
+  // Real limits: ~100/week = ~14/day free, 150-200/week = 25-30/day paid
+  // Safe = stay well under to maintain > 30% acceptance rate
   INVITATIONS: {
-    classic: 5,
-    recruiter: 20,
-    sales_navigator: 20,
+    classic: 10,
+    recruiter: 25,
+    sales_navigator: 25,
   },
-  // InMail daily limits — SAFE MODE: conservative
+  // InMail daily limits
+  // Real limits: 5/month Career, 50/month SN, 150/month Recruiter
+  // Unipile recommends 30-50/day max to spread monthly allocation
   INMAIL_DAILY: {
     classic: 0,
-    recruiter: 30,
-    sales_navigator: 15,
+    recruiter: 10,
+    sales_navigator: 5,
   },
   // InMail monthly credits (for tracking)
   INMAIL_MONTHLY: {
@@ -57,15 +72,17 @@ export const LINKEDIN_LIMITS = {
     recruiter: 1000,
     sales_navigator: 0,
   },
-  // Messages to connections per day — SAFE MODE: max 50
+  // Messages to 1st-degree connections per day
+  // Real limits: 80-100 free, 100-150 paid. Safe = ~60%
   MESSAGES: {
-    classic: 40,
-    recruiter: 50,
-    sales_navigator: 50,
+    classic: 50,
+    recruiter: 80,
+    sales_navigator: 80,
   },
   // Other actions (comments, likes, etc.) per day
+  // Unipile recommends 100/day max per action type
   OTHER_ACTIONS: {
-    classic: 50,
+    classic: 60,
     recruiter: 80,
     sales_navigator: 80,
   },
@@ -76,17 +93,22 @@ export const LINKEDIN_LIMITS = {
 } as const;
 
 /**
- * Warm-up schedule: new accounts start with low quotas and ramp up over 2 weeks.
- * Returns a multiplier (0.0 to 1.0) based on account age in days.
+ * Warm-up schedule: new accounts start with low quotas and ramp up over 4 weeks.
+ * Based on LinkedIn automation best practices (2026):
+ * - Week 1: ~10 invitations/day
+ * - Week 2: ~15/day
+ * - Week 3: ~20/day
+ * - Week 4+: full safe mode limits
+ *
+ * Returns a multiplier (0.0 to 1.0) applied to safe mode limits.
  */
 export function getWarmupMultiplier(accountConnectedDays: number): number {
   if (accountConnectedDays <= 0) return 0.1;
-  if (accountConnectedDays <= 2) return 0.15;  // Day 1-2: ~15% of limits
-  if (accountConnectedDays <= 4) return 0.25;  // Day 3-4: ~25%
-  if (accountConnectedDays <= 7) return 0.4;   // Day 5-7: ~40%
-  if (accountConnectedDays <= 10) return 0.6;  // Day 8-10: ~60%
-  if (accountConnectedDays <= 14) return 0.8;  // Day 11-14: ~80%
-  return 1.0;                                   // Day 15+: full limits
+  if (accountConnectedDays <= 3) return 0.3;   // Day 1-3: ~30% (~8 invites)
+  if (accountConnectedDays <= 7) return 0.5;   // Day 4-7: ~50% (~12 invites)
+  if (accountConnectedDays <= 14) return 0.7;  // Week 2: ~70% (~17 invites)
+  if (accountConnectedDays <= 21) return 0.85; // Week 3: ~85% (~21 invites)
+  return 1.0;                                   // Week 4+: full safe limits
 }
 
 /**
