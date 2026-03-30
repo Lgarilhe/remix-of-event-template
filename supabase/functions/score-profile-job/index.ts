@@ -1608,8 +1608,20 @@ Deno.serve(async (req) => {
     }
     let anthropicModelId = aiParams.modelId;
     try {
-      const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
-      anthropicModelId = getAnthropicModelId(aiParams.modelId);
+      const { getAnthropicModelId, MODEL_CATALOG } = await import("../_shared/ai-config.ts");
+      // If the resolved model is not Claude (e.g. Gemini), map to closest Claude by tier
+      const resolvedModel = MODEL_CATALOG[aiParams.modelId];
+      if (resolvedModel && resolvedModel.provider !== "anthropic") {
+        const tierToClaudeMap: Record<string, string> = {
+          budget: "claude-haiku-4-5",
+          balanced: "claude-sonnet-4-6",
+          premium: "claude-opus-4-6",
+        };
+        anthropicModelId = getAnthropicModelId(tierToClaudeMap[resolvedModel.tier] || CLAUDE_MODEL_DEFAULT);
+        console.log(`[score-profile-job] Non-Claude model "${aiParams.modelId}" (${resolvedModel.tier}) → mapped to "${anthropicModelId}"`);
+      } else {
+        anthropicModelId = getAnthropicModelId(aiParams.modelId);
+      }
     } catch (e) {
       console.warn("[score-profile-job] Failed to load ai-config:", e);
     }
