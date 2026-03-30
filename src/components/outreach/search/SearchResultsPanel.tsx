@@ -646,9 +646,15 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {displayResults.map((profile, index) => (
               <motion.div
                 key={profile.id || `profile-${index}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.03, 0.6), duration: 0.25, ease: 'easeOut' }}
+                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{
+                  delay: Math.min(index * 0.04, 0.8),
+                  duration: 0.35,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                }}
+                whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                className="transition-shadow duration-200 hover:shadow-md"
               >
                 <LinkedInResultCard
                   profile={profile}
