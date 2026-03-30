@@ -8,6 +8,8 @@ interface AgentContextValue {
   conversationId: string | null;
   setConversationId: (id: string | null) => void;
   initialJobId: string | null;
+  initialMessage: string | null;
+  openAgentWithMessage: (message: string) => void;
   unreadCount: number;
   setUnreadCount: (count: number) => void;
 }
