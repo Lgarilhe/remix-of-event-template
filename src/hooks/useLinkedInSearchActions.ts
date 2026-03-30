@@ -743,11 +743,29 @@ export function useLinkedInSearchActions(
 
       if (isMultipleSessionsError) {
         toast.error(
-          'Session Recruiter verrouillée. Passez temporairement en « LinkedIn Classic » ou reconnectez le compte dans l’onglet « Comptes ».',
-          { id: 'search-error', duration: 15000 }
+          ‘Session Recruiter verrouillée. Passez temporairement en « LinkedIn Classic » ou reconnectez le compte dans l’onglet « Comptes ».’,
+          { id: ‘search-error’, duration: 15000 }
+        );
+      } else if (
+        errorMessage?.includes(‘not found’) ||
+        errorMessage?.includes(‘404’) ||
+        errorMessage?.includes(‘CREDENTIALS’) ||
+        errorMessage?.includes(‘disconnected’) ||
+        errorMessage?.includes(‘unauthorized’)
+      ) {
+        toast.error(
+          ‘Compte LinkedIn déconnecté ou session expirée. Reconnectez votre compte dans Paramètres > Mon compte.’,
+          {
+            id: ‘search-error’,
+            duration: 15000,
+            action: {
+              label: ‘Reconnecter’,
+              onClick: () => window.location.href = ‘/settings?tab=account’,
+            },
+          }
         );
       } else {
-        toast.error(errorMessage || 'Erreur lors de la recherche', { id: 'search-error' });
+        toast.error(errorMessage || ‘Erreur lors de la recherche’, { id: ‘search-error’ });
       }
       // Stop infinite scroll from retrying on error
       setHasMoreResults(false);

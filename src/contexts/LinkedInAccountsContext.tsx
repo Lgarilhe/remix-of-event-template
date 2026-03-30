@@ -102,9 +102,17 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
       void reload();
     });
 
+    // Periodic health check — reload accounts every 5 minutes to detect disconnections
+    const healthCheckInterval = setInterval(() => {
+      if (isMounted && prevUserId) {
+        reload().catch(() => {});
+      }
+    }, 5 * 60 * 1000);
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      clearInterval(healthCheckInterval);
     };
   }, [reload]);
 

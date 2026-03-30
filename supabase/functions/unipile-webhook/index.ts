@@ -92,11 +92,66 @@ Deno.serve(async (req) => {
         break;
       }
       
-      case 'account_connected':
+      case 'account_connected': {
+        console.log('[unipile-webhook] Account connected:', payload.account_id);
+        // Update status in member_linkedin_accounts if the column exists
+        try {
+          await supabase
+            .from('member_linkedin_accounts')
+            .update({ account_status: 'OK', last_checked_at: new Date().toISOString(), failure_reason: null })
+            .eq('linkedin_account_id', payload.account_id);
+        } catch (e) {
+          // Column may not exist yet — silently ignore
+          console.warn('[unipile-webhook] Could not update account status (column may not exist):', e);
+        }
+        break;
+      }
+
       case 'account_disconnected':
       case 'account_error': {
-        // Account status changes - log for now
-        console.log('[unipile-webhook] Account status change:', payload.event, payload.data);
+        const reason = payload.event === 'account_disconnected' ? 'disconnected' : 'error';
+        const details = JSON.stringify(payload.data || {}).slice(0, 500);
+        console.warn(`[unipile-webhook] Account ${reason}:`, payload.account_id, details);
+
+        // Update status in member_linkedin_accounts
+        try {
+          await supabase
+            .from('member_linkedin_accounts')
+            .update({
+              account_status: reason === 'disconnected' ? 'CREDENTIALS' : 'ERROR',
+              last_checked_at: new Date().toISOString(),
+              failure_reason: details,
+            })
+            .eq('linkedin_account_id', payload.account_id);
+        } catch (e) {
+          console.warn('[unipile-webhook] Could not update account status:', e);
+        }
+
+        // Find users linked to this account and create notifications
+        try {
+          const { data: linkedUsers } = await supabase
+            .from('member_linkedin_accounts')
+            .select('user_id, organization_id, linkedin_account_name')
+            .eq('linkedin_account_id', payload.account_id);
+
+          if (linkedUsers && linkedUsers.length > 0) {
+            const notifications = linkedUsers.map((u: any) => ({
+              user_id: u.user_id,
+              organization_id: u.organization_id,
+              type: 'linkedin_disconnected',
+              title: 'Compte LinkedIn déconnecté',
+              message: `Votre compte LinkedIn "${u.linkedin_account_name || 'LinkedIn'}" a été déconnecté. Reconnectez-le dans Paramètres > Mon compte.`,
+              read: false,
+              metadata: { account_id: payload.account_id, reason, details },
+            }));
+
+            await supabase.from('notifications').insert(notifications).catch((e: unknown) =>
+              console.warn('[unipile-webhook] Could not create notifications (table may not exist):', e)
+            );
+          }
+        } catch (e) {
+          console.warn('[unipile-webhook] Error creating disconnect notifications:', e);
+        }
         break;
       }
       
