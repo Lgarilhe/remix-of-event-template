@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion, useMotionValue, useTransform, animate, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useTransform, animate as fmAnimate } from 'framer-motion';
 import { Sparkles, Clock, MessageSquare, Pencil, List, Settings, ExternalLink, Zap, Brain, ArrowRight } from 'lucide-react';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import { cn } from '@/lib/utils';
@@ -119,7 +119,7 @@ const AnimatedCounter: React.FC<{ target: number; suffix?: string }> = ({ target
   const [display, setDisplay] = useState(`0${suffix}`);
 
   useEffect(() => {
-    const controls = animate(count, target, { duration: 2, delay: 1.2, ease: 'easeOut' as const });
+    const controls = fmAnimate(count, target, { duration: 2, delay: 1.2, ease: 'easeOut' as const });
     const unsub = rounded.on('change', v => setDisplay(v));
     return () => { controls.stop(); unsub(); };
   }, [target, count, rounded]);
