@@ -5,9 +5,9 @@ import { useProjectStats } from '@/hooks/useProjectStats';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { TextRotate } from '@/components/ui/text-rotate';
 import {
-  FileText, Users, Send, Target, Sparkles, ArrowRight,
-  Zap, TrendingUp, BarChart3, Brain,
-} from 'lucide-react';
+  FileText, Users, PaperPlaneTilt, Crosshair, Sparkle, ArrowRight,
+  Lightning, TrendUp, ChartBar, Brain,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
 
