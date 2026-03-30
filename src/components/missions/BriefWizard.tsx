@@ -427,7 +427,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               {!readOnly && (
                 <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
               )}
-            </motion.button>
+            </button>
           );
         })}
       </div>
