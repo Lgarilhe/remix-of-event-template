@@ -10,6 +10,7 @@ import { AgentJobSelector } from './AgentJobSelector';
 import { AgentThinkingDisplay } from './AgentThinkingDisplay';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { useAgent } from '@/contexts/AgentContext';
 import { cn } from '@/lib/utils';
 
 const CHAT_LOADING_MESSAGES = [
