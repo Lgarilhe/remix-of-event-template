@@ -767,6 +767,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           dismissedCount={dismissedCount}
           selectedAccount={selectedAccount}
           activeProject={activeProject}
+          searchSource={searchSource}
+          onAutoFill={() => handleAutoFillFilters(search.selectedJob)}
+          autoFillLoading={false}
+          filtersReady={!!(search.filters.keywords?.trim() || (search.filters as any).role?.length > 0)}
+          accountName={selectedAccountData?.name || selectedAccountData?.identifier || null}
+          accountStatus={selectedAccountData?.status || null}
           treatedCandidates={search.candidateStatus.statuses}
           onRestoreCandidate={search.candidateStatus.restoreCandidate}
           showBulkInMailModal={search.showBulkInMailModal}
