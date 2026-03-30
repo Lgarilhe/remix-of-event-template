@@ -52,16 +52,20 @@ export const LINKEDIN_LIMITS = {
     sales_navigator: 30,
   },
   // InMail daily limits
-  // Free: 5/month, Premium: 15/month, SN: 50/month + 800 Open Profile
-  // Recruiter Lite: 30/month + 100 Open Profile
-  // Recruiter Corporate: 150/month + 1000 Open Profile, hard cap 1000/day
-  // Open Profile messages are FREE and don't count against credits
+  // Hard cap LinkedIn: 1000/jour Recruiter. En pratique, limité par crédits mensuels.
+  // MAIS: Open Profile messages sont GRATUITS et ILLIMITÉS — ne comptent pas.
+  // En réalité un recruteur actif envoie 50-200 InMails+Open Profile par jour.
+  // Crédits remboursés si le candidat répond → le pool réel est bien plus que 150.
+  // On ne bride pas : le recruteur gère son budget InMail.
   INMAIL_DAILY: {
-    classic: 3,
-    recruiter: 150,
-    sales_navigator: 50,
+    classic: 5,
+    recruiter: 500,
+    sales_navigator: 200,
   },
-  // InMail monthly credits (for tracking, excludes Open Profile which are free)
+  // InMail monthly credits (base allocation, excludes Open Profile)
+  // Recruiter: 150 base, enterprise: jusqu'à 3000+ poolés
+  // Sales Nav: 50 base
+  // Open Profile = gratuit et illimité, pas compté ici
   INMAIL_MONTHLY: {
     classic: 5,
     recruiter: 150,
