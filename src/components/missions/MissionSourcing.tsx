@@ -119,7 +119,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           ? response.data.filters
           : {};
 
-      const sug = response.data.suggestions || null;
+      const sug = (response.data.suggestions as Suggestions) || null;
       setSuggestions(sug);
 
       await updateProject({
