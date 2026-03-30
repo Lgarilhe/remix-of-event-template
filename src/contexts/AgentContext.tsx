@@ -34,6 +34,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isOpen, setIsOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [initialJobId, setInitialJobId] = useState<string | null>(null);
+  const [initialMessage, setInitialMessage] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const openAgent = useCallback((jobId?: string) => {
@@ -41,14 +42,23 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsOpen(true);
   }, []);
 
+  const openAgentWithMessage = useCallback((message: string) => {
+    setInitialMessage(message);
+    setIsOpen(true);
+  }, []);
+
   const closeAgent = useCallback(() => {
     setIsOpen(false);
     setInitialJobId(null);
+    setInitialMessage(null);
   }, []);
 
   const toggleAgent = useCallback(() => {
     setIsOpen(prev => {
-      if (prev) setInitialJobId(null);
+      if (prev) {
+        setInitialJobId(null);
+        setInitialMessage(null);
+      }
       return !prev;
     });
   }, []);
