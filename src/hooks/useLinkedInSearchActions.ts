@@ -601,10 +601,11 @@ export function useLinkedInSearchActions(
           currentFilters.calculated_experience_max
         );
 
-        // Apply client-side location filter — skip when radius search is active
-        // (LinkedIn Recruiter already handles radius filtering server-side)
+        // Apply client-side location filter only for LinkedIn results.
+        // Base Konekt already filters location server-side, and local geo keyword
+        // matching is too lossy for some labels like "Paris et périphérie".
         const hasRadiusSearch = currentFilters.location_within_area && currentFilters.location_within_area > 0;
-        const locationFiltered = currentFilters.location.length > 0 && !hasRadiusSearch
+        const locationFiltered = currentFilters.location.length > 0 && !hasRadiusSearch && !isDatabase
           ? filterByLocation(filteredBatch, currentFilters.location)
           : filteredBatch;
 
