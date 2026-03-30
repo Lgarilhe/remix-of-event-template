@@ -548,6 +548,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <SourcingReadinessPanel
                 project={activeProject}
                 selectedAccount={selectedAccount}
+                searchSource={searchSource}
+                onSourceChange={onSourceChange}
+                onAutoFill={onAutoFill}
+                autoFillLoading={autoFillLoading}
+                onSearch={onSearch}
+                filtersReady={filtersReady}
+                accountName={accountName}
+                accountStatus={accountStatus}
               />
             ) : (
               <SearchWelcomeMessage />
