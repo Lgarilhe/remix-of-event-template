@@ -199,11 +199,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const effectiveInitialMessage = initialMessage ?? agentCtxMessage;
 
   useEffect(() => {
+    if (contextMode) return;
     if (effectiveInitialMessage && effectiveInitialMessage !== initialMessageHandledRef.current) {
       initialMessageHandledRef.current = effectiveInitialMessage;
       handleQuickAction(effectiveInitialMessage);
     }
-  }, [effectiveInitialMessage, handleQuickAction]);
+  }, [effectiveInitialMessage, handleQuickAction, contextMode]);
 
   if (showList) {
     return (

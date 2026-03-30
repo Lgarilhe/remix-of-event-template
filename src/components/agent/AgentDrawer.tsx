@@ -2,6 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
+  SheetTitle,
 } from '@/components/ui/sheet';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentChatPanel } from './AgentChatPanel';
@@ -79,6 +81,10 @@ export const AgentDrawer: React.FC = () => {
           side="right"
           className="w-full sm:w-[420px] p-0 glass-strong border-l border-foreground/10 border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
         >
+          <SheetTitle className="sr-only">Assistant IA</SheetTitle>
+          <SheetDescription className="sr-only">
+            Conversation contextuelle avec l'assistant recrutement.
+          </SheetDescription>
           <AgentChatPanel
             onClose={closeAgent}
             contextMode={contextMode}
