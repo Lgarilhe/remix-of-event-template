@@ -9,6 +9,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
+import { OutreachEmptyState } from './OutreachEmptyState';
 
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,9 +61,11 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations'>('sequences');
+  const [showEmptyState, setShowEmptyState] = useState(true);
 
   // Enrollment stats
   const [enrollmentStats, setEnrollmentStats] = useState({ active: 0, completed: 0, replied: 0, total: 0 });
+  const [goCount, setGoCount] = useState(0);
 
   // Get current user
   useEffect(() => {
@@ -92,7 +95,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
     setSelectedAccount(okAccount?.id || accounts[0]?.id || null);
   }, [accounts, selectedAccount]);
 
-  // Fetch enrollment stats for this project's sequences
+  // Fetch enrollment stats + go count for this project's sequences
   useEffect(() => {
     if (!project.id) return;
     const fetchStats = async () => {
@@ -101,9 +104,14 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         .select('id') as any)
         .eq('project_id', project.id);
 
-      if (!sequences?.length) return;
+      if (!sequences?.length) {
+        setShowEmptyState(true);
+        return;
+      }
 
-      const seqIds = sequences.map(s => s.id);
+      setShowEmptyState(false);
+
+      const seqIds = sequences.map((s: any) => s.id);
       const { data: enrollments } = await supabase
         .from('sequence_enrollments')
         .select('status')
@@ -117,7 +125,19 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         replied: enrollments.filter(e => e.status === 'replied').length,
       });
     };
+
+    // Count Go-scored candidates in project
+    const fetchGoCount = async () => {
+      const { count } = await (supabase as any)
+        .from('sourcing_project_candidates')
+        .select('*', { count: 'exact', head: true })
+        .eq('project_id', project.id)
+        .eq('recommendation', 'go');
+      setGoCount(count || 0);
+    };
+
     fetchStats();
+    fetchGoCount();
   }, [project.id]);
 
   const subTabs = [
@@ -135,6 +155,28 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   if (accounts.length === 0) {
     return <EmptyAccountState />;
+  }
+
+  if (showEmptyState && enrollmentStats.total === 0) {
+    return (
+      <div className="border border-foreground border-t-0 bg-background">
+        <OutreachEmptyState
+          goCount={goCount}
+          onLinkedInMessage={() => {
+            setShowEmptyState(false);
+            setOutreachTab('sequences');
+          }}
+          onInMail={() => {
+            setShowEmptyState(false);
+            setOutreachTab('sequences');
+          }}
+          onSequence={() => {
+            setShowEmptyState(false);
+            setOutreachTab('sequences');
+          }}
+        />
+      </div>
+    );
   }
 
   return (
