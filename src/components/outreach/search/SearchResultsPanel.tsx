@@ -198,6 +198,22 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   const [enriching, setEnriching] = useState(false);
 
+  // Contextual hints (dismissible, persisted in localStorage)
+  const [hintSearchDismissed, setHintSearchDismissed] = useState(() =>
+    localStorage.getItem('hint:after-first-search') === 'dismissed'
+  );
+  const [hintScoringDismissed, setHintScoringDismissed] = useState(() =>
+    localStorage.getItem('hint:after-first-scoring') === 'dismissed'
+  );
+  const dismissHint = useCallback((key: string, setter: (v: boolean) => void) => {
+    localStorage.setItem(key, 'dismissed');
+    setter(true);
+  }, []);
+
+  const hasScoredProfiles = useMemo(() =>
+    Object.keys(jobScores).length > 0, [jobScores]
+  );
+
   const openProfileDetail = useCallback(async (profile: LinkedInProfile) => {
     setDetailProfile(profile);
     setDetailOpen(true);
