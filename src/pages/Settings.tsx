@@ -24,6 +24,7 @@ import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
+import { LinkedInQuotaSettings } from '@/components/settings/LinkedInQuotaSettings';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
@@ -243,6 +244,7 @@ const Settings = () => {
             {activeTab === 'account' && (
               <div className="space-y-6">
                 <MyLinkedInAccount />
+                <LinkedInQuotaSettings />
                 <MyWhatsAppAccount />
               </div>
             )}
