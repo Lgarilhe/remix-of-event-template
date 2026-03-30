@@ -248,7 +248,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         )}
       </div>
 
-      {/* Job Selector */}
+      {/* Job Selector — hidden when in mission context (job auto-selected) */}
+      {!activeProject && (
       <div className="space-y-3">
         <JobSelector
           selectedJob={selectedJob}
