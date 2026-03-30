@@ -5,9 +5,9 @@ import { useProjectStats } from '@/hooks/useProjectStats';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { TextRotate } from '@/components/ui/text-rotate';
 import {
-  FileText, Users, Send, Target, Sparkles, ArrowRight,
-  Zap, TrendingUp, BarChart3, Brain,
-} from 'lucide-react';
+  FileText, Users, PaperPlaneTilt, Crosshair, Sparkle, ArrowRight,
+  Lightning, TrendUp, ChartBar, Brain,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
 
@@ -101,7 +101,7 @@ const PulseRing: React.FC<{ color: string }> = ({ color }) => (
 
 /* ─── Stat with animated bar ─── */
 const AnimatedStat: React.FC<{
-  value: number; label: string; icon: typeof Users; accentColor: string; delay: number; max?: number;
+  value: number; label: string; icon: React.ComponentType<any>; accentColor: string; delay: number; max?: number;
 }> = ({ value, label, icon: Icon, accentColor, delay, max = 100 }) => (
   <motion.div
     initial={{ opacity: 0, x: -20 }}
@@ -136,7 +136,7 @@ const AnimatedStat: React.FC<{
 
 /* ─── Quick action card ─── */
 const QuickAction: React.FC<{
-  icon: typeof Sparkles;
+  icon: React.ComponentType<any>;
   title: string;
   description: string;
   accentVar: string;
@@ -204,7 +204,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 bg-foreground flex items-center justify-center">
-                    <FileText className="w-3.5 h-3.5 text-background" />
+                    <FileText className="w-3.5 h-3.5 text-background" weight="duotone" />
                   </div>
                   <div>
                     <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Brief Mission</h3>
@@ -282,7 +282,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
             <div className="p-6 space-y-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                  <ChartBar className="w-4 h-4 text-muted-foreground" weight="duotone" />
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     <TextRotate
                       texts={['Vue d\'ensemble', 'Métriques', 'Statistiques']}
@@ -291,12 +291,12 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
                     />
                   </h3>
                 </div>
-                <Brain className="w-4 h-4 text-muted-foreground/30" />
+                <Brain className="w-4 h-4 text-muted-foreground/30" weight="duotone" />
               </div>
 
-              <AnimatedStat value={totalCandidates} label="Sourcés" icon={Users} accentColor="text-primary border-primary/20 bg-primary/5" delay={0.2} max={50} />
-              <AnimatedStat value={messaged} label="Contactés" icon={Send} accentColor="text-accent border-accent/20 bg-accent/5" delay={0.4} max={totalCandidates || 10} />
-              <AnimatedStat value={shortlisted} label="Shortlistés" icon={Target} accentColor="text-brutal-accent border-brutal-accent/20 bg-brutal-accent/5" delay={0.6} max={totalCandidates || 10} />
+              <AnimatedStat value={totalCandidates} label="Sourcés" icon={(p: any) => <Users {...p} weight="duotone" />} accentColor="text-primary border-primary/20 bg-primary/5" delay={0.2} max={50} />
+              <AnimatedStat value={messaged} label="Contactés" icon={(p: any) => <PaperPlaneTilt {...p} weight="duotone" />} accentColor="text-accent border-accent/20 bg-accent/5" delay={0.4} max={totalCandidates || 10} />
+              <AnimatedStat value={shortlisted} label="Shortlistés" icon={(p: any) => <Crosshair {...p} weight="duotone" />} accentColor="text-brutal-accent border-brutal-accent/20 bg-brutal-accent/5" delay={0.6} max={totalCandidates || 10} />
             </div>
           </div>
         </TiltCard>
@@ -305,7 +305,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
       {/* ── Row 2: Quick Actions ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <QuickAction
-          icon={Sparkles}
+          icon={(p: any) => <Sparkle {...p} weight="duotone" />}
           title="Sourcing"
           description="Rechercher des profils avec l'IA et les filtres avancés"
           accentVar="var(--brutal-accent)"
@@ -313,7 +313,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           delay={0.3}
         />
         <QuickAction
-          icon={Zap}
+          icon={(p: any) => <Lightning {...p} weight="fill" />}
           title="Outreach"
           description="Envoyer des messages personnalisés aux candidats"
           accentVar="var(--accent)"
@@ -321,7 +321,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           delay={0.4}
         />
         <QuickAction
-          icon={TrendingUp}
+          icon={(p: any) => <TrendUp {...p} weight="duotone" />}
           title="Pipeline"
           description="Suivre et gérer l'avancement des candidats"
           accentVar="var(--primary)"
