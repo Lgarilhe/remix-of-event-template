@@ -411,6 +411,12 @@ export function useLinkedInSearch({
   // ── Auto-persist filter changes to filters_snapshot (debounced) ──
   const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialFilterLoadRef = useRef(true);
+
+  // Reset initial-load guard when project changes
+  useEffect(() => {
+    initialFilterLoadRef.current = true;
+  }, [activeProject?.id]);
+
   useEffect(() => {
     // Skip the first render (initial load from filters_snapshot)
     if (initialFilterLoadRef.current) {
@@ -423,6 +429,9 @@ export function useLinkedInSearch({
 
     if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
     filterSaveTimerRef.current = setTimeout(() => {
+      const ts = new Date().toISOString();
+      // Pre-set the ref to prevent reload loop when React Query refreshes activeProject
+      filtersSnapshotRef.current = ts;
       // Preserve existing snapshot fields (suggestions, generated_at, etc.) and merge UI filters
       const currentSnapshot = (activeProject.filters_snapshot || {}) as Record<string, any>;
       updateProject({
@@ -430,7 +439,7 @@ export function useLinkedInSearch({
         filters_snapshot: {
           ...currentSnapshot,
           ...filters,
-          last_manual_edit: new Date().toISOString(),
+          last_manual_edit: ts,
         },
       });
     }, 2000);
