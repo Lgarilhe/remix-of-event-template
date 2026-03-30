@@ -409,7 +409,23 @@ Deno.serve(async (req) => {
       const rawPeople = data.people || [];
 
       // Convert to LinkedInProfile format — identical to what unipile-search returns
-      const profiles = rawPeople.map(apolloToLinkedInProfile);
+      // Convert and filter out low-quality profiles (no last name, no company, no experience)
+      const allProfiles = rawPeople.map(apolloToLinkedInProfile);
+      const profiles = allProfiles.filter((p: Record<string, unknown>) => {
+        const lastName = String(p.last_name || '').trim();
+        const headline = String(p.headline || '').trim();
+        const company = ((p.current_positions as any[]) || [])[0]?.company;
+        const workExp = (p.work_experience as any[]) || [];
+
+        // Must have at least a last name
+        if (!lastName || lastName.length < 2) return false;
+        // Must have a headline or current position
+        if (!headline && !company) return false;
+        // Must have at least 1 work experience
+        if (workExp.length === 0) return false;
+
+        return true;
+      });
 
       // Pagination
       const pagination = data.pagination || {};
