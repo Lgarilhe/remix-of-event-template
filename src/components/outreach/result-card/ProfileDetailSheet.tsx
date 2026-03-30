@@ -215,11 +215,15 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       return;
     }
 
-    const isPoolShell = (profile as any)._fromPool &&
-      (!profile.work_experience || profile.work_experience.length === 0) &&
-      (!profile.skills || profile.skills.length === 0);
+    const isDatabaseProfile =
+      (profile as any)._source === 'database' ||
+      (profile as any).source === 'database';
+    const isPoolProfile = Boolean((profile as any)._fromPool);
+    const needsEnrichment =
+      (isPoolProfile || isDatabaseProfile) &&
+      (!profile.summary || !profile.skills?.length || !profile.work_experience?.length);
 
-    if (!isPoolShell) {
+    if (!needsEnrichment) {
       setIsEnriching(false);
       return;
     }
