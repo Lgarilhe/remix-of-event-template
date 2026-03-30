@@ -101,7 +101,7 @@ const PulseRing: React.FC<{ color: string }> = ({ color }) => (
 
 /* ─── Stat with animated bar ─── */
 const AnimatedStat: React.FC<{
-  value: number; label: string; icon: typeof Users; accentColor: string; delay: number; max?: number;
+  value: number; label: string; icon: React.ComponentType<any>; accentColor: string; delay: number; max?: number;
 }> = ({ value, label, icon: Icon, accentColor, delay, max = 100 }) => (
   <motion.div
     initial={{ opacity: 0, x: -20 }}
