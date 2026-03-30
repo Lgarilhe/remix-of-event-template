@@ -408,12 +408,31 @@ Deno.serve(async (req) => {
       const data = await response.json();
       const rawPeople = data.people || [];
 
+      console.log(`[database-search] Search returned ${rawPeople.length} raw results`);
+      if (rawPeople.length > 0) {
+        const sample = rawPeople[0];
+        console.log(`[database-search] Sample raw person:`, JSON.stringify({
+          id: sample.id,
+          name: sample.name,
+          first_name: sample.first_name,
+          last_name: sample.last_name,
+          title: sample.title,
+          headline: sample.headline,
+          photo_url: sample.photo_url,
+          city: sample.city,
+          country: sample.country,
+          organization_name: sample.organization_name,
+          employment_history_count: (sample.employment_history || []).length,
+        }));
+      }
+
       // Step 2: Enrich the results — the search endpoint returns basic data only.
       // We call people/bulk_match with the IDs to get full profiles (experience, education, etc.)
       let enrichedPeople = rawPeople;
       if (rawPeople.length > 0) {
         try {
           const personIds = rawPeople.map((p: any) => p.id).filter(Boolean);
+          console.log(`[database-search] Enriching ${personIds.length} profiles via bulk_match...`);
           if (personIds.length > 0) {
             const enrichResponse = await fetch(`${APOLLO_BASE}/v1/people/bulk_match`, {
               method: "POST",
@@ -428,9 +447,12 @@ Deno.serve(async (req) => {
               }),
             });
 
+            console.log(`[database-search] bulk_match response status: ${enrichResponse.status}`);
             if (enrichResponse.ok) {
               const enrichData = await enrichResponse.json();
+              console.log(`[database-search] bulk_match response keys:`, Object.keys(enrichData));
               const enrichedMatches = enrichData.matches || enrichData.people || [];
+              console.log(`[database-search] Enriched matches: ${enrichedMatches.length}`);
               if (enrichedMatches.length > 0) {
                 // Merge enriched data with search results
                 const enrichMap = new Map<string, Record<string, unknown>>();
@@ -444,7 +466,8 @@ Deno.serve(async (req) => {
                 console.log(`[database-search] Enriched ${enrichedMatches.length}/${rawPeople.length} profiles`);
               }
             } else {
-              console.warn("[database-search] Enrichment failed, using basic data:", enrichResponse.status);
+              const errText = await enrichResponse.text();
+              console.error(`[database-search] Enrichment failed ${enrichResponse.status}:`, errText.slice(0, 500));
             }
           }
         } catch (e) {
