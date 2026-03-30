@@ -18,6 +18,13 @@ interface MissionSourcingProps {
   project: SourcingProject;
 }
 
+const getSourcingTabStorageKey = (projectId: string) => `mission-sourcing-tab:${projectId}`;
+
+const getDefaultSourcingTab = (project: SourcingProject): 'linkedin' | 'database' => {
+  const api = (project.filters_snapshot as { api?: string } | null)?.api;
+  return api === 'database' ? 'database' : 'linkedin';
+};
+
 // ── Empty state when no LinkedIn account is connected ──
 
 const EmptyAccountState = () => {
@@ -58,7 +65,14 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [sourcingTab, setSourcingTab] = useState<'linkedin' | 'database'>('linkedin');
+  const [sourcingTab, setSourcingTab] = useState<'linkedin' | 'database'>(() => {
+    if (typeof window === 'undefined') return getDefaultSourcingTab(project);
+
+    const savedTab = window.localStorage.getItem(getSourcingTabStorageKey(project.id));
+    if (savedTab === 'linkedin' || savedTab === 'database') return savedTab;
+
+    return getDefaultSourcingTab(project);
+  });
 
   // Database sub-tab state
   const [prospectResults, setProspectResults] = useState<any[]>([]);
@@ -91,6 +105,23 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
     const okAccount = accounts.find(a => a.status === 'OK');
     setSelectedAccount(okAccount?.id || accounts[0]?.id || null);
   }, [accounts, selectedAccount]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const savedTab = window.localStorage.getItem(getSourcingTabStorageKey(project.id));
+    if (savedTab === 'linkedin' || savedTab === 'database') {
+      setSourcingTab(savedTab);
+      return;
+    }
+
+    setSourcingTab(getDefaultSourcingTab(project));
+  }, [project]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(getSourcingTabStorageKey(project.id), sourcingTab);
+  }, [project.id, sourcingTab]);
 
   // Check if any LinkedIn account has issues
   const hasLinkedInIssue = accounts.length === 0 || accounts.every(a => a.status !== 'OK');
