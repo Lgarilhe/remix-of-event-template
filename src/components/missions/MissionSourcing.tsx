@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { MissionContextBanner } from './MissionContextBanner';
 import { useNavigate } from 'react-router-dom';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInAccount } from '@/pages/Outreach';
