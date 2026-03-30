@@ -95,7 +95,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
     setSelectedAccount(okAccount?.id || accounts[0]?.id || null);
   }, [accounts, selectedAccount]);
 
-  // Fetch enrollment stats for this project's sequences
+  // Fetch enrollment stats + go count for this project's sequences
   useEffect(() => {
     if (!project.id) return;
     const fetchStats = async () => {
@@ -104,9 +104,14 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         .select('id') as any)
         .eq('project_id', project.id);
 
-      if (!sequences?.length) return;
+      if (!sequences?.length) {
+        setShowEmptyState(true);
+        return;
+      }
 
-      const seqIds = sequences.map(s => s.id);
+      setShowEmptyState(false);
+
+      const seqIds = sequences.map((s: any) => s.id);
       const { data: enrollments } = await supabase
         .from('sequence_enrollments')
         .select('status')
@@ -120,7 +125,19 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         replied: enrollments.filter(e => e.status === 'replied').length,
       });
     };
+
+    // Count Go-scored candidates in project
+    const fetchGoCount = async () => {
+      const { count } = await supabase
+        .from('sourcing_project_candidates')
+        .select('*', { count: 'exact', head: true })
+        .eq('project_id', project.id)
+        .eq('recommendation', 'go');
+      setGoCount(count || 0);
+    };
+
     fetchStats();
+    fetchGoCount();
   }, [project.id]);
 
   const subTabs = [
