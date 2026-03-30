@@ -42,7 +42,7 @@ const secondaryTabs = [
 ];
 
 // All valid tab values
-const allTabs = ['brief', 'process', 'sourcing', 'outreach', 'pipeline', 'insights', 'config'];
+const allTabs = ['overview', 'brief', 'process', 'sourcing', 'outreach', 'pipeline', 'insights', 'config'];
 
 // Animation variant for tab content
 const tabVariants = {
