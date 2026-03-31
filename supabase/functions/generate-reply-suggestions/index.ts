@@ -628,7 +628,7 @@ Réponds UNIQUEMENT en JSON valide:
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const orgId2 = await resolveOrgIdFromUser(userId, adminClient) as string | null;
+        const orgId2 = userId ? await resolveOrgIdFromUser(userId, adminClient) as string | null : null;
         if (orgId2) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {

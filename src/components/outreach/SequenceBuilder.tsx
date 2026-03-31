@@ -77,19 +77,19 @@ interface SequenceBuilderProps {
 
 // ACTIONS = ce qu'on FAIT
 const ACTIONS = [
-  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
-  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-100 text-blue-600', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
-  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
-  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
-  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-muted text-foreground', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
+  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-muted text-foreground', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-muted text-foreground', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-muted text-foreground', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-foreground text-background', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
 const TRIGGERS = [
-  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-indigo-100 text-indigo-600', description: 'Route selon le degré', requiresPrevious: [], excludeIfPrevious: [] },
-  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
-  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
-  { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
+  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-muted text-foreground', description: 'Route selon le degré', requiresPrevious: [], excludeIfPrevious: [] },
+  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
+  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
+  { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
@@ -477,7 +477,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                      className={cn(
                        "border border-foreground transition-all",
                        isExpanded && "bg-muted/30",
-                       stepIsTrigger && "border-l-4 border-l-amber-400"
+                       stepIsTrigger && "border-l-4 border-l-foreground/40"
                      )}
                    >
                     {/* Step header */}
@@ -507,13 +507,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             </span>
                           )}
                           {step.useAiPersonalization && (
-                            <span className="flex items-center gap-1 text-purple-600">
+                            <span className="flex items-center gap-1 text-foreground">
                               <Sparkles className="w-3 h-3" />
                               IA
                             </span>
                           )}
                           {stepIsTrigger && step.timeoutDays && (
-                            <span className="flex items-center gap-1 text-amber-600">
+                            <span className="flex items-center gap-1 text-muted-foreground">
                               <Timer className="w-3 h-3" />
                               Timeout {step.timeoutDays}j
                             </span>
@@ -599,10 +599,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Trigger configuration */}
                         {stepIsTrigger && step.actionType !== 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-amber-50 border border-amber-200">
-                            <div className="flex items-center gap-2 text-amber-700">
+                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                            <div className="flex items-center gap-2 text-foreground">
                               <Zap className="w-4 h-4" />
-                              <span className="font-medium text-sm">Configuration du trigger</span>
+                              <span className="font-medium text-sm uppercase tracking-wide">Configuration du trigger</span>
                             </div>
                             
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -640,10 +640,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Condition branch configuration */}
                         {step.actionType === 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-rose-50 border border-rose-200">
-                            <div className="flex items-center gap-2 text-rose-700">
+                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                            <div className="flex items-center gap-2 text-foreground">
                               <GitBranch className="w-4 h-4" />
-                              <span className="font-medium text-sm">Configuration du branchement</span>
+                              <span className="font-medium text-sm uppercase tracking-wide">Configuration du branchement</span>
                             </div>
                             
                             <div>
@@ -688,10 +688,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Check connection configuration */}
                         {step.actionType === 'check_connection' && (
-                          <div className="space-y-4 p-3 bg-indigo-50 border border-indigo-200">
-                            <div className="flex items-center gap-2 text-indigo-700">
+                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                            <div className="flex items-center gap-2 text-foreground">
                               <GitBranch className="w-4 h-4" />
-                              <span className="font-medium text-sm">Vérification du degré de connexion</span>
+                              <span className="font-medium text-sm uppercase tracking-wide">Vérification du degré de connexion</span>
                             </div>
                             
                             <div>
@@ -746,9 +746,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                         {needsMessage(step.actionType) && (
                           <>
                             {/* AI toggle */}
-                            <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/10">
+                             <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
                               <div className="flex items-center gap-2">
-                                <Sparkles className="w-4 h-4 text-purple-600" />
+                                <Sparkles className="w-4 h-4 text-foreground" />
                                 <span className="text-sm font-medium">Personnalisation IA</span>
                               </div>
                               <Switch
@@ -798,7 +798,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     {step.actionType === 'connection_request' && (
                                       <span className={cn(
                                         "text-xs",
-                                        (step.messageTemplate?.length || 0) > 50 ? "text-red-500 font-medium" : "text-muted-foreground"
+                                        (step.messageTemplate?.length || 0) > 50 ? "text-destructive font-medium" : "text-muted-foreground"
                                       )}>
                                         {step.messageTemplate?.length || 0}/50
                                       </span>
@@ -812,7 +812,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     maxLength={step.actionType === 'connection_request' ? 50 : undefined}
                                     className={cn(
                                       "mt-1.5",
-                                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-red-300 focus-visible:ring-red-300"
+                                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-destructive focus-visible:ring-destructive"
                                     )}
                                   />
                                   {step.actionType === 'connection_request' ? (
@@ -868,7 +868,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                       {availableActions.length > 0 && (
                         <div className="mb-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <Zap className="w-4 h-4 text-emerald-600" />
+                            <Zap className="w-4 h-4 text-foreground" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
                           </div>
                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -895,7 +895,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                       {availableTriggers.length > 0 && (
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <Timer className="w-4 h-4 text-amber-600" />
+                            <Timer className="w-4 h-4 text-foreground" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -903,7 +903,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <button
                                 key={trigger.value}
                                 onClick={() => addStep(trigger.value)}
-                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
+                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left"
                               >
                                 <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}>
                                   <trigger.icon className="w-4 h-4" />

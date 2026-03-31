@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
     let UNIPILE_DSN: string | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(authUserId);
+      const orgId = authUserId ? await resolveOrgIdFromUser(authUserId) : null;
       const creds = await resolveUnipileCredentials(orgId);
       if (creds) {
         UNIPILE_API_KEY = creds.apiKey;
@@ -292,11 +292,11 @@ Deno.serve(async (req) => {
         try {
           const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
           const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-          const orgId = await resolveOrgIdFromUser(authUserId, adminClient);
-          if (orgId) {
+          const orgId = authUserId ? await resolveOrgIdFromUser(authUserId, adminClient) : null;
+          if (orgId && authUserId) {
             const { settleCredits } = await import("../_shared/settle-credits.ts");
             settleCredits(adminClient, {
-              organizationId: orgId, userId: authUserId,
+              organizationId: orgId, userId: authUserId!,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
               tokensInput: _tokensIn, tokensOutput: _tokensOut,
               description: _aiParams.description,
