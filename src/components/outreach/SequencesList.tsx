@@ -104,6 +104,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showGlobalAnalytics, setShowGlobalAnalytics] = useState(false);
   const [analyticsSequence, setAnalyticsSequence] = useState<SequenceWithStats | null>(null);
   const [forceRescheduling, setForceRescheduling] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [saveTemplateSeq, setSaveTemplateSeq] = useState<SequenceWithStats | null>(null);
 
   const handleForceReschedule = async () => {
     setForceRescheduling(true);
