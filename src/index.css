@@ -42,9 +42,9 @@ All colors MUST be HSL.
     --sidebar-foreground: 265 4% 12.9%;
     --sidebar-primary: 265 4% 12.9%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 50 100% 50%;
+    --sidebar-accent: 0 0% 96%;
     --sidebar-accent-foreground: 265 4% 12.9%;
-    --sidebar-border: 265 4% 12.9%;
+    --sidebar-border: 265 4% 12.9% / 10%;
     --sidebar-ring: 265 4% 12.9%;
 
     /* Skalr brand colors */
