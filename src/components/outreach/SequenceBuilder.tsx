@@ -539,7 +539,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                       <div className="px-4 pb-4 pt-2 border-t space-y-4">
                         {/* Delay (not for first step) */}
                         {index > 0 && (
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                               <Label>Jours</Label>
                               <Input
