@@ -77,11 +77,11 @@ interface SequenceBuilderProps {
 
 // ACTIONS = ce qu'on FAIT
 const ACTIONS = [
-  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
-  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-100 text-blue-600', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
-  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
-  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
-  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-muted text-foreground', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
+  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-muted text-foreground', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-muted text-foreground', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-muted text-foreground', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-foreground text-background', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
