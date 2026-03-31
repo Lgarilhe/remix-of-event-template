@@ -605,7 +605,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <span className="font-medium text-sm">Configuration du trigger</span>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <Label>Timeout (jours max)</Label>
                                 <Input
