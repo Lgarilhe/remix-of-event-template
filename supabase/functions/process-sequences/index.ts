@@ -377,19 +377,23 @@ async function handleProcess(supabase: any, force = false) {
         let finalMessage = (exec.final_message || step.message_template || '') as string;
         let finalSubject = (step.subject_template || '') as string;
         
-        if (step.use_ai_personalization && needsMessage(step.action_type)) {
+        // Skip inline AI personalization for email steps — sequence-send-email handles its own
+        if (step.use_ai_personalization && needsMessage(step.action_type) && step.step_channel !== 'email') {
           const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
 
+        // Determine effective action type: step_channel 'email' overrides action_type
+        const effectiveActionType = (step.step_channel === 'email' || step.action_type === 'email') ? 'email' : step.action_type;
+
         // Inter-visible-action spacing: 1-3s delay between visible actions to look human
-        if (!INVISIBLE_ACTIONS.has(step.action_type) && visibleActionsExecuted > 0) {
+        if (!INVISIBLE_ACTIONS.has(effectiveActionType) && visibleActionsExecuted > 0) {
           const spacingMs = 1000 + Math.floor(Math.random() * 2000);
           console.log(`[process] Spacing: ${Math.round(spacingMs / 1000)}s between visible actions`);
           await new Promise(r => setTimeout(r, spacingMs));
         }
 
-        const executeResult = await executeStepAction(step.action_type, enrollment, step, 
+        const executeResult = await executeStepAction(effectiveActionType, enrollment, step,
           { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
 
         if (executeResult.error === '__WAIT_EVENT__') {
@@ -411,13 +415,16 @@ async function handleProcess(supabase: any, force = false) {
             continue;
           }
 
-          await supabase.from('sequence_step_executions').update({ 
-            status: 'sent', executed_at: new Date().toISOString(), final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
-          }).eq('id', exec.id);
+          // For email steps, sequence-send-email already updated the execution — skip redundant update
+          if (effectiveActionType !== 'email') {
+            await supabase.from('sequence_step_executions').update({
+              status: 'sent', executed_at: new Date().toISOString(), final_subject: executeResult.subject || finalSubject, final_message: executeResult.message || finalMessage,
+            }).eq('id', exec.id);
+          }
           await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
-          if (step.action_type !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
+          if (effectiveActionType !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
           results.processed++;
-          if (!INVISIBLE_ACTIONS.has(step.action_type)) visibleActionsExecuted++;
+          if (!INVISIBLE_ACTIONS.has(effectiveActionType)) visibleActionsExecuted++;
           
           // Sync Notion stage (fire-and-forget, non-blocking)
           syncNotionStageAfterAction(step.action_type, enrollment).catch(err => console.warn('[notion-sync] Fire-and-forget error:', err));
@@ -1190,24 +1197,67 @@ async function handleForceReschedule(supabase: any) {
 }
 
 // deno-lint-ignore no-explicit-any
-async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string) {
+async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no') {
   let nextStep;
-  
+
   if (forceBranchStepId) {
     const { data } = await supabase.from('sequence_steps').select('*').eq('id', forceBranchStepId).maybeSingle();
     nextStep = data;
   } else {
-    // First try to follow the current step's next_step_id (graph-based chaining)
+    // Fetch current step with branching columns
     const { data: currentStep } = await supabase.from('sequence_steps')
-      .select('id, next_step_id')
+      .select('id, next_step_id, parent_step_id, branch, step_order, sequence_id')
       .eq('sequence_id', enrollment.sequence_id)
       .eq('step_order', currentStepOrder)
       .maybeSingle();
-    
-    if (currentStep?.next_step_id) {
+
+    // === NEW: parent_step_id/branch tree resolution ===
+    // If a conditionResult is provided, route to the matching child branch
+    if (!nextStep && conditionResult && currentStep?.id) {
+      const { data: branchStep } = await supabase.from('sequence_steps')
+        .select('*')
+        .eq('parent_step_id', currentStep.id)
+        .eq('branch', conditionResult)
+        .order('step_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (branchStep) nextStep = branchStep;
+    }
+
+    // If current step is IN a branch (has parent_step_id), find next sibling in same branch
+    if (!nextStep && currentStep?.parent_step_id && currentStep.branch) {
+      const { data: nextInBranch } = await supabase.from('sequence_steps')
+        .select('*')
+        .eq('parent_step_id', currentStep.parent_step_id)
+        .eq('branch', currentStep.branch)
+        .gt('step_order', currentStepOrder)
+        .order('step_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (nextInBranch) {
+        nextStep = nextInBranch;
+      } else {
+        // End of branch → find the parent step and continue after it
+        const { data: parentStep } = await supabase.from('sequence_steps')
+          .select('step_order, parent_step_id, branch')
+          .eq('id', currentStep.parent_step_id)
+          .single();
+        if (parentStep) {
+          // Recurse: schedule the step after the parent (using parent's context)
+          return scheduleNextStep(supabase, enrollment, parentStep.step_order);
+        }
+      }
+    }
+    // === END parent_step_id/branch resolution ===
+
+    // Existing: try next_step_id (graph-based chaining)
+    if (!nextStep && currentStep?.next_step_id) {
       const { data } = await supabase.from('sequence_steps').select('*').eq('id', currentStep.next_step_id).maybeSingle();
       nextStep = data;
-    } else {
+    }
+
+    if (!nextStep) {
       // Before falling back to step_order + 1, check if the CURRENT step is a branch target
       // (i.e., reached via timeout_branch_step_id, if_true_goto_step, or if_false_goto_step).
       // If so, step_order + 1 is NOT a valid continuation — it belongs to a different branch.
@@ -1225,8 +1275,8 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
       }
 
       if (!isBranchTarget) {
-        // Safe fallback to step_order + 1 for truly linear sequences
-        const { data: candidateNext } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).maybeSingle();
+        // Safe fallback to step_order + 1 for truly linear sequences (root-level steps only)
+        const { data: candidateNext } = await supabase.from('sequence_steps').select('*').eq('sequence_id', enrollment.sequence_id).eq('step_order', currentStepOrder + 1).is('parent_step_id', null).is('branch', null).maybeSingle();
         
         if (candidateNext) {
           // Guard: if the candidate next step has a branch-specific condition, verify compatibility
@@ -1310,6 +1360,42 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
     const subj = (execution.final_subject || step.subject_template || '') as string;
 
     switch (actionType) {
+      case 'email': {
+        // Delegate to sequence-send-email edge function
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        try {
+          const emailRes = await fetchWithTimeout(
+            `${supabaseUrl}/functions/v1/sequence-send-email`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${serviceKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                execution_id: execution.id,
+                enrollment_id: enrollment.id,
+                step_id: step.id,
+              }),
+            },
+            30000, // 30s timeout for email sending
+          );
+
+          if (emailRes.ok) {
+            const result = await emailRes.json();
+            if (result.success) {
+              // sequence-send-email already updated the execution status
+              return { success: true, message: result.message_id };
+            }
+            return { success: false, error: result.error || 'Email send failed' };
+          }
+          const errText = await emailRes.text().catch(() => '');
+          return { success: false, error: `sequence-send-email ${emailRes.status}: ${errText}` };
+        } catch (emailErr) {
+          return { success: false, error: `Email function error: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}` };
+        }
+      }
       case 'wait_connection': return { success: false, error: '__WAIT_EVENT__' };
       case 'check_connection': {
         const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
