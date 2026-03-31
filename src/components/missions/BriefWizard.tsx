@@ -8,41 +8,115 @@ import { JobDetails, CONTRACT_TYPE_LABELS, URGENCY_LABELS, REMOTE_LABELS, SIZE_L
 
 // ─── Shared field components ───────────────────────────────
 
-const Field = ({ label, value, onChange, type = 'text', placeholder, className }: {
-  label: string; value: string | number | undefined | null; onChange: (val: string) => void;
-  type?: 'text' | 'number' | 'textarea' | 'email' | 'tel' | 'url'; placeholder?: string; className?: string;
+const Field = ({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  className,
+  readOnly = false,
+}: {
+  label: string;
+  value: string | number | undefined | null;
+  onChange: (val: string) => void;
+  type?: 'text' | 'number' | 'textarea' | 'email' | 'tel' | 'url';
+  placeholder?: string;
+  className?: string;
+  readOnly?: boolean;
 }) => (
-  <div className={cn("space-y-1.5", className)}>
+  <div className={cn('space-y-1.5', className)}>
     <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
     {type === 'textarea' ? (
-      <textarea defaultValue={value ?? ''} onBlur={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full min-h-[80px] px-3 py-2 text-sm border-2 border-foreground/30 bg-background text-foreground resize-y focus:border-foreground focus:outline-none transition-colors placeholder:text-muted-foreground/40" />
+      <textarea
+        defaultValue={value ?? ''}
+        onBlur={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
+        className={cn(
+          'w-full min-h-[80px] px-3 py-2 text-sm border-2 border-foreground/30 bg-background text-foreground resize-y focus:border-foreground focus:outline-none transition-colors placeholder:text-muted-foreground/40',
+          readOnly && 'cursor-default opacity-70 focus:border-foreground/30'
+        )}
+      />
     ) : (
-      <input type={type} defaultValue={value ?? ''} onBlur={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full h-[38px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors placeholder:text-muted-foreground/40" />
+      <input
+        type={type}
+        defaultValue={value ?? ''}
+        onBlur={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
+        className={cn(
+          'w-full h-[38px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors placeholder:text-muted-foreground/40',
+          readOnly && 'cursor-default opacity-70 focus:border-foreground/30'
+        )}
+      />
     )}
   </div>
 );
 
-const SelectField = ({ label, value, onChange, options, placeholder }: {
-  label: string; value: string | undefined | null; onChange: (val: string) => void;
-  options: Record<string, string>; placeholder?: string;
+const SelectField = ({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  readOnly = false,
+}: {
+  label: string;
+  value: string | undefined | null;
+  onChange: (val: string) => void;
+  options: Record<string, string>;
+  placeholder?: string;
+  readOnly?: boolean;
 }) => (
   <div className="space-y-1.5">
     <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
-    <select value={value || ''} onChange={(e) => onChange(e.target.value)}
-      className="w-full h-[38px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors">
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={readOnly}
+      tabIndex={readOnly ? -1 : undefined}
+      className={cn(
+        'w-full h-[38px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors',
+        readOnly && 'cursor-default opacity-70 focus:border-foreground/30'
+      )}
+    >
       <option value="">{placeholder || '---'}</option>
-      {Object.entries(options).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      {Object.entries(options).map(([k, v]) => (
+        <option key={k} value={k}>
+          {v}
+        </option>
+      ))}
     </select>
   </div>
 );
 
-const TagInput = ({ label, tags, onChange, color, placeholder }: {
-  label: string; tags: string[]; onChange: (tags: string[]) => void; color: string; placeholder?: string;
+const TagInput = ({
+  label,
+  tags,
+  onChange,
+  color,
+  placeholder,
+  readOnly = false,
+}: {
+  label: string;
+  tags: string[];
+  onChange: (tags: string[]) => void;
+  color: string;
+  placeholder?: string;
+  readOnly?: boolean;
 }) => {
   const [input, setInput] = useState('');
-  const addTag = () => { const v = input.trim(); if (v && !tags.includes(v)) onChange([...tags, v]); setInput(''); };
+
+  const addTag = () => {
+    const v = input.trim();
+    if (readOnly) return;
+    if (v && !tags.includes(v)) onChange([...tags, v]);
+    setInput('');
+  };
+
   return (
     <div className="space-y-2">
       <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
@@ -53,17 +127,33 @@ const TagInput = ({ label, tags, onChange, color, placeholder }: {
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
-            className={cn("flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border-2", color)}
+            className={cn('flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border-2', color)}
           >
             {tag}
-            <button onClick={() => onChange(tags.filter((_, j) => j !== i))} className="hover:opacity-60"><X className="w-2.5 h-2.5" /></button>
+            {!readOnly && (
+              <button type="button" onClick={() => onChange(tags.filter((_, j) => j !== i))} className="hover:opacity-60">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
           </motion.span>
         ))}
-        <input value={input} onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-          onBlur={() => { if (input.trim()) addTag(); }}
-          placeholder={placeholder || 'Ajouter...'}
-          className="h-[30px] w-32 px-2 text-[11px] border-2 border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground transition-colors focus:outline-none" />
+        {!readOnly && (
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addTag();
+              }
+            }}
+            onBlur={() => {
+              if (input.trim()) addTag();
+            }}
+            placeholder={placeholder || 'Ajouter...'}
+            className="h-[30px] w-32 px-2 text-[11px] border-2 border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground transition-colors focus:outline-none"
+          />
+        )}
       </div>
     </div>
   );
@@ -81,7 +171,11 @@ const STEPS = [
 
 // ─── Completion score ──────────────────────────────────────
 
-interface CompletionItem { label: string; done: boolean; critical: boolean }
+interface CompletionItem {
+  label: string;
+  done: boolean;
+  critical: boolean;
+}
 
 function computeCompletionScore(d: JobDetails): { score: number; items: CompletionItem[] } {
   const checks: Array<[boolean, string, boolean]> = [
@@ -153,8 +247,8 @@ const FullscreenStepDialog: React.FC<{
   items: CompletionItem[];
 }> = ({ stepIndex, d, updateField, onUpdate, readOnly, onClose, onNext, onPrev, isFirst, isLast, onLaunchSourcing, score, items }) => {
   const step = STEPS[stepIndex];
-  const { filled, total, missingCritical } = getStepCompletion(stepIndex, d);
-  const allCriticalMissing = items.filter(i => i.critical && !i.done);
+  const { filled, total } = getStepCompletion(stepIndex, d);
+  const allCriticalMissing = items.filter((i) => i.critical && !i.done);
 
   return (
     <motion.div
@@ -182,18 +276,17 @@ const FullscreenStepDialog: React.FC<{
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* Step progress pills */}
             <div className="hidden sm:flex items-center gap-1">
               {STEPS.map((_, i) => (
                 <div
                   key={i}
                   className={cn(
-                    "w-2 h-2 border transition-all",
+                    'w-2 h-2 border transition-all',
                     i === stepIndex
-                      ? "bg-foreground border-foreground scale-125"
+                      ? 'bg-foreground border-foreground scale-125'
                       : i < stepIndex
-                        ? "bg-foreground/50 border-foreground/50"
-                        : "bg-transparent border-foreground/20"
+                        ? 'bg-foreground/50 border-foreground/50'
+                        : 'bg-transparent border-foreground/20'
                   )}
                 />
               ))}
@@ -202,6 +295,7 @@ const FullscreenStepDialog: React.FC<{
               {stepIndex + 1}/{STEPS.length}
             </span>
             <button
+              type="button"
               onClick={onClose}
               className="w-8 h-8 flex items-center justify-center border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
             >
@@ -209,7 +303,6 @@ const FullscreenStepDialog: React.FC<{
             </button>
           </div>
         </div>
-        {/* Step fill progress bar */}
         <div className="h-1 bg-foreground/10">
           <motion.div
             className="h-full bg-foreground"
@@ -244,8 +337,8 @@ const FullscreenStepDialog: React.FC<{
       {/* Footer navigation */}
       <div className="shrink-0 border-t-2 border-foreground bg-background">
         <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between gap-4">
-          {/* Left: back */}
           <button
+            type="button"
             onClick={isFirst ? onClose : onPrev}
             className="flex items-center gap-1.5 h-[40px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
           >
@@ -253,10 +346,9 @@ const FullscreenStepDialog: React.FC<{
             {isFirst ? 'Fermer' : 'Précédent'}
           </button>
 
-          {/* Right: next or CTA */}
           {isLast ? (
             <div className="flex items-center gap-3">
-              {score >= 70 && onLaunchSourcing ? (
+              {!readOnly && score >= 70 && onLaunchSourcing ? (
                 <ShimmerButton onClick={onLaunchSourcing} className="h-[40px] text-[10px] px-6" shimmerDuration="1.5s">
                   <Sparkles className="w-3.5 h-3.5" />
                   Lancer le sourcing
@@ -264,7 +356,7 @@ const FullscreenStepDialog: React.FC<{
                 </ShimmerButton>
               ) : (
                 <div className="flex items-center gap-3">
-                  {allCriticalMissing.length > 0 && (
+                  {!readOnly && allCriticalMissing.length > 0 && (
                     <div className="hidden sm:flex items-center gap-2 text-destructive">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                       <span className="text-[10px] font-bold uppercase tracking-wider">
@@ -273,17 +365,19 @@ const FullscreenStepDialog: React.FC<{
                     </div>
                   )}
                   <button
+                    type="button"
                     onClick={onClose}
                     className="flex items-center gap-1.5 h-[40px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    Terminer
+                    {readOnly ? 'Fermer' : 'Terminer'}
                   </button>
                 </div>
               )}
             </div>
           ) : (
             <button
+              type="button"
               onClick={onNext}
               className="group relative overflow-hidden flex items-center gap-1.5 h-[40px] px-6 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
             >
@@ -313,47 +407,45 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
   const [openStep, setOpenStep] = useState<number | null>(null);
   const d = jobDetails;
 
-  const updateField = useCallback((path: string, value: any) => {
-    const parts = path.split('.');
-    const buildPatch = (keys: string[], val: any): any => {
-      if (keys.length === 1) return { [keys[0]]: val };
-      const [head, ...rest] = keys;
-      return { [head]: buildPatch(rest, val) };
-    };
-    onUpdate(buildPatch(parts, value !== '' && value != null ? value : undefined));
-  }, [onUpdate]);
+  const updateField = useCallback(
+    (path: string, value: any) => {
+      const parts = path.split('.');
+      const buildPatch = (keys: string[], val: any): any => {
+        if (keys.length === 1) return { [keys[0]]: val };
+        const [head, ...rest] = keys;
+        return { [head]: buildPatch(rest, val) };
+      };
+      onUpdate(buildPatch(parts, value !== '' && value != null ? value : undefined));
+    },
+    [onUpdate]
+  );
 
   const { score, items } = useMemo(() => computeCompletionScore(d), [d]);
-
-  const stepCompletions = useMemo(() =>
-    STEPS.map((_, i) => getStepCompletion(i, d)),
-  [d]);
-
-  const allCriticalMissing = items.filter(i => i.critical && !i.done);
-
+  const stepCompletions = useMemo(() => STEPS.map((_, i) => getStepCompletion(i, d)), [d]);
+  const allCriticalMissing = items.filter((i) => i.critical && !i.done);
   const progressColor = score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground';
 
   return (
     <>
-      {/* Step cards overview */}
       <div className="space-y-0">
-        {/* Global completion header */}
         <div className="border-2 border-foreground p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className={cn(
-              "relative w-14 h-14 flex items-center justify-center border-2 shrink-0 transition-colors",
-              score < 30 ? "border-destructive" : score < 70 ? "border-brutal-accent" : "border-foreground"
-            )}>
+            <div
+              className={cn(
+                'relative w-14 h-14 flex items-center justify-center border-2 shrink-0 transition-colors',
+                score < 30 ? 'border-destructive' : score < 70 ? 'border-brutal-accent' : 'border-foreground'
+              )}
+            >
               <div className="flex items-baseline">
-                <NumberTicker value={score} className={cn("text-lg font-black tabular-nums", score >= 70 ? "text-foreground" : "text-muted-foreground")} />
-                <span className={cn("text-sm font-black", score >= 70 ? "text-foreground" : "text-muted-foreground")}>%</span>
+                <NumberTicker value={score} className={cn('text-lg font-black tabular-nums', score >= 70 ? 'text-foreground' : 'text-muted-foreground')} />
+                <span className={cn('text-sm font-black', score >= 70 ? 'text-foreground' : 'text-muted-foreground')}>%</span>
               </div>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1.5">Complétude du brief</p>
               <div className="h-2 w-full bg-foreground/10 overflow-hidden border border-foreground/20">
                 <motion.div
-                  className={cn("h-full transition-colors duration-500", progressColor)}
+                  className={cn('h-full transition-colors duration-500', progressColor)}
                   initial={{ width: 0 }}
                   animate={{ width: `${score}%` }}
                   transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -361,13 +453,13 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               </div>
             </div>
           </div>
-          {score >= 70 && onLaunchSourcing ? (
+          {!readOnly && score >= 70 && onLaunchSourcing ? (
             <ShimmerButton onClick={onLaunchSourcing} className="h-[36px] text-[10px] px-5 shrink-0" shimmerDuration="1.5s">
               <Sparkles className="w-3 h-3" />
               Lancer le sourcing
               <ArrowRight className="w-3 h-3" />
             </ShimmerButton>
-          ) : allCriticalMissing.length > 0 ? (
+          ) : !readOnly && allCriticalMissing.length > 0 ? (
             <div className="flex items-center gap-2 text-destructive shrink-0">
               <AlertTriangle className="w-3.5 h-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-wider">
@@ -377,7 +469,6 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
           ) : null}
         </div>
 
-        {/* Step cards */}
         {STEPS.map((step, i) => {
           const comp = stepCompletions[i];
           const pct = comp.total > 0 ? Math.round((comp.filled / comp.total) * 100) : 0;
@@ -387,55 +478,46 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
             <button
               type="button"
               key={step.key}
-              disabled={readOnly}
               onClick={() => setOpenStep(i)}
               className={cn(
-                "w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group relative",
-                readOnly ? "cursor-default opacity-60" : "hover:bg-foreground/[0.03] active:bg-foreground/[0.06] cursor-pointer"
+                'w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group relative cursor-pointer',
+                readOnly ? 'hover:bg-foreground/[0.02]' : 'hover:bg-foreground/[0.03] active:bg-foreground/[0.06]'
               )}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              {/* Step number */}
-              <div className={cn(
-                "w-10 h-10 flex items-center justify-center text-sm font-black shrink-0 border-2 transition-colors",
-                pct === 100
-                  ? "bg-foreground text-background border-foreground"
-                  : hasMissing
-                    ? "border-destructive/50 text-destructive"
-                    : "border-foreground/20 text-muted-foreground group-hover:border-foreground/50"
-              )}>
+              <div
+                className={cn(
+                  'w-10 h-10 flex items-center justify-center text-sm font-black shrink-0 border-2 transition-colors',
+                  pct === 100
+                    ? 'bg-foreground text-background border-foreground'
+                    : hasMissing
+                      ? 'border-destructive/50 text-destructive'
+                      : 'border-foreground/20 text-muted-foreground group-hover:border-foreground/50'
+                )}
+              >
                 {pct === 100 ? <Check className="w-4 h-4" /> : step.emoji}
               </div>
 
-              {/* Label + meta */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-sm font-black uppercase tracking-wider text-foreground">{step.label}</span>
-                  {pct > 0 && pct < 100 && (
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{pct}%</span>
-                  )}
+                  {pct > 0 && pct < 100 && <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{pct}%</span>}
                 </div>
                 <p className="text-[11px] text-muted-foreground truncate">{step.subtitle}</p>
                 {hasMissing && (
                   <div className="flex items-center gap-1 mt-1 text-destructive">
                     <AlertTriangle className="w-3 h-3 shrink-0" />
-                    <span className="text-[9px] font-bold uppercase tracking-wider truncate">
-                      {comp.missingCritical.join(', ')}
-                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider truncate">{comp.missingCritical.join(', ')}</span>
                   </div>
                 )}
               </div>
 
-              {/* Arrow */}
-              {!readOnly && (
-                <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
-              )}
+              <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
             </button>
           );
         })}
       </div>
 
-      {/* Fullscreen dialog for active step */}
       <AnimatePresence>
         {openStep !== null && (
           <FullscreenStepDialog
@@ -464,21 +546,21 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
   <div className="space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Titre du poste *" value={d.title} onChange={(v) => updateField('title', v)} placeholder="Ex: DevOps Senior" />
-      <Field label="Référence interne" value={d.reference} onChange={(v) => updateField('reference', v)} placeholder="Ex: SKL-2026-042" />
-      <SelectField label="Type de contrat *" value={d.contract_type} onChange={(v) => updateField('contract_type', v)} options={CONTRACT_TYPE_LABELS} />
-      <SelectField label="Urgence" value={d.urgency} onChange={(v) => updateField('urgency', v)} options={URGENCY_LABELS} />
-      <Field label="Date de démarrage" value={d.start_date} onChange={(v) => updateField('start_date', v)} placeholder="Ex: ASAP, Septembre 2026" />
+      <Field label="Titre du poste *" value={d.title} onChange={(v) => updateField('title', v)} placeholder="Ex: DevOps Senior" readOnly={readOnly} />
+      <Field label="Référence interne" value={d.reference} onChange={(v) => updateField('reference', v)} placeholder="Ex: SKL-2026-042" readOnly={readOnly} />
+      <SelectField label="Type de contrat *" value={d.contract_type} onChange={(v) => updateField('contract_type', v)} options={CONTRACT_TYPE_LABELS} readOnly={readOnly} />
+      <SelectField label="Urgence" value={d.urgency} onChange={(v) => updateField('urgency', v)} options={URGENCY_LABELS} readOnly={readOnly} />
+      <Field label="Date de démarrage" value={d.start_date} onChange={(v) => updateField('start_date', v)} placeholder="Ex: ASAP, Septembre 2026" readOnly={readOnly} />
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Localisation *" value={d.location} onChange={(v) => updateField('location', v)} placeholder="Ex: Paris, Lyon" />
-      <SelectField label="Politique remote *" value={d.remote_policy} onChange={(v) => updateField('remote_policy', v)} options={REMOTE_LABELS} />
+      <Field label="Localisation *" value={d.location} onChange={(v) => updateField('location', v)} placeholder="Ex: Paris, Lyon" readOnly={readOnly} />
+      <SelectField label="Politique remote *" value={d.remote_policy} onChange={(v) => updateField('remote_policy', v)} options={REMOTE_LABELS} readOnly={readOnly} />
       {d.remote_policy === 'hybrid' && (
-        <Field label="Jours remote / semaine" value={d.remote_days} onChange={(v) => updateField('remote_days', v ? Number(v) : undefined)} type="number" />
+        <Field label="Jours remote / semaine" value={d.remote_days} onChange={(v) => updateField('remote_days', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
       )}
     </div>
-    <Field label="Contexte (pourquoi on recrute)" value={d.context} onChange={(v) => updateField('context', v)} type="textarea" placeholder="Création de poste, remplacement, croissance..." />
-    <Field label="Description détaillée" value={d.mission_description} onChange={(v) => updateField('mission_description', v)} type="textarea" placeholder="Missions, responsabilités, environnement technique..." />
+    <Field label="Contexte (pourquoi on recrute)" value={d.context} onChange={(v) => updateField('context', v)} type="textarea" placeholder="Création de poste, remplacement, croissance..." readOnly={readOnly} />
+    <Field label="Description détaillée" value={d.mission_description} onChange={(v) => updateField('mission_description', v)} type="textarea" placeholder="Missions, responsabilités, environnement technique..." readOnly={readOnly} />
   </div>
 );
 
@@ -487,19 +569,19 @@ const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (
 const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
   <div className="space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Nom du client *" value={d.client?.name} onChange={(v) => updateField('client.name', v)} placeholder="Ex: Numspot" />
-      <Field label="Secteur" value={d.client?.sector} onChange={(v) => updateField('client.sector', v)} placeholder="Ex: Cloud, Fintech" />
-      <SelectField label="Taille" value={d.client?.size} onChange={(v) => updateField('client.size', v)} options={SIZE_LABELS} />
-      <Field label="Site web" value={d.client?.website} onChange={(v) => updateField('client.website', v)} type="url" placeholder="https://..." />
+      <Field label="Nom du client *" value={d.client?.name} onChange={(v) => updateField('client.name', v)} placeholder="Ex: Numspot" readOnly={readOnly} />
+      <Field label="Secteur" value={d.client?.sector} onChange={(v) => updateField('client.sector', v)} placeholder="Ex: Cloud, Fintech" readOnly={readOnly} />
+      <SelectField label="Taille" value={d.client?.size} onChange={(v) => updateField('client.size', v)} options={SIZE_LABELS} readOnly={readOnly} />
+      <Field label="Site web" value={d.client?.website} onChange={(v) => updateField('client.website', v)} type="url" placeholder="https://..." readOnly={readOnly} />
     </div>
-    <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." />
+    <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." readOnly={readOnly} />
     <div className="pt-5 border-t-2 border-foreground/15">
       <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} />
-        <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" />
-        <Field label="Email" value={d.client?.hiring_manager?.email} onChange={(v) => updateField('client.hiring_manager.email', v)} type="email" />
-        <Field label="LinkedIn" value={d.client?.hiring_manager?.linkedin} onChange={(v) => updateField('client.hiring_manager.linkedin', v)} type="url" placeholder="https://linkedin.com/in/..." />
+        <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} readOnly={readOnly} />
+        <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" readOnly={readOnly} />
+        <Field label="Email" value={d.client?.hiring_manager?.email} onChange={(v) => updateField('client.hiring_manager.email', v)} type="email" readOnly={readOnly} />
+        <Field label="LinkedIn" value={d.client?.hiring_manager?.linkedin} onChange={(v) => updateField('client.hiring_manager.linkedin', v)} type="url" placeholder="https://linkedin.com/in/..." readOnly={readOnly} />
       </div>
     </div>
   </div>
@@ -507,27 +589,27 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
 
 // ─── Step 3: Profil recherché ──────────────────────────────
 
-const StepProfil = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
+const StepProfil = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
   <div className="space-y-5">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Seniorité *" value={d.seniority} onChange={(v) => updateField('seniority', v)} placeholder="Ex: Senior, Lead, Junior" />
+      <Field label="Seniorité *" value={d.seniority} onChange={(v) => updateField('seniority', v)} placeholder="Ex: Senior, Lead, Junior" readOnly={readOnly} />
       <div className="flex gap-2">
-        <Field label="XP min (années)" value={d.experience_min} onChange={(v) => updateField('experience_min', v ? Number(v) : undefined)} type="number" className="flex-1" />
-        <Field label="XP max" value={d.experience_max} onChange={(v) => updateField('experience_max', v ? Number(v) : undefined)} type="number" className="flex-1" />
+        <Field label="XP min (années)" value={d.experience_min} onChange={(v) => updateField('experience_min', v ? Number(v) : undefined)} type="number" className="flex-1" readOnly={readOnly} />
+        <Field label="XP max" value={d.experience_max} onChange={(v) => updateField('experience_max', v ? Number(v) : undefined)} type="number" className="flex-1" readOnly={readOnly} />
       </div>
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <Field label="Salaire min *" value={d.salary_min} onChange={(v) => updateField('salary_min', v ? Number(v) : undefined)} type="number" />
-      <Field label="Salaire max" value={d.salary_max} onChange={(v) => updateField('salary_max', v ? Number(v) : undefined)} type="number" />
-      <SelectField label="Type" value={d.salary_type} onChange={(v) => updateField('salary_type', v)} options={SALARY_TYPE_LABELS} />
+      <Field label="Salaire min *" value={d.salary_min} onChange={(v) => updateField('salary_min', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
+      <Field label="Salaire max" value={d.salary_max} onChange={(v) => updateField('salary_max', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
+      <SelectField label="Type" value={d.salary_type} onChange={(v) => updateField('salary_type', v)} options={SALARY_TYPE_LABELS} readOnly={readOnly} />
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Equity / variable" value={d.equity} onChange={(v) => updateField('equity', v)} placeholder="Ex: BSPCE, 0.5%" />
-      <Field label="Avantages" value={d.benefits} onChange={(v) => updateField('benefits', v)} placeholder="Ex: TR, mutuelle, télétravail" />
+      <Field label="Equity / variable" value={d.equity} onChange={(v) => updateField('equity', v)} placeholder="Ex: BSPCE, 0.5%" readOnly={readOnly} />
+      <Field label="Avantages" value={d.benefits} onChange={(v) => updateField('benefits', v)} placeholder="Ex: TR, mutuelle, télétravail" readOnly={readOnly} />
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Taille de l'équipe" value={d.team_size} onChange={(v) => updateField('team_size', v ? Number(v) : undefined)} type="number" />
-      <Field label="Reporte à" value={d.reports_to} onChange={(v) => updateField('reports_to', v)} placeholder="Ex: CTO, VP Engineering" />
+      <Field label="Taille de l'équipe" value={d.team_size} onChange={(v) => updateField('team_size', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
+      <Field label="Reporte à" value={d.reports_to} onChange={(v) => updateField('reports_to', v)} placeholder="Ex: CTO, VP Engineering" readOnly={readOnly} />
     </div>
   </div>
 );
@@ -536,12 +618,12 @@ const StepProfil = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; upd
 
 const StepCompetences = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
   <div className="space-y-6">
-    <TagInput label="Must-have — indispensable" tags={d.skills_must_have || []} onChange={(tags) => onUpdate({ skills_must_have: tags })} color="bg-destructive text-destructive-foreground border-destructive" placeholder="Skill obligatoire" />
-    <TagInput label="Should-have — important" tags={d.skills_should_have || []} onChange={(tags) => onUpdate({ skills_should_have: tags })} color="bg-brutal-accent/30 text-foreground border-brutal-accent" placeholder="Skill important" />
-    <TagInput label="Nice-to-have — bonus" tags={d.skills_nice_to_have || []} onChange={(tags) => onUpdate({ skills_nice_to_have: tags })} color="bg-foreground text-background border-foreground" placeholder="Skill bonus" />
-    <TagInput label="À éviter" tags={d.skills_to_avoid || []} onChange={(tags) => onUpdate({ skills_to_avoid: tags })} color="bg-foreground/10 text-foreground line-through border-foreground/30" placeholder="Trait rédhibitoire" />
-    <Field label="Certifications" value={d.certifications?.join(', ')} onChange={(v) => onUpdate({ certifications: v ? v.split(',').map(s => s.trim()).filter(Boolean) : [] })} placeholder="Ex: AWS, PMP, CISSP (séparés par des virgules)" />
-    <Field label="Brief brut (texte ou voice transcript)" value={d.raw_brief} onChange={(v) => onUpdate({ raw_brief: v })} type="textarea" placeholder="Collez un brief brut ou retrouvez ici le transcript vocal..." />
+    <TagInput label="Must-have — indispensable" tags={d.skills_must_have || []} onChange={(tags) => onUpdate({ skills_must_have: tags })} color="bg-destructive text-destructive-foreground border-destructive" placeholder="Skill obligatoire" readOnly={readOnly} />
+    <TagInput label="Should-have — important" tags={d.skills_should_have || []} onChange={(tags) => onUpdate({ skills_should_have: tags })} color="bg-brutal-accent/30 text-foreground border-brutal-accent" placeholder="Skill important" readOnly={readOnly} />
+    <TagInput label="Nice-to-have — bonus" tags={d.skills_nice_to_have || []} onChange={(tags) => onUpdate({ skills_nice_to_have: tags })} color="bg-foreground text-background border-foreground" placeholder="Skill bonus" readOnly={readOnly} />
+    <TagInput label="À éviter" tags={d.skills_to_avoid || []} onChange={(tags) => onUpdate({ skills_to_avoid: tags })} color="bg-foreground/10 text-foreground line-through border-foreground/30" placeholder="Trait rédhibitoire" readOnly={readOnly} />
+    <Field label="Certifications" value={d.certifications?.join(', ')} onChange={(v) => onUpdate({ certifications: v ? v.split(',').map((s) => s.trim()).filter(Boolean) : [] })} placeholder="Ex: AWS, PMP, CISSP (séparés par des virgules)" readOnly={readOnly} />
+    <Field label="Brief brut (texte ou voice transcript)" value={d.raw_brief} onChange={(v) => onUpdate({ raw_brief: v })} type="textarea" placeholder="Collez un brief brut ou retrouvez ici le transcript vocal..." readOnly={readOnly} />
   </div>
 );
 
@@ -571,7 +653,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
   const weights = d.evaluation_weights || { technical: 40, soft_skill: 20, culture_fit: 20, motivation: 10, experience: 10 };
 
   const addCriterion = () => {
-    if (!newLabel.trim()) return;
+    if (readOnly || !newLabel.trim()) return;
     const newCriterion = {
       id: `crit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       label: newLabel.trim(),
@@ -586,34 +668,41 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
   };
 
   const removeCriterion = (id: string) => {
-    onUpdate({ evaluation_criteria: criteria.filter(c => c.id !== id) });
+    if (readOnly) return;
+    onUpdate({ evaluation_criteria: criteria.filter((c) => c.id !== id) });
   };
 
   const updateCriterion = (id: string, patch: any) => {
-    onUpdate({ evaluation_criteria: criteria.map(c => c.id === id ? { ...c, ...patch } : c) });
+    if (readOnly) return;
+    onUpdate({ evaluation_criteria: criteria.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   };
 
   const updateWeightVal = (category: string, value: number) => {
+    if (readOnly) return;
     onUpdate({ evaluation_weights: { ...weights, [category]: value } });
   };
 
   return (
     <div className="space-y-6">
-      {/* Weight distribution */}
       <div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">
-          Répartition des poids (total = 100%)
-        </p>
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
             <div key={key} className="space-y-1">
               <label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
               <div className="flex items-center gap-1">
                 <input
-                  type="number" min={0} max={100}
+                  type="number"
+                  min={0}
+                  max={100}
                   value={(weights as any)[key] || 0}
                   onChange={(e) => updateWeightVal(key, Number(e.target.value) || 0)}
-                  className="w-full h-[34px] px-2 text-sm text-center border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
+                  readOnly={readOnly}
+                  tabIndex={readOnly ? -1 : undefined}
+                  className={cn(
+                    'w-full h-[34px] px-2 text-sm text-center border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none',
+                    readOnly && 'cursor-default opacity-70 focus:border-foreground/30'
+                  )}
                 />
                 <span className="text-[10px] text-muted-foreground font-bold">%</span>
               </div>
@@ -621,20 +710,16 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
           ))}
         </div>
         {Object.values(weights).reduce((a, b) => a + b, 0) !== 100 && (
-          <p className="text-[10px] text-destructive font-bold mt-1">
-            Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit être 100%)
-          </p>
+          <p className="text-[10px] text-destructive font-bold mt-1">Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit être 100%)</p>
         )}
       </div>
 
-      {/* Criteria list */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-            Critères ({criteria.length})
-          </p>
+          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Critères ({criteria.length})</p>
           {!readOnly && !adding && (
             <button
+              type="button"
               onClick={() => setAdding(true)}
               className="flex items-center gap-1 h-[28px] px-3 text-[9px] font-black uppercase tracking-wider border-2 border-foreground text-foreground hover:bg-foreground hover:text-background transition-all"
             >
@@ -644,7 +729,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
         </div>
 
         <AnimatePresence>
-          {adding && (
+          {adding && !readOnly && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -654,7 +739,12 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
               <input
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCriterion(); } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addCriterion();
+                  }
+                }}
                 autoFocus
                 placeholder="Ex: Maîtrise de Kubernetes, Leadership..."
                 className="w-full h-[34px] px-3 text-sm border-2 border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
@@ -663,12 +753,22 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 <SelectField label="Catégorie" value={newCategory} onChange={setNewCategory} options={CATEGORY_OPTIONS} />
                 <SelectField label="Importance" value={newWeight} onChange={setNewWeight} options={WEIGHT_OPTIONS} />
                 <div className="flex items-end gap-2">
-                  <button onClick={addCriterion} disabled={!newLabel.trim()}
-                    className="h-[34px] px-4 bg-foreground text-background text-[10px] font-black uppercase tracking-wider border-2 border-foreground disabled:opacity-50">
+                  <button
+                    type="button"
+                    onClick={addCriterion}
+                    disabled={!newLabel.trim()}
+                    className="h-[34px] px-4 bg-foreground text-background text-[10px] font-black uppercase tracking-wider border-2 border-foreground disabled:opacity-50"
+                  >
                     Ajouter
                   </button>
-                  <button onClick={() => { setAdding(false); setNewLabel(''); }}
-                    className="h-[34px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdding(false);
+                      setNewLabel('');
+                    }}
+                    className="h-[34px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
+                  >
                     X
                   </button>
                 </div>
@@ -680,9 +780,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
         {criteria.length === 0 ? (
           <div className="border-2 border-dashed border-foreground/30 p-6 text-center">
             <p className="text-sm text-muted-foreground mb-2 font-bold">Aucun critère défini</p>
-            <p className="text-[10px] text-muted-foreground">
-              Ajoutez les critères que le manager souhaite évaluer.
-            </p>
+            <p className="text-[10px] text-muted-foreground">Ajoutez les critères que le manager souhaite évaluer.</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -695,12 +793,16 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 className="border-2 border-foreground/20 px-4 py-3 hover:border-foreground/40 transition-colors"
               >
                 <div className="flex items-start gap-3">
-                  <span className={cn(
-                    "mt-0.5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shrink-0 border-2",
-                    c.weight === 3 ? "bg-destructive text-destructive-foreground border-destructive" :
-                    c.weight === 2 ? "bg-brutal-accent/30 text-foreground border-brutal-accent" :
-                    "bg-foreground/5 text-foreground border-foreground/20"
-                  )}>
+                  <span
+                    className={cn(
+                      'mt-0.5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shrink-0 border-2',
+                      c.weight === 3
+                        ? 'bg-destructive text-destructive-foreground border-destructive'
+                        : c.weight === 2
+                          ? 'bg-brutal-accent/30 text-foreground border-brutal-accent'
+                          : 'bg-foreground/5 text-foreground border-foreground/20'
+                    )}
+                  >
                     {c.weight === 3 ? 'Critique' : c.weight === 2 ? 'Important' : 'Bonus'}
                   </span>
                   <div className="flex-1 min-w-0 space-y-2">
@@ -718,7 +820,12 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                           defaultValue={c.level_10 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_10: e.target.value || undefined })}
                           placeholder="Excellence pour ce critère"
-                          className="w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
+                          readOnly={readOnly}
+                          tabIndex={readOnly ? -1 : undefined}
+                          className={cn(
+                            'w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none',
+                            readOnly && 'cursor-default opacity-70 focus:border-foreground/20'
+                          )}
                         />
                       </div>
                       <div className="space-y-0.5">
@@ -727,16 +834,18 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                           defaultValue={c.level_1 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_1: e.target.value || undefined })}
                           placeholder="Ce qui est éliminatoire"
-                          className="w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none"
+                          readOnly={readOnly}
+                          tabIndex={readOnly ? -1 : undefined}
+                          className={cn(
+                            'w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none',
+                            readOnly && 'cursor-default opacity-70 focus:border-foreground/20'
+                          )}
                         />
                       </div>
                     </div>
                   </div>
                   {!readOnly && (
-                    <button
-                      onClick={() => removeCriterion(c.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-0.5"
-                    >
+                    <button type="button" onClick={() => removeCriterion(c.id)} className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-0.5">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
