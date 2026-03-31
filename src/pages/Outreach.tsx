@@ -1,5 +1,4 @@
 import React from 'react';
-import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { ProjectsList } from '@/components/outreach/projects';
 
@@ -24,14 +23,13 @@ export interface LinkedInAccount {
 
 export default function Outreach() {
   return (
-    <div className="min-h-screen w-full max-w-full bg-background">
+    <div className="w-full max-w-full bg-background">
       <SEOHead
         title="Missions | Skalr"
         description="Gérez vos missions de recrutement et de sourcing"
       />
-      <Navbar />
 
-      <main className="pt-20 pb-8 w-full max-w-full">
+      <div className="py-6 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           <div className="mb-4 sm:mb-6">
             <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">
@@ -43,7 +41,7 @@ export default function Outreach() {
             <ProjectsList />
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
