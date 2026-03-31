@@ -898,7 +898,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             <Timer className="w-4 h-4 text-amber-600" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {availableTriggers.map(trigger => (
                               <button
                                 key={trigger.value}
