@@ -460,10 +460,17 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
 
   // AI-generated industry keywords → add as context in keywords if no ID-based industry
   if (filters.industry_keywords?.length && !filters.industry?.length) {
-    // Industry keywords are best used as soft context, not hard filters
-    // We DON'T inject into Boolean (too restrictive) but we CAN use them
-    // to enrich the role filter or as metadata for scoring
     baseParams.industry_keywords = filters.industry_keywords;
+  }
+
+  // Database-specific filters (Base Konekt)
+  if (filters.api === 'database') {
+    if (filters.db_technologies?.length) baseParams.db_technologies = filters.db_technologies;
+    if (filters.db_email_verified) baseParams.db_email_verified = true;
+    if (filters.db_revenue_min) baseParams.db_revenue_min = filters.db_revenue_min;
+    if (filters.db_revenue_max) baseParams.db_revenue_max = filters.db_revenue_max;
+    if (filters.db_funding_stage) baseParams.db_funding_stage = filters.db_funding_stage;
+    if (filters.db_company_domain) baseParams.db_company_domain = filters.db_company_domain;
   }
 
   return baseParams;

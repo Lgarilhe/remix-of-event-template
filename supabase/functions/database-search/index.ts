@@ -255,9 +255,83 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     console.warn("[database-search] q_keywords truncated to ~500 chars");
   }
 
+  // SAFETY: cap q_organization_name length
+  if (payload.q_organization_name && String(payload.q_organization_name).length > 200) {
+    const truncated = String(payload.q_organization_name).slice(0, 200);
+    payload.q_organization_name = truncated.slice(0, truncated.lastIndexOf(" ")).trim();
+    console.warn("[database-search] q_organization_name truncated to ~200 chars");
+  }
+
   // Years of experience → not directly in Apollo, but can filter seniority
   const yearsExp = params.years_of_experience as { min?: number; max?: number } | undefined;
   // Apollo doesn't have a direct years filter — handled post-filter
+
+  // ─── Database-specific filters (Base Konekt exclusive) ─────────────────
+
+  // Revenue range
+  const dbRevenueMin = params.db_revenue_min as number | undefined;
+  const dbRevenueMax = params.db_revenue_max as number | undefined;
+  if (dbRevenueMin !== undefined || dbRevenueMax !== undefined) {
+    const revenueRange: Record<string, number> = {};
+    if (dbRevenueMin !== undefined) revenueRange.min = dbRevenueMin;
+    if (dbRevenueMax !== undefined) revenueRange.max = dbRevenueMax;
+    payload.revenue_range = revenueRange;
+  }
+
+  // Funding stage
+  const dbFundingStage = params.db_funding_stage as string | string[] | undefined;
+  if (dbFundingStage) {
+    const stages = Array.isArray(dbFundingStage) ? dbFundingStage : [dbFundingStage];
+    if (stages.length) payload.organization_latest_funding_stage_cd = stages;
+  }
+
+  // Company domain
+  const dbCompanyDomain = params.db_company_domain as string | undefined;
+  if (dbCompanyDomain) {
+    payload.q_organization_domains = dbCompanyDomain;
+  }
+
+  // Email verified
+  const dbEmailVerified = params.db_email_verified as boolean | undefined;
+  if (dbEmailVerified) {
+    payload.contact_email_status = ["verified"];
+  }
+
+  // Technologies
+  const dbTechnologies = params.db_technologies as string[] | undefined;
+  if (dbTechnologies?.length) {
+    payload.currently_using_any_of_technology_uids = dbTechnologies;
+  }
+
+  // Company headcount (shared filter, Apollo-specific format)
+  const headcount = params.company_headcount as string[] | undefined;
+  if (headcount?.length) {
+    // Map LinkedIn headcount codes to Apollo ranges
+    const headcountMap: Record<string, string> = {
+      "A": "1,10",
+      "B": "11,20",
+      "C": "21,50",
+      "D": "51,100",
+      "E": "101,200",
+      "F": "201,500",
+      "G": "501,1000",
+      "H": "1001,5000",
+      "I": "5001,10000",
+    };
+    const ranges = headcount
+      .map(code => headcountMap[code] || code)
+      .filter(Boolean);
+    if (ranges.length) payload.organization_num_employees_ranges = ranges;
+  }
+
+  // Company location (for org-level location filtering)
+  const companyLocation = params.company_location as Array<{ id: string; name?: string }> | undefined;
+  if (companyLocation?.length) {
+    const locNames = companyLocation
+      .map(l => l.name || l.id)
+      .filter(l => !/^\d+$/.test(l)); // Skip numeric LinkedIn IDs
+    if (locNames.length) payload.organization_locations = locNames;
+  }
 
   // Function / Department
   const func = params.function as string[] | undefined;
