@@ -279,6 +279,52 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
+        const sequence = enrollment.sequence;
+
+        // === CONFIGURABLE STOP CONDITIONS ===
+        const stopCond = sequence?.stop_conditions || { on_reply: true, on_unsubscribe: true };
+        let shouldStop = false;
+        let stopReason = '';
+
+        // on_reply is already handled by the existing PRE-SEND REPLY CHECK below — skip here
+        if (stopCond.on_click) {
+          const { data: clickedExecs } = await supabase.from('sequence_step_executions').select('id').eq('enrollment_id', enrollment.id).eq('status', 'clicked').limit(1);
+          if (clickedExecs?.length) { shouldStop = true; stopReason = 'Stop condition: link clicked'; }
+        }
+        if (!shouldStop && stopCond.on_unsubscribe && enrollment.email_used) {
+          const { data: suppressed } = await supabase.from('suppressed_emails').select('id').eq('email', enrollment.email_used).limit(1);
+          if (suppressed?.length) { shouldStop = true; stopReason = 'Stop condition: unsubscribed'; }
+        }
+        if (!shouldStop && stopCond.on_meeting_booked && enrollment.email_used) {
+          // Check if a Calendly event exists for this candidate (via calendly_events or similar)
+          // For now, this is a placeholder — integrate with calendly webhook data when available
+        }
+        if (shouldStop) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: stopReason, executed_at: new Date().toISOString() }).eq('id', exec.id);
+          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+          await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: stopReason }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
+          console.log(`[process] ⛔ ${enrollment.profile_name} — ${stopReason}`);
+          results.skipped++;
+          continue;
+        }
+
+        // === AUTO-SKIP: channel unavailable ===
+        const effectiveChannel = step.step_channel || (step.action_type === 'email' ? 'email' : 'linkedin');
+        if (effectiveChannel === 'email' && !enrollment.email_used) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'No email — channel skipped', executed_at: new Date().toISOString() }).eq('id', exec.id);
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          console.log(`[process] ⏭️ ${enrollment.profile_name} — email step skipped (no email), advancing to next`);
+          results.skipped++;
+          continue;
+        }
+        if (effectiveChannel === 'linkedin' && !enrollment.account_id) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'No LinkedIn account — channel skipped', executed_at: new Date().toISOString() }).eq('id', exec.id);
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          console.log(`[process] ⏭️ ${enrollment.profile_name} — LinkedIn step skipped (no account), advancing to next`);
+          results.skipped++;
+          continue;
+        }
+
         const quotaCheck = await checkQuotaForAction(supabase, step.action_type, enrollment.account_id);
         if (!quotaCheck.allowed) {
           await supabase.from('sequence_step_executions').update({ 
@@ -297,7 +343,7 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
-        const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url);
+        const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value);
         if (conditionResult === 'wait') {
           await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
           results.skipped++;
@@ -420,6 +466,16 @@ async function handleProcess(supabase: any, force = false) {
           }
         }
 
+        // === INBOX ROTATION: assign sender if multi_sender_enabled ===
+        if (sequence?.multi_sender_enabled && sequence.sender_accounts?.length > 0 && !enrollment.assigned_sender_id) {
+          const sender = await pickSenderForRotation(supabase, sequence);
+          if (sender) {
+            await supabase.from('sequence_enrollments').update({ assigned_sender_id: sender.account_id }).eq('id', enrollment.id);
+            enrollment.assigned_sender_id = sender.account_id;
+            console.log(`[process] Rotation: assigned sender ${sender.account_id} to enrollment ${enrollment.id}`);
+          }
+        }
+
         const { data: lockResult, error: lockError } = await supabase
           .from('sequence_step_executions').update({ status: 'sending' }).eq('id', exec.id).eq('status', 'scheduled').select().single();
 
@@ -427,7 +483,7 @@ async function handleProcess(supabase: any, force = false) {
 
         let finalMessage = (exec.final_message || step.message_template || '') as string;
         let finalSubject = (step.subject_template || '') as string;
-        
+
         // Skip inline AI personalization for email steps — sequence-send-email handles its own
         if (step.use_ai_personalization && needsMessage(step.action_type) && step.step_channel !== 'email') {
           const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
@@ -801,6 +857,55 @@ async function handleCheckWaitEvents(supabase: any) {
 
 // ============ UTILITIES ============
 
+// Inbox rotation: pick the best sender from the pool
+// deno-lint-ignore no-explicit-any
+async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ account_id: string; email?: string; daily_limit?: number } | null> {
+  const accounts = sequence.sender_accounts as { account_id: string; email?: string; daily_limit?: number }[];
+  if (!accounts || accounts.length === 0) return null;
+  if (accounts.length === 1) return accounts[0];
+
+  const mode = sequence.rotation_mode || 'round_robin';
+
+  if (mode === 'random') {
+    return accounts[Math.floor(Math.random() * accounts.length)];
+  }
+
+  // round_robin / least_used: count sends per sender today
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const accountIds = accounts.map(a => a.account_id);
+
+  const { data: todaySends } = await supabase
+    .from('sequence_step_executions')
+    .select('id, enrollment:sequence_enrollments!inner(assigned_sender_id)')
+    .eq('status', 'sent')
+    .gte('executed_at', todayStart.toISOString())
+    .in('enrollment.assigned_sender_id', accountIds);
+
+  // Count sends per sender
+  const sendCounts = new Map<string, number>();
+  accountIds.forEach(id => sendCounts.set(id, 0));
+  // deno-lint-ignore no-explicit-any
+  (todaySends || []).forEach((s: any) => {
+    const sid = s.enrollment?.assigned_sender_id;
+    if (sid) sendCounts.set(sid, (sendCounts.get(sid) || 0) + 1);
+  });
+
+  // Filter out senders who hit their daily limit
+  const available = accounts.filter(a => {
+    const count = sendCounts.get(a.account_id) || 0;
+    return !a.daily_limit || count < a.daily_limit;
+  });
+
+  if (available.length === 0) {
+    console.warn('[pickSender] All senders hit daily limit');
+    return accounts[0]; // Fallback to first sender
+  }
+
+  // Pick the one with fewest sends
+  available.sort((a, b) => (sendCounts.get(a.account_id) || 0) - (sendCounts.get(b.account_id) || 0));
+  return available[0];
+}
 
 function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message', 'email'].includes(actionType); }
 
@@ -1206,7 +1311,8 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
   } catch { return { allowed: true }; }
 }
 
-async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string): Promise<boolean | 'wait'> {
+// deno-lint-ignore no-explicit-any
+async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string, supabaseClient?: any, enrollmentId?: string, enrollment?: any, conditionValue?: string): Promise<boolean | 'wait'> {
   const eff = waitForEvent ? 'wait_for_event' : (conditionType || 'always');
   switch (eff) {
     case 'always': return true;
@@ -1217,8 +1323,78 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
     case 'wait_for_event': {
       if (waitForEvent === 'connection_accepted') { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
       if (waitForEvent === 'reply_received') return (await checkHasProspectReplied(accountId, profileId)) ? true : 'wait';
+      if (waitForEvent === 'email_opened' && supabaseClient && enrollmentId) {
+        const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).in('status', ['opened', 'clicked', 'replied']).limit(1);
+        return (data && data.length > 0) ? true : 'wait';
+      }
+      if (waitForEvent === 'link_clicked' && supabaseClient && enrollmentId) {
+        const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).in('status', ['clicked', 'replied']).limit(1);
+        return (data && data.length > 0) ? true : 'wait';
+      }
       return true;
     }
+
+    // --- NEW: Email engagement conditions ---
+    case 'if_email_opened': {
+      if (!supabaseClient || !enrollmentId) return true;
+      const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).in('status', ['opened', 'clicked', 'replied']).limit(1);
+      return data && data.length > 0;
+    }
+    case 'if_email_not_opened': {
+      if (!supabaseClient || !enrollmentId) return true;
+      const { data: sentEmails } = await supabaseClient.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollmentId).eq('channel', 'email').in('status', ['sent', 'opened', 'clicked', 'replied']);
+      if (!sentEmails || sentEmails.length === 0) return true; // no emails sent yet → condition is vacuously true
+      const anyOpened = sentEmails.some((e: { status: string }) => e.status !== 'sent');
+      return !anyOpened;
+    }
+    case 'if_link_clicked': {
+      if (!supabaseClient || !enrollmentId) return true;
+      const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).in('status', ['clicked', 'replied']).limit(1);
+      return data && data.length > 0;
+    }
+    case 'if_link_not_clicked': {
+      if (!supabaseClient || !enrollmentId) return true;
+      const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).in('status', ['clicked']).limit(1);
+      return !data || data.length === 0;
+    }
+
+    // --- NEW: Data availability conditions ---
+    case 'if_has_email': return !!(enrollment?.email_used);
+    case 'if_no_email': return !(enrollment?.email_used);
+    case 'if_has_phone': {
+      if (!supabaseClient || !profileId) return false;
+      // Check enriched contact data for phone number
+      const { data } = await supabaseClient.from('job_candidate_status').select('id').eq('candidate_id', profileId).not('candidate_headline', 'is', null).limit(1);
+      // Fallback: check if phone exists in any enrichment source
+      // For now, check a generic approach — phone data varies by integration
+      return false; // Conservative: if no phone table, return false
+    }
+    case 'if_no_phone': {
+      // Inverse of if_has_phone — conservative: return true (no phone data available)
+      return true;
+    }
+
+    // --- NEW: Status-based conditions ---
+    case 'if_bounced': {
+      if (!supabaseClient || !enrollmentId) return false;
+      const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).eq('status', 'bounced').limit(1);
+      return data && data.length > 0;
+    }
+    case 'if_unsubscribed': {
+      if (!supabaseClient || !enrollment?.email_used) return false;
+      const { data } = await supabaseClient.from('suppressed_emails').select('id').eq('email', enrollment.email_used).limit(1);
+      return data && data.length > 0;
+    }
+
+    // --- NEW: Scoring condition ---
+    case 'if_score_above': {
+      if (!supabaseClient || !profileId) return false;
+      const threshold = parseInt(conditionValue || '0', 10);
+      const { data } = await supabaseClient.from('job_candidate_status').select('score').eq('candidate_id', profileId).not('score', 'is', null).order('score', { ascending: false }).limit(1);
+      if (!data || data.length === 0) return false;
+      return (data[0].score || 0) >= threshold;
+    }
+
     default: return true;
   }
 }
@@ -1443,6 +1619,31 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     return;
   }
 
+  // === A/B TESTING: if nextStep has a variant_group, pick a variant ===
+  let variantAssigned: string | null = null;
+  if (nextStep.variant_group) {
+    const { data: variants } = await supabase.from('sequence_steps')
+      .select('*')
+      .eq('sequence_id', nextStep.sequence_id)
+      .eq('step_order', nextStep.step_order)
+      .not('variant_group', 'is', null);
+
+    if (variants && variants.length > 1) {
+      // Weighted random selection
+      const totalWeight = variants.reduce((sum: number, v: { variant_weight?: number }) => sum + (v.variant_weight || 100), 0);
+      let random = Math.random() * totalWeight;
+      for (const variant of variants) {
+        random -= (variant.variant_weight || 100);
+        if (random <= 0) {
+          nextStep = variant;
+          break;
+        }
+      }
+      variantAssigned = nextStep.variant_group;
+      console.log(`[scheduleNextStep] A/B test: selected variant '${variantAssigned}' for enrollment ${enrollment.id} step_order ${nextStep.step_order}`);
+    }
+  }
+
   // Guard: prevent duplicate executions for the same enrollment+step (any non-terminal status)
   const { data: existing } = await supabase.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).in('status', ['scheduled', 'sending', 'waiting_event', 'quota_blocked']);
   if (existing && existing.length > 0) {
@@ -1450,7 +1651,14 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     return;
   }
 
-  await supabase.from('sequence_step_executions').insert({ enrollment_id: enrollment.id, step_id: nextStep.id, step_order: nextStep.step_order, scheduled_at: scheduledAt.toISOString(), status: 'scheduled' });
+  await supabase.from('sequence_step_executions').insert({
+    enrollment_id: enrollment.id,
+    step_id: nextStep.id,
+    step_order: nextStep.step_order,
+    scheduled_at: scheduledAt.toISOString(),
+    status: 'scheduled',
+    variant_assigned: variantAssigned,
+  });
 }
 
 // deno-lint-ignore no-explicit-any
