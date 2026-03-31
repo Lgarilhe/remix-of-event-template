@@ -563,9 +563,16 @@ Deno.serve(async (req) => {
       const data = await response.json();
       const rawPeople = data.people || [];
 
-      // Log pagination info from Apollo
+      // Log pagination info from Apollo — check multiple possible locations
       const paginationInfo = data.pagination || {};
+      // Apollo sometimes puts total at top-level
+      const topLevelKeys = Object.keys(data).filter(k => k !== 'people');
+      console.log(`[database-search] Response top-level keys (excl people):`, JSON.stringify(topLevelKeys));
       console.log(`[database-search] Search returned ${rawPeople.length} raw results | pagination:`, JSON.stringify(paginationInfo));
+      // Log any top-level total-like fields
+      for (const k of ['total_entries', 'total', 'total_results', 'num_fetch_result']) {
+        if (data[k] !== undefined) console.log(`[database-search] data.${k} =`, data[k]);
+      }
       if (rawPeople.length > 0) {
         const sample = rawPeople[0];
         console.log(`[database-search] Sample raw person:`, JSON.stringify({
@@ -667,13 +674,17 @@ Deno.serve(async (req) => {
         pagination.total ??
         pagination.total_results ??
         pagination.total_people ??
+        data.total_entries ??
+        data.total ??
+        data.total_results ??
+        data.num_fetch_result ??
         profiles.length
       );
-      const currentPage = Number(pagination.page || pagination.current_page || apolloPayload.page || 1);
-      const perPage = Number(pagination.per_page || apolloPayload.per_page || 25);
+      const currentPage = Number(pagination.page || pagination.current_page || data.page || apolloPayload.page || 1);
+      const perPage = Number(pagination.per_page || data.per_page || apolloPayload.per_page || 25);
       // Calculate total pages from total entries if not provided by Apollo
       const totalPages = Number(
-        pagination.total_pages || pagination.pages || Math.ceil(totalEntries / perPage) || 1
+        pagination.total_pages || pagination.pages || data.total_pages || Math.ceil(totalEntries / perPage) || 1
       );
       const hasMore = currentPage < totalPages && totalEntries > currentPage * perPage;
 
