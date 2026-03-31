@@ -104,3 +104,18 @@ verify_jwt = false
 
 [functions.handle-email-suppression]
 verify_jwt = false
+
+[functions.sequence-send-email]
+verify_jwt = false
+
+[functions.sequence-email-track]
+verify_jwt = false
+
+[functions.sequence-webhooks-handler]
+verify_jwt = false
+
+[functions.sequence-templates-crud]
+verify_jwt = false
+
+[functions.sequence-snippets-crud]
+verify_jwt = false
