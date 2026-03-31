@@ -25,9 +25,8 @@ export default function Dashboard() {
         title="Dashboard | Skalr"
         description="Vue d'ensemble de votre activité recrutement"
       />
-      <Navbar />
 
-      <main className="pt-16 sm:pt-20 pb-8">
+      <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-4">
