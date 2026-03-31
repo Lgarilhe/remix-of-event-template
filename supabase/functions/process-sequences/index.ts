@@ -315,7 +315,7 @@ async function handleProcess(supabase: any, force = false) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: new Date().toISOString() }).eq('id', exec.id);
           results.skipped++;
           // Route to 'no' branch if tree branching, otherwise linear fallback
-          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, useTreeBranching ? 'no' : undefined);
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, useTreeBranching ? 'no' : undefined, 0, step.id);
           continue;
         }
 
@@ -323,7 +323,7 @@ async function handleProcess(supabase: any, force = false) {
         if (useTreeBranching && (step.action_type === 'condition_branch')) {
           await supabase.from('sequence_step_executions').update({ status: 'sent', executed_at: new Date().toISOString(), final_message: `Condition "${step.condition_type}" → true` }).eq('id', exec.id);
           await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
-          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, 'yes');
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, 'yes', 0, step.id);
           results.processed++;
           continue;
         }
@@ -473,13 +473,23 @@ async function handleProcess(supabase: any, force = false) {
             }).eq('id', exec.id);
           }
           await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
-          if (effectiveActionType !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order);
+          if (effectiveActionType !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
           results.processed++;
           if (!INVISIBLE_ACTIONS.has(effectiveActionType)) visibleActionsExecuted++;
           
           // Sync Notion stage (fire-and-forget, non-blocking)
           syncNotionStageAfterAction(step.action_type, enrollment).catch(err => console.warn('[notion-sync] Fire-and-forget error:', err));
         } else {
+          // For email steps, sequence-send-email may have already updated the execution status.
+          // Re-fetch to avoid overwriting a more specific status (e.g. 'bounced').
+          if (effectiveActionType === 'email') {
+            const { data: freshExec } = await supabase.from('sequence_step_executions').select('status').eq('id', exec.id).single();
+            if (freshExec && freshExec.status !== 'sending') {
+              console.log(`[process] Email execution ${exec.id} already updated to '${freshExec.status}' by sequence-send-email — skipping error handling`);
+              results.failed++;
+              continue;
+            }
+          }
           // Error handling: differentiate rate limits from other retryable errors
           const currentRetryCount = exec.retry_count || 0;
           const errorStr = executeResult.error || '';
@@ -685,7 +695,7 @@ async function handleCheckTimeouts(supabase: any) {
     const daysPassed = Math.floor((Date.now() - new Date(exec.created_at).getTime()) / 86400000);
     if (daysPassed >= step.timeout_days) {
       await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Timeout ${step.timeout_days}d`, executed_at: new Date().toISOString() }).eq('id', exec.id);
-      await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id);
+      await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id, undefined, 0, step.id);
       branched++;
     }
   }
@@ -1248,7 +1258,7 @@ async function handleForceReschedule(supabase: any) {
 }
 
 // deno-lint-ignore no-explicit-any
-async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no', _depth = 0) {
+async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no', _depth = 0, currentStepId?: string) {
   // Guard: prevent infinite recursion on deeply nested or circular branches
   const MAX_BRANCH_DEPTH = 10;
   if (_depth >= MAX_BRANCH_DEPTH) {
@@ -1263,12 +1273,19 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     const { data } = await supabase.from('sequence_steps').select('*').eq('id', forceBranchStepId).maybeSingle();
     nextStep = data;
   } else {
-    // Fetch current step with branching columns
-    const { data: currentStep } = await supabase.from('sequence_steps')
-      .select('id, next_step_id, parent_step_id, branch, step_order, sequence_id')
-      .eq('sequence_id', enrollment.sequence_id)
-      .eq('step_order', currentStepOrder)
-      .maybeSingle();
+    // Fetch current step with branching columns — use ID if available (step_order is no longer unique)
+    let currentStepQuery = supabase.from('sequence_steps')
+      .select('id, next_step_id, parent_step_id, branch, step_order, sequence_id');
+    if (currentStepId) {
+      currentStepQuery = currentStepQuery.eq('id', currentStepId);
+    } else {
+      currentStepQuery = currentStepQuery
+        .eq('sequence_id', enrollment.sequence_id)
+        .eq('step_order', currentStepOrder)
+        .is('parent_step_id', null) // prefer root-level step when no ID given
+        .is('branch', null);
+    }
+    const { data: currentStep } = await currentStepQuery.maybeSingle();
 
     // === NEW: parent_step_id/branch tree resolution ===
     // If a conditionResult is provided, route to the matching child branch
@@ -1280,7 +1297,32 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
         .order('step_order', { ascending: true })
         .limit(1)
         .maybeSingle();
-      if (branchStep) nextStep = branchStep;
+      if (branchStep) {
+        nextStep = branchStep;
+      } else {
+        // conditionResult was explicitly set but no matching branch exists.
+        // This means the branch is empty (e.g. "No" branch has no steps).
+        // Do NOT fall through to next_step_id or step_order+1 — that would be wrong routing.
+        // Instead, check if there's a step after the condition node at root level.
+        console.log(`[scheduleNextStep] No '${conditionResult}' branch child for step ${currentStepOrder}. Looking for next root-level step.`);
+        // Skip to the step after this condition in the main flow
+        const { data: nextRootStep } = await supabase.from('sequence_steps')
+          .select('*')
+          .eq('sequence_id', enrollment.sequence_id)
+          .is('parent_step_id', null)
+          .is('branch', null)
+          .gt('step_order', currentStepOrder)
+          .order('step_order', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (nextRootStep) {
+          nextStep = nextRootStep;
+        } else {
+          // No more steps at all — complete the sequence
+          await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+          return;
+        }
+      }
     }
 
     // If current step is IN a branch (has parent_step_id), find next sibling in same branch
@@ -1461,7 +1503,13 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         const isConnected = p?.network_distance === 'FIRST_DEGREE';
         await supabase.from('sequence_enrollments').update({ connection_status: isConnected ? 'connected' : 'not_connected' }).eq('id', enrollment.id);
         const nextId = isConnected ? step.if_true_goto_step : step.if_false_goto_step;
-        await scheduleNextStep(supabase, enrollment, step.step_order as number, nextId as string | undefined);
+        if (nextId) {
+          // Old-style explicit branching (if_true_goto_step / if_false_goto_step)
+          await scheduleNextStep(supabase, enrollment, step.step_order as number, nextId as string, undefined, 0, step.id as string);
+        } else {
+          // New tree branching via parent_step_id/branch — pass condition result
+          await scheduleNextStep(supabase, enrollment, step.step_order as number, undefined, isConnected ? 'yes' : 'no', 0, step.id as string);
+        }
         return { success: true };
       }
       case 'profile_visit': {
