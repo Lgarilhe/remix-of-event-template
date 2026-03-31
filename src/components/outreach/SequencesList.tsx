@@ -587,15 +587,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Selected profiles banner */}
       {selectedProfiles.length > 0 && (
-        <div className="p-3 bg-blue-50 border border-foreground flex items-center justify-between">
+        <div className="p-3 bg-brutal-accent/20 border border-foreground flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-blue-600" />
-            <span className="font-medium text-blue-900">{selectedProfiles.length} candidat(s) sélectionné(s)</span>
+            <Users className="w-5 h-5 text-foreground" />
+            <span className="font-medium text-foreground">{selectedProfiles.length} candidat(s) sélectionné(s)</span>
             {selectedJob && (
-              <Badge variant="outline" className="bg-white">{selectedJob.title}</Badge>
+              <Badge variant="outline" className="bg-background">{selectedJob.title}</Badge>
             )}
           </div>
-          <p className="text-sm text-blue-700">
+          <p className="text-sm text-foreground/70">
             Cliquez sur une séquence pour y inscrire les candidats
           </p>
         </div>
