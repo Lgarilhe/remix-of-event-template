@@ -563,9 +563,16 @@ Deno.serve(async (req) => {
       const data = await response.json();
       const rawPeople = data.people || [];
 
-      // Log pagination info from Apollo
+      // Log pagination info from Apollo — check multiple possible locations
       const paginationInfo = data.pagination || {};
+      // Apollo sometimes puts total at top-level
+      const topLevelKeys = Object.keys(data).filter(k => k !== 'people');
+      console.log(`[database-search] Response top-level keys (excl people):`, JSON.stringify(topLevelKeys));
       console.log(`[database-search] Search returned ${rawPeople.length} raw results | pagination:`, JSON.stringify(paginationInfo));
+      // Log any top-level total-like fields
+      for (const k of ['total_entries', 'total', 'total_results', 'num_fetch_result']) {
+        if (data[k] !== undefined) console.log(`[database-search] data.${k} =`, data[k]);
+      }
       if (rawPeople.length > 0) {
         const sample = rawPeople[0];
         console.log(`[database-search] Sample raw person:`, JSON.stringify({
