@@ -105,6 +105,11 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     if (kw && kw.length < 50) {
       payload.person_titles = [kw];
     }
+  } else if (payload.q_keywords) {
+    // When we have person_titles, reduce keywords to avoid over-filtering
+    // Apollo ANDs keywords with titles, so too many keywords = 0 results
+    const terms = String(payload.q_keywords).split(" ").filter(t => t.length >= 3).slice(0, 4);
+    payload.q_keywords = terms.join(" ");
   }
 
   // Seniority → person_seniorities
@@ -128,17 +133,38 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   }
 
   // Location → person_locations
+  // Apollo needs clean location names, not LinkedIn's verbose format
   const location = params.location;
   if (location) {
     const locs = Array.isArray(location) ? location : [location];
     const locationNames: string[] = [];
     for (const loc of locs) {
+      let name = "";
       if (typeof loc === "string") {
-        locationNames.push(loc);
+        name = loc;
       } else if (typeof loc === "object" && loc !== null) {
-        // Recruiter format: { id, name, priority, scope }
         const l = loc as Record<string, string>;
-        if (l.name) locationNames.push(l.name);
+        name = l.name || "";
+      }
+      if (name) {
+        // Normalize LinkedIn location format for Apollo:
+        // "Ville de Paris, Île-de-France, France" → "Paris, France"
+        // "Greater London, England, United Kingdom" → "London, United Kingdom"
+        // "Lyon, Auvergne-Rhône-Alpes, France" → "Lyon, France"
+        let cleaned = name
+          .replace(/^Ville de\s+/i, "")
+          .replace(/^Greater\s+/i, "")
+          .replace(/^Région de\s+/i, "")
+          .replace(/^Métropole de\s+/i, "")
+          .replace(/^Communauté urbaine de\s+/i, "");
+
+        // Split by comma, keep first (city) and last (country) parts
+        const parts = cleaned.split(",").map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 3) {
+          // "Paris, Île-de-France, France" → "Paris, France"
+          cleaned = `${parts[0]}, ${parts[parts.length - 1]}`;
+        }
+        locationNames.push(cleaned);
       }
     }
     if (locationNames.length) payload.person_locations = locationNames;
