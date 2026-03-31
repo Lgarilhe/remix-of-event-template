@@ -812,7 +812,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     maxLength={step.actionType === 'connection_request' ? 50 : undefined}
                                     className={cn(
                                       "mt-1.5",
-                                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-red-300 focus-visible:ring-red-300"
+                                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-destructive focus-visible:ring-destructive"
                                     )}
                                   />
                                   {step.actionType === 'connection_request' ? (

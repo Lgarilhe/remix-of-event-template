@@ -904,7 +904,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               Supprimer
             </AlertDialogAction>
