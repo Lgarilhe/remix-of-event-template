@@ -798,7 +798,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     {step.actionType === 'connection_request' && (
                                       <span className={cn(
                                         "text-xs",
-                                        (step.messageTemplate?.length || 0) > 50 ? "text-red-500 font-medium" : "text-muted-foreground"
+                                        (step.messageTemplate?.length || 0) > 50 ? "text-destructive font-medium" : "text-muted-foreground"
                                       )}>
                                         {step.messageTemplate?.length || 0}/50
                                       </span>
