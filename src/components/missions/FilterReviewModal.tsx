@@ -1,0 +1,361 @@
+import React, { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Play, Sparkle, MapPin, Briefcase, GraduationCap, Buildings, MagnifyingGlass, Sliders, UserCircle } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+
+/* ─── Types ─── */
+interface FilterSection {
+  id: string;
+  icon: React.ElementType;
+  label: string;
+  enabled: boolean;
+  chips: string[];
+  extra?: string; // additional text info (e.g. experience range)
+}
+
+interface AnalysisFilters {
+  keywords: string;
+  role: Array<{ keywords: string; priority: string; scope: string }>;
+  years_of_experience_min: number | null;
+  years_of_experience_max: number | null;
+  skills_keywords: string[];
+  location_keywords: string[];
+  location_within_area: number | null;
+}
+
+interface AnalysisData {
+  search_rationale: string | null;
+  keyword_rationale: string | null;
+  experience_rationale: string | null;
+  role_keywords: string[];
+  skills_to_search: string[];
+  domain_expertise: string[];
+  location_hint: string | null;
+  job_category: string;
+}
+
+export interface FilterReviewModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  filters: AnalysisFilters;
+  analysis: AnalysisData;
+  onAccept: (filters: AnalysisFilters) => void;
+  onRegenerate?: () => void;
+  isLoading?: boolean;
+}
+
+/* ─── Helpers ─── */
+function buildSections(filters: AnalysisFilters, analysis: AnalysisData): FilterSection[] {
+  const sections: FilterSection[] = [];
+
+  // Roles/Titles
+  const roleChips = filters.role?.map(r => r.keywords) ?? [];
+  if (roleChips.length > 0 || analysis.role_keywords?.length > 0) {
+    sections.push({
+      id: 'roles',
+      icon: UserCircle,
+      label: 'Titres de poste',
+      enabled: true,
+      chips: roleChips.length > 0 ? roleChips : analysis.role_keywords,
+    });
+  }
+
+  // Skills
+  const skills = filters.skills_keywords?.length > 0
+    ? filters.skills_keywords
+    : analysis.skills_to_search ?? [];
+  if (skills.length > 0) {
+    sections.push({
+      id: 'skills',
+      icon: GraduationCap,
+      label: 'Compétences clés',
+      enabled: true,
+      chips: skills,
+    });
+  }
+
+  // Location
+  if (filters.location_keywords?.length > 0 || analysis.location_hint) {
+    const locChips = filters.location_keywords?.length > 0
+      ? filters.location_keywords
+      : analysis.location_hint ? [analysis.location_hint] : [];
+    const radius = filters.location_within_area;
+    sections.push({
+      id: 'location',
+      icon: MapPin,
+      label: 'Localisation',
+      enabled: true,
+      chips: locChips,
+      extra: radius ? `Rayon: ${radius} km` : undefined,
+    });
+  }
+
+  // Experience
+  const xpMin = filters.years_of_experience_min;
+  const xpMax = filters.years_of_experience_max;
+  if (xpMin !== null || xpMax !== null) {
+    const rangeText = xpMin !== null && xpMax !== null
+      ? `${xpMin} – ${xpMax} ans`
+      : xpMin !== null ? `${xpMin}+ ans` : `≤ ${xpMax} ans`;
+    sections.push({
+      id: 'experience',
+      icon: Briefcase,
+      label: 'Expérience',
+      enabled: true,
+      chips: [rangeText],
+      extra: analysis.experience_rationale || undefined,
+    });
+  }
+
+  // Boolean keywords
+  if (filters.keywords) {
+    sections.push({
+      id: 'boolean',
+      icon: MagnifyingGlass,
+      label: 'Recherche Boolean',
+      enabled: true,
+      chips: [filters.keywords],
+    });
+  }
+
+  // Domain expertise
+  if (analysis.domain_expertise?.length > 0) {
+    sections.push({
+      id: 'domain',
+      icon: Buildings,
+      label: 'Domaines',
+      enabled: true,
+      chips: analysis.domain_expertise,
+    });
+  }
+
+  return sections;
+}
+
+/* ═══════════════════════════════════════════════
+   FILTER REVIEW MODAL
+   ═══════════════════════════════════════════════ */
+
+export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
+  open,
+  onOpenChange,
+  filters,
+  analysis,
+  onAccept,
+  onRegenerate,
+  isLoading,
+}) => {
+  const [sections, setSections] = useState<FilterSection[]>(() => buildSections(filters, analysis));
+
+  // Reset sections when filters change
+  React.useEffect(() => {
+    if (open) setSections(buildSections(filters, analysis));
+  }, [open, filters, analysis]);
+
+  const toggleSection = useCallback((id: string) => {
+    setSections(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+  }, []);
+
+  const removeChip = useCallback((sectionId: string, chipIndex: number) => {
+    setSections(prev => prev.map(s => {
+      if (s.id !== sectionId) return s;
+      const newChips = s.chips.filter((_, i) => i !== chipIndex);
+      return { ...s, chips: newChips, enabled: newChips.length > 0 ? s.enabled : false };
+    }));
+  }, []);
+
+  const handleAccept = () => {
+    // Reconstruct filters from sections state
+    const updated = { ...filters };
+    const roleSection = sections.find(s => s.id === 'roles');
+    if (roleSection && roleSection.enabled) {
+      updated.role = roleSection.chips.map(kw => ({
+        keywords: kw,
+        priority: 'MUST_HAVE',
+        scope: 'CURRENT',
+      }));
+    } else {
+      updated.role = [];
+    }
+
+    const skillsSection = sections.find(s => s.id === 'skills');
+    if (skillsSection && skillsSection.enabled) {
+      updated.skills_keywords = skillsSection.chips;
+    } else {
+      updated.skills_keywords = [];
+    }
+
+    const locSection = sections.find(s => s.id === 'location');
+    if (locSection && locSection.enabled) {
+      updated.location_keywords = locSection.chips;
+    } else {
+      updated.location_keywords = [];
+    }
+
+    const boolSection = sections.find(s => s.id === 'boolean');
+    if (boolSection && boolSection.enabled && boolSection.chips[0]) {
+      updated.keywords = boolSection.chips[0];
+    } else {
+      updated.keywords = '';
+    }
+
+    onAccept(updated);
+  };
+
+  const enabledCount = sections.filter(s => s.enabled).length;
+
+  if (!open) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-[4000] flex items-end sm:items-center justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          {/* Backdrop */}
+          <motion.div
+            className="absolute inset-0 bg-foreground/60"
+            onClick={() => onOpenChange(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
+
+          {/* Panel */}
+          <motion.div
+            className="relative w-full sm:max-w-lg max-h-[85dvh] flex flex-col bg-background border-2 border-foreground sm:mx-4 overflow-hidden"
+            initial={{ y: '100%', opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+          >
+            {/* ── Header ── */}
+            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-foreground flex items-center justify-center">
+                  <Sliders className="w-4 h-4 text-background" weight="bold" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-black uppercase tracking-wider text-foreground">Filtres proposés</h2>
+                  <p className="text-[10px] text-muted-foreground">{enabledCount} catégorie{enabledCount > 1 ? 's' : ''} active{enabledCount > 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => onOpenChange(false)}
+                className="w-8 h-8 flex items-center justify-center border-2 border-foreground/20 hover:border-foreground transition-colors"
+              >
+                <X className="w-4 h-4" weight="bold" />
+              </button>
+            </div>
+
+            {/* ── Strategy summary ── */}
+            {analysis.search_rationale && (
+              <div className="shrink-0 px-4 py-3 border-b-2 border-foreground/15 bg-brutal-accent/10">
+                <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                  <Sparkle className="w-3 h-3 inline mr-1" weight="fill" />
+                  Stratégie IA
+                </p>
+                <p className="text-xs text-foreground leading-relaxed">{analysis.search_rationale}</p>
+              </div>
+            )}
+
+            {/* ── Sections ── */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              <div className="p-4 space-y-3">
+                {sections.map((section) => (
+                  <div
+                    key={section.id}
+                    className={cn(
+                      "border-2 transition-all",
+                      section.enabled
+                        ? "border-foreground"
+                        : "border-foreground/15 opacity-50"
+                    )}
+                  >
+                    {/* Section header */}
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(section.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-foreground/[0.02] transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <div className={cn(
+                        "w-5 h-5 border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-colors",
+                        section.enabled
+                          ? "bg-foreground text-background border-foreground"
+                          : "bg-background text-foreground/30 border-foreground/30"
+                      )}>
+                        {section.enabled ? '✓' : ''}
+                      </div>
+                      <section.icon className="w-4 h-4 text-foreground/70 shrink-0" weight="duotone" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-foreground flex-1">{section.label}</span>
+                    </button>
+
+                    {/* Chips */}
+                    {section.enabled && (
+                      <div className="px-3 pb-3 pt-0">
+                        <div className="flex flex-wrap gap-1.5">
+                          {section.chips.map((chip, i) => (
+                            <span
+                              key={`${chip}-${i}`}
+                              className="group inline-flex items-center gap-1 px-2 py-1 border-2 border-foreground/20 text-[10px] font-bold uppercase tracking-wider text-foreground/80 hover:border-destructive/50 transition-colors cursor-default"
+                            >
+                              <span className="max-w-[200px] truncate">{chip}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); removeChip(section.id, i); }}
+                                className="w-3.5 h-3.5 flex items-center justify-center text-foreground/30 hover:text-destructive transition-colors"
+                              >
+                                <X className="w-2.5 h-2.5" weight="bold" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        {section.extra && (
+                          <p className="text-[10px] text-muted-foreground mt-1.5 italic">{section.extra}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Footer ── */}
+            <div className="shrink-0 border-t-2 border-foreground p-4 flex items-center gap-2 bg-background">
+              {onRegenerate && (
+                <button
+                  onClick={onRegenerate}
+                  disabled={isLoading}
+                  className="h-[36px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
+                >
+                  Regénérer
+                </button>
+              )}
+              <button
+                onClick={handleAccept}
+                disabled={isLoading || enabledCount === 0}
+                className={cn(
+                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground group transition-colors",
+                  enabledCount > 0
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground cursor-not-allowed"
+                )}
+              >
+                <Play className="w-3.5 h-3.5 relative z-10" weight="fill" />
+                <span className="relative z-10">Lancer le sourcing</span>
+                {enabledCount > 0 && (
+                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
+  );
+};
