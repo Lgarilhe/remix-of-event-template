@@ -138,6 +138,11 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       return;
     }
 
+    if (!selectedJob.title || selectedJob.title.trim().length < 3) {
+      toast.error('Complétez au minimum le titre du poste dans le brief avant de générer les filtres.');
+      return;
+    }
+
     if (!accountId && searchSource !== 'database') {
       toast.error('Compte LinkedIn non connecté');
       return;
