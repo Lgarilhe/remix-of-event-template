@@ -38,14 +38,14 @@ All colors MUST be HSL.
 
     --radius: 0.375rem;
 
-    --sidebar-background: 0 0% 100%;
+    --sidebar-background: 0 0% 99%;
     --sidebar-foreground: 265 4% 12.9%;
-    --sidebar-primary: 265 4% 12.9%;
+    --sidebar-primary: 271 81% 56%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent: 265 5% 95%;
     --sidebar-accent-foreground: 265 4% 12.9%;
-    --sidebar-border: 265 4% 12.9% / 10%;
-    --sidebar-ring: 265 4% 12.9%;
+    --sidebar-border: 0 0% 92%;
+    --sidebar-ring: 271 81% 56%;
 
     /* Skalr brand colors */
     --skalr-purple: 271 81% 56%;
