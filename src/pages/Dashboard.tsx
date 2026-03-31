@@ -107,7 +107,7 @@ export default function Dashboard() {
             />
           )}
         </div>
-      </main>
+      </div>
 
       {selectedCandidate && (
         <CandidateDetailModal

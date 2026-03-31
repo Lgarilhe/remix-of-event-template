@@ -191,9 +191,8 @@ export default function ATS() {
         title="ATS - Suivi des candidats | Skalr"
         description="Centralisez et gérez toutes vos interactions avec les candidats"
       />
-      <Navbar />
 
-      <main className="pt-16 sm:pt-20 pb-8">
+      <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header — compact single row */}
           <div className="flex items-center justify-between gap-3 mb-3">
