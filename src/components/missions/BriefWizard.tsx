@@ -439,7 +439,8 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               key={step.key}
               onClick={() => setOpenStep(i)}
               className={cn(
-                'w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group relative cursor-pointer',
+                'w-full border-2 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group relative cursor-pointer',
+                i > 0 && 'border-t-0',
                 readOnly ? 'hover:bg-foreground/[0.02]' : 'hover:bg-foreground/[0.03] active:bg-foreground/[0.06]'
               )}
               style={{ WebkitTapHighlightColor: 'transparent' }}
