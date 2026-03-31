@@ -503,7 +503,18 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   };
 
   const handleCreateNew = () => {
+    setShowTemplateSelector(true);
+  };
+
+  const handleSelectBlank = () => {
+    setShowTemplateSelector(false);
     setEditingSequence(null);
+    setShowBuilder(true);
+  };
+
+  const handleSelectTemplate = (sequence: Sequence) => {
+    setShowTemplateSelector(false);
+    setEditingSequence(sequence);
     setShowBuilder(true);
   };
 
