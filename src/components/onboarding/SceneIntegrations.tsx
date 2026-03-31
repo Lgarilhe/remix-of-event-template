@@ -105,7 +105,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           04 — Vos outils
@@ -147,18 +147,18 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                     <span className="text-sm font-semibold">{def.name}</span>
                     {def.essential && (
                       <span
-                        className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 border border-foreground"
+                        className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 border border-foreground"
                         style={{ background: 'hsl(var(--landing-accent-yellow))' }}
                       >
                         Essentiel
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate">{def.description}</p>
+                  <p className="text-xs text-muted-foreground truncate">{def.description}</p>
                 </div>
 
                 {connected ? (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0"
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider shrink-0"
                     style={{ color: 'hsl(var(--skalr-green))' }}
                   >
                     <Check className="w-3.5 h-3.5" /> Connecté
@@ -169,7 +169,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                       size="sm"
                       onClick={() => handleHostedConnect(def.id === 'whatsapp' ? 'WHATSAPP' : 'LINKEDIN')}
                       disabled={isLoading}
-                      className="text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
+                      className="text-xs uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
                       style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
                     >
                       {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 mr-1" />}
@@ -189,7 +189,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   <Button
                     size="sm"
                     onClick={() => setExpandedId(isExpanded ? null : def.id)}
-                    className="text-[11px] uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3 shrink-0"
+                    className="text-xs uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3 shrink-0"
                     style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
                   >
                     Connecter

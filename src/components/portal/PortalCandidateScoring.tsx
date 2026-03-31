@@ -41,7 +41,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
       return (
         <div className="flex items-center gap-1.5 px-3 py-2 bg-foreground/5 border border-foreground/10">
           <Check className="w-3 h-3 text-foreground" />
-          <span className="text-[10px] text-foreground font-medium">Évaluation envoyée</span>
+          <span className="text-xs text-foreground font-medium">Évaluation envoyée</span>
         </div>
       );
     }
@@ -99,7 +99,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/20 transition-colors"
       >
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
           <Star className="w-3 h-3" /> Évaluer ce candidat
         </span>
         {expanded ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
@@ -110,8 +110,8 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
           {/* Rating criteria */}
           {CRITERIA.map(criterion => (
             <div key={criterion.key} className="space-y-1">
-              <p className="text-[10px] font-medium text-foreground">{criterion.label}</p>
-              <p className="text-[9px] text-muted-foreground">{criterion.description}</p>
+              <p className="text-xs font-medium text-foreground">{criterion.label}</p>
+              <p className="text-xs text-muted-foreground">{criterion.description}</p>
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5].map(n => (
                   <button
@@ -133,7 +133,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
 
           {/* Recommendation */}
           <div className="space-y-1">
-            <p className="text-[10px] font-medium text-foreground">Recommandation</p>
+            <p className="text-xs font-medium text-foreground">Recommandation</p>
             <div className="flex flex-wrap gap-1">
               {[
                 { key: 'strong_yes', label: '✅ Oui absolument' },
@@ -145,7 +145,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
                   key={opt.key}
                   onClick={() => setRecommendation(opt.key)}
                   className={cn(
-                    "px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-colors",
+                    "px-2 py-1 text-xs font-bold uppercase tracking-wider border transition-colors",
                     recommendation === opt.key
                       ? "bg-foreground text-background border-foreground"
                       : "border-foreground/20 text-foreground hover:border-foreground"
@@ -159,7 +159,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
 
           {/* Comment */}
           <div className="space-y-1">
-            <p className="text-[10px] font-medium text-foreground">Commentaire (optionnel)</p>
+            <p className="text-xs font-medium text-foreground">Commentaire (optionnel)</p>
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
@@ -172,7 +172,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
           <button
             onClick={handleSubmit}
             disabled={submitting || Object.keys(ratings).length === 0}
-            className="relative overflow-hidden w-full h-[34px] bg-foreground text-background border border-foreground text-[10px] font-bold uppercase tracking-wider group disabled:opacity-50"
+            className="relative overflow-hidden w-full h-[34px] bg-foreground text-background border border-foreground text-xs font-bold uppercase tracking-wider group disabled:opacity-50"
           >
             <span className="relative z-10 flex items-center justify-center gap-1.5">
               {submitting ? 'Envoi...' : <><Send className="w-3 h-3" /> Envoyer mon évaluation</>}

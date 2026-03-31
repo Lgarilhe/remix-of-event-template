@@ -45,16 +45,16 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
             'border-destructive/40 bg-destructive/5 text-destructive'
           )}>{scoring.score}</div>
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               {scoring.jobTitle || 'Score'}
             </span>
-            <p className="text-[9px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {format(parseISO(scoring.createdAt), 'd MMM yyyy', { locale: fr })}
             </p>
           </div>
         </div>
         {scoring.recommendation && (
-          <span className={cn("text-[9px] px-2 py-0.5 border font-medium uppercase tracking-wider",
+          <span className={cn("text-xs px-2 py-0.5 border font-medium uppercase tracking-wider",
             scoring.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
             scoring.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
             'border-amber-300 text-amber-700 bg-amber-50'
@@ -68,19 +68,19 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
         <div className="space-y-3">
           {/* Summary */}
           {details.summary && (
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{details.summary}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{details.summary}</p>
           )}
 
           {/* Dimensions — weighted bars */}
           {weightedDims.length > 0 && (
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-2 block">Dimensions</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground mb-2 block">Dimensions</span>
               <div className="space-y-2">
                 {weightedDims.map((dim: any) => {
                   const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Target className="w-3 h-3" /> };
                   return (
                     <div key={dim.key} className="space-y-0.5">
-                      <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center justify-between text-xs">
                         <span className="flex items-center gap-1 text-muted-foreground">
                           {cfg.icon}
                           {cfg.label}
@@ -101,7 +101,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
                         />
                       </div>
                       {dim.details && (
-                        <p className="text-[9px] text-muted-foreground/70">{dim.details}</p>
+                        <p className="text-xs text-muted-foreground/70">{dim.details}</p>
                       )}
                     </div>
                   );
@@ -113,12 +113,12 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {/* LLM dimensions */}
           {llmDims.length > 0 && (
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-1.5 block">Analyse IA</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground mb-1.5 block">Analyse IA</span>
               <div className="flex flex-wrap gap-2">
                 {llmDims.map((dim: any) => {
                   const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Brain className="w-3 h-3" /> };
                   return (
-                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-foreground/10 text-[10px]">
+                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-foreground/10 text-xs">
                       {cfg.icon}
                       <span className="text-muted-foreground">{cfg.label}</span>
                       <span className={cn("font-bold",
@@ -137,11 +137,11 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Compétences matchées</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Compétences matchées</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {details.matching_skills.map((s: string) => (
-                  <span key={s} className="text-[10px] px-2 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-medium">{s}</span>
+                  <span key={s} className="text-xs px-2 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-medium">{s}</span>
                 ))}
               </div>
             </div>
@@ -152,11 +152,11 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Compétences manquantes</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Compétences manquantes</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {details.missing_skills.map((s: string) => (
-                  <span key={s} className="text-[10px] px-2 py-0.5 border border-amber-300 text-amber-700 bg-amber-50 font-medium">{s}</span>
+                  <span key={s} className="text-xs px-2 py-0.5 border border-amber-300 text-amber-700 bg-amber-50 font-medium">{s}</span>
                 ))}
               </div>
             </div>
@@ -165,8 +165,8 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {/* Strengths */}
           {details.strengths?.length > 0 && (
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
                 {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
               </ul>
             </div>
@@ -175,15 +175,15 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {/* Concerns */}
           {(details.concerns || details.weaknesses)?.length > 0 && (
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1 block">Points d'attention</span>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-1 block">Points d'attention</span>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
                 {(details.concerns || details.weaknesses)!.map((w: string, i: number) => <li key={i}>• {w}</li>)}
               </ul>
             </div>
           )}
 
           {/* Experience & Location */}
-          <div className="flex flex-wrap gap-3 text-[11px]">
+          <div className="flex flex-wrap gap-3 text-xs">
             {details.experience_match && (
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
@@ -212,7 +212,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
 
           {/* Salary */}
           {details.salary_analysis && (
-            <div className="pt-2 border-t border-foreground/10 text-[11px] text-muted-foreground">
+            <div className="pt-2 border-t border-foreground/10 text-xs text-muted-foreground">
               💰 {details.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
                   details.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
                   details.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' : 'Analyse salariale'}
@@ -222,7 +222,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
 
           {/* LLM Score */}
           {details.llmScore != null && (
-            <div className="pt-2 border-t border-foreground/10 flex items-center gap-2 text-[10px]">
+            <div className="pt-2 border-t border-foreground/10 flex items-center gap-2 text-xs">
               <Brain className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-muted-foreground">Score LLM :</span>
               <span className={cn("font-bold",

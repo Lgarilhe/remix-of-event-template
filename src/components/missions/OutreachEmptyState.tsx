@@ -100,7 +100,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
               )}
             >
               {opt.recommended && (
-                <span className="absolute -top-2.5 right-2 flex items-center gap-1 px-2 py-0.5 bg-brutal-accent text-foreground text-[9px] font-bold uppercase tracking-wider border border-foreground">
+                <span className="absolute -top-2.5 right-2 flex items-center gap-1 px-2 py-0.5 bg-brutal-accent text-foreground text-xs font-bold uppercase tracking-wider border border-foreground">
                   <Crown className="w-2.5 h-2.5" />
                   Recommandé
                 </span>
@@ -114,7 +114,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
               <h3 className="text-xs font-bold uppercase tracking-wider text-foreground mb-1">
                 {opt.title}
               </h3>
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 {opt.description}
               </p>
 
@@ -130,7 +130,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="mt-6 text-[10px] text-muted-foreground uppercase tracking-wider"
+          className="mt-6 text-xs text-muted-foreground uppercase tracking-wider"
         >
           {goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} 🟢 Go — prêts à être contactés
         </motion.p>

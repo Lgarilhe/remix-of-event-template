@@ -175,7 +175,7 @@ export default function Candidates() {
       <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Deprecation banner */}
-          <div className="mb-4 border border-foreground bg-brutal-accent/30 px-4 py-2.5 flex items-center gap-2 text-[11px] uppercase tracking-wider font-medium">
+          <div className="mb-4 border border-foreground bg-brutal-accent/30 px-4 py-2.5 flex items-center gap-2 text-xs uppercase tracking-wider font-medium">
             <span>ℹ️</span>
             <span>Cette vue est aussi accessible depuis <a href="/pipeline?view=shortlist" className="underline font-bold">Pipeline → Shortlist Client</a></span>
           </div>
@@ -209,7 +209,7 @@ export default function Candidates() {
                         key={tab.value}
                         onClick={() => setActiveTab(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[11px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
                           index > 0 && "border-l-0",
                           isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                         )}

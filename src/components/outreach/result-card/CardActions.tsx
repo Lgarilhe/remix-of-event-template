@@ -59,7 +59,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         <ShimmerButton
           onClick={onScoreProfile}
           disabled={isScoring}
-          className={compact ? 'h-7 px-2 text-[10px]' : 'h-8 px-3 text-[10px]'}
+          className={compact ? 'h-7 px-2 text-xs' : 'h-8 px-3 text-xs'}
           title={`Scorer pour ${selectedJob.title}`}
         >
           {isScoring ? (

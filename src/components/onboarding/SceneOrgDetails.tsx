@@ -100,7 +100,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           02 — Quelques détails
@@ -194,7 +194,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
                 </div>
               </div>
 
-              <p className="text-[10px] text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
+              <p className="text-xs text-muted-foreground">Facultatif — à titre indicatif uniquement.</p>
             </motion.div>
           )}
         </AnimatePresence>

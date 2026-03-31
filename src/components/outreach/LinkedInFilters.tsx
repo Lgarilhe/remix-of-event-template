@@ -523,12 +523,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             badge={(filters.calculated_experience_min !== null || filters.calculated_experience_max !== null) ? 1 : 0}
           >
             <div className="space-y-2">
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 ✨ Filtre plus fiable basé sur l'année de fin d'études
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase">Min (ans)</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Min (ans)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -545,7 +545,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase">Max (ans)</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Max (ans)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -572,12 +572,12 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             unsupportedTooltip={getFilterTooltip(filters.api, 'years_of_experience')}
           >
             <div className="space-y-2">
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 ⚠️ Filtre LinkedIn (peut être peu fiable)
               </p>
               <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'years_of_experience') ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase">Min (ans)</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Min (ans)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -595,7 +595,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                   />
                 </div>
                 <div>
-                  <Label className="text-[10px] text-muted-foreground uppercase">Max (ans)</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Max (ans)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -624,7 +624,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           >
             <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'tenure_at_company') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase">Min (années)</Label>
+                <Label className="text-xs text-muted-foreground uppercase">Min (années)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -642,7 +642,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 />
               </div>
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase">Max (années)</Label>
+                <Label className="text-xs text-muted-foreground uppercase">Max (années)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -670,7 +670,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           >
             <div className={`grid grid-cols-2 gap-2 ${!isFilterSupported(filters.api, 'tenure_at_role') ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase">Min (années)</Label>
+                <Label className="text-xs text-muted-foreground uppercase">Min (années)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -688,7 +688,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                 />
               </div>
               <div>
-                <Label className="text-[10px] text-muted-foreground uppercase">Max (années)</Label>
+                <Label className="text-xs text-muted-foreground uppercase">Max (années)</Label>
                 <Input
                   type="number"
                   min={0}
@@ -725,7 +725,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             <div className="space-y-2">
               {/* Exclude ESN/Consulting toggle */}
               <label className="flex items-center justify-between px-2 py-1.5 border border-foreground/10 hover:border-foreground/30 cursor-pointer transition-colors">
-                <span className="text-[10px] font-medium text-foreground uppercase tracking-wider">Exclure ESN / Consulting</span>
+                <span className="text-xs font-medium text-foreground uppercase tracking-wider">Exclure ESN / Consulting</span>
                 <input
                   type="checkbox"
                   checked={filters.exclude_consulting || false}
@@ -736,7 +736,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
               {/* Company category */}
               <div className="space-y-1">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Type d'entreprise</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Type d'entreprise</span>
                 <div className="flex flex-wrap gap-1">
                   {[
                     { key: '', label: 'Tous' },
@@ -748,7 +748,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       key={opt.key}
                       onClick={() => onChange({ ...filters, company_category: opt.key as any })}
                       className={cn(
-                        "px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-colors",
+                        "px-2 py-1 text-xs font-bold uppercase tracking-wider border transition-colors",
                         (filters.company_category || '') === opt.key
                           ? "bg-foreground text-background border-foreground"
                           : "border-foreground/20 text-foreground hover:border-foreground"

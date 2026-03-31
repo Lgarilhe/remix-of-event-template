@@ -125,7 +125,7 @@ export const LinkedInQuotaSettings = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {FIELDS.map((field) => (
             <div key={field.key}>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block mb-1">
+              <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-1">
                 {field.label}
               </label>
               <Input
@@ -136,7 +136,7 @@ export const LinkedInQuotaSettings = () => {
                 onChange={(e) => handleChange(field.key, e.target.value)}
                 className="h-8 text-sm"
               />
-              <p className="text-[9px] text-muted-foreground mt-0.5">{field.help} (max: {field.max})</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{field.help} (max: {field.max})</p>
             </div>
           ))}
         </div>

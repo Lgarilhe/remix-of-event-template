@@ -39,7 +39,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           03 — Une dernière chose

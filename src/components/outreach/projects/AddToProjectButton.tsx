@@ -140,7 +140,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         <Button
           variant={isAdded ? "ghost" : "outline"}
           size="sm"
-          className={`h-7 gap-1 text-[10px] rounded-none border px-2 uppercase tracking-wider font-bold shrink-0 ${isAdded ? 'text-green-600 border-green-600/40' : 'border-foreground/40 text-foreground hover:bg-muted'}`}
+          className={`h-7 gap-1 text-xs rounded-none border px-2 uppercase tracking-wider font-bold shrink-0 ${isAdded ? 'text-green-600 border-green-600/40' : 'border-foreground/40 text-foreground hover:bg-muted'}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >
@@ -229,7 +229,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             <FolderOpen className="w-4 h-4 text-[#0077B5]" />
             <span className="flex-1 truncate">{project.name}</span>
             {project.job_id === jobId && (
-              <Badge variant="outline" className="text-[9px] px-1 py-0">
+              <Badge variant="outline" className="text-xs px-1 py-0">
                 Ce poste
               </Badge>
             )}

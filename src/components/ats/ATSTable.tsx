@@ -79,7 +79,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
   const SortButton = ({ label, sortKeyVal }: { label: string; sortKeyVal: SortKey }) => (
     <button
       onClick={() => handleSort(sortKeyVal)}
-      className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-foreground hover:text-brutal-accent transition-colors"
+      className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-foreground hover:text-brutal-accent transition-colors"
     >
       {label}
       <ArrowUpDown className="w-3 h-3" />
@@ -95,10 +95,10 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
             <TableHead className="w-[120px]"><SortButton label="Étape" sortKeyVal="stage" /></TableHead>
             <TableHead className="w-[100px]"><SortButton label="Source" sortKeyVal="source" /></TableHead>
             <TableHead className="w-[200px]"><SortButton label="Poste" sortKeyVal="jobTitle" /></TableHead>
-            <TableHead className="w-[150px]"><span className="text-[11px] font-medium uppercase tracking-wider">Séquence</span></TableHead>
+            <TableHead className="w-[150px]"><span className="text-xs font-medium uppercase tracking-wider">Séquence</span></TableHead>
             <TableHead className="w-[100px]"><SortButton label="Activité" sortKeyVal="lastActivity" /></TableHead>
-            <TableHead className="w-[70px]"><span className="text-[11px] font-medium uppercase tracking-wider">Score</span></TableHead>
-            <TableHead className="w-[80px]"><span className="text-[11px] font-medium uppercase tracking-wider">Actions</span></TableHead>
+            <TableHead className="w-[70px]"><span className="text-xs font-medium uppercase tracking-wider">Score</span></TableHead>
+            <TableHead className="w-[80px]"><span className="text-xs font-medium uppercase tracking-wider">Actions</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -118,7 +118,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                     {(candidate.notesCount || 0) > 0 && (
                       <div className="flex items-center gap-0.5 text-muted-foreground flex-shrink-0">
                         <StickyNote className="w-3.5 h-3.5" />
-                        <span className="text-[10px]">{candidate.notesCount}</span>
+                        <span className="text-xs">{candidate.notesCount}</span>
                       </div>
                     )}
                   </div>
@@ -128,7 +128,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </div>
               </TableCell>
               <TableCell>
-                <span className="text-[10px] px-2 py-0.5 border border-foreground/30 bg-foreground/5 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
+                <span className="text-xs px-2 py-0.5 border border-foreground/30 bg-foreground/5 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
                   {candidate.stage}
                   {(() => {
                     const GUIDE_TIMES: Record<string, number> = { 'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5, 'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7 };
@@ -140,7 +140,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </span>
               </TableCell>
               <TableCell>
-                <span className="text-[10px] px-2 py-0.5 border border-foreground/20 flex items-center gap-1 w-fit uppercase tracking-wider">
+                <span className="text-xs px-2 py-0.5 border border-foreground/20 flex items-center gap-1 w-fit uppercase tracking-wider">
                   {SOURCE_ICONS[candidate.source]}
                   {SOURCE_LABELS[candidate.source]}
                 </span>
@@ -181,7 +181,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               </TableCell>
               <TableCell>
                 {candidate.score != null ? (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 border ${
+                  <span className={`text-xs font-bold px-1.5 py-0.5 border ${
                     candidate.score >= 70 ? 'border-foreground bg-brutal-accent text-foreground' : 
                     candidate.score >= 40 ? 'border-foreground/50 text-foreground' : 'border-destructive text-destructive'
                   }`}>
@@ -216,7 +216,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
 
           {sortedCandidates.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-[11px] uppercase tracking-wider">
+              <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-xs uppercase tracking-wider">
                 Aucun candidat trouvé
               </TableCell>
             </TableRow>

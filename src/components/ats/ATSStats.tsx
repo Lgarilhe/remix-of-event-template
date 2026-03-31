@@ -76,7 +76,7 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
             <span className="text-sm font-bold text-foreground tabular-nums">
               {value}{stat.suffix || ''}
             </span>
-            <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium hidden sm:inline">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium hidden sm:inline">
               {stat.label}
             </span>
           </div>

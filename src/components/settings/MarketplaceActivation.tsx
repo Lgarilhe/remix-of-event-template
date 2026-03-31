@@ -67,11 +67,11 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
           <Icon className="w-5 h-5 text-foreground" />
           <div>
             <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{title}</h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
           </div>
         </div>
         <span className={cn(
-          "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border",
+          "px-2 py-0.5 text-xs font-bold uppercase tracking-wider border",
           status === 'active' ? "bg-foreground text-background border-foreground" :
           status === 'pending_validation' ? "border-amber-500 text-amber-600" :
           "border-foreground/30 text-muted-foreground"
@@ -104,12 +104,12 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
 
       {/* Progress */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">
           {completedCount}/{checklist.length} étapes
         </p>
         {status !== 'active' && (
           <button
-            className="h-[30px] px-4 text-[10px] font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-50"
+            className="h-[30px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-50"
           >
             {completedCount === 0 ? 'Commencer l\'activation' : 'Continuer'}
           </button>

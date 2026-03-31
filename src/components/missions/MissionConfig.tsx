@@ -16,7 +16,7 @@ const EditField = ({ label, value, field, projectId }: {
   const { updateProject } = useSourcingProjects();
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
       <input
         defaultValue={value || ''}
         onBlur={(e) => updateProject({ id: projectId, [field]: e.target.value || null } as any)}
@@ -34,7 +34,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
     <div className="bg-background border border-foreground border-t-0 p-4 sm:p-6 space-y-6">
       {readOnly && (
         <div className="px-3 py-2 border border-foreground/20 bg-muted/30">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             👁️ Lecture seule
           </span>
         </div>
@@ -44,7 +44,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
       <div className="border border-foreground/20 p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
           <Settings className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Infos mission
           </h3>
         </div>
@@ -53,7 +53,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
           {isAgency && <EditField label="Client" value={project.client_name} field="client_name" projectId={project.id} />}
           <EditField label="Lien Calendly" value={project.calendly_link} field="calendly_link" projectId={project.id} />
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut</label>
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Statut</label>
             <select
               defaultValue={project.status}
               onChange={(e) => updateProject({ id: project.id, status: e.target.value as SourcingProject['status'] })}
@@ -67,7 +67,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
           </div>
         </div>
         <div className="mt-4 space-y-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Notes internes</label>
+          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Notes internes</label>
           <textarea
             defaultValue={project.notes || ''}
             onBlur={(e) => updateProject({ id: project.id, notes: e.target.value })}

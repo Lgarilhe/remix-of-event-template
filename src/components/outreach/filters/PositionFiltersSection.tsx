@@ -220,7 +220,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               />
               <div className="flex items-center gap-2 mt-1">
                 <div className="space-y-1 flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Priorité</Label>
+                  <Label className="text-xs text-muted-foreground">Priorité</Label>
                   <Select value={roleDialogPriority} onValueChange={(v) => onRoleDialogPriorityChange(v as FilterPriority)}>
                     <SelectTrigger className="text-xs h-7">
                       <SelectValue />
@@ -233,7 +233,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                   </Select>
                 </div>
                 <div className="space-y-1 flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Scope</Label>
+                  <Label className="text-xs text-muted-foreground">Scope</Label>
                   <Select value={roleDialogScope} onValueChange={(v) => onRoleDialogScopeChange(v as FilterScope)}>
                     <SelectTrigger className="text-xs h-7">
                       <SelectValue />
@@ -249,12 +249,12 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
                 <p className="font-medium text-foreground/70">💡 Synonym Rings — ratissez large :</p>
                 <ul className="space-y-1 list-disc list-inside">
-                  <li>Combiner <strong>FR + EN</strong> : <code className="text-[10px] bg-muted px-1 rounded">"DevOps Engineer" OR "Ingénieur DevOps" OR SRE</code></li>
-                  <li>Inclure les <strong>variantes</strong> : <code className="text-[10px] bg-muted px-1 rounded">"VP Sales" OR "Head of Sales" OR "Directeur Commercial"</code></li>
-                  <li><strong>Guillemets</strong> pour les titres composés : <code className="text-[10px] bg-muted px-1 rounded">"Product Manager"</code></li>
-                  <li>Exclure avec <strong>NOT</strong> : <code className="text-[10px] bg-muted px-1 rounded">Sales NOT (Assistant OR Associate)</code></li>
+                  <li>Combiner <strong>FR + EN</strong> : <code className="text-xs bg-muted px-1 rounded">"DevOps Engineer" OR "Ingénieur DevOps" OR SRE</code></li>
+                  <li>Inclure les <strong>variantes</strong> : <code className="text-xs bg-muted px-1 rounded">"VP Sales" OR "Head of Sales" OR "Directeur Commercial"</code></li>
+                  <li><strong>Guillemets</strong> pour les titres composés : <code className="text-xs bg-muted px-1 rounded">"Product Manager"</code></li>
+                  <li>Exclure avec <strong>NOT</strong> : <code className="text-xs bg-muted px-1 rounded">Sales NOT (Assistant OR Associate)</code></li>
                 </ul>
-                <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Mettre les technos/compétences dans Mots-clés, pas ici. Limite ~200 caractères.</p>
+                <p className="text-xs mt-1 text-muted-foreground/70">⚠️ Mettre les technos/compétences dans Mots-clés, pas ici. Limite ~200 caractères.</p>
               </div>
               <DialogFooter>
                 <Button variant="outline" size="sm" onClick={() => onRoleDialogOpenChange(false)}>Annuler</Button>
@@ -286,7 +286,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
           </Dialog>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Priorité</Label>
+              <Label className="text-xs text-muted-foreground">Priorité</Label>
               <Select value={newRolePriority} onValueChange={(v) => onNewRolePriorityChange(v as FilterPriority)} disabled={!isFilterSupported(filters.api, 'role')}>
                 <SelectTrigger className="text-xs h-7">
                   <SelectValue />
@@ -299,7 +299,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Scope</Label>
+              <Label className="text-xs text-muted-foreground">Scope</Label>
               <Select value={newRoleScope} onValueChange={(v) => onNewRoleScopeChange(v as FilterScope)} disabled={!isFilterSupported(filters.api, 'role')}>
                 <SelectTrigger className="text-xs h-7">
                   <SelectValue />
@@ -312,7 +312,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               </Select>
             </div>
           </div>
-          <p className="text-[10px] text-muted-foreground text-center">
+          <p className="text-xs text-muted-foreground text-center">
             Appuyez sur Entrée ou sortez du champ pour ajouter
           </p>
         </div>

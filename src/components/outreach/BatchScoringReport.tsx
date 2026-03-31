@@ -142,7 +142,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 <h2 className="text-sm font-black uppercase tracking-widest text-foreground">
                   Scoring terminé
                 </h2>
-                <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                <p className="text-xs text-muted-foreground mt-0.5 font-medium">
                   {entries.length} profil{entries.length > 1 ? 's' : ''} analysé{entries.length > 1 ? 's' : ''}
                   {durationLabel && ` · ${durationLabel}`}
                 </p>
@@ -213,7 +213,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 onClick={() => setFilter(item.key)}
                 whileTap={{ scale: 0.95 }}
                 className={cn(
-                  "h-6 px-2.5 text-[9px] font-black uppercase tracking-widest border transition-all",
+                  "h-6 px-2.5 text-xs font-black uppercase tracking-widest border transition-all",
                   filter === item.key
                     ? 'bg-foreground text-background border-foreground'
                     : 'text-muted-foreground border-border hover:text-foreground hover:border-foreground/40'
@@ -243,7 +243,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
               </motion.div>
             ))}
             {filtered.length === 0 && (
-              <div className="py-8 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+              <div className="py-8 text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
                 Aucun profil dans cette catégorie
               </div>
             )}
@@ -258,10 +258,10 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
               {stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''} IA utilisé{stats.llmCalled > 1 ? 's' : ''}
             </span>
-            <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="w-2.5 h-2.5" />
               {durationLabel}
             </div>
@@ -295,7 +295,7 @@ const StatCard: React.FC<{
       highlight ? 'text-brutal-accent' : 'text-foreground'
     )}>
       {value}
-      {suffix && <span className="text-[9px] font-bold text-muted-foreground ml-0.5">{suffix}</span>}
+      {suffix && <span className="text-xs font-bold text-muted-foreground ml-0.5">{suffix}</span>}
     </span>
   </div>
 );
@@ -304,7 +304,7 @@ const StatCard: React.FC<{
 
 const ScoreBadge: React.FC<{ score: number; recommendation: string }> = ({ score, recommendation }) => (
   <div className={cn(
-    "w-8 h-8 flex items-center justify-center text-[11px] font-black tabular-nums shrink-0 border transition-colors",
+    "w-8 h-8 flex items-center justify-center text-xs font-black tabular-nums shrink-0 border transition-colors",
     recommendation === 'go'
       ? 'bg-foreground text-background border-foreground'
       : recommendation === 'maybe'
@@ -334,7 +334,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-bold text-foreground truncate uppercase tracking-wider">
+          <span className="text-xs font-bold text-foreground truncate uppercase tracking-wider">
             {entry.name}
           </span>
           {entry.profileUrl && (
@@ -356,7 +356,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           )}
         </div>
         {entry.headline && (
-          <p className="text-[9px] text-muted-foreground truncate mt-px leading-tight">
+          <p className="text-xs text-muted-foreground truncate mt-px leading-tight">
             {entry.headline}
           </p>
         )}
@@ -379,7 +379,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           className="overflow-hidden"
         >
-          <div className="px-4 pb-2.5 ml-[2.625rem] text-[10px] text-muted-foreground space-y-1 border-l-2 border-foreground/10 pl-2.5">
+          <div className="px-4 pb-2.5 ml-[2.625rem] text-xs text-muted-foreground space-y-1 border-l-2 border-foreground/10 pl-2.5">
             {entry.hardFilterKO && (
               <p>
                 <span className="font-black text-foreground/60 uppercase tracking-widest text-[8px]">Filtre :</span>{' '}

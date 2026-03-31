@@ -141,7 +141,7 @@ const MissionWorkspace = () => {
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => navigate('/missions')}
-                className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0"
+                className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0"
               >
                 <ArrowLeft className="w-3 h-3 relative z-10" />
                 <span className="relative z-10">Missions</span>
@@ -189,7 +189,7 @@ const MissionWorkspace = () => {
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={cn(
-                      "flex items-center gap-1 h-[30px] px-3 text-[9px] font-medium uppercase tracking-wider transition-colors shrink-0",
+                      "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider transition-colors shrink-0",
                       index > 0 && "border-l border-foreground/10",
                       isActive
                         ? "bg-foreground text-background"
@@ -226,7 +226,7 @@ const MissionWorkspace = () => {
                     onClick={() => setActiveTab(tab)}
                     className={cn(
                       "flex items-center gap-1.5 h-[38px] px-3 shrink-0 transition-colors",
-                      "text-[10px] font-bold uppercase tracking-wider",
+                      "text-xs font-bold uppercase tracking-wider",
                       index > 0 && "border-l border-foreground/10",
                       isActive
                         ? "bg-foreground text-background"

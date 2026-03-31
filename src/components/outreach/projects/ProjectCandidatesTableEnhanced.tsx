@@ -541,7 +541,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                               >
                                 <StopCircle className="w-4 h-4 mr-2" />
                                 Arrêter la séquence
-                                <span className="ml-auto text-[10px] text-gray-400">
+                                <span className="ml-auto text-xs text-gray-400">
                                   {candidateEnrollments[candidate.candidate_id]?.sequence_name}
                                 </span>
                               </DropdownMenuItem>

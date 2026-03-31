@@ -254,7 +254,7 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
                 <div className="flex flex-col items-start min-w-0">
                   <span
                     className={cn(
-                      "text-[10px] font-black uppercase tracking-wider transition-colors whitespace-nowrap",
+                      "text-xs font-black uppercase tracking-wider transition-colors whitespace-nowrap",
                       isActive
                         ? "text-foreground"
                         : isCompleted
@@ -264,7 +264,7 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
                   >
                     {step.label}
                   </span>
-                  <span className="text-[9px] text-muted-foreground/70 whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground/70 whitespace-nowrap">
                     {step.getSummary(project)}
                   </span>
                 </div>
@@ -286,7 +286,7 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
               onClick={() => onTabChange(step.value)}
               className={cn(
                 "flex items-center gap-1.5 h-[38px] px-3 shrink-0 transition-colors",
-                "text-[10px] font-bold uppercase tracking-wider",
+                "text-xs font-bold uppercase tracking-wider",
                 index > 0 && "border-l border-foreground/10",
                 isActive
                   ? "bg-foreground text-background"

@@ -74,7 +74,7 @@ export const ProxyConfigPanel = ({
   const getStatusBadge = () => {
     if (!currentMode || resolvedMode === 'none') {
       return (
-        <Badge variant="outline" className="text-[10px] gap-1 font-normal text-muted-foreground">
+        <Badge variant="outline" className="text-xs gap-1 font-normal text-muted-foreground">
           <Globe className="w-2.5 h-2.5" />
           Aucun proxy
         </Badge>
@@ -83,7 +83,7 @@ export const ProxyConfigPanel = ({
     if (currentMode === 'country' && currentCountry) {
       const entry = PROXY_COUNTRIES.find(c => c.code === currentCountry);
       return (
-        <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+        <Badge variant="outline" className="text-xs gap-1 font-normal">
           <Shield className="w-2.5 h-2.5" />
           {entry ? `${entry.flag} ${entry.code}` : currentCountry}
         </Badge>
@@ -91,7 +91,7 @@ export const ProxyConfigPanel = ({
     }
     if (currentMode === 'ip') {
       return (
-        <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+        <Badge variant="outline" className="text-xs gap-1 font-normal">
           <Shield className="w-2.5 h-2.5" />
           IP: {currentCountry}
         </Badge>
@@ -99,7 +99,7 @@ export const ProxyConfigPanel = ({
     }
     if (currentMode === 'custom') {
       return (
-        <Badge variant="outline" className="text-[10px] gap-1 font-normal">
+        <Badge variant="outline" className="text-xs gap-1 font-normal">
           <Shield className="w-2.5 h-2.5" />
           Custom
         </Badge>
@@ -167,7 +167,7 @@ export const ProxyConfigPanel = ({
 
       {/* Error display */}
       {proxyLastError && (
-        <div className="flex items-start gap-1.5 text-destructive text-[11px] bg-destructive/10 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-destructive text-xs bg-destructive/10 rounded px-2 py-1.5">
           <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
           <span>{proxyLastError}</span>
         </div>
@@ -177,15 +177,15 @@ export const ProxyConfigPanel = ({
       <RadioGroup value={mode} onValueChange={setMode} className="flex gap-3">
         <div className="flex items-center gap-1.5">
           <RadioGroupItem value="country" id={`${accountId}-country`} className="w-3 h-3" />
-          <Label htmlFor={`${accountId}-country`} className="text-[11px] cursor-pointer">Pays</Label>
+          <Label htmlFor={`${accountId}-country`} className="text-xs cursor-pointer">Pays</Label>
         </div>
         <div className="flex items-center gap-1.5">
           <RadioGroupItem value="ip" id={`${accountId}-ip`} className="w-3 h-3" />
-          <Label htmlFor={`${accountId}-ip`} className="text-[11px] cursor-pointer">IP</Label>
+          <Label htmlFor={`${accountId}-ip`} className="text-xs cursor-pointer">IP</Label>
         </div>
         <div className="flex items-center gap-1.5">
           <RadioGroupItem value="custom" id={`${accountId}-custom`} className="w-3 h-3" />
-          <Label htmlFor={`${accountId}-custom`} className="text-[11px] cursor-pointer">Custom</Label>
+          <Label htmlFor={`${accountId}-custom`} className="text-xs cursor-pointer">Custom</Label>
         </div>
       </RadioGroup>
 

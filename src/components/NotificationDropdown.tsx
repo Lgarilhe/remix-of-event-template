@@ -36,7 +36,7 @@ export const NotificationDropdown: React.FC = () => {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-[11px] font-medium uppercase border border-foreground leading-none"
+        className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-xs font-medium uppercase border border-foreground leading-none"
       >
         <img src={iconBell3d} alt="" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
@@ -50,13 +50,13 @@ export const NotificationDropdown: React.FC = () => {
         <div className="fixed md:absolute left-2 right-2 md:left-auto md:right-0 top-[52px] md:top-[38px] md:w-80 bg-background border border-foreground shadow-lg z-[2100] max-h-[400px] flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-foreground/20">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground">
               Notifications
             </span>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <CheckCheck className="w-3 h-3" />
                 Tout lire
@@ -69,7 +69,7 @@ export const NotificationDropdown: React.FC = () => {
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                 <img src={iconBell3d} alt="" className="w-6 h-6 mb-2 opacity-30" />
-                <p className="text-[10px] font-medium uppercase tracking-wider">Aucune notification</p>
+                <p className="text-xs font-medium uppercase tracking-wider">Aucune notification</p>
               </div>
             ) : (
               notifications.slice(0, 20).map(notif => (
@@ -93,9 +93,9 @@ export const NotificationDropdown: React.FC = () => {
                         {notif.title}
                       </p>
                       {notif.body && (
-                        <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{notif.body}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notif.body}</p>
                       )}
-                      <p className="text-[9px] text-muted-foreground/60 mt-1">
+                      <p className="text-xs text-muted-foreground/60 mt-1">
                         {formatDistanceToNow(parseISO(notif.created_at), { addSuffix: true, locale: fr })}
                       </p>
                     </div>

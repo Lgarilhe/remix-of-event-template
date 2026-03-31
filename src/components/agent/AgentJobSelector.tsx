@@ -55,13 +55,13 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
                     {job.title}
                   </p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-[11px] truncate text-muted-foreground">
+                    <p className="text-xs truncate text-muted-foreground">
                       {job.client?.name || '—'}
                     </p>
                     {location && (
                       <>
                         <span className="text-foreground/15">·</span>
-                        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground/70 shrink-0">
+                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground/70 shrink-0">
                           <MapPin className="w-2.5 h-2.5" />
                           {location}
                         </span>
@@ -81,7 +81,7 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
           onClick={onLaunch}
           disabled={!selectedJob}
           className={cn(
-            "w-full h-11 text-[11px] font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
+            "w-full h-11 text-xs font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
             selectedJob
               ? "border-foreground bg-foreground text-background hover:shadow-[4px_4px_0_0_hsl(var(--brutal-accent)/0.5)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
               : "border-foreground/15 text-muted-foreground/40 cursor-not-allowed"

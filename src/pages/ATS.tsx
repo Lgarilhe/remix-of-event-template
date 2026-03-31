@@ -203,7 +203,7 @@ export default function ATS() {
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
               {isFetching && !loading && (
-                <span className="text-[9px] text-blue-600 border border-blue-300 px-1.5 py-0.5 uppercase tracking-wider font-medium animate-pulse hidden sm:inline">
+                <span className="text-xs text-blue-600 border border-blue-300 px-1.5 py-0.5 uppercase tracking-wider font-medium animate-pulse hidden sm:inline">
                   Sync...
                 </span>
               )}
@@ -213,7 +213,7 @@ export default function ATS() {
               <button
                 onClick={refetch}
                 disabled={loading}
-                className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-30"
+                className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30"
               >
                 <RefreshCw className={`w-3 h-3 relative z-10 ${loading ? 'animate-spin' : ''}`} />
                 <span className="relative z-10 hidden sm:inline">Actualiser</span>
@@ -222,7 +222,7 @@ export default function ATS() {
               <button
                 onClick={() => setShowReminders(!showReminders)}
                 className={cn(
-                  "relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-l-0 border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group",
+                  "relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-l-0 border-foreground text-foreground text-xs font-medium uppercase tracking-wider group",
                   showReminders && "bg-brutal-accent"
                 )}
               >
@@ -255,7 +255,7 @@ export default function ATS() {
                         key={tab.value}
                         onClick={() => setActiveView(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[11px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
                           index > 0 && "border-l-0",
                           isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                         )}
@@ -282,7 +282,7 @@ export default function ATS() {
                   <p className="text-destructive">{error}</p>
                   <button
                     onClick={refetch}
-                    className="relative overflow-hidden h-[34px] px-6 mt-4 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group"
+                    className="relative overflow-hidden h-[34px] px-6 mt-4 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group"
                   >
                     <span className="relative z-10">Réessayer</span>
                     <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -364,7 +364,7 @@ export default function ATS() {
                                       key={tab.value}
                                       onClick={() => setShortlistViewMode(tab.value)}
                                       className={cn(
-                                        "relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                                        "relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
                                         index > 0 && "border-l-0",
                                         shortlistViewMode === tab.value ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                                       )}

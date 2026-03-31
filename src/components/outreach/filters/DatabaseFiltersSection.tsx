@@ -67,7 +67,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
       <FilterGroup title="Technologies" badge={filters.db_technologies.length}>
         <div className="flex flex-wrap gap-1 mb-1.5">
           {filters.db_technologies.map(t => (
-            <Badge key={t} variant="secondary" className="gap-1 text-[10px]">
+            <Badge key={t} variant="secondary" className="gap-1 text-xs">
               {t}
               <X className="w-3 h-3 cursor-pointer" onClick={() => removeTech(t)} />
             </Badge>
@@ -102,7 +102,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
       <FilterGroup title="Revenue entreprise">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <Label className="text-[10px] text-muted-foreground">Min</Label>
+            <Label className="text-xs text-muted-foreground">Min</Label>
             <Input
               placeholder="ex: 1M, 10M..."
               value={filters.db_revenue_min}
@@ -111,7 +111,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
             />
           </div>
           <div>
-            <Label className="text-[10px] text-muted-foreground">Max</Label>
+            <Label className="text-xs text-muted-foreground">Max</Label>
             <Input
               placeholder="ex: 100M, 1B..."
               value={filters.db_revenue_max}

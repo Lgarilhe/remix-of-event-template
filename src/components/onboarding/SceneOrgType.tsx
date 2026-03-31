@@ -39,7 +39,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           01 — Votre activité
@@ -86,7 +86,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-semibold block">{option.title}</span>
-                <span className="text-[11px] text-muted-foreground mt-0.5 block leading-relaxed">
+                <span className="text-xs text-muted-foreground mt-0.5 block leading-relaxed">
                   {option.description}
                 </span>
               </div>

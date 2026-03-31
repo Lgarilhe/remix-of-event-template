@@ -45,31 +45,31 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
     <div className="space-y-6">
       {/* Quick AI actions */}
       <div>
-        <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground mb-3">Actions IA</h4>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">Actions IA</h4>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onOpenAgent}
             className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
           >
             <Brain className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Résumé IA</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">Générer un résumé du candidat</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Résumé IA</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Générer un résumé du candidat</p>
           </button>
           <button
             onClick={onOpenAgent}
             className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
           >
             <FileText className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">Préparer une présentation</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Préparer une présentation</p>
           </button>
           <button
             onClick={() => { window.location.href = '/missions?tab=messages'; }}
             className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
           >
             <Send className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Messagerie</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">Ouvrir la messagerie</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Messagerie</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Ouvrir la messagerie</p>
           </button>
           {candidateLinkedin && (
             <button
@@ -77,8 +77,8 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
               className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
             >
               <Target className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
-              <p className="text-[10px] font-bold uppercase tracking-wider text-foreground mt-2">Scoring</p>
-              <p className="text-[9px] text-muted-foreground mt-0.5">Analyser le profil</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Scoring</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Analyser le profil</p>
             </button>
           )}
         </div>
@@ -87,9 +87,9 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
       {/* Reminders */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground">Rappels</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Rappels</h4>
           <button onClick={() => setShowNewReminder(!showNewReminder)}
-            className="text-[10px] font-medium text-foreground hover:text-brutal-accent flex items-center gap-1">
+            className="text-xs font-medium text-foreground hover:text-brutal-accent flex items-center gap-1">
             <Plus className="w-3 h-3" /> Ajouter
           </button>
         </div>
@@ -109,7 +109,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
               className="rounded-none border-foreground/30 h-8 text-sm"
             />
             <button onClick={handleAdd} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
-              className="w-full h-8 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider disabled:opacity-50">
+              className="w-full h-8 bg-foreground text-background text-xs font-bold uppercase tracking-wider disabled:opacity-50">
               {addingReminder ? <Loader2 className="w-3 h-3 animate-spin mx-auto" /> : 'Créer le rappel'}
             </button>
           </div>
@@ -127,7 +127,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
                 <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className={cn("text-sm font-medium text-foreground", r.completed_at && 'line-through')}>{r.title}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {format(parseISO(r.due_at), 'd MMM yyyy à HH:mm', { locale: fr })}
                     {!r.completed_at && (
                       <span className="ml-2 text-brutal-accent font-medium">

@@ -71,14 +71,14 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
             {candidate.candidate_name || 'Candidat inconnu'}
           </p>
           {candidate.candidate_headline && (
-            <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
               {candidate.candidate_headline}
             </p>
           )}
         </div>
         {candidate.score != null && (
           <span className={cn(
-            "text-[10px] font-bold px-1.5 py-0.5 shrink-0",
+            "text-xs font-bold px-1.5 py-0.5 shrink-0",
             candidate.score >= 70 ? "bg-green-100 text-green-700" :
             candidate.score >= 40 ? "bg-yellow-100 text-yellow-700" :
             "bg-red-100 text-red-600"
@@ -93,7 +93,7 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
             href={candidate.linkedin_profile_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -101,7 +101,7 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
           </a>
         )}
         {timeInStage && (
-          <span className="text-[9px] text-muted-foreground inline-flex items-center gap-0.5 ml-auto">
+          <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5 ml-auto">
             <Clock className="w-2.5 h-2.5" /> {timeInStage}
           </span>
         )}
@@ -152,12 +152,12 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
       )}>
         <div className="flex items-center justify-between">
           <h3 className={cn(
-            "font-medium text-[11px] uppercase tracking-wider",
+            "font-medium text-xs uppercase tracking-wider",
             isDismissed && "text-red-600"
           )}>
             {column.label}
           </h3>
-          <span className="text-[10px] bg-foreground/10 px-2 py-0.5 font-bold">
+          <span className="text-xs bg-foreground/10 px-2 py-0.5 font-bold">
             {candidates.length}
           </span>
         </div>
@@ -167,7 +167,7 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
           <DraggableKanbanCard key={c.id} candidate={c} columnId={column.key} />
         ))}
         {candidates.length === 0 && (
-          <p className="text-[10px] text-muted-foreground text-center py-4">Aucun candidat</p>
+          <p className="text-xs text-muted-foreground text-center py-4">Aucun candidat</p>
         )}
       </div>
     </div>
@@ -307,17 +307,17 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               const count = candidatesByColumn[col.key]?.length || 0;
               const colors = ['bg-gray-300', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
               return (
-                <span key={col.key} className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                <span key={col.key} className="text-xs text-muted-foreground uppercase tracking-wider">
                   <span className={cn("inline-block w-2 h-2 mr-1", colors[i % colors.length])} />
                   {count} {col.label}
                 </span>
               );
             })}
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">
               <span className="inline-block w-2 h-2 bg-red-300 mr-1" />
               {candidatesByColumn['dismissed']?.length || 0} écartés
             </span>
-            <span className="text-[10px] font-bold text-foreground uppercase tracking-wider ml-auto">
+            <span className="text-xs font-bold text-foreground uppercase tracking-wider ml-auto">
               {totalCandidates} total
             </span>
           </div>
@@ -327,11 +327,11 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
       {/* View toggle + dynamic info */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">
             {totalCandidates} candidat{totalCandidates > 1 ? 's' : ''}
           </span>
           {steps.length > 0 && (
-            <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider">
+            <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">
               • {steps.length} étapes de process
             </span>
           )}
@@ -340,7 +340,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('table')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground group",
+              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground group",
               viewMode === 'table' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >
@@ -349,7 +349,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('kanban')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground border-l-0 group",
+              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 group",
               viewMode === 'kanban' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >

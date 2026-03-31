@@ -98,7 +98,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
               transition={{ duration: 0.6, ease: 'easeOut' }}
             />
           </svg>
-          <span className="text-[10px] sm:text-xs font-bold text-foreground/70" style={{ fontFamily: "'Space Mono', monospace" }}>
+          <span className="text-xs sm:text-xs font-bold text-foreground/70" style={{ fontFamily: "'Space Mono', monospace" }}>
             {scorePercent}%
           </span>
         </div>

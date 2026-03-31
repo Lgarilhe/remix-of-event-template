@@ -22,7 +22,7 @@ export const LikelyToSwitchBadge: React.FC<LikelyToSwitchBadgeProps> = ({ result
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-medium cursor-default', config.bg, config.text)}>
+        <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-xs font-medium cursor-default', config.bg, config.text)}>
           <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', config.dot)} />
           {config.shortLabel}
           <span className="opacity-60">{result.score}%</span>
@@ -32,14 +32,14 @@ export const LikelyToSwitchBadge: React.FC<LikelyToSwitchBadgeProps> = ({ result
         <p className="font-semibold text-xs mb-2">Disponibilité : {config.label} ({result.score}%)</p>
         <div className="space-y-1.5">
           {result.signals.map((signal) => (
-            <div key={signal.key} className="flex items-start gap-2 text-[11px]">
+            <div key={signal.key} className="flex items-start gap-2 text-xs">
               <span className="shrink-0">{signal.active ? signal.emoji : '⬜'}</span>
               <div className="flex-1 min-w-0">
                 <span className={cn('font-medium', !signal.active && 'line-through opacity-50')}>
                   {signal.label}
                 </span>
                 {signal.active && signal.detail && (
-                  <p className="text-muted-foreground text-[10px] mt-0.5">{signal.detail}</p>
+                  <p className="text-muted-foreground text-xs mt-0.5">{signal.detail}</p>
                 )}
               </div>
               <span className="text-muted-foreground/50 shrink-0">{signal.weight}pt</span>

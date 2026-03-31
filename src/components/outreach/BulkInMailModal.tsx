@@ -813,23 +813,23 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               <div className="grid grid-cols-5 gap-2 text-center py-3 border-b border-gray-100 mb-3">
                 <div>
                   <div className="text-lg font-semibold text-blue-600">{queueStats.scheduled}</div>
-                  <div className="text-[10px] text-gray-500 uppercase">Planifiés</div>
+                  <div className="text-xs text-gray-500 uppercase">Planifiés</div>
                 </div>
                 <div>
                   <div className="text-lg font-semibold text-amber-500">{queueStats.sending}</div>
-                  <div className="text-[10px] text-gray-500 uppercase">En cours</div>
+                  <div className="text-xs text-gray-500 uppercase">En cours</div>
                 </div>
                 <div>
                   <div className="text-lg font-semibold text-emerald-600">{queueStats.sent}</div>
-                  <div className="text-[10px] text-gray-500 uppercase">Envoyés</div>
+                  <div className="text-xs text-gray-500 uppercase">Envoyés</div>
                 </div>
                 <div>
                   <div className="text-lg font-semibold text-red-500">{queueStats.failed}</div>
-                  <div className="text-[10px] text-gray-500 uppercase">Échoués</div>
+                  <div className="text-xs text-gray-500 uppercase">Échoués</div>
                 </div>
                 <div>
                   <div className="text-lg font-semibold text-gray-400">{queueStats.cancelled}</div>
-                  <div className="text-[10px] text-gray-500 uppercase">Annulés</div>
+                  <div className="text-xs text-gray-500 uppercase">Annulés</div>
                 </div>
               </div>
             )}

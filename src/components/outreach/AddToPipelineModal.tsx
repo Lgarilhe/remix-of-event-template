@@ -272,13 +272,13 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                           )}
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             {job.location && (
-                              <Badge variant="secondary" className="text-[10px] h-4">
+                              <Badge variant="secondary" className="text-xs h-4">
                                 <MapPin className="w-2.5 h-2.5 mr-0.5" />
                                 {job.location}
                               </Badge>
                             )}
                             {job.contractType && (
-                              <Badge variant="outline" className="text-[10px] h-4">
+                              <Badge variant="outline" className="text-xs h-4">
                                 {job.contractType}
                               </Badge>
                             )}

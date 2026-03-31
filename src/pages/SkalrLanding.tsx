@@ -179,7 +179,7 @@ const SkalrLanding = () => {
                 <button
                   key={item.id}
                   onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' })}
-                  className="text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
+                  className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
                 >
                   {item.label}
                 </button>
@@ -189,11 +189,11 @@ const SkalrLanding = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowCalendly(true)}
-                className="hidden sm:inline-flex text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
+                className="hidden sm:inline-flex text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
               >
                 Démo
               </button>
-              <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))} className="h-9 px-5 text-[10px]">
+              <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))} className="h-9 px-5 text-xs">
                 Commencer <ArrowRight className="h-3 w-3" />
               </BrutalButton>
             </div>
@@ -210,7 +210,7 @@ const SkalrLanding = () => {
               transition={{ duration: 0.5 }}
               className="mb-8"
             >
-              <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-semibold text-foreground border-2 border-foreground px-4 py-1.5 bg-background shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]">
+              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-foreground border-2 border-foreground px-4 py-1.5 bg-background shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]">
                 <span className="w-2 h-2 bg-brutal-accent" />
                 Plateforme de recrutement
               </span>
@@ -274,7 +274,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
+              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
                 Fonctionnalités
               </span>
               <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground leading-[1.1]">
@@ -294,7 +294,7 @@ const SkalrLanding = () => {
                 <div className="aspect-[4/3] border-2 border-foreground bg-gradient-to-br from-[hsl(var(--landing-sky-start))] to-[hsl(var(--landing-sky-end))] shadow-[6px_6px_0px_0px_hsl(var(--brutal-accent))]">
                   <div className="absolute bottom-6 left-6">
                     <div className="bg-background border-2 border-foreground p-4 max-w-[280px] shadow-[3px_3px_0px_0px_hsl(var(--foreground))]">
-                      <span className="inline-block px-2 py-0.5 bg-[hsl(var(--landing-accent-yellow))] text-[10px] font-bold uppercase tracking-wider mb-2">
+                      <span className="inline-block px-2 py-0.5 bg-[hsl(var(--landing-accent-yellow))] text-xs font-bold uppercase tracking-wider mb-2">
                         Match IA
                       </span>
                       <p className="text-sm font-semibold text-foreground">Score 94% — profil idéal pour votre poste</p>
@@ -321,7 +321,7 @@ const SkalrLanding = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <h3 className="text-base font-bold text-foreground uppercase tracking-wide">{feature.title}</h3>
-                        <span className="text-[10px] text-muted-foreground font-mono">{feature.num}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{feature.num}</span>
                       </div>
                       <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
                     </div>
@@ -369,7 +369,7 @@ const SkalrLanding = () => {
                   className="border-2 border-foreground bg-background p-6 hover:shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] transition-shadow"
                 >
                   <div className="w-8 h-8 border-2 border-foreground flex items-center justify-center mb-5 bg-brutal-accent">
-                    <span className="text-[11px] font-bold text-foreground">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="text-xs font-bold text-foreground">{String(i + 1).padStart(2, '0')}</span>
                   </div>
                   <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">{value.title}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">{value.description}</p>
@@ -388,7 +388,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
+              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
                 Résultats
               </span>
               <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground">
@@ -409,7 +409,7 @@ const SkalrLanding = () => {
                   <span className="text-5xl md:text-6xl font-bold text-foreground tracking-tight block mb-3">
                     {stat.value}
                   </span>
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{stat.label}</p>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{stat.label}</p>
                 </motion.div>
               ))}
             </div>
@@ -425,7 +425,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center"
             >
-              <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-background/60 mb-6 block">
+              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-background/60 mb-6 block">
                 Témoignage
               </span>
               <blockquote className="font-editorial text-2xl sm:text-3xl md:text-4xl leading-[1.3] text-background mb-8">
@@ -521,12 +521,12 @@ const SkalrLanding = () => {
             <span className="text-sm font-bold uppercase tracking-widest text-foreground">
               Skalr<span className="text-brutal-accent">.</span>
             </span>
-            <div className="flex items-center gap-6 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+            <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">
               <a href="#" className="hover:text-foreground transition-colors">Mentions légales</a>
               <a href="#" className="hover:text-foreground transition-colors">Confidentialité</a>
               <button onClick={() => setShowContact(true)} className="hover:text-foreground transition-colors">Contact</button>
             </div>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">© 2025 Skalr</span>
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">© 2025 Skalr</span>
           </div>
         </footer>
 
@@ -589,20 +589,20 @@ const SkalrLanding = () => {
                 <form onSubmit={handleContactSubmit} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-semibold text-foreground uppercase tracking-wider mb-1">Nom *</label>
+                      <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Nom *</label>
                       <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} placeholder="Votre nom" className="rounded-none border-2 border-foreground" required />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-foreground uppercase tracking-wider mb-1">Email *</label>
+                      <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Email *</label>
                       <Input type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} placeholder="vous@entreprise.com" className="rounded-none border-2 border-foreground" required />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-foreground uppercase tracking-wider mb-1">Entreprise</label>
+                    <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Entreprise</label>
                     <Input value={contactForm.company} onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })} placeholder="Nom de votre entreprise" className="rounded-none border-2 border-foreground" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-foreground uppercase tracking-wider mb-1">Message *</label>
+                    <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Message *</label>
                     <Textarea value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })} placeholder="Comment pouvons-nous vous aider ?" className="min-h-[120px] rounded-none border-2 border-foreground" required />
                   </div>
                   <BrutalButton className="w-full justify-center">

@@ -116,7 +116,7 @@ const AppContent = () => {
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="w-9 h-9 rounded-full border-2 border-foreground/20 border-t-foreground animate-spin" />
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           Chargement en cours
         </p>
       </div>

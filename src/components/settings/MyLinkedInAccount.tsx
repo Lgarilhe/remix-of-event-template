@@ -152,7 +152,7 @@ export const MyLinkedInAccount = () => {
                       <img src={linkedinLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
                       <span className="text-sm">{(acc as any).name || (acc as any).identifier || acc.id}</span>
                       {(acc as any).status === 'OK' && (
-                        <Badge variant="secondary" className="text-[10px]">Actif</Badge>
+                        <Badge variant="secondary" className="text-xs">Actif</Badge>
                       )}
                     </div>
                     <Button size="sm" variant="outline" onClick={() => handleLinkAccount(acc.id)}>

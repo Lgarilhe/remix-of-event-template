@@ -163,7 +163,7 @@ export default function ScorecardFullPage() {
               <h1 className="text-sm font-bold uppercase tracking-wider truncate">
                 Scorecard — {candidate.name}
               </h1>
-              <p className="text-[10px] text-muted-foreground truncate">
+              <p className="text-xs text-muted-foreground truncate">
                 {candidate.jobTitle || 'Poste non spécifié'}
                 {candidate.headline && ` · ${candidate.headline}`}
               </p>
@@ -175,7 +175,7 @@ export default function ScorecardFullPage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
               </span>
-              <span className="text-[9px] text-red-500 uppercase tracking-wider font-bold hidden sm:inline">Coaching Live</span>
+              <span className="text-xs text-red-500 uppercase tracking-wider font-bold hidden sm:inline">Coaching Live</span>
             </div>
           )}
         </div>
@@ -196,7 +196,7 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-[10px] font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-xs font-bold uppercase tracking-wider",
             jobOpen
               ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
@@ -209,7 +209,7 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-[10px] font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-xs font-bold uppercase tracking-wider",
             profileOpen
               ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
@@ -232,28 +232,28 @@ export default function ScorecardFullPage() {
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{candidate.name}</h3>
                   {enrichedProfile?.headline && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{enrichedProfile.headline}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{enrichedProfile.headline}</p>
                   )}
                   <div className="flex items-center gap-3 mt-1 flex-wrap">
                     {enrichedProfile?.location && (
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <MapPin className="w-3 h-3" /> {enrichedProfile.location}
                       </span>
                     )}
                     {enrichedProfile?.currentCompany && (
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Building2 className="w-3 h-3" /> {enrichedProfile.currentCompany}
                       </span>
                     )}
                     {enrichedProfile?.yearsOfExperience && (
-                      <span className="text-[10px] text-muted-foreground">{enrichedProfile.yearsOfExperience} ans d'XP</span>
+                      <span className="text-xs text-muted-foreground">{enrichedProfile.yearsOfExperience} ans d'XP</span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {candidate.linkedin && (
                     <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                      className="h-7 px-2.5 flex items-center gap-1 border border-foreground text-foreground text-[9px] font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
+                      className="h-7 px-2.5 flex items-center gap-1 border border-foreground text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
                       <ExternalLink className="w-3 h-3" /> LinkedIn
                     </a>
                   )}
@@ -273,7 +273,7 @@ export default function ScorecardFullPage() {
                 ]).map(tab => (
                   <button key={tab.key} onClick={() => setProfileSection(tab.key)}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border transition-colors -mr-px",
+                      "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border transition-colors -mr-px",
                       profileSection === tab.key
                         ? "bg-foreground text-background border-foreground"
                         : "border-foreground/20 text-muted-foreground hover:border-foreground/40"
@@ -295,7 +295,7 @@ export default function ScorecardFullPage() {
               {profileSection === 'exp' && (
                 <div className="space-y-1">
                   {(!enrichedProfile?.experiences || enrichedProfile.experiences.length === 0) ? (
-                    <p className="text-[11px] text-muted-foreground py-4 text-center">Aucune expérience disponible</p>
+                    <p className="text-xs text-muted-foreground py-4 text-center">Aucune expérience disponible</p>
                   ) : (
                     enrichedProfile.experiences.map((exp, i) => {
                       const isExpanded = expandedExp.has(i);
@@ -327,10 +327,10 @@ export default function ScorecardFullPage() {
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="text-[11px] font-bold text-foreground leading-tight">{exp.title}</p>
-                              <p className="text-[10px] text-muted-foreground">{exp.company}</p>
+                              <p className="text-xs font-bold text-foreground leading-tight">{exp.title}</p>
+                              <p className="text-xs text-muted-foreground">{exp.company}</p>
                               {exp.startDate && (
-                                <p className="text-[9px] text-muted-foreground/60 mt-0.5">
+                                <p className="text-xs text-muted-foreground/60 mt-0.5">
                                   {typeof exp.startDate === 'string' ? exp.startDate : ''}
                                   {exp.endDate ? ` → ${typeof exp.endDate === 'string' ? exp.endDate : ''}` : ' → Présent'}
                                 </p>
@@ -341,7 +341,7 @@ export default function ScorecardFullPage() {
                             )}
                           </div>
                           {isExpanded && exp.description && (
-                            <p className="text-[10px] text-muted-foreground leading-relaxed mt-2 ml-[42px] whitespace-pre-line">
+                            <p className="text-xs text-muted-foreground leading-relaxed mt-2 ml-[42px] whitespace-pre-line">
                               {exp.description}
                             </p>
                           )}
@@ -356,7 +356,7 @@ export default function ScorecardFullPage() {
               {profileSection === 'edu' && (
                 <div className="space-y-1">
                   {(!enrichedProfile?.education || enrichedProfile.education.length === 0) ? (
-                    <p className="text-[11px] text-muted-foreground py-4 text-center">Aucune formation disponible</p>
+                    <p className="text-xs text-muted-foreground py-4 text-center">Aucune formation disponible</p>
                   ) : (
                     enrichedProfile.education.map((edu, i) => {
                       const schoolSlug = (edu.school || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -378,9 +378,9 @@ export default function ScorecardFullPage() {
                               )}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[11px] font-bold text-foreground">{edu.school}</p>
-                              {edu.degree && <p className="text-[10px] text-muted-foreground">{edu.degree}</p>}
-                              {edu.field && <p className="text-[10px] text-muted-foreground/60">{edu.field}</p>}
+                              <p className="text-xs font-bold text-foreground">{edu.school}</p>
+                              {edu.degree && <p className="text-xs text-muted-foreground">{edu.degree}</p>}
+                              {edu.field && <p className="text-xs text-muted-foreground/60">{edu.field}</p>}
                             </div>
                           </div>
                         </div>
@@ -394,13 +394,13 @@ export default function ScorecardFullPage() {
               {profileSection === 'skills' && (
                 <div>
                   {(!enrichedProfile?.skills || enrichedProfile.skills.length === 0) ? (
-                    <p className="text-[11px] text-muted-foreground py-4 text-center">Aucune compétence disponible</p>
+                    <p className="text-xs text-muted-foreground py-4 text-center">Aucune compétence disponible</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {enrichedProfile.skills.map((skill, i) => {
                         const name = typeof skill === 'string' ? skill : (skill as any).name || '';
                         return (
-                          <span key={i} className="px-2.5 py-1 border border-foreground/15 text-[10px] font-medium text-muted-foreground hover:border-foreground/30 transition-colors">
+                          <span key={i} className="px-2.5 py-1 border border-foreground/15 text-xs font-medium text-muted-foreground hover:border-foreground/30 transition-colors">
                             {name}
                           </span>
                         );

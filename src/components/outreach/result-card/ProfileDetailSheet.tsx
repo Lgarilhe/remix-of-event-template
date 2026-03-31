@@ -474,13 +474,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={onNavigatePrev}
                 disabled={!onNavigatePrev}
-                className="h-7 gap-1 text-[11px] rounded-none uppercase tracking-wider font-semibold px-2"
+                className="h-7 gap-1 text-xs rounded-none uppercase tracking-wider font-semibold px-2"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
                 Préc.
               </Button>
               {currentIndex != null && totalCount != null && (
-                <span className="text-[10px] text-muted-foreground tabular-nums font-medium uppercase tracking-wider">
+                <span className="text-xs text-muted-foreground tabular-nums font-medium uppercase tracking-wider">
                   {currentIndex + 1} / {totalCount}
                 </span>
               )}
@@ -489,7 +489,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={onNavigateNext}
                 disabled={!onNavigateNext}
-                className="h-7 gap-1 text-[11px] rounded-none uppercase tracking-wider font-semibold px-2"
+                className="h-7 gap-1 text-xs rounded-none uppercase tracking-wider font-semibold px-2"
               >
                 Suiv.
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -498,7 +498,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           )}
           {/* ─── SWIPE HINT (mobile, first open only) ─── */}
           {showSwipeHint && (
-            <div className="sm:hidden flex items-center justify-center gap-3 py-2 bg-foreground text-background text-[11px] font-medium uppercase tracking-wider animate-fade-in shrink-0">
+            <div className="sm:hidden flex items-center justify-center gap-3 py-2 bg-foreground text-background text-xs font-medium uppercase tracking-wider animate-fade-in shrink-0">
               <ChevronLeft className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
               <span>Swipez pour naviguer</span>
               <ChevronRight className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
@@ -520,7 +520,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 leading-snug">
                   {displayProfile.headline || currentRole || 'Profil LinkedIn'}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 pt-0.5 text-[11px] sm:text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 pt-0.5 text-xs sm:text-xs text-muted-foreground">
                   {currentCompany && (
                     <span className="flex items-center gap-1.5 font-medium text-foreground/80">
                       <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
@@ -561,7 +561,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     <Badge
                       key={email}
                       variant="outline"
-                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground"
+                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
                     >
                       <Mail className="h-3 w-3" />
                       <span className="max-w-[180px] truncate">{email}</span>
@@ -572,7 +572,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     <Badge
                       key={phone}
                       variant="outline"
-                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground"
+                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
                     >
                       <Phone className="h-3 w-3" />
                       <span>{phone}</span>
@@ -589,7 +589,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                  className="h-7 gap-1 text-[10px] rounded-none border border-foreground bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1 text-xs rounded-none border border-foreground bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
                 >
                   {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
                   {isScoring ? '…' : 'Score'}
@@ -609,7 +609,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-7 gap-1 text-[10px] rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1 text-xs rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
                 >
                   <PenLine className="w-3 h-3" />
                   Msg
@@ -633,7 +633,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {onArchive && (
-                <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-[10px] rounded-none border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-bold shrink-0">
+                <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-xs rounded-none border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-bold shrink-0">
                   <Archive className="w-3 h-3" />
                   Arch.
                 </Button>
@@ -662,8 +662,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <details open className="border border-foreground bg-background group">
                   <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
                     <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Scoring</h3>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold group-open:hidden">Voir</span>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold hidden group-open:inline">Réduire</span>
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold group-open:hidden">Voir</span>
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold hidden group-open:inline">Réduire</span>
                   </summary>
                   <div className="px-3 sm:px-5 pb-4">
                     <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />

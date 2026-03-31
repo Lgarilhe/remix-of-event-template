@@ -90,7 +90,7 @@ export const ToneSelector: React.FC<ToneSelectorProps> = ({
               <span className="text-lg">{option.emoji}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">{option.label}</p>
-                <p className="text-[10px] text-muted-foreground">{option.description}</p>
+                <p className="text-xs text-muted-foreground">{option.description}</p>
               </div>
               {selectedTone === option.value && (
                 <Check className="w-4 h-4 text-primary shrink-0" />

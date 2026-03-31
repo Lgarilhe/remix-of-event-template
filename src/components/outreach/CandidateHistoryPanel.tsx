@@ -71,7 +71,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
             <img src={airtableLogo} alt="" className="w-4 h-4" />
             <span className="text-xs font-semibold text-foreground">Historique Airtable</span>
             {data.candidate?.status && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+              <Badge variant="outline" className="text-xs h-4 px-1.5">
                 {data.candidate.status}
               </Badge>
             )}
@@ -80,7 +80,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
 
         {/* Contact info */}
         {(data?.candidate?.email || data?.candidate?.phone) && (
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {data.candidate.email && (
               <span className="flex items-center gap-1">
                 <Mail className="w-3 h-3" />
@@ -109,9 +109,9 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                 <Building2 className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">{p.name || 'Placement'}</p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     {p.company_name && <span>{p.company_name}</span>}
-                    {p.status && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{p.status}</Badge>}
+                    {p.status && <Badge variant="outline" className="text-xs h-3.5 px-1">{p.status}</Badge>}
                     {p.start_date && <span>{p.start_date}</span>}
                     {p.salary && <span className="text-emerald-600 font-medium">{p.salary}</span>}
                     {p.consultant && (
@@ -142,9 +142,9 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                   <p className="text-xs font-medium text-foreground truncate">
                     {s.job_title || 'Poste non spécifié'}
                   </p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     {s.company_name && <span>{s.company_name}</span>}
-                    {s.status && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{s.status}</Badge>}
+                    {s.status && <Badge variant="outline" className="text-xs h-3.5 px-1">{s.status}</Badge>}
                     {s.date_added && <span>{s.date_added}</span>}
                     {s.salary_proposed && <span className="text-emerald-600 font-medium">{s.salary_proposed}</span>}
                     {s.consultant && (
@@ -173,9 +173,9 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                 <Clock className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">{a.title || a.appointment_type || 'RDV'}</p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     {a.appointment_date && <span>{a.appointment_date}</span>}
-                    {a.status && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{a.status}</Badge>}
+                    {a.status && <Badge variant="outline" className="text-xs h-3.5 px-1">{a.status}</Badge>}
                   </div>
                 </div>
               </div>
@@ -193,7 +193,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
           >
             {data.notes.slice(0, 5).map((n, i) => (
               <div key={i} className="py-1.5 border-b border-border/30 last:border-0">
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-0.5">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
                   {(n.author || n.consultant) && (
                     <span className="flex items-center gap-0.5">
                       <User className="w-2.5 h-2.5" />
@@ -201,11 +201,11 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                     </span>
                   )}
                   {n.note_date && <span>{n.note_date}</span>}
-                  {n.note_type && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{n.note_type}</Badge>}
+                  {n.note_type && <Badge variant="outline" className="text-xs h-3.5 px-1">{n.note_type}</Badge>}
                 </div>
                 {n.title && <p className="text-xs font-medium text-foreground">{n.title}</p>}
                 {n.detail && (
-                  <p className="text-[11px] text-muted-foreground line-clamp-2">{n.detail}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{n.detail}</p>
                 )}
               </div>
             ))}
@@ -236,11 +236,11 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
                   <Briefcase className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-foreground truncate">{s.name}</p>
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                       {s.positions?.map(p => (
                         <span key={p.id}>{p.name}</span>
                       ))}
-                      {s.stage && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{s.stage}</Badge>}
+                      {s.stage && <Badge variant="outline" className="text-xs h-3.5 px-1">{s.stage}</Badge>}
                       {s.entity && <span>{s.entity}</span>}
                       {s.createdAt && <span>{formatShortDate(s.createdAt)}</span>}
                     </div>
@@ -278,7 +278,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
   if (data && data.placements.length > 0) {
     const date = getMostRecentDate(data.placements.map(p => p.start_date));
     items.push(
-      <Badge key="placements" className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="placements" className="bg-amber-100 text-amber-700 border-amber-200 text-xs px-1.5 py-0 h-4 gap-0.5">
         <Trophy className="w-2.5 h-2.5" />
         {data.placements.length} placement{data.placements.length > 1 ? 's' : ''}
         {date && <span className="opacity-70">· {date}</span>}
@@ -289,7 +289,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
   if (data && data.shortlists.length > 0) {
     const date = getMostRecentDate(data.shortlists.map(s => s.date_added));
     items.push(
-      <Badge key="shortlists" variant="outline" className="border-blue-200 bg-blue-50 text-blue-600 text-[10px] px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="shortlists" variant="outline" className="border-blue-200 bg-blue-50 text-blue-600 text-xs px-1.5 py-0 h-4 gap-0.5">
         <Star className="w-2.5 h-2.5" />
         {data.shortlists.length} shortlist{data.shortlists.length > 1 ? 's' : ''}
         {date && <span className="opacity-70">· {date}</span>}
@@ -300,7 +300,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
   if (data && data.appointments.length > 0) {
     const date = getMostRecentDate(data.appointments.map(a => a.appointment_date));
     items.push(
-      <Badge key="rdv" variant="outline" className="border-purple-200 bg-purple-50 text-purple-600 text-[10px] px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="rdv" variant="outline" className="border-purple-200 bg-purple-50 text-purple-600 text-xs px-1.5 py-0 h-4 gap-0.5">
         <Calendar className="w-2.5 h-2.5" />
         {data.appointments.length} RDV
         {date && <span className="opacity-70">· {date}</span>}
@@ -311,7 +311,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
   if (data && data.notes.length > 0) {
     const date = getMostRecentDate(data.notes.map(n => n.note_date));
     items.push(
-      <Badge key="notes" variant="outline" className="border-teal-200 bg-teal-50 text-teal-600 text-[10px] px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="notes" variant="outline" className="border-teal-200 bg-teal-50 text-teal-600 text-xs px-1.5 py-0 h-4 gap-0.5">
         <FileText className="w-2.5 h-2.5" />
         {data.notes.length} note{data.notes.length > 1 ? 's' : ''}
         {date && <span className="opacity-70">· {date}</span>}
@@ -322,7 +322,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
   if (notionShortlists.length > 0) {
     const date = getMostRecentDate(notionShortlists.map(s => s.createdAt));
     items.push(
-      <Badge key="notion-shortlists" variant="outline" className="border-gray-300 bg-gray-50 text-gray-700 text-[10px] px-1.5 py-0 h-4 gap-0.5">
+      <Badge key="notion-shortlists" variant="outline" className="border-gray-300 bg-gray-50 text-gray-700 text-xs px-1.5 py-0 h-4 gap-0.5">
         <img src={notionLogo} alt="" className="w-2.5 h-2.5 object-contain" />
         {notionShortlists.length} shortlist{notionShortlists.length > 1 ? 's' : ''} Notion
         {date && <span className="opacity-70">· {date}</span>}
@@ -350,7 +350,7 @@ const HistorySection: React.FC<{
       <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1 hover:bg-accent/30 rounded px-1 -mx-1 transition-colors">
         {icon}
         <span className="text-xs font-medium text-foreground flex-1">{title}</span>
-        <span className="text-[10px] text-muted-foreground">{count}</span>
+        <span className="text-xs text-muted-foreground">{count}</span>
         <ChevronDown className={cn("w-3 h-3 text-muted-foreground transition-transform", open && "rotate-180")} />
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-5">

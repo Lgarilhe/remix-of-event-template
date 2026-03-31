@@ -43,7 +43,7 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
           transition={{ type: 'spring', damping: 26, stiffness: 300 }}
           className="shrink-0 border-t-2 border-foreground px-4 py-3 z-10 bg-background"
         >
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-2">
+          <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground mb-2">
             Actions suggérées
           </p>
           <div className={useGrid
@@ -64,7 +64,7 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
                   <span className="text-sm text-foreground/80 group-hover:text-foreground transition-colors flex-1 leading-snug">
                     {opt}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/30 font-mono shrink-0 mt-0.5">
+                  <span className="text-xs text-muted-foreground/30 font-mono shrink-0 mt-0.5">
                     ⌘{i + 1}
                   </span>
                 </motion.button>

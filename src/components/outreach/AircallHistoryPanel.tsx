@@ -91,18 +91,18 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
                 <span className="text-xs font-medium text-foreground">
                   {call.direction === 'inbound' ? call.callerName || 'Appelant inconnu' : call.calleeName || 'Destinataire inconnu'}
                 </span>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                <Badge variant="outline" className="text-xs px-1.5 py-0">
                   {getStatusLabel(call)}
                 </Badge>
                 {call.duration > 0 && (
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                  <span className="text-xs text-muted-foreground flex items-center gap-0.5">
                     <Clock className="w-2.5 h-2.5" />
                     {formatDuration(call.duration)}
                   </span>
                 )}
               </div>
 
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 {formatDate(call.startedAt)}
                 {call.userName && <span> • {call.userName}</span>}
               </div>
@@ -111,7 +111,7 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
               {call.notes && (
                 <div className="flex items-start gap-1 mt-1">
                   <MessageSquareText className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
-                  <p className="text-[11px] text-foreground/70 line-clamp-2">{call.notes}</p>
+                  <p className="text-xs text-foreground/70 line-clamp-2">{call.notes}</p>
                 </div>
               )}
 
@@ -120,7 +120,7 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
                 <div className="flex items-center gap-1 flex-wrap mt-1">
                   <Tag className="w-2.5 h-2.5 text-muted-foreground" />
                   {call.tags.map(tag => (
-                    <Badge key={tag} variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                    <Badge key={tag} variant="secondary" className="text-xs px-1 py-0 h-4">
                       {tag}
                     </Badge>
                   ))}
@@ -130,7 +130,7 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
               {/* Recording / Voicemail links */}
               <div className="flex items-center gap-2 mt-1">
                 {call.recordingUrl && (
-                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-[10px] text-primary gap-1">
+                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-xs text-primary gap-1">
                     <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer">
                       <Mic className="w-2.5 h-2.5" />
                       Enregistrement
@@ -138,7 +138,7 @@ export const AircallHistoryPanel: React.FC<AircallHistoryPanelProps> = ({
                   </Button>
                 )}
                 {call.voicemailUrl && (
-                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-[10px] text-amber-600 gap-1">
+                  <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-xs text-amber-600 gap-1">
                     <a href={call.voicemailUrl} target="_blank" rel="noopener noreferrer">
                       <Mic className="w-2.5 h-2.5" />
                       Messagerie vocale

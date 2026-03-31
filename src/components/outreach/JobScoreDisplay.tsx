@@ -89,7 +89,7 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium border border-foreground/20 text-muted-foreground cursor-help rounded-none bg-background">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-foreground/20 text-muted-foreground cursor-help rounded-none bg-background">
           <Icon className="w-3 h-3" /> {config.label}
         </span>
       </TooltipTrigger>
@@ -130,7 +130,7 @@ const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
   }[rec] || { icon: AlertCircle, label: 'Inconnu', cls: 'bg-muted text-muted-foreground border-foreground/20' };
   const Icon = config.icon;
   return (
-    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border uppercase tracking-wider rounded-none", config.cls)}>
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border uppercase tracking-wider rounded-none", config.cls)}>
       <Icon className="w-3 h-3" /> {config.label}
     </span>
   );
@@ -139,7 +139,7 @@ const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
 // ── Meta pill ──
 const MetaPill: React.FC<{ icon: React.ElementType; label: string; ok: boolean }> = ({ icon: Icon, label, ok }) => (
   <span className={cn(
-    "inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium border uppercase tracking-wider rounded-none",
+    "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border uppercase tracking-wider rounded-none",
     ok ? "bg-background text-foreground border-foreground/30" : "bg-muted text-muted-foreground border-foreground/20"
   )}>
     <Icon className="w-3 h-3" /> {label}
@@ -149,7 +149,7 @@ const MetaPill: React.FC<{ icon: React.ElementType; label: string; ok: boolean }
 // ── Skill tag ──
 const SkillTag: React.FC<{ skill: string; matched: boolean }> = ({ skill, matched }) => (
   <span className={cn(
-    "text-[11px] px-2 py-0.5 font-medium rounded-none border",
+    "text-xs px-2 py-0.5 font-medium rounded-none border",
     matched
       ? "bg-brutal-accent/10 text-foreground border-brutal-accent/30"
       : "bg-muted/50 text-muted-foreground border-foreground/10 line-through decoration-foreground/20"
@@ -172,8 +172,8 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       <div className="flex items-start gap-2.5 p-3 border border-foreground/20 bg-muted rounded-none">
         <Ban className="w-4 h-4 text-foreground/60 mt-0.5 shrink-0" />
         <div>
-          <p className="text-[10px] font-bold text-foreground uppercase tracking-wider">Éliminé par filtre</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{result.hardFilterKO}</p>
+          <p className="text-xs font-bold text-foreground uppercase tracking-wider">Éliminé par filtre</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{result.hardFilterKO}</p>
         </div>
       </div>
     );
@@ -189,7 +189,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   const confidenceBadge = result.confidenceScore != null && result.confidenceScore < 70 ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium border border-foreground/20 text-muted-foreground cursor-help rounded-none bg-muted">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-foreground/20 text-muted-foreground cursor-help rounded-none bg-muted">
           {result.confidenceScore < 40 ? <AlertTriangle className="w-3 h-3" /> : <Search className="w-3 h-3" />}
           {result.confidenceScore < 40 ? 'Données insuffisantes' : 'Score partiel'}
         </span>
@@ -216,7 +216,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
               <SkillTag key={i} skill={skill} matched />
             ))}
             {result.matching_skills.length > 2 && (
-              <span className="text-[10px] text-muted-foreground">+{result.matching_skills.length - 2}</span>
+              <span className="text-xs text-muted-foreground">+{result.matching_skills.length - 2}</span>
             )}
           </div>
           {result.dimensions && Object.values(result.dimensions).some(v => v != null) && (
@@ -240,7 +240,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
         <ScoreRing score={result.match_score} size={72} />
         <div className="flex-1 min-w-0 space-y-2">
           {jobTitle && (
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold uppercase tracking-wider">
               <Target className="w-3 h-3" />
               Match pour: <span className="text-foreground">{jobTitle}</span>
             </div>
@@ -264,7 +264,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       {/* Skills — unified row */}
       {allSkills.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
             <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Matchés ({result.matching_skills.length})</span>
             <span className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Manquants ({result.missing_skills.length})</span>
           </div>

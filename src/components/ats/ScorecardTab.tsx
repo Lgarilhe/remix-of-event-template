@@ -455,7 +455,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       return (
         <div className="space-y-4">
           <button onClick={() => { setActiveIndex(null); setEvaluations(prev => prev[0]?.criteria.length === 0 && !prev[0]?.id ? prev.slice(1) : prev); }}
-            className="text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-wider flex items-center gap-1">
+            className="text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider flex items-center gap-1">
             ← Retour
           </button>
           <div className="text-center py-10">
@@ -465,19 +465,19 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             <h3 className="text-sm font-bold uppercase tracking-wider text-foreground mb-2">
               Nouvelle scorecard
             </h3>
-            <p className="text-[11px] text-muted-foreground max-w-sm mx-auto mb-4 leading-relaxed">
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4 leading-relaxed">
               L'IA va analyser le profil et le poste pour générer une grille d'évaluation sur mesure.
             </p>
 
             {/* Interview stage selector */}
             <div className="max-w-xs mx-auto mb-6">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Type d'entretien (optionnel)</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Type d'entretien (optionnel)</p>
               <div className="flex flex-wrap gap-1.5 justify-center">
                 {INTERVIEW_STAGES.map(s => (
                   <button key={s.value}
                     onClick={() => setSelectedStage(selectedStage === s.value ? '' : s.value)}
                     className={cn(
-                      "px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider border transition-colors",
+                      "px-3 py-1.5 text-xs font-medium uppercase tracking-wider border transition-colors",
                       selectedStage === s.value
                         ? "bg-foreground text-background border-foreground"
                         : "border-foreground/20 text-muted-foreground hover:border-foreground/40"
@@ -510,7 +510,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     return (
       <div className="space-y-4 pr-1">
         <button onClick={() => setActiveIndex(null)}
-          className="text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-wider flex items-center gap-1">
+          className="text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider flex items-center gap-1">
           ← Retour aux scorecards
         </button>
 
@@ -529,11 +529,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             )}
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                <p className="text-xs font-bold uppercase tracking-wider text-foreground">
                   {ratedCount}/{totalCriteria} critères évalués
                 </p>
                 {activeEval.interviewStage && (
-                  <span className="text-[9px] px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-muted-foreground font-medium uppercase tracking-wider">
+                  <span className="text-xs px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-muted-foreground font-medium uppercase tracking-wider">
                     {INTERVIEW_STAGES.find(s => s.value === activeEval.interviewStage)?.label || activeEval.interviewStage}
                   </span>
                 )}
@@ -569,7 +569,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   </div>
                 );
               })()}
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {activeEval.jobTitle || candidate.jobTitle || 'Poste non spécifié'}
               </p>
             </div>
@@ -610,19 +610,19 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 }
                 navigate(`/ats/scorecard/${candidate.candidateId}?coaching=1`);
               }}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-[10px] font-medium uppercase tracking-wider group -ml-px">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-xs font-medium uppercase tracking-wider group -ml-px">
               <Mic className="w-3 h-3 relative z-10" />
               <span className="relative z-10 hidden sm:inline">Coaching Live</span>
               <span className="absolute inset-0 bg-red-50 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
             <button onClick={handleGenerate} disabled={generating}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
               {generating ? <Loader2 className="w-3 h-3 animate-spin relative z-10" /> : <RotateCcw className="w-3 h-3 relative z-10" />}
               <span className="relative z-10 hidden sm:inline">Régénérer</span>
               <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
             <button onClick={handleSave} disabled={saving}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
               <span className="hidden sm:inline">Sauvegarder</span>
             </button>
@@ -686,7 +686,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             return (
               <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
                 className={cn(
-                  "shrink-0 px-2 py-1 text-[9px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap",
+                  "shrink-0 px-2 py-1 text-xs font-bold uppercase tracking-wider border transition-all whitespace-nowrap",
                   isCurrent
                     ? catConfig.color + " ring-1 ring-offset-1"
                     : r != null
@@ -710,7 +710,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               return (
                 <button key={c.id} onClick={() => setCurrentCriterionIdx(idx)}
                   className={cn(
-                    "text-left px-2 py-1.5 border-l-2 transition-all text-[10px] leading-tight truncate",
+                    "text-left px-2 py-1.5 border-l-2 transition-all text-xs leading-tight truncate",
                     isCurrent
                       ? "border-foreground bg-foreground/[0.06] text-foreground font-bold"
                       : r != null
@@ -733,7 +733,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               <label className="flex items-center gap-1.5 px-2 py-2 mt-2 border-t border-foreground/10 cursor-pointer">
                 <input type="checkbox" checked={coachingAutoNav} onChange={e => setCoachingAutoNav(e.target.checked)}
                   className="w-3 h-3 accent-foreground" />
-                <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Auto-nav</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">Auto-nav</span>
               </label>
             )}
           </div>
@@ -760,14 +760,14 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               {/* Card header */}
               <div className="px-4 py-3 border-b border-foreground flex items-center justify-between bg-foreground/[0.03]">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={cn("text-[9px] px-1.5 py-0.5 border font-bold uppercase tracking-wider shrink-0", catConfig.color)}>
+                  <span className={cn("text-xs px-1.5 py-0.5 border font-bold uppercase tracking-wider shrink-0", catConfig.color)}>
                     {catConfig.label}
                   </span>
                   {isCritical && (
-                    <span className="text-[9px] px-1.5 py-0.5 border-2 border-destructive bg-destructive/10 text-destructive font-bold uppercase tracking-wider shrink-0">Critique</span>
+                    <span className="text-xs px-1.5 py-0.5 border-2 border-destructive bg-destructive/10 text-destructive font-bold uppercase tracking-wider shrink-0">Critique</span>
                   )}
                 </div>
-                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 font-bold">
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0 font-bold">
                   {currentCriterionIdx + 1}/{totalC}
                 </span>
               </div>
@@ -776,7 +776,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               <div className="px-4 py-4 space-y-4">
                 {/* Criterion title */}
                 <h3 className="text-sm font-bold text-foreground leading-snug uppercase tracking-wide">{criterion.label}</h3>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{criterion.description}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{criterion.description}</p>
 
                 {/* Big rating buttons */}
                 <div className="flex items-center justify-center gap-2 py-2">
@@ -797,7 +797,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
                 {/* Show rubric for selected rating */}
                 {rating && criterion.ratingRubric?.[String(rating)] && (
-                  <div className="text-[10px] px-3 py-2 border-l-2 border-foreground bg-foreground/[0.04] text-muted-foreground">
+                  <div className="text-xs px-3 py-2 border-l-2 border-foreground bg-foreground/[0.04] text-muted-foreground">
                     {criterion.ratingRubric[String(rating)]}
                   </div>
                 )}
@@ -805,12 +805,12 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 {/* Points to verify */}
                 {questions.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-foreground">
+                    <p className="text-xs font-bold uppercase tracking-wider text-foreground">
                       À vérifier
                     </p>
                     <ul className="space-y-1">
                       {questions.slice(0, 3).map((q, qi) => (
-                        <li key={qi} className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-snug">
+                        <li key={qi} className="flex items-start gap-1.5 text-xs text-muted-foreground leading-snug">
                           <span className="w-1 h-1 bg-foreground/40 shrink-0 mt-1.5" />
                           <span>{q.replace(/^["«]|["»]$/g, '').replace(/\?$/, '')}</span>
                         </li>
@@ -823,13 +823,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 {redFlags.length > 0 && (
                   <div className="flex items-start gap-2 px-2 py-1.5 border-2 border-destructive/30 bg-destructive/5">
                     <AlertTriangle className="w-3 h-3 text-destructive shrink-0 mt-0.5" />
-                    <span className="text-[10px] text-destructive leading-snug font-medium">{redFlags[0]}</span>
+                    <span className="text-xs text-destructive leading-snug font-medium">{redFlags[0]}</span>
                   </div>
                 )}
 
                 {/* Notes */}
                 <Textarea value={comment} onChange={e => handleComment(criterion.id, e.target.value)}
-                  placeholder="Notes rapides..." className="text-[11px] min-h-[50px] rounded-none border-2 border-foreground/20 focus:border-foreground resize-none py-1.5 px-2" />
+                  placeholder="Notes rapides..." className="text-xs min-h-[50px] rounded-none border-2 border-foreground/20 focus:border-foreground resize-none py-1.5 px-2" />
               </div>
 
               {/* Navigation arrows */}
@@ -837,7 +837,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 <button
                   onClick={() => setCurrentCriterionIdx(Math.max(0, currentCriterionIdx - 1))}
                   disabled={currentCriterionIdx === 0}
-                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
+                  className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
                 >
                   <ChevronLeft className="w-4 h-4" /> Préc
                 </button>
@@ -848,7 +848,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     }
                   }}
                   disabled={currentCriterionIdx === totalC - 1}
-                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
+                  className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-foreground disabled:opacity-20 hover:text-foreground/70"
                 >
                   Suiv <ChevronRight className="w-4 h-4" />
                 </button>
@@ -899,25 +899,25 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 <>
                   {/* Quick score overview */}
                   <div className="border border-foreground/20 p-3">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Progression</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Progression</p>
                     <div className="flex items-center gap-2 mb-2">
                       <div className="flex-1 h-1.5 bg-foreground/10">
                         <div className="h-full bg-foreground transition-all duration-300" style={{ width: `${(ratedCount / totalCriteria) * 100}%` }} />
                       </div>
-                      <span className="text-[10px] font-bold text-foreground">{ratedCount}/{totalCriteria}</span>
+                      <span className="text-xs font-bold text-foreground">{ratedCount}/{totalCriteria}</span>
                     </div>
                     {activeEval.overallScore != null && (
-                      <p className="text-[10px] text-muted-foreground">Score actuel : <strong className="text-foreground">{activeEval.overallScore}/5</strong></p>
+                      <p className="text-xs text-muted-foreground">Score actuel : <strong className="text-foreground">{activeEval.overallScore}/5</strong></p>
                     )}
                   </div>
 
                   {/* Suggested questions for current criterion */}
                   {currentCriterion.suggestedQuestions && currentCriterion.suggestedQuestions.length > 0 && (
                     <div className="border border-foreground/20 p-3">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">💡 Questions suggérées</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">💡 Questions suggérées</p>
                       <div className="space-y-1.5">
                         {currentCriterion.suggestedQuestions.map((q: string, i: number) => (
-                          <p key={i} className="text-[10px] text-foreground leading-relaxed">• {q}</p>
+                          <p key={i} className="text-xs text-foreground leading-relaxed">• {q}</p>
                         ))}
                       </div>
                     </div>
@@ -926,10 +926,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   {/* Red flags for current criterion */}
                   {currentCriterion.redFlags && currentCriterion.redFlags.length > 0 && (
                     <div className="border border-red-200 bg-red-50/30 p-3">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-red-600 mb-2">⚠️ Red flags</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-2">⚠️ Red flags</p>
                       <div className="space-y-1">
                         {currentCriterion.redFlags.map((rf: string, i: number) => (
-                          <p key={i} className="text-[10px] text-red-700">{rf}</p>
+                          <p key={i} className="text-xs text-red-700">{rf}</p>
                         ))}
                       </div>
                     </div>
@@ -938,11 +938,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   {/* Rating rubric for current selection */}
                   {rating != null && currentCriterion.ratingRubric && (
                     <div className="border border-foreground/20 p-3">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Échelle</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">📊 Échelle</p>
                       <div className="space-y-1">
                         {Object.entries(currentCriterion.ratingRubric).map(([score, desc]) => (
                           <div key={score} className={cn(
-                            "flex items-start gap-2 text-[10px] px-2 py-1",
+                            "flex items-start gap-2 text-xs px-2 py-1",
                             String(rating) === score ? "bg-foreground/5 font-medium text-foreground" : "text-muted-foreground"
                           )}>
                             <span className="font-bold shrink-0 w-3">{score}</span>
@@ -954,7 +954,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   )}
 
                   {/* Criterion weight info */}
-                  <div className="border border-foreground/10 p-3 text-[10px] text-muted-foreground">
+                  <div className="border border-foreground/10 p-3 text-xs text-muted-foreground">
                     <div className="flex items-center justify-between">
                       <span>Poids : {currentCriterion.weight === 3 ? '🔴 Critique' : currentCriterion.weight === 2 ? '🟡 Important' : '🟢 Bonus'}</span>
                       <span>{currentCriterionIdx + 1}/{totalCriteria}</span>
@@ -968,17 +968,17 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
         {/* ─── Verdict Section ─── */}
         <div className="border-t-2 border-foreground/20 pt-4 mt-6 space-y-4">
-          <h4 className="text-[11px] font-bold uppercase tracking-wider text-foreground">Verdict final</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Verdict final</h4>
 
           {/* Recommendation */}
           <div className="space-y-2">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Recommandation</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Recommandation</p>
             <div className="flex flex-wrap gap-1.5">
               {RECOMMENDATION_OPTIONS.map(opt => (
                 <button key={opt.value}
                   onClick={() => updateActiveEval(ev => ({ ...ev, recommendation: ev.recommendation === opt.value ? undefined : opt.value }))}
                   className={cn(
-                    "px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border transition-all",
+                    "px-3 py-1.5 text-xs font-bold uppercase tracking-wider border transition-all",
                     activeEval.recommendation === opt.value
                       ? opt.color + " ring-1 ring-offset-1"
                       : "border-foreground/15 text-muted-foreground hover:border-foreground/30"
@@ -991,7 +991,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
           {/* Summary */}
           <div className="space-y-1.5">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Résumé / Justification</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Résumé / Justification</p>
             <Textarea
               value={activeEval.summary || ''}
               onChange={e => updateActiveEval(ev => ({ ...ev, summary: e.target.value }))}
@@ -1002,7 +1002,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
           {/* Follow-up notes */}
           <div className="space-y-1.5">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Points de suivi (prochain round)</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Points de suivi (prochain round)</p>
             <Textarea
               value={activeEval.followUpNotes || ''}
               onChange={e => updateActiveEval(ev => ({ ...ev, followUpNotes: e.target.value }))}
@@ -1020,7 +1020,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     <div className="space-y-3">
       {/* New scorecard button */}
       <button onClick={handleNewScorecard}
-        className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-[11px] font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
+        className="w-full h-[38px] flex items-center justify-center gap-2 border border-dashed border-foreground/30 text-foreground text-xs font-medium uppercase tracking-wider hover:border-foreground hover:bg-foreground/[0.03] transition-colors">
         <Plus className="w-3.5 h-3.5" />
         Nouvelle scorecard
         <CreditCostBadge actionId="generate_scorecard" />
@@ -1032,7 +1032,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <Sparkles className="w-7 h-7" />
           </div>
-          <p className="text-[11px] text-muted-foreground max-w-sm mx-auto leading-relaxed">
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
             Aucune scorecard pour ce candidat. Cliquez sur le bouton ci-dessus pour en créer une.
           </p>
         </div>
@@ -1059,21 +1059,21 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 )}
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                    <p className="text-xs font-bold uppercase tracking-wider text-foreground">
                       {totalCriteria > 0 ? `${ratedCount}/${totalCriteria} critères` : 'Brouillon'}
                     </p>
                     {ev.interviewStage && (
-                      <span className="text-[9px] px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-muted-foreground font-medium uppercase tracking-wider">
+                      <span className="text-xs px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-muted-foreground font-medium uppercase tracking-wider">
                         {INTERVIEW_STAGES.find(s => s.value === ev.interviewStage)?.label || ev.interviewStage}
                       </span>
                     )}
                     {recOption && (
-                      <span className={cn("text-[9px] px-1.5 py-0.5 border font-bold uppercase tracking-wider", recOption.color)}>
+                      <span className={cn("text-xs px-1.5 py-0.5 border font-bold uppercase tracking-wider", recOption.color)}>
                         {recOption.label}
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {ev.jobTitle || candidate.jobTitle || 'Poste non spécifié'}
                     {ev.savedAt && (
                       <> · {new Date(ev.savedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</>
@@ -1096,11 +1096,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   })}
                 </div>
                 <button onClick={(e) => { e.stopPropagation(); setActiveIndex(index); setExpandedCriteria(new Set()); }}
-                  className="h-[28px] px-2.5 flex items-center gap-1 border border-foreground text-foreground text-[10px] font-medium uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
+                  className="h-[28px] px-2.5 flex items-center gap-1 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
                   <Pencil className="w-3 h-3" /> Modifier
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); handleDelete(index); }}
-                  className="h-[28px] px-2 flex items-center border border-red-300 text-red-500 text-[10px] hover:bg-red-50 transition-colors">
+                  className="h-[28px] px-2 flex items-center border border-red-300 text-red-500 text-xs hover:bg-red-50 transition-colors">
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>

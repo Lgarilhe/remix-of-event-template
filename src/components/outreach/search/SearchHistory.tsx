@@ -62,7 +62,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
           <div className="flex items-center gap-2 text-[#1A1A1A]/70">
             <History className="w-4 h-4" />
             <span className="font-medium">Historique</span>
-            <Badge variant="secondary" className="text-[10px] h-5">
+            <Badge variant="secondary" className="text-xs h-5">
               {history.length}
             </Badge>
           </div>
@@ -105,7 +105,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                   {filtersSummary(entry.filters_snapshot)}
                 </p>
 
-                <div className="flex items-center gap-3 text-[10px] text-[#1A1A1A]/50">
+                <div className="flex items-center gap-3 text-xs text-[#1A1A1A]/50">
                   <span className="flex items-center gap-1">
                     <Users className="w-3 h-3" />
                     {entry.results_count} résultats
@@ -128,7 +128,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                       {entry.dismissed_count}
                     </span>
                   )}
-                  <Badge variant="outline" className="text-[9px] h-4 px-1.5">
+                  <Badge variant="outline" className="text-xs h-4 px-1.5">
                     {countFilters(entry.filters_snapshot)} filtres
                   </Badge>
                 </div>

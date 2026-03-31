@@ -48,7 +48,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
         <button
           onClick={() => setNoteMode('team')}
           className={cn(
-            "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground transition-colors",
+            "flex-1 py-2 text-xs font-bold uppercase tracking-[0.15em] border border-foreground transition-colors",
             noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
           )}
         >
@@ -57,7 +57,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
         <button
           onClick={() => setNoteMode('personal')}
           className={cn(
-            "flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.15em] border border-foreground -ml-px transition-colors",
+            "flex-1 py-2 text-xs font-bold uppercase tracking-[0.15em] border border-foreground -ml-px transition-colors",
             noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
           )}
         >
@@ -81,7 +81,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
               className="flex-1 min-h-[60px] rounded-none border-foreground/30 text-sm resize-none"
             />
             <button onClick={handleAdd} disabled={addingNote || !newNote.trim()}
-              className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50">
+              className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
               {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
             </button>
           </div>
@@ -100,7 +100,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true, locale: fr })}
                   </p>
                 </div>

@@ -193,13 +193,13 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
                       )}
 
                       <div className="flex items-center gap-2">
-                        <Badge className={`text-[10px] px-1.5 py-0 ${dueDateInfo.className}`}>
+                        <Badge className={`text-xs px-1.5 py-0 ${dueDateInfo.className}`}>
                           <Clock className="w-2.5 h-2.5 mr-1" />
                           {dueDateInfo.label}
                         </Badge>
                         
                         {isCompleted && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-green-600">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 text-green-600">
                             <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
                             Terminé
                           </Badge>

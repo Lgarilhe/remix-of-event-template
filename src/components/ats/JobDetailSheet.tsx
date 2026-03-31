@@ -220,7 +220,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
             {loading ? (
               <div className="flex items-center gap-2 py-4">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Chargement…</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">Chargement…</span>
               </div>
             ) : (
               <>
@@ -230,29 +230,29 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                       {jobInfo?.jobTitle || 'Poste non spécifié'}
                     </h2>
                     {jobInfo?.clientName && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                         <Building2 className="w-3 h-3" /> {jobInfo.clientName}
                       </p>
                     )}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {jobInfo?.city && (
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           <MapPin className="w-3 h-3" /> {jobInfo.city}
                         </span>
                       )}
                       {jobInfo?.status && (
-                        <span className={cn("text-[10px] px-1.5 py-0.5 border font-medium uppercase tracking-wider", statusColor(jobInfo.status))}>
+                        <span className={cn("text-xs px-1.5 py-0.5 border font-medium uppercase tracking-wider", statusColor(jobInfo.status))}>
                           {jobInfo.status}
                         </span>
                       )}
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {jobCandidates.length} candidat{jobCandidates.length !== 1 ? 's' : ''}
                       </span>
                     </div>
                   </div>
                   {jobInfo?.calendlyLink && (
                     <a href={jobInfo.calendlyLink} target="_blank" rel="noopener noreferrer"
-                      className="h-7 px-2.5 flex items-center gap-1 border border-foreground text-foreground text-[9px] font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors shrink-0">
+                      className="h-7 px-2.5 flex items-center gap-1 border border-foreground text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors shrink-0">
                       <CalendarDays className="w-3 h-3" /> Calendly
                     </a>
                   )}
@@ -263,7 +263,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                   {TABS.map((t, i) => (
                     <button key={t.key} onClick={() => setTab(t.key)}
                       className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-foreground transition-colors",
+                        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-foreground transition-colors",
                         i > 0 && "border-l-0",
                         tab === t.key
                           ? "bg-foreground text-background"
@@ -272,7 +272,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                       <t.icon className="w-3 h-3" />
                       {t.label}
                       {t.key === 'candidats' && jobCandidates.length > 0 && (
-                        <span className="ml-0.5 text-[9px]">({jobCandidates.length})</span>
+                        <span className="ml-0.5 text-xs">({jobCandidates.length})</span>
                       )}
                     </button>
                   ))}
@@ -285,7 +285,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
           <ScrollArea className="flex-1">
             <div className="p-4">
               {loading ? null : !jobInfo && tab === 'fiche' ? (
-                <p className="text-[11px] text-muted-foreground py-8 text-center">Aucune information disponible</p>
+                <p className="text-xs text-muted-foreground py-8 text-center">Aucune information disponible</p>
               ) : (
                 <>
                   {/* ── FICHE ── */}
@@ -355,7 +355,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
         <div className="grid grid-cols-2 gap-2">
           {infoGrid.map(item => (
             <div key={item.label} className="border border-foreground/10 p-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{item.label}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{item.label}</p>
               <p className="text-[12px] text-foreground font-medium">{item.value}</p>
             </div>
           ))}
@@ -365,10 +365,10 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Stack */}
       {jobInfo.stack && jobInfo.stack.length > 0 && (
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Stack technique</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Stack technique</p>
           <div className="flex flex-wrap gap-1.5">
             {jobInfo.stack.map((s, i) => (
-              <span key={i} className="px-2 py-0.5 border border-foreground/15 text-[10px] font-medium">{s}</span>
+              <span key={i} className="px-2 py-0.5 border border-foreground/15 text-xs font-medium">{s}</span>
             ))}
           </div>
         </div>
@@ -377,22 +377,22 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Description */}
       {jobInfo.description ? (
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Description</p>
-          <p className="text-[11px] text-foreground leading-relaxed whitespace-pre-line">{jobInfo.description}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Description</p>
+          <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.description}</p>
         </div>
       ) : (
-        <p className="text-[11px] text-muted-foreground text-center py-3">Aucune description</p>
+        <p className="text-xs text-muted-foreground text-center py-3">Aucune description</p>
       )}
 
       {/* Criteria */}
       {(jobInfo.mustHave || jobInfo.shouldHave || jobInfo.niceToHave || jobInfo.criteria) && (
         <div className="space-y-3">
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Critères</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Critères</p>
           {jobInfo.mustHave && <CriteriaBlock label="Must-have" content={jobInfo.mustHave} color="border-red-300" />}
           {jobInfo.shouldHave && <CriteriaBlock label="Should-have" content={jobInfo.shouldHave} color="border-amber-300" />}
           {jobInfo.niceToHave && <CriteriaBlock label="Nice-to-have" content={jobInfo.niceToHave} color="border-green-300" />}
           {jobInfo.criteria && !jobInfo.mustHave && (
-            <p className="text-[11px] text-foreground leading-relaxed whitespace-pre-line">{jobInfo.criteria}</p>
+            <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.criteria}</p>
           )}
         </div>
       )}
@@ -400,14 +400,14 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Filters snapshot */}
       {filters && typeof filters === 'object' && Object.keys(filters).length > 0 && (
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Filtres de recherche</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Filtres de recherche</p>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(filters).map(([key, value]) => {
               if (!value || (Array.isArray(value) && value.length === 0)) return null;
               const display = Array.isArray(value) ? (value as string[]).join(', ') : String(value);
               if (display.length > 100) return null;
               return (
-                <span key={key} className="px-2 py-1 border border-foreground/15 text-[10px] text-muted-foreground">
+                <span key={key} className="px-2 py-1 border border-foreground/15 text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">{key}:</span> {display}
                 </span>
               );
@@ -419,8 +419,8 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Notes */}
       {jobInfo.notes && (
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Notes</p>
-          <p className="text-[11px] text-foreground leading-relaxed whitespace-pre-line">{jobInfo.notes}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Notes</p>
+          <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.notes}</p>
         </div>
       )}
     </div>
@@ -430,8 +430,8 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
 function CriteriaBlock({ label, content, color }: { label: string; content: string; color: string }) {
   return (
     <div className={cn("border-l-2 pl-3 py-1", color)}>
-      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{label}</p>
-      <p className="text-[11px] text-foreground leading-relaxed whitespace-pre-line">{content}</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{label}</p>
+      <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{content}</p>
     </div>
   );
 }
@@ -452,7 +452,7 @@ function CandidatsTab({
     return (
       <div className="text-center py-12">
         <Users className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Aucun candidat associé</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">Aucun candidat associé</p>
       </div>
     );
   }
@@ -464,7 +464,7 @@ function CandidatsTab({
       {/* Stage counters */}
       <div className="flex flex-wrap gap-1.5">
         {stageEntries.map(([stage, count]) => (
-          <span key={stage} className="text-[10px] px-2 py-0.5 border border-foreground/20 font-medium">
+          <span key={stage} className="text-xs px-2 py-0.5 border border-foreground/20 font-medium">
             {count} {stage}
           </span>
         ))}
@@ -483,7 +483,7 @@ function CandidatsTab({
                 <span className="text-[12px] font-medium text-foreground truncate">{candidate.name}</span>
                 {candidate.score != null && (
                   <span className={cn(
-                    "text-[9px] font-bold px-1 py-0.5 border shrink-0",
+                    "text-xs font-bold px-1 py-0.5 border shrink-0",
                     candidate.score >= 70 ? 'border-foreground bg-brutal-accent' : candidate.score >= 40 ? 'border-foreground/50' : 'border-destructive text-destructive'
                   )}>
                     {candidate.score}%
@@ -491,10 +491,10 @@ function CandidatsTab({
                 )}
               </div>
               {candidate.headline && (
-                <p className="text-[10px] text-muted-foreground truncate">{candidate.headline}</p>
+                <p className="text-xs text-muted-foreground truncate">{candidate.headline}</p>
               )}
             </div>
-            <span className="text-[9px] px-1.5 py-0.5 border border-foreground/20 uppercase tracking-wider font-medium shrink-0">
+            <span className="text-xs px-1.5 py-0.5 border border-foreground/20 uppercase tracking-wider font-medium shrink-0">
               {candidate.stage}
             </span>
             <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -521,7 +521,7 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
     return (
       <div className="text-center py-12">
         <GitBranch className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Aucune séquence liée</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">Aucune séquence liée</p>
       </div>
     );
   }
@@ -536,15 +536,15 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
                 <p className="text-lg font-bold text-foreground">{seq.enrolledCount}</p>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Enrollés</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Enrollés</p>
               </div>
               <div className="text-center">
                 <p className="text-lg font-bold text-foreground">{seq.sentCount}</p>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Envoyés</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Envoyés</p>
               </div>
               <div className="text-center">
                 <p className={cn("text-lg font-bold", responseRate >= 20 ? "text-green-600" : "text-foreground")}>{responseRate}%</p>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Réponse</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Réponse</p>
               </div>
             </div>
           </div>
@@ -573,7 +573,7 @@ function IATab({
       {/* Analyze button */}
       <button
         onClick={() => jobId && openAgent(jobId)}
-        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border-2 border-foreground text-foreground text-[11px] font-bold uppercase tracking-wider group"
+        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border-2 border-foreground text-foreground text-xs font-bold uppercase tracking-wider group"
       >
         <Brain className="w-4 h-4 relative z-10" />
         <span className="relative z-10">Analyser ce poste avec l'Agent</span>
@@ -584,10 +584,10 @@ function IATab({
       <div className="border border-foreground p-3">
         <div className="flex items-center gap-2 mb-2">
           <Database className="w-4 h-4 text-foreground" />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Contexte RAG</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-foreground">Contexte RAG</p>
         </div>
         {ragCount !== null ? (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             <span className="font-bold text-foreground text-base">{ragCount}</span> chunk{ragCount !== 1 ? 's' : ''} indexé{ragCount !== 1 ? 's' : ''} pour ce poste
           </p>
         ) : (
@@ -599,25 +599,25 @@ function IATab({
       <div className="border border-foreground p-3">
         <div className="flex items-center gap-2 mb-2">
           <BarChart3 className="w-4 h-4 text-foreground" />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Scoring candidats</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-foreground">Scoring candidats</p>
         </div>
         {scoreSummary ? (
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
               <p className="text-lg font-bold text-foreground">{scoreSummary.avg}%</p>
-              <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Score moyen</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Score moyen</p>
             </div>
             <div>
               <p className="text-lg font-bold text-foreground">{scoreSummary.total}</p>
-              <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Scorés</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Scorés</p>
             </div>
             <div>
               <p className="text-lg font-bold text-green-600">{scoreSummary.above70}</p>
-              <p className="text-[9px] text-muted-foreground uppercase tracking-wider">≥ 70%</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">≥ 70%</p>
             </div>
           </div>
         ) : (
-          <p className="text-[11px] text-muted-foreground">Aucun candidat scoré</p>
+          <p className="text-xs text-muted-foreground">Aucun candidat scoré</p>
         )}
       </div>
     </div>

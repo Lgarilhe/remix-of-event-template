@@ -99,7 +99,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </AvatarFallback>
           </Avatar>
           {unread && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-600 flex items-center justify-center text-[9px] text-white font-bold">
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-600 flex items-center justify-center text-xs text-white font-bold">
               {unreadCount}
             </span>
           )}
@@ -130,7 +130,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           
           {/* Show headline or InMail subject */}
           {(headline || subject) && (
-            <p className="text-[10px] text-muted-foreground truncate">
+            <p className="text-xs text-muted-foreground truncate">
               {subject ? (
                 <span className="italic">📧 {subject}</span>
               ) : (
@@ -143,7 +143,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
           <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden min-w-0">
             {categoryInfo && (
               <span className={cn(
-                "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium border shrink-0",
+                "inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium border shrink-0",
                 categoryInfo.color
               )}>
                 {categoryInfo.emoji} {categoryInfo.label}
@@ -156,7 +156,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               </p>
             )}
             {(chat.timestamp || chat.last_message?.timestamp) && (
-              <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap shrink-0">
+              <span className="text-xs text-muted-foreground/60 whitespace-nowrap shrink-0">
                 · {formatChatTime(chat.timestamp || chat.last_message?.timestamp)}
               </span>
             )}

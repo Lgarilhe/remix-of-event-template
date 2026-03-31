@@ -333,7 +333,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               {(enrichedProfile?.headline || candidate.headline) && (
                 <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
               )}
-              <div className="hidden sm:flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
+              <div className="hidden sm:flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
                 {enrichedProfile?.currentCompany && (
                   <span className="flex items-center gap-1 font-medium text-foreground/80">
                     <Building2 className="w-3 h-3 text-muted-foreground" />
@@ -361,7 +361,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
           {/* Stage + Actions */}
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-4 pb-2 sm:pb-4 border-b border-foreground/20">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground hidden sm:inline">Étape :</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground hidden sm:inline">Étape :</span>
             <Select value={candidate.stage} onValueChange={(v) => onStageChange(candidate.id, v)}>
               <SelectTrigger className="w-[140px] sm:w-[180px] rounded-none border-foreground h-8 sm:h-9 text-xs">
                 <SelectValue />
@@ -386,7 +386,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               )}
               <button
                 onClick={handleCreatePortalLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-emerald-600 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-emerald-600 bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
               >
                 <Link2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Portail</span>
               </button>
@@ -398,7 +398,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             {(candidate.tags || []).map(tag => (
               <span
                 key={tag}
-                className="text-[10px] px-2 py-0.5 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium flex items-center gap-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
+                className="text-xs px-2 py-0.5 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium flex items-center gap-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
                 onClick={() => onTagsChange?.(candidate.id, (candidate.tags || []).filter(t => t !== tag))}
                 title="Cliquer pour supprimer"
               >
@@ -419,7 +419,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 placeholder="+ tag"
-                className="h-6 w-20 text-[10px] rounded-none border-foreground/30 px-1.5"
+                className="h-6 w-20 text-xs rounded-none border-foreground/30 px-1.5"
               />
             </form>
           </div>
@@ -438,7 +438,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               return (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    "relative flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 px-3 sm:px-3 py-2 sm:py-2.5 text-[10px] font-medium uppercase tracking-wider transition-all -mb-px whitespace-nowrap group",
+                    "relative flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 px-3 sm:px-3 py-2 sm:py-2.5 text-xs font-medium uppercase tracking-wider transition-all -mb-px whitespace-nowrap group",
                     isActive ? "text-foreground" : "text-muted-foreground/60 hover:text-foreground/80"
                   )}>
                   <span className={cn(
@@ -450,7 +450,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   <span className="hidden sm:inline">{tab.label}</span>
                   {count !== null && count > 0 && (
                     <span className={cn(
-                      "text-[8px] sm:text-[9px] font-bold leading-none tabular-nums",
+                      "text-[8px] sm:text-xs font-bold leading-none tabular-nums",
                       isActive ? "text-foreground" : "text-muted-foreground/50"
                     )}>
                       {count}
@@ -625,9 +625,9 @@ const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => 
       'border-destructive/40 bg-destructive/5 text-destructive'
     )}>{candidate.score}</div>
     <div className="flex-1 min-w-0">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
+      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
       {candidate.recommendation && (
-        <span className={cn("text-[10px] px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
+        <span className={cn("text-xs px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
           candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
           candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
           'border-amber-300 text-amber-700 bg-amber-50'
@@ -636,12 +636,12 @@ const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => 
       {candidate.scoringDetails && (
         <div className="flex flex-wrap gap-3 mt-2">
           {candidate.scoringDetails.matching_skills?.length > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
+            <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
               <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
             </span>
           )}
           {candidate.scoringDetails.missing_skills?.length > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+            <span className="flex items-center gap-1 text-xs text-amber-700 font-medium">
               <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
             </span>
           )}
@@ -658,7 +658,7 @@ const CandidateProfileSidebarContent = React.memo<{
   onCreatePortalLink: () => void;
 }>(({ candidate, enrichedProfile, onCreatePortalLink }) => (
   <div className="space-y-3">
-    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-3 text-xs text-muted-foreground">
       {enrichedProfile?.location && (
         <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {enrichedProfile.location}</span>
       )}
@@ -668,7 +668,7 @@ const CandidateProfileSidebarContent = React.memo<{
     </div>
     {candidate.linkedin && (
       <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-        className="flex items-center gap-1.5 text-[10px] text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
+        className="flex items-center gap-1.5 text-xs text-foreground font-medium uppercase tracking-wider hover:text-blue-600">
         <Link2 className="w-3 h-3" /> Voir sur LinkedIn
       </a>
     )}
@@ -681,7 +681,7 @@ const CandidateProfileSidebarContent = React.memo<{
     {candidate.score != null && (
       <div className="border border-foreground/15 p-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
           <span className={cn("text-sm font-bold",
             candidate.score >= 75 ? "text-emerald-600" :
             candidate.score >= 50 ? "text-amber-600" : "text-red-600"
@@ -691,7 +691,7 @@ const CandidateProfileSidebarContent = React.memo<{
     )}
     {enrichedProfile?.summary && (
       <CollapsibleSection title="À propos" defaultOpen={false}>
-        <p className="text-[10px] text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">{enrichedProfile.summary}</p>
       </CollapsibleSection>
     )}
     {enrichedProfile?.experiences && enrichedProfile.experiences.length > 0 && (
@@ -718,7 +718,7 @@ const CandidateProfileSidebarContent = React.memo<{
       <CollapsibleSection title="Compétences" defaultOpen={false}>
         <div className="flex flex-wrap gap-1">
           {enrichedProfile.skills.map(s => (
-            <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+            <span key={s} className="text-xs px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
           ))}
         </div>
       </CollapsibleSection>
@@ -727,7 +727,7 @@ const CandidateProfileSidebarContent = React.memo<{
       <CollapsibleSection title="Langues" defaultOpen={false}>
         <div className="flex flex-wrap gap-1">
           {enrichedProfile.languages.map(l => (
-            <span key={l} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
+            <span key={l} className="text-xs px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
           ))}
         </div>
       </CollapsibleSection>
@@ -740,18 +740,18 @@ const JobDetailsSidebarContent = React.memo<{ jobDetails: any }>(({ jobDetails }
   if (!jobDetails) return null;
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {jobDetails.contractType && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.contractType}</span>
+          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">{jobDetails.contractType}</span>
         )}
         {jobDetails.remote && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.remote}</span>
+          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">{jobDetails.remote}</span>
         )}
         {jobDetails.seniority && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">{jobDetails.seniority}</span>
+          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">{jobDetails.seniority}</span>
         )}
         {(jobDetails.salaryMin || jobDetails.salaryMax) && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-[9px]">
+          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">
             {jobDetails.salaryMin && jobDetails.salaryMax
               ? `${jobDetails.salaryMin}-${jobDetails.salaryMax}k€`
               : jobDetails.salaryMin ? `${jobDetails.salaryMin}k€+` : `≤${jobDetails.salaryMax}k€`}
@@ -761,23 +761,23 @@ const JobDetailsSidebarContent = React.memo<{ jobDetails: any }>(({ jobDetails }
       {jobDetails.skills?.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
           {jobDetails.skills.slice(0, 8).map((s: string) => (
-            <span key={s} className="text-[9px] px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+            <span key={s} className="text-xs px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
           ))}
         </div>
       )}
       {jobDetails.mustHave && (
         <CollapsibleSection title="Must-have" defaultOpen={false}>
-          <p className="text-[10px] text-muted-foreground whitespace-pre-line">{jobDetails.mustHave}</p>
+          <p className="text-xs text-muted-foreground whitespace-pre-line">{jobDetails.mustHave}</p>
         </CollapsibleSection>
       )}
       {jobDetails.shouldHave && (
         <CollapsibleSection title="Should-have" defaultOpen={false}>
-          <p className="text-[10px] text-muted-foreground whitespace-pre-line">{jobDetails.shouldHave}</p>
+          <p className="text-xs text-muted-foreground whitespace-pre-line">{jobDetails.shouldHave}</p>
         </CollapsibleSection>
       )}
       {jobDetails.description && (
         <CollapsibleSection title="Description" defaultOpen={false}>
-          <p className="text-[10px] text-muted-foreground whitespace-pre-line line-clamp-10">{jobDetails.description}</p>
+          <p className="text-xs text-muted-foreground whitespace-pre-line line-clamp-10">{jobDetails.description}</p>
         </CollapsibleSection>
       )}
     </div>

@@ -173,7 +173,7 @@ export const AICreditsSettings = () => {
                   <div className="flex items-center gap-3 py-1">
                     <ModelLogo modelId={model.id} size={22} className="shrink-0" />
                     <span className="text-sm font-medium">{model.name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm">
+                    <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm">
                       ×{model.multiplier}
                     </span>
                   </div>
@@ -210,7 +210,7 @@ export const AICreditsSettings = () => {
                 )}
               >
                 {pack.badge && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-foreground text-background text-xs font-bold uppercase tracking-wider">
                     {pack.badge}
                   </span>
                 )}
@@ -219,7 +219,7 @@ export const AICreditsSettings = () => {
                 </span>
                 <span className="text-xs text-muted-foreground mt-0.5">crédits</span>
                 <span className="text-lg font-bold text-foreground mt-2">{pack.price_eur}€</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {pack.price_per_credit_cents.toFixed(1)}c€/crédit
                 </span>
                 {buyingPack === pack.id && (
@@ -255,7 +255,7 @@ export const AICreditsSettings = () => {
                     <Badge variant="secondary" className="text-xs">
                       ~{defaultCost} cr
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {minCost}–{maxCost}
                     </span>
                   </div>
@@ -298,7 +298,7 @@ export const AICreditsSettings = () => {
                           actionInfo?.label || tx.action
                         )}
                       </p>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         {modelName && <span>{modelName}</span>}
                         {tx.description && (
                           <span className="truncate max-w-[150px]">{tx.description}</span>

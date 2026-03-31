@@ -65,7 +65,7 @@ const CheckItem: React.FC<{
         'text-xs font-medium leading-tight',
         highlight ? 'text-foreground' : 'text-foreground/80',
       )}>{label}</p>
-      {detail && <p className="text-[10px] text-muted-foreground mt-0.5">{detail}</p>}
+      {detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}
     </div>
   </motion.div>
 );
@@ -109,7 +109,7 @@ const SourceCard: React.FC<{
       </div>
       <div className="flex-1 min-w-0">
         <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-0.5">{title}</h4>
-        <p className="text-[10px] text-muted-foreground leading-relaxed">{description}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
         <div className="mt-2">{badge}</div>
       </div>
     </div>
@@ -119,7 +119,7 @@ const SourceCard: React.FC<{
 /* ─── Status Badge ─── */
 const StatusBadge: React.FC<{ status: CheckStatus; label: string }> = ({ status, label }) => (
   <span className={cn(
-    'inline-flex items-center gap-1 text-[9px] font-medium uppercase tracking-wider px-2 py-0.5 border',
+    'inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider px-2 py-0.5 border',
     status === 'ok' && 'text-accent border-accent/30 bg-accent/10',
     status === 'warning' && 'text-brutal-accent border-brutal-accent/30 bg-brutal-accent/10',
     status === 'error' && 'text-destructive border-destructive/30 bg-destructive/10',
@@ -178,7 +178,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
         <motion.h3
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"
+          className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"
         >
           <Lightning weight="fill" className="w-3.5 h-3.5 text-brutal-accent" />
           Choisissez votre source
@@ -220,7 +220,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
 
       {/* ── Section 2: Checklist ── */}
       <div>
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
           Vérifications
         </h3>
         <div className="border border-foreground/10 divide-y divide-foreground/5">
@@ -288,7 +288,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
                 <Sparkle weight="fill" className="w-4 h-4" />
               )}
               <span className="font-bold">Générer les filtres automatiquement</span>
-              <span className="text-[10px] opacity-70">~4 cr</span>
+              <span className="text-xs opacity-70">~4 cr</span>
             </ShimmerButton>
           </motion.div>
         )}
@@ -299,7 +299,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
           onClick={() => setShowManualFilters(!showManualFilters)}
-          className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground uppercase tracking-wider transition-colors mx-auto"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider transition-colors mx-auto"
         >
           <span>ou configurez manuellement</span>
           <CaretDown
@@ -321,7 +321,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
               className="overflow-hidden"
             >
               <div className="border border-foreground/10 p-4 bg-muted/20">
-                <p className="text-[11px] text-muted-foreground text-center">
+                <p className="text-xs text-muted-foreground text-center">
                   Utilisez le panneau de filtres à gauche pour configurer manuellement votre recherche.
                 </p>
               </div>

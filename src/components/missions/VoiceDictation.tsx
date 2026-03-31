@@ -167,7 +167,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
             onClick={startRecording}
             disabled={isConnecting}
             className={cn(
-              "relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-[10px] font-medium uppercase tracking-wider border border-foreground group",
+              "relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-foreground group",
               isConnecting ? "bg-muted text-muted-foreground" : "bg-foreground text-background"
             )}
           >
@@ -188,7 +188,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
           <div className="flex items-center gap-3">
             <button
               onClick={stopRecording}
-              className="flex items-center gap-2 h-[34px] px-5 text-[10px] font-medium uppercase tracking-wider border border-red-600 bg-red-600 text-white"
+              className="flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-red-600 bg-red-600 text-white"
             >
               <Square className="w-3 h-3" />
               Arrêter
@@ -200,7 +200,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
                 <span className="animate-ping absolute inline-flex h-full w-full bg-red-500 opacity-75" />
                 <span className="relative inline-flex h-2.5 w-2.5 bg-red-600" />
               </span>
-              <span className="text-[11px] font-mono text-foreground font-bold">{elapsedDisplay}</span>
+              <span className="text-xs font-mono text-foreground font-bold">{elapsedDisplay}</span>
             </div>
           </div>
         )}
@@ -213,7 +213,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
             <p className="text-sm text-muted-foreground italic">{interimText}</p>
           )}
           {isRecording && !interimText && (
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider animate-pulse">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider animate-pulse">
               En écoute — parlez naturellement...
             </p>
           )}

@@ -97,7 +97,7 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
         <BrutalSpinner size={20} />
         <span
           className={cn(
-            'text-[11px] text-muted-foreground tracking-wider transition-opacity duration-300 ease-out',
+            'text-xs text-muted-foreground tracking-wider transition-opacity duration-300 ease-out',
             fade ? 'opacity-100' : 'opacity-0'
           )}
         >
@@ -117,7 +117,7 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
       {/* Rotating text */}
       <p
         className={cn(
-          'text-[11px] text-muted-foreground/70 uppercase tracking-[0.14em] font-medium transition-opacity duration-300 ease-out mb-8',
+          'text-xs text-muted-foreground/70 uppercase tracking-[0.14em] font-medium transition-opacity duration-300 ease-out mb-8',
           fade ? 'opacity-100' : 'opacity-0'
         )}
       >

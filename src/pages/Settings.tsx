@@ -144,7 +144,7 @@ const Settings = () => {
                   key={tab.value}
                   onClick={() => setActiveTab(tab.value)}
                   className={cn(
-                    "relative px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] whitespace-nowrap flex items-center gap-2 border-r border-foreground/10 last:border-r-0 overflow-hidden group transition-colors",
+                    "relative px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] whitespace-nowrap flex items-center gap-2 border-r border-foreground/10 last:border-r-0 overflow-hidden group transition-colors",
                     isActive
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground"
@@ -224,13 +224,13 @@ const Settings = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-foreground/10">
                     <div>
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Plan</label>
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Plan</label>
                       <p className="text-sm font-semibold text-foreground mt-0.5">
                         {(organization as any)?.plan || 'Free'}
                       </p>
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Membres</label>
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Membres</label>
                       <p className="text-sm font-semibold text-foreground mt-0.5">
                         {members.length}
                       </p>
@@ -256,7 +256,7 @@ const Settings = () => {
                     <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
                       <Users className="w-4 h-4" />
                       Équipe
-                      <Badge variant="secondary" className="ml-auto text-[10px]">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
+                      <Badge variant="secondary" className="ml-auto text-xs">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

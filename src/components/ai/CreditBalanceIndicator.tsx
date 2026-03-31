@@ -27,7 +27,7 @@ export const CreditBalanceIndicator = () => {
           <button
             onClick={() => navigate('/settings?tab=credits')}
             className={cn(
-              "relative overflow-hidden h-[34px] px-2.5 flex items-center gap-1.5 text-[11px] font-medium border border-foreground leading-none transition-colors",
+              "relative overflow-hidden h-[34px] px-2.5 flex items-center gap-1.5 text-xs font-medium border border-foreground leading-none transition-colors",
               isOut && "bg-destructive/10 border-destructive text-destructive",
               isLow && !isOut && "bg-amber-500/10 border-amber-500 text-amber-700",
               !isLow && !isOut && "glass text-foreground"
@@ -40,7 +40,7 @@ export const CreditBalanceIndicator = () => {
               !isLow && !isOut && "text-muted-foreground"
             )} />
             <NumberTicker value={creditsRemaining} className="font-bold" />
-            <span className="hidden sm:inline text-[10px] text-muted-foreground font-normal">cr</span>
+            <span className="hidden sm:inline text-xs text-muted-foreground font-normal">cr</span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">

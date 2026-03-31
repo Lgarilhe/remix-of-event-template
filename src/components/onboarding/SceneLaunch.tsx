@@ -36,7 +36,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
       <motion.span
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase"
+        className="text-xs tracking-[0.2em] text-muted-foreground uppercase"
         style={{ fontFamily: "'Space Mono', monospace" }}
       >
         06 — C'EST PARTI
@@ -131,7 +131,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
         }}
       >
         <p
-          className="text-[11px] tracking-[0.15em] text-muted-foreground uppercase mb-4 text-center"
+          className="text-xs tracking-[0.15em] text-muted-foreground uppercase mb-4 text-center"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           VOTRE ÉCOSYSTÈME
@@ -145,10 +145,10 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
             >
               <span className="text-2xl">{eco.emoji}</span>
               <span className="text-xs font-semibold text-foreground">{eco.name}</span>
-              <span className="text-[10px] text-muted-foreground">{eco.desc}</span>
+              <span className="text-xs text-muted-foreground">{eco.desc}</span>
               {eco.active && (
                 <span
-                  className="absolute -top-2 -right-2 text-[9px] font-bold px-1.5 py-0.5 bg-[hsl(var(--landing-accent-yellow))] text-foreground border border-foreground"
+                  className="absolute -top-2 -right-2 text-xs font-bold px-1.5 py-0.5 bg-[hsl(var(--landing-accent-yellow))] text-foreground border border-foreground"
                   style={{ fontFamily: "'Space Mono', monospace" }}
                 >
                   ACTIF
