@@ -224,7 +224,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
                 {msg.text || '(Message sans texte)'}
               </p>
               {msg.timestamp && (
-                <p className={`text-[10px] mt-1 ${
+                <p className={`text-xs mt-1 ${
                   msg.is_sender ? 'text-primary-foreground/60' : 'text-muted-foreground'
                 }`}>
                   {formatMessageTime(msg.timestamp)}
@@ -259,7 +259,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
               {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Appuyez sur Entrée pour envoyer, Shift+Entrée pour un retour à la ligne
           </p>
         </div>

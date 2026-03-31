@@ -75,7 +75,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         {/* Indicators */}
         <div className="flex items-center gap-1 flex-shrink-0">
           {candidate.score != null && (
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 border ${
+            <span className={`text-xs font-bold px-1.5 py-0.5 border ${
               candidate.score >= 70 ? 'border-foreground bg-brutal-accent text-foreground' : 
               candidate.score >= 40 ? 'border-foreground/50 bg-background text-foreground' : 'border-destructive text-destructive'
             }`}>
@@ -88,7 +88,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           {(candidate.notesCount || 0) > 0 && (
             <div className="flex items-center gap-0.5 text-muted-foreground">
               <StickyNote className="w-3.5 h-3.5" />
-              <span className="text-[10px]">{candidate.notesCount}</span>
+              <span className="text-xs">{candidate.notesCount}</span>
             </div>
           )}
         </div>
@@ -96,25 +96,25 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
       {/* Source & Job & Outreach Status */}
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <span className="text-[10px] px-1.5 py-0.5 border border-foreground/30 bg-foreground/5 flex items-center gap-1 uppercase tracking-wider font-medium text-foreground">
+        <span className="text-xs px-1.5 py-0.5 border border-foreground/30 bg-foreground/5 flex items-center gap-1 uppercase tracking-wider font-medium text-foreground">
           {sourceConfig.icon}
           {sourceConfig.label}
         </span>
         
         {candidate.outreachStatus === 'interested' && (
-          <span className="text-[10px] px-1.5 py-0.5 border border-green-500 bg-green-50 text-green-700 flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="text-xs px-1.5 py-0.5 border border-green-500 bg-green-50 text-green-700 flex items-center gap-1 uppercase tracking-wider font-bold">
             <ThumbsUp className="w-3 h-3" />
             Intéressé
           </span>
         )}
         {candidate.outreachStatus === 'not_interested' && (
-          <span className="text-[10px] px-1.5 py-0.5 border border-red-400 bg-red-50 text-red-600 flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="text-xs px-1.5 py-0.5 border border-red-400 bg-red-50 text-red-600 flex items-center gap-1 uppercase tracking-wider font-bold">
             <ThumbsDown className="w-3 h-3" />
             Pas intéressé
           </span>
         )}
         {candidate.outreachStatus === 'replied' && (
-          <span className="text-[10px] px-1.5 py-0.5 border border-blue-400 bg-blue-50 text-blue-600 flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="text-xs px-1.5 py-0.5 border border-blue-400 bg-blue-50 text-blue-600 flex items-center gap-1 uppercase tracking-wider font-bold">
             <MessageCircle className="w-3 h-3" />
             Répondu
           </span>
@@ -122,7 +122,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
         {candidate.jobTitle && (
           <span
-            className={`text-[10px] px-1.5 py-0.5 border border-foreground/20 bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+            className={`text-xs px-1.5 py-0.5 border border-foreground/20 bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
             onClick={(e) => {
               if (candidate.jobId && onJobClick) {
                 e.stopPropagation();
@@ -139,7 +139,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
       {/* Sequence info */}
       {candidate.sequenceName && (
-        <div className="text-[10px] text-muted-foreground mb-2 flex items-center gap-1">
+        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
           <GitBranch className="w-3 h-3" />
           {candidate.sequenceName}
           {candidate.sequenceStatus && (
@@ -154,12 +154,12 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {(candidate.tags || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {(candidate.tags || []).slice(0, 3).map(tag => (
-            <span key={tag} className="text-[9px] px-1.5 py-0 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium">
+            <span key={tag} className="text-xs px-1.5 py-0 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium">
               {tag}
             </span>
           ))}
           {(candidate.tags || []).length > 3 && (
-            <span className="text-[9px] px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
+            <span className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
               +{(candidate.tags || []).length - 3}
             </span>
           )}
@@ -168,7 +168,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
       {/* Stagnation alert */}
       {isStagnant && (
-        <div className="flex items-center gap-1 text-[9px] text-destructive font-medium mb-2">
+        <div className="flex items-center gap-1 text-xs text-destructive font-medium mb-2">
           <AlertTriangle className="w-3 h-3" />
           Inactif depuis {daysSince}j (max {guideTime}j)
         </div>
@@ -180,13 +180,13 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           {candidate.expertise.slice(0, 3).map(skill => (
             <span 
               key={skill} 
-              className="text-[10px] px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10"
+              className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10"
             >
               {skill}
             </span>
           ))}
           {candidate.expertise.length > 3 && (
-            <span className="text-[10px] px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
+            <span className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
               +{candidate.expertise.length - 3}
             </span>
           )}
@@ -194,7 +194,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           {candidate.linkedin && (
             <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />

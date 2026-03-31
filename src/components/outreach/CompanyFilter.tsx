@@ -204,7 +204,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                     value={company.priority}
                     onValueChange={(val) => onUpdateKeywordCompany(index, { priority: val as CompanyPriority })}
                   >
-                    <SelectTrigger className={`h-6 flex-1 text-[10px] border-0 shadow-sm ${priorityConfig?.color}`}>
+                    <SelectTrigger className={`h-6 flex-1 text-xs border-0 shadow-sm ${priorityConfig?.color}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white z-[3000]">
@@ -250,7 +250,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
         
         <div className="flex items-center gap-1.5">
           <Select value={newPriority} onValueChange={(v) => setNewPriority(v as CompanyPriority)}>
-            <SelectTrigger className="h-6 flex-1 text-[10px]">
+            <SelectTrigger className="h-6 flex-1 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white z-[3000]">
@@ -266,7 +266,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           </Select>
           
           <Select value={newScope} onValueChange={(v) => setNewScope(v as CompanyScope)}>
-            <SelectTrigger className="h-6 flex-1 text-[10px]">
+            <SelectTrigger className="h-6 flex-1 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white z-[3000]">
@@ -299,7 +299,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           </Button>
         </div>
         
-        <p className="text-[9px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Utilisez AND, NOT pour affiner ou <button type="button" onClick={openBooleanDialog} className="underline hover:text-foreground">ouvrez l'éditeur Boolean</button>
         </p>
       </div>
@@ -350,12 +350,12 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
           <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
             <p className="font-medium text-foreground/70">💡 Astuces Boolean entreprises :</p>
             <ul className="space-y-1 list-disc list-inside">
-              <li><strong>OR</strong> entre entreprises : <code className="text-[10px] bg-muted px-1 rounded">Accenture OR Capgemini OR McKinsey</code></li>
-              <li><strong>Guillemets</strong> pour noms composés : <code className="text-[10px] bg-muted px-1 rounded">"Bearing Point" OR "Sia Partners"</code></li>
-              <li><strong>AND</strong> pour combiner : <code className="text-[10px] bg-muted px-1 rounded">"Big Four" AND consulting</code></li>
-              <li><strong>NOT</strong> pour exclure : <code className="text-[10px] bg-muted px-1 rounded">NOT freelance NOT startup</code></li>
+              <li><strong>OR</strong> entre entreprises : <code className="text-xs bg-muted px-1 rounded">Accenture OR Capgemini OR McKinsey</code></li>
+              <li><strong>Guillemets</strong> pour noms composés : <code className="text-xs bg-muted px-1 rounded">"Bearing Point" OR "Sia Partners"</code></li>
+              <li><strong>AND</strong> pour combiner : <code className="text-xs bg-muted px-1 rounded">"Big Four" AND consulting</code></li>
+              <li><strong>NOT</strong> pour exclure : <code className="text-xs bg-muted px-1 rounded">NOT freelance NOT startup</code></li>
             </ul>
-            <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Limite ~200 caractères. Utilisez des guillemets pour les noms avec espaces.</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">⚠️ Limite ~200 caractères. Utilisez des guillemets pour les noms avec espaces.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>

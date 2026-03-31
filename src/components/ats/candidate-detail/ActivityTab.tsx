@@ -49,8 +49,8 @@ export const ActivityTab = React.memo<ActivityTabProps>(({ loading, timeline }) 
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">{event.title}</p>
-              {event.detail && <p className="text-[11px] text-muted-foreground mt-0.5">{event.detail}</p>}
-              <p className="text-[10px] text-muted-foreground mt-1">
+              {event.detail && <p className="text-xs text-muted-foreground mt-0.5">{event.detail}</p>}
+              <p className="text-xs text-muted-foreground mt-1">
                 {formatDistanceToNow(parseISO(event.date), { addSuffix: true, locale: fr })}
               </p>
             </div>

@@ -83,14 +83,14 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link2 className="w-4 h-4 text-foreground" />
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Portail client ({projectTokens.length})
           </h3>
         </div>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
+            className="flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
           >
             <Plus className="w-3 h-3" /> Créer un accès
           </button>
@@ -102,7 +102,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
         <div className="border border-foreground/20 p-4 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nom du client *</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nom du client *</label>
               <input
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
@@ -111,7 +111,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Email (optionnel)</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email (optionnel)</label>
               <input
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
@@ -125,13 +125,13 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
             <button
               onClick={handleCreate}
               disabled={isCreating || !clientName.trim()}
-              className="h-[34px] px-4 bg-foreground text-background text-[10px] font-bold uppercase tracking-wider border border-foreground disabled:opacity-50"
+              className="h-[34px] px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-foreground disabled:opacity-50"
             >
               {isCreating ? 'Création...' : 'Générer le lien'}
             </button>
             <button
               onClick={() => { setShowForm(false); setClientName(''); setClientEmail(''); }}
-              className="h-[34px] px-3 text-muted-foreground hover:text-foreground border border-foreground/30 text-[10px] font-bold uppercase tracking-wider"
+              className="h-[34px] px-3 text-muted-foreground hover:text-foreground border border-foreground/30 text-xs font-bold uppercase tracking-wider"
             >
               Annuler
             </button>
@@ -155,11 +155,11 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground truncate">{t.client_name}</p>
                 {t.client_email && (
-                  <p className="text-[10px] text-muted-foreground truncate">{t.client_email}</p>
+                  <p className="text-xs text-muted-foreground truncate">{t.client_email}</p>
                 )}
               </div>
               {t.last_accessed_at && (
-                <span className="text-[9px] text-muted-foreground shrink-0 hidden sm:block">
+                <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">
                   Vu {formatDistanceToNow(new Date(t.last_accessed_at), { addSuffix: true, locale: fr })}
                 </span>
               )}

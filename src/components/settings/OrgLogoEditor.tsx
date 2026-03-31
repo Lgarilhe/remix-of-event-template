@@ -148,7 +148,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, isOwn
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-[10px] uppercase tracking-wider gap-1.5"
+              className="h-7 text-xs uppercase tracking-wider gap-1.5"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
@@ -159,7 +159,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, isOwn
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-[10px] uppercase tracking-wider gap-1.5 text-destructive hover:text-destructive"
+                className="h-7 text-xs uppercase tracking-wider gap-1.5 text-destructive hover:text-destructive"
                 onClick={handleRemoveLogo}
               >
                 <Trash2 className="w-3 h-3" />
@@ -217,7 +217,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, isOwn
           </div>
         )}
         {!logoUrl && website && (
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Le logo est récupéré automatiquement depuis le domaine. Uploadez un logo custom pour le remplacer.
           </p>
         )}

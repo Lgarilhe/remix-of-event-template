@@ -107,10 +107,10 @@ export const ProviderLabel = ({ modelId }: { modelId: string }) => {
         : null;
 
   if (provider === 'google')
-    return <span className="text-[9px] font-semibold text-[#4285F4] uppercase tracking-wider">Google</span>;
+    return <span className="text-xs font-semibold text-[#4285F4] uppercase tracking-wider">Google</span>;
   if (provider === 'anthropic')
-    return <span className="text-[9px] font-semibold text-[#D4A27F] uppercase tracking-wider">Anthropic</span>;
+    return <span className="text-xs font-semibold text-[#D4A27F] uppercase tracking-wider">Anthropic</span>;
   if (provider === 'openai')
-    return <span className="text-[9px] font-semibold uppercase tracking-wider">OpenAI</span>;
+    return <span className="text-xs font-semibold uppercase tracking-wider">OpenAI</span>;
   return null;
 };

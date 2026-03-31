@@ -184,7 +184,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
             <h2 className="text-sm font-bold uppercase tracking-wider text-foreground truncate sm:text-base">
               Invitations reçues
             </h2>
-            <Badge variant="default" className="rounded-none bg-foreground px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-background hover:bg-foreground shrink-0">
+            <Badge variant="default" className="rounded-none bg-foreground px-1.5 py-0.5 text-xs uppercase tracking-wider text-background hover:bg-foreground shrink-0">
               {loading ? '...' : invitations.length}
             </Badge>
           </div>
@@ -236,7 +236,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
 
         {bulkProgress && (
           <div className="mt-3 border border-foreground/20 bg-background/80 p-2">
-            <div className="mb-1.5 flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+            <div className="mb-1.5 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
               <span>Batch en cours</span>
               <span>{bulkProgress.done}/{bulkProgress.total}</span>
             </div>
@@ -249,7 +249,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
       {invitations.length > 0 && (
         <div className="border-b border-foreground/10 bg-muted/20 px-3 py-2 sm:px-4">
           <div className="flex items-center justify-between gap-2">
-            <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <Checkbox
                 checked={allSelected}
                 onCheckedChange={toggleAll}
@@ -265,7 +265,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                 size="sm"
                 disabled={selectedCount === 0 || isProcessing}
                 onClick={() => setBulkConfirm('accept')}
-                className="rounded-none border border-foreground h-7 px-2 sm:px-3 text-[10px] uppercase tracking-wider"
+                className="rounded-none border border-foreground h-7 px-2 sm:px-3 text-xs uppercase tracking-wider"
               >
                 {isProcessing && bulkConfirm === 'accept' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                 <span className="hidden sm:inline ml-1">Accepter</span>
@@ -275,7 +275,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                 size="sm"
                 disabled={selectedCount === 0 || isProcessing}
                 onClick={() => setBulkConfirm('decline')}
-                className="rounded-none border border-foreground h-7 px-2 sm:px-3 text-[10px] uppercase tracking-wider"
+                className="rounded-none border border-foreground h-7 px-2 sm:px-3 text-xs uppercase tracking-wider"
               >
                 {isProcessing && bulkConfirm === 'decline' ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
                 <span className="hidden sm:inline ml-1">Décliner</span>
@@ -354,7 +354,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                                 className="h-9 w-9 border border-foreground/10 object-cover"
                               />
                             ) : (
-                              <div className="flex h-9 w-9 items-center justify-center border border-foreground/10 bg-muted/50 text-[11px] font-bold uppercase tracking-wide text-foreground">
+                              <div className="flex h-9 w-9 items-center justify-center border border-foreground/10 bg-muted/50 text-xs font-bold uppercase tracking-wide text-foreground">
                                 {getInitials(invitation.inviter_name)}
                               </div>
                             )}
@@ -366,7 +366,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                             className="h-9 w-9 shrink-0 border border-foreground/10 object-cover"
                           />
                         ) : (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-foreground/10 bg-muted/50 text-[11px] font-bold uppercase tracking-wide text-foreground">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-foreground/10 bg-muted/50 text-xs font-bold uppercase tracking-wide text-foreground">
                             {getInitials(invitation.inviter_name)}
                           </div>
                         )}
@@ -396,7 +396,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                                   {invitation.inviter_description}
                                 </p>
                               )}
-                              <span className="text-[9px] uppercase tracking-wider text-muted-foreground mt-0.5 block">
+                              <span className="text-xs uppercase tracking-wider text-muted-foreground mt-0.5 block">
                                 {formatRelativeDate(invitation.date, invitation.parsed_datetime)}
                               </span>
                             </div>
@@ -408,7 +408,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                                 size="sm"
                                 onClick={() => handleAccept(invitation)}
                                 disabled={isItemProcessing || isProcessing}
-                                className="rounded-none border border-foreground h-7 px-1.5 sm:px-2.5 text-[10px] uppercase tracking-wider"
+                                className="rounded-none border border-foreground h-7 px-1.5 sm:px-2.5 text-xs uppercase tracking-wider"
                               >
                                 {isItemProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                                 <span className="ml-1 hidden sm:inline">OK</span>
@@ -418,7 +418,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                                 size="sm"
                                 onClick={() => handleDecline(invitation)}
                                 disabled={isItemProcessing || isProcessing}
-                                className="rounded-none border border-foreground h-7 px-1.5 sm:px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground"
+                                className="rounded-none border border-foreground h-7 px-1.5 sm:px-2.5 text-xs uppercase tracking-wider text-muted-foreground"
                               >
                                 <X className="h-3 w-3" />
                               </Button>
@@ -447,7 +447,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                   variant="outline"
                   onClick={handleLoadMore}
                   disabled={loading}
-                  className="h-9 w-full rounded-none border-foreground text-[10px] uppercase tracking-wider"
+                  className="h-9 w-full rounded-none border-foreground text-xs uppercase tracking-wider"
                 >
                   {loading ? (
                     <>

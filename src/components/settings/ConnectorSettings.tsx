@@ -152,7 +152,7 @@ export const ConnectorSettings = () => {
           <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             Connecteurs actifs
-            <Badge variant="secondary" className="ml-auto text-[10px]">
+            <Badge variant="secondary" className="ml-auto text-xs">
               {activeInstances.length}
             </Badge>
           </CardTitle>
@@ -177,8 +177,8 @@ export const ConnectorSettings = () => {
                         <p className="text-sm font-semibold text-foreground truncate">
                           {reg?.name || instance.connector_id}
                         </p>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-green-500 text-green-600">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 border-green-500 text-green-600">
                             ACTIF
                           </Badge>
                           {instance.last_sync_at && (
@@ -227,7 +227,7 @@ export const ConnectorSettings = () => {
         <CardContent className="space-y-6">
           {CATEGORY_ORDER.filter(cat => groupedAvailable[cat]?.length).map(cat => (
             <div key={cat}>
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground mb-3 border-b border-foreground/10 pb-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground mb-3 border-b border-foreground/10 pb-1.5">
                 {CATEGORY_LABELS[cat] || cat.toUpperCase()}
               </h3>
               <div className="space-y-2">
@@ -239,7 +239,7 @@ export const ConnectorSettings = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">{connector.name}</p>
                       {connector.description && (
-                        <p className="text-[11px] text-muted-foreground truncate max-w-[280px]">
+                        <p className="text-xs text-muted-foreground truncate max-w-[280px]">
                           {connector.description}
                         </p>
                       )}

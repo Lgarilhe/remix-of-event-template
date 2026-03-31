@@ -48,7 +48,7 @@ const AgentFAB: React.FC = () => {
       </button>
       <span
         className={cn(
-          "text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground bg-background/80 backdrop-blur-sm border border-foreground/10 px-1.5 py-0.5 transition-all duration-200 pointer-events-none",
+          "text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground bg-background/80 backdrop-blur-sm border border-foreground/10 px-1.5 py-0.5 transition-all duration-200 pointer-events-none",
           hovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
         )}
       >

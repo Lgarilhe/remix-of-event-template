@@ -27,7 +27,7 @@ const DimensionRow: React.FC<{ label: string; score: number; weight: number }> =
   const weightPct = Math.round(weight * 100);
   return (
     <div className="flex items-center gap-2">
-      <span className="w-24 text-[11px] text-muted-foreground font-medium truncate">{label}</span>
+      <span className="w-24 text-xs text-muted-foreground font-medium truncate">{label}</span>
       <div className="flex-1 h-1.5 bg-muted overflow-hidden rounded-full">
         <div
           className={cn(
@@ -37,9 +37,9 @@ const DimensionRow: React.FC<{ label: string; score: number; weight: number }> =
           style={{ width: `${score}%` }}
         />
       </div>
-      <span className="w-8 text-right text-[11px] font-bold tabular-nums text-foreground">{score}</span>
+      <span className="w-8 text-right text-xs font-bold tabular-nums text-foreground">{score}</span>
       {weightPct > 0 && (
-        <span className="w-8 text-right text-[9px] text-muted-foreground/40 tabular-nums">
+        <span className="w-8 text-right text-xs text-muted-foreground/40 tabular-nums">
           ×{weightPct}%
         </span>
       )}
@@ -60,7 +60,7 @@ const DimensionsPanel: React.FC<{ dimensions: ScoringDimensions; finalScore: num
         <DimensionRow key={key} label={DIMENSION_LABELS[key] || key} score={dim.score} weight={dim.weight} />
       ))}
       <div className="flex items-center gap-2 pt-1.5 mt-1.5 border-t border-border/50">
-        <span className="w-24 text-[11px] font-black text-foreground uppercase tracking-wider">Total</span>
+        <span className="w-24 text-xs font-black text-foreground uppercase tracking-wider">Total</span>
         <div className="flex-1" />
         <span className="text-xs font-black text-foreground tabular-nums">{finalScore}/100</span>
         <span className="w-8" />
@@ -73,12 +73,12 @@ const InsightsPanel: React.FC<{ strengths: string[]; concerns: string[] }> = ({ 
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-1">
     {strengths.length > 0 && (
       <div className="space-y-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-brutal-accent flex items-center gap-1">
+        <p className="text-xs font-bold uppercase tracking-widest text-brutal-accent flex items-center gap-1">
           <ThumbsUp className="w-3 h-3" /> Points forts
         </p>
         <ul className="space-y-0.5">
           {strengths.map((s, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-[11px] text-foreground/80 leading-snug">
+            <li key={i} className="flex items-start gap-1.5 text-xs text-foreground/80 leading-snug">
               <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0 text-brutal-accent" />
               <span>{s}</span>
             </li>
@@ -88,12 +88,12 @@ const InsightsPanel: React.FC<{ strengths: string[]; concerns: string[] }> = ({ 
     )}
     {concerns.length > 0 && (
       <div className="space-y-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-destructive/70 flex items-center gap-1">
+        <p className="text-xs font-bold uppercase tracking-widest text-destructive/70 flex items-center gap-1">
           <ThumbsDown className="w-3 h-3" /> Attention
         </p>
         <ul className="space-y-0.5">
           {concerns.map((c, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-snug">
+            <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground leading-snug">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-destructive/60" />
               <span>{c}</span>
             </li>
@@ -123,7 +123,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger className="w-full flex items-center justify-between py-1.5 px-2 -mx-2 rounded hover:bg-muted/50 transition-colors group cursor-pointer">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
+        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
           Détail du scoring
         </span>
         <ChevronDown className={cn(
@@ -144,7 +144,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px",
+                      "flex items-center gap-1 px-2 py-1 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px",
                       activeTab === tab.id
                         ? "border-foreground text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground/70"
@@ -168,7 +168,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
 
           {/* Skip reason */}
           {details.skipReason && (
-            <div className="flex items-start gap-2 text-[11px] text-foreground bg-muted px-2.5 py-1.5 border border-foreground/10">
+            <div className="flex items-start gap-2 text-xs text-foreground bg-muted px-2.5 py-1.5 border border-foreground/10">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-destructive" />
               <span className="font-medium">{details.skipReason}</span>
             </div>

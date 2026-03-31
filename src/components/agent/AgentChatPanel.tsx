@@ -217,7 +217,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               <AnimatedOrb size={32} />
               <div>
                 <h2 className="text-sm font-display font-black uppercase tracking-wider text-foreground">Copilot IA</h2>
-                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-0.5">
+                <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground mt-0.5">
                   Votre assistant recrutement
                 </p>
               </div>
@@ -225,7 +225,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground border border-foreground/15 px-2.5 py-1 hover:border-foreground transition-all duration-150"
+                className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground border border-foreground/15 px-2.5 py-1 hover:border-foreground transition-all duration-150"
               >
                 Fermer
               </button>
@@ -235,7 +235,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
         {/* Quick Actions Grid */}
         <div className="px-4 py-4 border-b border-foreground/10 shrink-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3">Actions rapides</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3">Actions rapides</p>
           <div className="grid grid-cols-2 gap-2">
             {QUICK_ACTIONS.map((qa) => (
               <button
@@ -244,7 +244,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
               >
                 <span className="text-base">{qa.emoji}</span>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-brutal-accent transition-colors">
+                <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-brutal-accent transition-colors">
                   {qa.label}
                 </p>
               </button>
@@ -257,7 +257,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             onClick={() => setActiveTab('new')}
             className={cn(
-              "flex-1 py-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
+              "flex-1 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
               activeTab === 'new'
                 ? "text-foreground"
                 : "text-muted-foreground/50 hover:text-muted-foreground"
@@ -271,7 +271,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             onClick={() => setActiveTab('history')}
             className={cn(
-              "flex-1 py-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
+              "flex-1 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
               activeTab === 'history'
                 ? "text-foreground"
                 : "text-muted-foreground/50 hover:text-muted-foreground"
@@ -333,7 +333,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 </span>
               )}
               <p className={cn(
-                "text-[10px] uppercase tracking-wider",
+                "text-xs uppercase tracking-wider",
                 isActive ? "text-brutal-accent" : "text-muted-foreground"
               )}>
                 {statusLabel}

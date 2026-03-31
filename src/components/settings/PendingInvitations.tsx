@@ -134,13 +134,13 @@ export const PendingInvitations = ({
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm text-foreground truncate">{inv.email}</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {roleLabels[inv.role] || inv.role} · envoyée {formatDistanceToNow(new Date(inv.created_at), { addSuffix: true, locale: fr })}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant="outline" className={`text-[10px] ${status.className}`}>
+                <Badge variant="outline" className={`text-xs ${status.className}`}>
                   {status.label}
                 </Badge>
                 {canResend && (

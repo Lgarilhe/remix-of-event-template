@@ -37,12 +37,12 @@ const FilterButton: React.FC<{
   <Popover>
     <PopoverTrigger asChild>
       <button className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group shrink-0 whitespace-nowrap",
+        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group shrink-0 whitespace-nowrap",
         count > 0 && "bg-brutal-accent"
       )}>
         <span className="relative z-10">{label}</span>
         {count > 0 && (
-          <span className="relative z-10 bg-foreground text-background text-[10px] px-1.5 py-0 font-bold">
+          <span className="relative z-10 bg-foreground text-background text-xs px-1.5 py-0 font-bold">
             {count}
           </span>
         )}
@@ -160,7 +160,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       <button
         onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
         className={cn(
-          "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group",
+          "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-foreground text-xs font-medium uppercase tracking-wider group",
           filters.hasReminder && "bg-brutal-accent"
         )}
       >
@@ -175,7 +175,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       {activeFiltersCount > 0 && (
         <button
           onClick={clearAllFilters}
-          className="relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-destructive text-[11px] font-medium uppercase tracking-wider group ml-0"
+          className="relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-foreground text-destructive text-xs font-medium uppercase tracking-wider group ml-0"
         >
           <X className="w-3.5 h-3.5 relative z-10" />
           <span className="relative z-10">Effacer ({activeFiltersCount})</span>

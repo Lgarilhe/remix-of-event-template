@@ -107,7 +107,7 @@ const StepNode: React.FC<{
             <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
           </div>
           {msgType && (
-            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full w-fit", msgType.color)}>
+            <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full w-fit", msgType.color)}>
               {msgType.shortLabel}
             </span>
           )}
@@ -152,7 +152,7 @@ const StepNode: React.FC<{
             {STEP_LABELS[step.actionType]}
           </div>
           {msgType && (
-            <div className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full w-fit mt-0.5", msgType.color)}>
+            <div className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full w-fit mt-0.5", msgType.color)}>
               {msgType.shortLabel}
             </div>
           )}

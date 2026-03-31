@@ -224,7 +224,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
         const isMember = members.some(m => m.display_name === memberName);
         if (isMember) {
           return (
-            <span key={i} className="inline-flex items-center gap-0.5 px-1 py-0 bg-primary/10 text-primary font-medium text-[11px] rounded-sm">
+            <span key={i} className="inline-flex items-center gap-0.5 px-1 py-0 bg-primary/10 text-primary font-medium text-xs rounded-sm">
               <AtSign className="w-2.5 h-2.5" />
               {memberName}
             </span>
@@ -264,7 +264,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
                       i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                     )}
                   >
-                    <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-[10px] font-bold uppercase shrink-0">
+                    <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0">
                       {member.display_name.charAt(0)}
                     </div>
                     <div className="min-w-0">
@@ -278,7 +278,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
           <button
             onClick={handleSubmit}
             disabled={submitting || !newComment.trim()}
-            className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-[10px] font-medium uppercase tracking-wider disabled:opacity-50 hover:bg-foreground/90 transition-colors"
+            className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50 hover:bg-foreground/90 transition-colors"
           >
             {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           </button>
@@ -294,23 +294,23 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
           <MessageCircle className="w-8 h-8 mb-2 opacity-40" />
           <p className="text-xs font-medium uppercase tracking-wider">Aucun commentaire</p>
-          <p className="text-[10px] mt-1">Soyez le premier à commenter</p>
+          <p className="text-xs mt-1">Soyez le premier à commenter</p>
         </div>
       ) : (
         <div className="space-y-2">
           {comments.map(comment => (
             <div key={comment.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02] hover:border-foreground/20 transition-colors">
               <div className="flex items-start gap-2">
-                <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-[10px] font-bold uppercase shrink-0 mt-0.5">
+                <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0 mt-0.5">
                   {getMemberName(comment.created_by).charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                       {getMemberName(comment.created_by)}
                     </span>
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {formatDistanceToNow(parseISO(comment.created_at), { addSuffix: true, locale: fr })}
                       </span>
                       <button

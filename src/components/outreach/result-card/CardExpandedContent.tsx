@@ -70,7 +70,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-[10px] sm:text-xs h-full rounded-none border-b-2 border-transparent text-background/60 hover:text-background data-[state=active]:border-brutal-accent data-[state=active]:bg-brutal-accent data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
+                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-xs sm:text-xs h-full rounded-none border-b-2 border-transparent text-background/60 hover:text-background data-[state=active]:border-brutal-accent data-[state=active]:bg-brutal-accent data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
               >
                 <tab.icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -114,7 +114,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         <div className="flex items-start justify-between gap-2">
                           <p className="font-bold text-foreground text-sm leading-tight">{exp.role}</p>
                           {isCurrent && (
-                            <span className="text-[10px] bg-foreground text-background px-1.5 py-0.5 font-bold uppercase tracking-wider shrink-0">
+                            <span className="text-xs bg-foreground text-background px-1.5 py-0.5 font-bold uppercase tracking-wider shrink-0">
                               En poste
                             </span>
                           )}
@@ -124,7 +124,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                           {exp.company}
                         </p>
                         {(exp.start?.year || exp.end?.year) && (
-                          <div className="flex items-center gap-2 mt-1 text-[11px] sm:text-xs text-muted-foreground/60">
+                          <div className="flex items-center gap-2 mt-1 text-xs sm:text-xs text-muted-foreground/60">
                             <CalendarDays className="w-3 h-3 shrink-0" />
                             <span>{exp.start?.year || '?'} → {exp.end?.year || 'Présent'}</span>
                             {tenure && <span className="text-muted-foreground/40">• {tenure}</span>}
@@ -170,7 +170,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
                       </p>
                       {(edu.start?.year || edu.end?.year) && (
-                        <div className="flex items-center gap-2 mt-1 text-[11px] sm:text-xs text-muted-foreground/60">
+                        <div className="flex items-center gap-2 mt-1 text-xs sm:text-xs text-muted-foreground/60">
                           <CalendarDays className="w-3 h-3" />
                           <span>{edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}</span>
                         </div>
@@ -284,7 +284,7 @@ const SkillsWithEndorse: React.FC<{
           >
             {skill.name || skill}
             {skill.endorsement_count != null && (
-              <span className="text-[10px] text-muted-foreground font-normal">+{skill.endorsement_count}</span>
+              <span className="text-xs text-muted-foreground font-normal">+{skill.endorsement_count}</span>
             )}
             {hasEndorsementId && accountId && (
               <Tooltip>

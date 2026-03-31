@@ -447,7 +447,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 <button
                   onClick={processSequencesNow}
                   disabled={processingSequences}
-                  className="relative overflow-hidden h-[30px] px-4 bg-foreground text-background border border-foreground text-[11px] font-medium uppercase tracking-wider group disabled:opacity-50"
+                  className="relative overflow-hidden h-[30px] px-4 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
                 >
                   <span className="relative z-10 flex items-center gap-1.5">
                     {processingSequences ? (
@@ -466,15 +466,15 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           <div className="grid grid-cols-3 gap-0 border border-foreground">
             <div className="p-3 text-center border-r border-foreground">
               <div className="text-xl font-bold text-foreground">{activeCount}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Actifs</div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Actifs</div>
             </div>
             <div className="p-3 text-center border-r border-foreground">
               <div className="text-xl font-bold text-foreground">{pausedCount}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">En pause</div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">En pause</div>
             </div>
             <div className="p-3 text-center">
               <div className="text-xl font-bold text-foreground">{completedCount}</div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Terminés</div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Terminés</div>
             </div>
           </div>
 
@@ -482,7 +482,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           {activeCount > 0 && (
             <button 
               onClick={bulkStopActive}
-              className="w-full relative overflow-hidden h-[34px] px-4 bg-background text-destructive border border-destructive text-[11px] font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
+              className="w-full relative overflow-hidden h-[34px] px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
             >
               <StopCircle className="w-3.5 h-3.5 relative z-10" />
               <span className="relative z-10">Arrêter toutes les séquences actives ({activeCount})</span>
@@ -568,7 +568,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   </p>
                                 )}
                                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  <Badge className={`text-[10px] rounded-none ${status.className}`}>
+                                  <Badge className={`text-xs rounded-none ${status.className}`}>
                                     {status.icon}
                                     <span className="ml-1">{status.label}</span>
                                   </Badge>
@@ -588,12 +588,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     return (
                                       <>
                                         {lastExecuted && (
-                                          <span className="text-[10px] text-emerald-600">
+                                          <span className="text-xs text-emerald-600">
                                             ✓ {format(new Date(lastExecuted.executed_at!), 'dd/MM à HH:mm', { locale: fr })}
                                           </span>
                                         )}
                                         {nextScheduled && (
-                                          <span className="text-[10px] text-blue-600 font-medium">
+                                          <span className="text-xs text-blue-600 font-medium">
                                             → {(() => {
                                               const actionType = nextScheduled.step?.action_type || '';
                                               const label = actionTypeConfig[actionType]?.label || actionType;
@@ -602,7 +602,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                           </span>
                                         )}
                                         {!nextScheduled && !lastExecuted && (
-                                          <span className="text-[10px] text-muted-foreground">
+                                          <span className="text-xs text-muted-foreground">
                                             {executions.length} étape(s)
                                           </span>
                                         )}
@@ -717,7 +717,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                             {actionConfig.label}
                                           </span>
                                           <Badge variant="outline" className={cn(
-                                            "text-[9px] px-1.5 py-0 h-4",
+                                            "text-xs px-1.5 py-0 h-4",
                                             execStatus.className
                                           )}>
                                             {execStatus.icon}
@@ -725,7 +725,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                           </Badge>
                                           {/* Show delay for pending steps */}
                                           {isPending && (step.delay_days > 0 || step.delay_hours > 0) && (
-                                            <span className="text-[10px] text-muted-foreground">
+                                            <span className="text-xs text-muted-foreground">
                                               +{step.delay_days > 0 ? `${step.delay_days}j` : ''}{step.delay_hours > 0 ? `${step.delay_hours}h` : ''}
                                             </span>
                                           )}
@@ -734,7 +734,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Timing info from execution */}
                                         {exec && (
-                                          <div className="text-[11px] mt-1">
+                                          <div className="text-xs mt-1">
                                             {exec.status === 'scheduled' && (
                                               <span className="text-muted-foreground">
                                                 Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
@@ -756,7 +756,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                               </span>
                                             )}
                                             {exec.status === 'failed' && exec.error_message && (
-                                              <div className="text-destructive mt-1 p-2 bg-destructive/10 border border-destructive/20 text-[10px]">
+                                              <div className="text-destructive mt-1 p-2 bg-destructive/10 border border-destructive/20 text-xs">
                                                 <strong>Erreur :</strong> {formatErrorMessage(exec.error_message)}
                                               </div>
                                             )}
@@ -765,7 +765,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Message preview if executed/sent */}
                                         {(exec?.status === 'executed' || exec?.status === 'sent') && exec.final_message && (
-                                          <div className="mt-2 p-2 bg-background border border-foreground/10 text-[11px] text-muted-foreground">
+                                          <div className="mt-2 p-2 bg-background border border-foreground/10 text-xs text-muted-foreground">
                                             {exec.final_subject && (
                                               <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
                                                 {exec.final_subject}
@@ -779,7 +779,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Template preview for pending steps */}
                                         {isPending && step.message_template && (
-                                          <div className="mt-1.5 text-[10px] text-muted-foreground/70 italic line-clamp-1">
+                                          <div className="mt-1.5 text-xs text-muted-foreground/70 italic line-clamp-1">
                                             « {step.message_template.replace(/\\n/g, ' ').substring(0, 80)}... »
                                           </div>
                                         )}

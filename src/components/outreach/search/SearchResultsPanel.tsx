@@ -393,7 +393,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             variant={showPoolView ? 'secondary' : 'ghost'}
             size="sm"
             onClick={() => onSetShowPoolView(!showPoolView)}
-            className="h-7 px-2 text-[11px] gap-1 shrink-0"
+            className="h-7 px-2 text-xs gap-1 shrink-0"
           >
             <Database className="w-3 h-3" />
             {showPoolView ? 'Pool' : 'Résultats'}
@@ -420,7 +420,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 <button
                   key={value}
                   onClick={() => onSetStatusFilter(value)}
-                  className={`flex items-center gap-1 h-6 px-1.5 text-[10px] transition-colors shrink-0 ${
+                  className={`flex items-center gap-1 h-6 px-1.5 text-xs transition-colors shrink-0 ${
                     isActive
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
@@ -452,7 +452,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 highTier.forEach(id => onToggleProfileSelection(id));
                 toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
               }}
-              className="h-6 px-2 text-[10px] gap-1 text-emerald-700 hover:bg-emerald-50 shrink-0"
+              className="h-6 px-2 text-xs gap-1 text-emerald-700 hover:bg-emerald-50 shrink-0"
               disabled={scoringInProgress}
             >
               <Sparkles className="w-3 h-3" />
@@ -463,7 +463,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Bulk action icons (when profiles selected) */}
           {selectedProfiles.size > 0 && (
             <div className="flex items-center gap-0.5 shrink-0">
-              <span className="text-[10px] font-semibold text-primary px-1">{selectedProfiles.size}</span>
+              <span className="text-xs font-semibold text-primary px-1">{selectedProfiles.size}</span>
               <button onClick={onBatchScore} disabled={scoringInProgress} className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-40" title="Scorer">
                 {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
               </button>
@@ -513,7 +513,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               id="select-all"
               className="h-3.5 w-3.5"
             />
-            <label htmlFor="select-all" className="text-[10px] text-muted-foreground cursor-pointer">Tout</label>
+            <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">Tout</label>
           </div>
         </div>
       )}
@@ -531,7 +531,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <button
                 key={value}
                 onClick={() => onSetStatusFilter(value)}
-                className={`h-5 px-1.5 text-[9px] shrink-0 transition-colors ${
+                className={`h-5 px-1.5 text-xs shrink-0 transition-colors ${
                   statusFilter === value
                     ? 'bg-secondary text-secondary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
@@ -542,7 +542,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             ))}
           </div>
           <Select value={scoredSortBy} onValueChange={(v) => onSetScoredSortBy(v as ScoredSortBy)}>
-            <SelectTrigger className="h-5 w-auto min-w-[120px] max-w-[160px] text-[9px] border-border bg-muted/30 gap-1 px-1.5">
+            <SelectTrigger className="h-5 w-auto min-w-[120px] max-w-[160px] text-xs border-border bg-muted/30 gap-1 px-1.5">
               <ArrowUpDown className="w-2.5 h-2.5 shrink-0" />
               <SelectValue />
             </SelectTrigger>
@@ -623,11 +623,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                           profils trouvés
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-muted-foreground/70">
+                          <span className="text-xs text-muted-foreground/70">
                             {displayResults.length} affichés sur {total}
                           </span>
                           {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-500">
+                            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-500">
                               <CheckCircle2 className="w-3 h-3" />
                               traité
                             </span>
@@ -643,7 +643,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         size="sm"
                         onClick={() => onRefineSearch('expand')}
                         disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-[11px] font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                       >
                         {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
                         Élargir
@@ -653,7 +653,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         size="sm"
                         onClick={() => onRefineSearch('narrow')}
                         disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-[11px] font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                       >
                         {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
                         Affiner
@@ -676,7 +676,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                           />
                         ))}
                       </div>
-                      <span className="text-[10px] text-muted-foreground/60 tabular-nums whitespace-nowrap">
+                      <span className="text-xs text-muted-foreground/60 tabular-nums whitespace-nowrap">
                         {Math.round((results.length / total) * 100)}%
                       </span>
                     </div>
@@ -707,7 +707,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   className="border border-brutal-accent/30 bg-brutal-accent/5 p-3 flex items-start gap-2.5"
                 >
                   <span className="text-sm shrink-0">🎯</span>
-                  <p className="text-[11px] text-foreground/80 leading-relaxed flex-1">
+                  <p className="text-xs text-foreground/80 leading-relaxed flex-1">
                     Sélectionnez les profils intéressants et cliquez <strong className="text-foreground">Score</strong> pour que l'IA les évalue selon votre brief.
                   </p>
                   <button
@@ -728,7 +728,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
                 >
                   <span className="text-sm shrink-0">🟢</span>
-                  <p className="text-[11px] text-foreground/80 leading-relaxed flex-1">
+                  <p className="text-xs text-foreground/80 leading-relaxed flex-1">
                     Les profils sont scorés ! Les <strong className="text-accent">Go</strong> sont les meilleurs matchs. Envoyez-leur un message ou ajoutez-les au pipeline.
                   </p>
                   <button
@@ -825,7 +825,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         Lot suivant
                         <ChevronRight className="w-4 h-4" />
                       </Button>
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {results.length} chargés sur {total?.toLocaleString() || '?'}
                       </span>
                     </>

@@ -71,7 +71,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
             }
           </span>
           {doneCount > 0 && (
-            <span className="text-[10px] text-muted-foreground/60 shrink-0 tabular-nums font-mono">
+            <span className="text-xs text-muted-foreground/60 shrink-0 tabular-nums font-mono">
               {doneCount}/{steps.length}
             </span>
           )}
@@ -104,7 +104,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
               >
                 <PhaseCircle status={phase.status} />
                 <span className={cn(
-                  "text-[11px] leading-relaxed",
+                  "text-xs leading-relaxed",
                   phase.status === 'active'
                     ? "text-foreground font-medium"
                     : phase.status === 'done'

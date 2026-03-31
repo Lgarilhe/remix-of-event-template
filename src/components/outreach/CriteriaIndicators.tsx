@@ -43,10 +43,10 @@ export const CriteriaIndicators: React.FC<CriteriaIndicatorsProps> = ({ dimensio
           <Tooltip key={key}>
             <TooltipTrigger asChild>
               <span className={cn(
-                "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium border rounded-none cursor-help",
+                "inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border rounded-none cursor-help",
                 indicator.bg
               )}>
-                <span className="text-[10px]">{indicator.emoji}</span>
+                <span className="text-xs">{indicator.emoji}</span>
                 <span className={indicator.color}>{config.shortLabel}</span>
                 <span className={cn("font-bold", indicator.color)}>{dim.score}</span>
               </span>
@@ -59,7 +59,7 @@ export const CriteriaIndicators: React.FC<CriteriaIndicatorsProps> = ({ dimensio
         );
       })}
       {compact && entries.length > 4 && (
-        <span className="text-[10px] text-muted-foreground">+{entries.length - 4}</span>
+        <span className="text-xs text-muted-foreground">+{entries.length - 4}</span>
       )}
     </div>
   );

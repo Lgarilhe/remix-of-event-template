@@ -181,7 +181,7 @@ export default function CandidatePortal() {
               </div>
             )}
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
                 Portail candidat
               </span>
               {data.company_name && (
@@ -207,8 +207,8 @@ export default function CandidatePortal() {
           {/* Progress bar */}
           <div className="mt-5">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Progression</span>
-              <span className="text-[10px] font-bold text-foreground">{progressPercent}%</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Progression</span>
+              <span className="text-xs font-bold text-foreground">{progressPercent}%</span>
             </div>
             <div className="w-full h-2 bg-muted/30 border border-foreground/10">
               <motion.div 
@@ -226,17 +226,17 @@ export default function CandidatePortal() {
           className="grid grid-cols-2 gap-3 mb-6"
         >
           <div className="border border-foreground/20 bg-background p-4">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">Étape actuelle depuis</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Étape actuelle depuis</span>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-black text-foreground">{daysSinceStageUpdate}</span>
               <span className="text-xs text-muted-foreground">jour{daysSinceStageUpdate > 1 ? 's' : ''}</span>
             </div>
-            <span className="text-[10px] text-muted-foreground mt-1 block">
+            <span className="text-xs text-muted-foreground mt-1 block">
               {stageUpdatedDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
             </span>
           </div>
           <div className="border border-foreground/20 bg-background p-4">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">Prochaine étape dans</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Prochaine étape dans</span>
             {daysRemaining !== null ? (
               <>
                 <div className="flex items-baseline gap-1.5">
@@ -245,7 +245,7 @@ export default function CandidatePortal() {
                   </span>
                   <span className="text-xs text-muted-foreground">jour{daysRemaining > 1 ? 's' : ''}</span>
                 </div>
-                <span className="text-[10px] text-muted-foreground mt-1 block">estimation moyenne</span>
+                <span className="text-xs text-muted-foreground mt-1 block">estimation moyenne</span>
               </>
             ) : (
               <span className="text-sm text-muted-foreground">À déterminer</span>
@@ -259,7 +259,7 @@ export default function CandidatePortal() {
           className="border border-foreground bg-background mb-6"
         >
           <div className="px-4 py-2.5 border-b border-foreground bg-foreground text-background">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
+            <span className="text-xs font-bold uppercase tracking-wider">
               Avancement du processus
             </span>
           </div>
@@ -316,7 +316,7 @@ export default function CandidatePortal() {
                       </span>
                     )}
                     <p className={cn(
-                      "text-[11px] mt-0.5 leading-relaxed",
+                      "text-xs mt-0.5 leading-relaxed",
                       isFuture ? "text-muted-foreground/50" : "text-muted-foreground"
                     )}>
                       {stage.description}
@@ -336,7 +336,7 @@ export default function CandidatePortal() {
           >
             <div className="flex items-center gap-2 mb-2">
               <ArrowRight className="w-4 h-4 text-foreground" />
-              <span className="text-[11px] font-bold uppercase tracking-wider">Prochaines étapes</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Prochaines étapes</span>
             </div>
             <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{data.next_steps}</p>
           </motion.div>
@@ -349,7 +349,7 @@ export default function CandidatePortal() {
             className="border border-foreground bg-background mb-6"
           >
             <div className="px-4 py-2.5 border-b border-foreground">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5" /> Documents & Ressources
               </span>
             </div>
@@ -363,7 +363,7 @@ export default function CandidatePortal() {
                     <Download className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                     <div>
                       <span className="text-sm font-medium text-foreground">{doc.name}</span>
-                      {doc.type && <span className="ml-2 text-[9px] px-1.5 py-0.5 bg-muted/20 text-muted-foreground font-medium uppercase">{doc.type}</span>}
+                      {doc.type && <span className="ml-2 text-xs px-1.5 py-0.5 bg-muted/20 text-muted-foreground font-medium uppercase">{doc.type}</span>}
                     </div>
                   </div>
                   <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
@@ -379,7 +379,7 @@ export default function CandidatePortal() {
           className="border border-foreground bg-background mb-6"
         >
           <div className="px-4 py-2.5 border-b border-foreground">
-            <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
               <HelpCircle className="w-3.5 h-3.5" /> Questions fréquentes
             </span>
           </div>
@@ -393,7 +393,7 @@ export default function CandidatePortal() {
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.45 }}
           className="border border-foreground bg-foreground text-background p-5 mb-8"
         >
-          <span className="text-[10px] font-bold uppercase tracking-wider text-background/60 block mb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-background/60 block mb-3">
             Votre recruteur
           </span>
           <div className="flex items-center gap-4">
@@ -404,7 +404,7 @@ export default function CandidatePortal() {
               <p className="font-bold text-background text-base">
                 {data.recruiter_name || 'Votre recruteur dédié'}
               </p>
-              <p className="text-[11px] text-background/60 mt-0.5">
+              <p className="text-xs text-background/60 mt-0.5">
                 N'hésitez pas à me contacter pour toute question
               </p>
             </div>
@@ -432,7 +432,7 @@ export default function CandidatePortal() {
         </motion.div>
 
         {/* ===== FOOTER ===== */}
-        <p className="text-center text-[10px] text-muted-foreground uppercase tracking-wider">
+        <p className="text-center text-xs text-muted-foreground uppercase tracking-wider">
           Dernière mise à jour : {new Date(data.updated_at).toLocaleDateString('fr-FR', {
             day: 'numeric', month: 'long', year: 'numeric',
           })}

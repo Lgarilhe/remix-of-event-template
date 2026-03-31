@@ -231,7 +231,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '300ms' }} />
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '600ms' }} />
             </div>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Scoring…
             </span>
           </div>
@@ -290,7 +290,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </AvatarFallback>
             </Avatar>
             {networkDistance && networkDistance <= 3 && (
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-background border-2 border-primary rounded-full flex items-center justify-center text-[10px] font-bold text-primary">
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-background border-2 border-primary rounded-full flex items-center justify-center text-xs font-bold text-primary">
                 {networkDistance}°
               </span>
             )}
@@ -320,7 +320,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     {fullName || 'Profil LinkedIn'}
                   </h3>
                   {(profile as any)._fromPool && (
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-muted-foreground/30 text-muted-foreground/70 gap-0.5 shrink-0">
+                    <Badge variant="outline" className="text-xs px-1.5 py-0 border-muted-foreground/30 text-muted-foreground/70 gap-0.5 shrink-0">
                       🔄 Pool
                     </Badge>
                   )}
@@ -367,7 +367,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             </p>
 
             {/* Row 3: Company + Location + Experience + Connections */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-[10px] sm:text-xs text-muted-foreground">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-xs sm:text-xs text-muted-foreground">
               {currentCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   {profileData.currentJob?.logo ? (
@@ -443,7 +443,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     </div>
                   ))}
                   {(otherCurrentJobs.length + pastJobs.length) > 2 && (
-                    <span className="text-[10px] text-primary font-medium">
+                    <span className="text-xs text-primary font-medium">
                       +{otherCurrentJobs.length + pastJobs.length - 2} autres
                     </span>
                   )}
@@ -455,12 +455,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             {skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2 overflow-hidden">
                 {skills.slice(0, 4).map((skill: any, index: number) => (
-                  <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground font-normal">
+                  <Badge key={index} variant="secondary" className="text-xs px-1.5 py-0 bg-muted text-muted-foreground font-normal">
                     {skill.name || skill}
                   </Badge>
                 ))}
                 {skills.length > 4 && (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary font-medium">
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0 bg-primary/10 text-primary font-medium">
                     +{skills.length - 4}
                   </Badge>
                 )}
@@ -499,7 +499,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
             {/* "Voir détails" */}
             <div
-              className="mt-1.5 text-[10px] text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-0.5"
+              className="mt-1.5 text-xs text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-0.5"
               onClick={(e) => { e.stopPropagation(); onOpenDetail?.(); }}
             >
               <ExternalLink className="w-3 h-3" />

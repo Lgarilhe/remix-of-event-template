@@ -191,7 +191,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
         <button
           onClick={() => setActiveSection('suggestions')}
           className={cn(
-            "flex items-center gap-1.5 px-4 py-2 text-[11px] font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
+            "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
             activeSection === 'suggestions'
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -200,7 +200,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           <Sparkles className="w-3.5 h-3.5" />
           Réponses
           {positive.length + negative.length > 0 && (
-            <Badge variant="outline" className="text-[9px] rounded-none h-4 px-1 ml-0.5">
+            <Badge variant="outline" className="text-xs rounded-none h-4 px-1 ml-0.5">
               {positive.length + negative.length}
             </Badge>
           )}
@@ -208,7 +208,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
         <button
           onClick={() => setActiveSection('jobs')}
           className={cn(
-            "flex items-center gap-1.5 px-4 py-2 text-[11px] font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
+            "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
             activeSection === 'jobs'
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -217,7 +217,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           <Search className="w-3.5 h-3.5" />
           Postes
           {jobMatches.length > 0 && (
-            <Badge variant="outline" className="text-[9px] rounded-none h-4 px-1 ml-0.5">
+            <Badge variant="outline" className="text-xs rounded-none h-4 px-1 ml-0.5">
               {jobMatches.length}
             </Badge>
           )}
@@ -270,7 +270,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
               <div className="space-y-3">
                 {positive.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 text-emerald-600">
+                    <p className="text-xs font-bold uppercase tracking-wide flex items-center gap-1 text-emerald-600">
                       <ThumbsUp className="w-3 h-3" /> Positives
                     </p>
                     {positive.map((s, i) => (
@@ -289,7 +289,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
 
                 {negative.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 text-destructive">
+                    <p className="text-xs font-bold uppercase tracking-wide flex items-center gap-1 text-destructive">
                       <ThumbsDown className="w-3 h-3" /> Clôture
                     </p>
                     {negative.map((s, i) => (
@@ -308,7 +308,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
 
                 {qualQuestions.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 text-amber-600">
+                    <p className="text-xs font-bold uppercase tracking-wide flex items-center gap-1 text-amber-600">
                       <HelpCircle className="w-3 h-3" /> Questions à poser
                     </p>
                     {qualQuestions.map((q, i) => (
@@ -357,17 +357,17 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-xs font-bold truncate">{job.jobTitle}</p>
-                          <Badge variant="outline" className="text-[9px] rounded-none shrink-0">
+                          <Badge variant="outline" className="text-xs rounded-none shrink-0">
                             {job.recommendation === 'go' ? '✓' : job.recommendation === 'maybe' ? '?' : '✗'}
                           </Badge>
                         </div>
-                        {job.clientName && <p className="text-[10px] text-muted-foreground">{job.clientName}</p>}
+                        {job.clientName && <p className="text-xs text-muted-foreground">{job.clientName}</p>}
                         <div className="flex flex-wrap gap-1 mt-1">
                           {job.matchingSkills.slice(0, 3).map((s, si) => (
-                            <span key={si} className="text-[9px] px-1 py-0.5 bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">✓ {s}</span>
+                            <span key={si} className="text-xs px-1 py-0.5 bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">✓ {s}</span>
                           ))}
                           {job.missingSkills.slice(0, 2).map((s, si) => (
-                            <span key={si} className="text-[9px] px-1 py-0.5 bg-destructive/10 text-destructive border border-destructive/20">✗ {s}</span>
+                            <span key={si} className="text-xs px-1 py-0.5 bg-destructive/10 text-destructive border border-destructive/20">✗ {s}</span>
                           ))}
                         </div>
                       </div>
@@ -404,7 +404,7 @@ const SuggestionItem: React.FC<{
   >
     <div className="flex-1 min-w-0">
       <p className="text-xs leading-relaxed">{suggestion.text}</p>
-      <p className="text-[10px] text-muted-foreground mt-0.5">{suggestion.intent_match}</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{suggestion.intent_match}</p>
     </div>
     <Button
       variant="ghost"

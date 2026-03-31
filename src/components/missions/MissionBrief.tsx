@@ -127,7 +127,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
           <button
             onClick={() => setShowVoice(!showVoice)}
             className={cn(
-              "flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 transition-all",
+              "flex items-center gap-1.5 h-[30px] px-3 text-xs font-black uppercase tracking-wider border-2 transition-all",
               showVoice
                 ? "bg-foreground text-background border-foreground"
                 : "bg-background text-muted-foreground border-foreground/30 hover:border-foreground hover:text-foreground"
@@ -170,7 +170,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
           onClick={handleAnalyze}
           disabled={isAnalyzing}
           className={cn(
-            "relative overflow-hidden flex items-center gap-2 h-[36px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground group",
+            "relative overflow-hidden flex items-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground group",
             isAnalyzing ? "bg-muted text-muted-foreground" : "bg-foreground text-background"
           )}
         >

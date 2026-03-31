@@ -152,13 +152,13 @@ export const MissionCopilot = ({ project, activeTab, onTabChange }: MissionCopil
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-foreground bg-foreground text-background px-4 py-2.5">
       <div className="max-w-[1600px] mx-auto flex items-center gap-3">
         <span className="text-xs shrink-0">{suggestion.icon}</span>
-        <span className="text-[10px] font-medium uppercase tracking-wider flex-1 min-w-0 truncate">
+        <span className="text-xs font-medium uppercase tracking-wider flex-1 min-w-0 truncate">
           {suggestion.message}
         </span>
         {suggestion.action && (
           <button
             onClick={() => onTabChange(suggestion.action!.tab)}
-            className="shrink-0 h-[26px] px-3 text-[10px] font-medium uppercase tracking-wider bg-background text-foreground border border-background/30 hover:bg-background/90 transition-colors"
+            className="shrink-0 h-[26px] px-3 text-xs font-medium uppercase tracking-wider bg-background text-foreground border border-background/30 hover:bg-background/90 transition-colors"
           >
             {suggestion.action.label}
           </button>

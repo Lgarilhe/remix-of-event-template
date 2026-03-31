@@ -55,7 +55,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
              <Badge 
               key={index} 
               variant="outline" 
-              className="text-[10px] h-5 px-1.5 bg-background/60 text-foreground/70 border-foreground font-normal"
+              className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-foreground font-normal"
             >
               {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
             </Badge>
@@ -63,7 +63,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
           {activeFiltersPreview.length > 5 && (
             <Badge 
               variant="outline" 
-              className="text-[10px] h-5 px-1.5 bg-foreground/5 text-foreground border-foreground/20 font-normal"
+              className="text-xs h-5 px-1.5 bg-foreground/5 text-foreground border-foreground/20 font-normal"
             >
               +{activeFiltersPreview.length - 5}
             </Badge>
@@ -100,9 +100,9 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   <div className={`border border-foreground bg-muted/30 p-2 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
-      <span className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
+      <span className="text-xs font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
       {badge !== undefined && badge > 0 && (
-        <Badge variant="outline" className="h-4 px-1 text-[10px] bg-foreground/10 text-foreground border-foreground/20">{badge}</Badge>
+        <Badge variant="outline" className="h-4 px-1 text-xs bg-foreground/10 text-foreground border-foreground/20">{badge}</Badge>
       )}
       {unsupported && (
         <TooltipProvider delayDuration={200}>
@@ -110,7 +110,7 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1 ml-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <Badge variant="outline" className="h-4 px-1 text-[9px] border-amber-300 text-amber-600 bg-amber-50">
+                <Badge variant="outline" className="h-4 px-1 text-xs border-amber-300 text-amber-600 bg-amber-50">
                   Non supporté
                 </Badge>
               </span>
@@ -237,7 +237,7 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
               value={item.priority}
               onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
             >
-              <SelectTrigger className={`h-6 w-24 text-[10px] border-0 ${priorityConfig?.color}`}>
+              <SelectTrigger className={`h-6 w-24 text-xs border-0 ${priorityConfig?.color}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -306,7 +306,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 value={item.priority}
                 onValueChange={(val) => onUpdatePriority(item.id, val as FilterPriority)}
               >
-                <SelectTrigger className={`h-7 flex-1 text-[11px] border-0 shadow-sm ${priorityConfig?.color}`}>
+                <SelectTrigger className={`h-7 flex-1 text-xs border-0 shadow-sm ${priorityConfig?.color}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
@@ -325,7 +325,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 value={item.scope}
                 onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
               >
-                <SelectTrigger className="h-7 flex-1 text-[11px] border border-foreground bg-background">
+                <SelectTrigger className="h-7 flex-1 text-xs border border-foreground bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
@@ -394,7 +394,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                 {selectedLabels.slice(0, 2).join(', ')}
               </span>
               {selected.length > 2 && (
-                <Badge variant="secondary" className="h-5 px-1 text-[10px] shrink-0">
+                <Badge variant="secondary" className="h-5 px-1 text-xs shrink-0">
                   +{selected.length - 2}
                 </Badge>
               )}

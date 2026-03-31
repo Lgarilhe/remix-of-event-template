@@ -308,7 +308,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
+        <span className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
           01 — Votre société
         </span>
         <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Parlez-nous de vous</h2>
@@ -364,7 +364,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   className="flex items-center gap-2"
                 >
                   <div
-                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold border transition-all duration-300 ${
+                    className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
                       s.done
                         ? 'border-transparent text-foreground'
                         : 'border-foreground/20 text-muted-foreground'
@@ -490,20 +490,20 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-lg leading-tight">{company.name}</h3>
                   <span
-                    className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
                     style={{ background: 'hsl(var(--landing-accent-yellow))' }}
                   >
                     Enrichi
                   </span>
                   {(company.suborganizations?.length || 0) > 0 && (
-                    <span className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground/30 bg-muted flex items-center gap-1">
+                    <span className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground/30 bg-muted flex items-center gap-1">
                       <GitBranch className="w-3 h-3" />
                       {company.suborganizations!.length} filiale{company.suborganizations!.length > 1 ? 's' : ''}
                     </span>
                   )}
                   {company.intentStrength != null && (
                     <span
-                      className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border flex items-center gap-1"
+                      className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border flex items-center gap-1"
                       style={{
                         borderColor: company.intentStrength > 50 ? 'hsl(142, 71%, 45%)' : 'hsl(32, 95%, 44%)',
                         backgroundColor: company.intentStrength > 50 ? 'hsl(142, 71%, 45%, 0.12)' : 'hsl(32, 95%, 44%, 0.12)',
@@ -631,10 +631,10 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
                     <Icon className="w-3.5 h-3.5" style={{ color: config.accent }} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-foreground uppercase tracking-wide leading-snug mb-0.5">
+                    <p className="text-xs font-bold text-foreground uppercase tracking-wide leading-snug mb-0.5">
                       {insight.title}
                     </p>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
                       {insight.body}
                     </p>
                   </div>
@@ -745,7 +745,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
           <div className="space-y-2 border-2 border-foreground/10 p-3" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
             {headcountEntries.map(([dept, count]) => (
               <div key={dept} className="space-y-0.5">
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between text-xs">
                   <span className="font-medium capitalize">{dept.replace(/_/g, ' ')}</span>
                   <span className="font-bold tabular-nums">{count}</span>
                 </div>
@@ -783,19 +783,19 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                 <div className="pb-3 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     {ev.type && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border border-foreground/20 bg-muted">
+                      <span className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 border border-foreground/20 bg-muted">
                         {ev.type}
                       </span>
                     )}
                     {ev.amount && (
-                      <span className="text-[11px] font-bold text-foreground">{formatAmount(ev.amount)}</span>
+                      <span className="text-xs font-bold text-foreground">{formatAmount(ev.amount)}</span>
                     )}
                   </div>
                   {ev.date && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{formatMonthYear(ev.date)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{formatMonthYear(ev.date)}</p>
                   )}
                   {ev.investors && ev.investors.length > 0 && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {ev.investors.join(', ')}
                     </p>
                   )}
@@ -824,10 +824,10 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
               >
                 <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium text-foreground leading-snug line-clamp-2 group-hover:underline">
+                  <p className="text-xs font-medium text-foreground leading-snug line-clamp-2 group-hover:underline">
                     {article.title}
                   </p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                     {article.source && <span>{article.source}</span>}
                     {article.published_at && <span>· {relativeDate(article.published_at)}</span>}
                   </div>
@@ -858,7 +858,7 @@ const SourceBadge: React.FC<{ source: string }> = ({ source }) => {
   const isWTTJ = lower.includes('wttj') || lower.includes('welcome');
 
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-mono shrink-0">
+    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-muted text-muted-foreground font-mono shrink-0">
       {isLinkedIn && <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />}
       {isWTTJ && <img src={WTTJ_LOGO} alt="WTTJ" className="w-3 h-3 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = WTTJ_FALLBACK; }} />}
       {source}
@@ -882,7 +882,7 @@ const TabRoles: React.FC<{
         </p>
       )}
       {uniqueRoles.length < roles.length && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {roles.length - uniqueRoles.length} doublon{roles.length - uniqueRoles.length > 1 ? 's' : ''} masqué{roles.length - uniqueRoles.length > 1 ? 's' : ''}
         </p>
       )}

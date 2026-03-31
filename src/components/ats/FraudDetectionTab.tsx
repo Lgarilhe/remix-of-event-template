@@ -65,7 +65,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
         <p className="text-sm font-medium text-foreground">Données de profil indisponibles</p>
-        <p className="text-[11px] text-muted-foreground mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           L'analyse nécessite les données LinkedIn enrichies du candidat.
         </p>
       </div>
@@ -77,13 +77,13 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <Shield className="w-10 h-10 text-muted-foreground mb-3" />
         <p className="text-sm font-medium text-foreground">Détection de fraude IA</p>
-        <p className="text-[11px] text-muted-foreground mt-1 max-w-xs">
+        <p className="text-xs text-muted-foreground mt-1 max-w-xs">
           Analyse automatique du profil pour détecter les incohérences : dates, titres gonflés, diplômes douteux.
         </p>
         <div className="flex items-center gap-2 mt-4">
           <button
             onClick={runAnalysis}
-            className="relative overflow-hidden h-[34px] px-6 border border-foreground text-foreground text-[11px] font-medium uppercase tracking-wider group"
+            className="relative overflow-hidden h-[34px] px-6 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10">Lancer l'analyse</span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -91,7 +91,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
           <CreditCostBadge actionId="screen_candidate" />
           <ModelPicker actionId="screen_candidate" value={selectedModel} onChange={setSelectedModel} compact />
         </div>
-        {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
+        {error && <p className="text-xs text-destructive mt-2">{error}</p>}
       </div>
     );
   }
@@ -100,7 +100,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-foreground mb-3" />
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Analyse en cours…</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">Analyse en cours…</p>
       </div>
     );
   }
@@ -125,9 +125,9 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
             <span className={cn("text-3xl font-black tabular-nums", scoreColor)}>
               {result.trust_score}
             </span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">/100 confiance</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">/100 confiance</span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {result.anomalies.length === 0
               ? 'Aucune anomalie détectée — profil cohérent.'
               : `${result.anomalies.length} anomalie${result.anomalies.length > 1 ? 's' : ''} détectée${result.anomalies.length > 1 ? 's' : ''}`
@@ -137,7 +137,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
         <button
           onClick={runAnalysis}
           disabled={loading}
-          className="text-[9px] text-muted-foreground hover:text-foreground uppercase tracking-wider"
+          className="text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider"
         >
           Relancer
         </button>
@@ -156,7 +156,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
                   <CatIcon className={cn("w-4 h-4 mt-0.5 shrink-0", cat.color)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                         {cat.label}
                       </span>
                       <span className={cn("text-[8px] px-1.5 py-0.5 font-medium uppercase tracking-wider", sev.bg)}>
@@ -165,7 +165,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
                     </div>
                     <p className="text-sm font-medium text-foreground">{anomaly.description}</p>
                     {anomaly.detail && (
-                      <p className="text-[11px] text-muted-foreground mt-1">{anomaly.detail}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{anomaly.detail}</p>
                     )}
                   </div>
                 </div>

@@ -159,7 +159,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                   <h3 className="font-semibold text-foreground text-sm sm:text-[15px] leading-tight break-words sm:truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
                      <Badge variant="outline" className={cn(
-                      "text-[10px] shrink-0 font-bold tabular-nums px-2",
+                      "text-xs shrink-0 font-bold tabular-nums px-2",
                       prospect.score >= 80 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" :
                       prospect.score >= 60 ? "bg-amber-500/10 text-amber-600 border-amber-500/30" :
                       "bg-muted text-muted-foreground border-border/50"
@@ -168,7 +168,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                     </Badge>
                   )}
                   {prospect.source && (
-                     <Badge className="text-[9px] border gap-0.5 px-1.5 py-0 bg-muted text-muted-foreground border-border/50">
+                     <Badge className="text-xs border gap-0.5 px-1.5 py-0 bg-muted text-muted-foreground border-border/50">
                       🔍 Base
                     </Badge>
                   )}
@@ -201,17 +201,17 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             {(signals?.job_change || signals?.recently_funded || signals?.hiring) && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {signals?.job_change && (
-                  <Badge className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-500/20 border gap-1 px-2 py-0.5">
+                  <Badge className="text-xs bg-blue-500/10 text-blue-600 border-blue-500/20 border gap-1 px-2 py-0.5">
                     <Zap className="w-2.5 h-2.5" /> Nouveau poste
                   </Badge>
                 )}
                 {signals?.recently_funded && (
-                  <Badge className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border gap-1 px-2 py-0.5">
+                  <Badge className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-500/20 border gap-1 px-2 py-0.5">
                     <TrendingUp className="w-2.5 h-2.5" /> Levée récente
                   </Badge>
                 )}
                 {signals?.hiring && (
-                  <Badge className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 border gap-1 px-2 py-0.5">
+                  <Badge className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/20 border gap-1 px-2 py-0.5">
                     📢 Recrute
                   </Badge>
                 )}
@@ -219,7 +219,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             )}
 
             {/* Current position */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-3 sm:gap-x-4 gap-y-0.5 mt-2 text-[11px] sm:text-xs text-muted-foreground">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-3 sm:gap-x-4 gap-y-0.5 mt-2 text-xs sm:text-xs text-muted-foreground">
               {displayCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   <CompanyLogo companyName={prospect.job_company_name} website={prospect.job_company_website} />
@@ -244,7 +244,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             </div>
 
             {/* Company details */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
               {prospect.job_company_industry && (<span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{prospect.job_company_industry}</span>)}
               {prospect.job_company_size && (<span className="flex items-center gap-1"><Users className="w-3 h-3" />{prospect.job_company_size} emp.</span>)}
               {prospect.job_company_website && (
@@ -260,16 +260,16 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
             {prospect.skills && prospect.skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2.5">
                 {prospect.skills.slice(0, 4).map((skill, i) => (
-                  <Badge key={i} variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5 bg-muted/30">{skill}</Badge>
+                  <Badge key={i} variant="outline" className="text-xs border-border/50 font-normal px-2 py-0.5 bg-muted/30">{skill}</Badge>
                 ))}
                 {prospect.skills.length > 4 && (
-                  <Badge variant="outline" className="text-[9px] border-border/50 font-normal px-2 py-0.5">+{prospect.skills.length - 4}</Badge>
+                  <Badge variant="outline" className="text-xs border-border/50 font-normal px-2 py-0.5">+{prospect.skills.length - 4}</Badge>
                 )}
               </div>
             )}
 
             {/* Contact */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs">
               {prospect.emails?.[0] && (
                 <button onClick={() => copyEmail(prospect.emails![0])}
                   className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors group/email">
@@ -288,7 +288,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
         {/* Expand toggle */}
         {((prospect.experience && prospect.experience.length > 0) || (prospect.education && prospect.education.length > 0)) && (
           <button onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2.5 ml-0 sm:ml-[60px]">
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2.5 ml-0 sm:ml-[60px]">
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             {expanded ? 'Moins' : 'Voir détails'}
           </button>
@@ -303,7 +303,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
         >
           {prospect.experience && prospect.experience.length > 0 && (
             <div>
-              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                 <Briefcase className="w-3 h-3" /> Expérience
               </h4>
               <div className="space-y-1.5">
@@ -314,7 +314,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                       <span className="font-medium text-foreground">{exp.title}</span>
                       {exp.company && <span className="text-muted-foreground"> · {exp.company}</span>}
                       {(exp.start_date || exp.end_date) && (
-                        <span className="text-muted-foreground/50 text-[10px] ml-1">
+                        <span className="text-muted-foreground/50 text-xs ml-1">
                           {formatDate(exp.start_date)} → {exp.end_date ? formatDate(exp.end_date) : 'Présent'}
                         </span>
                       )}
@@ -326,7 +326,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
           )}
           {prospect.education && prospect.education.length > 0 && (
             <div>
-              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                 <GraduationCap className="w-3 h-3" /> Formation
               </h4>
               <div className="space-y-1.5">
@@ -365,7 +365,7 @@ export function ProspectResults({ results, searching }: ProspectResultsProps) {
           <div>
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Résultats</h3>
             {results.length > 0 && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 <span className="font-semibold text-foreground">{results.length}</span> prospect{results.length > 1 ? 's' : ''}
               </p>
             )}

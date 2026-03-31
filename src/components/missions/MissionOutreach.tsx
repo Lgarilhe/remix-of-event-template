@@ -127,11 +127,11 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compte:</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Compte:</span>
           <select
             value={selectedAccount || ''}
             onChange={(e) => setSelectedAccount(e.target.value || null)}
-            className="h-[30px] px-2 text-[10px] uppercase tracking-wider border border-foreground bg-background text-foreground font-medium"
+            className="h-[30px] px-2 text-xs uppercase tracking-wider border border-foreground bg-background text-foreground font-medium"
           >
             {accounts.map(a => (
               <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
@@ -143,17 +143,17 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
       {/* Enrollment stats */}
       {enrollmentStats.total > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 border-b border-foreground/10">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">
             {enrollmentStats.total} inscrits
           </span>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">
             {enrollmentStats.active} en cours
           </span>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">
             {enrollmentStats.replied} répondu
           </span>
           {enrollmentStats.replied > 0 && (
-            <span className="text-[10px] font-bold text-foreground uppercase tracking-wider">
+            <span className="text-xs font-bold text-foreground uppercase tracking-wider">
               {Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)}% taux de réponse
             </span>
           )}
@@ -167,7 +167,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
             key={sub.value}
             onClick={() => setOutreachTab(sub.value as 'sequences' | 'invitations')}
             className={cn(
-              "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+              "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
               idx > 0 && "border-l-0",
               outreachTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
             )}

@@ -266,7 +266,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
         <div className="border-b border-foreground bg-brutal-accent/10 p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wider text-foreground mb-0.5">
+              <p className="text-xs font-black uppercase tracking-wider text-foreground mb-0.5">
                 Brief rempli ({briefCompletion.filled}/{briefCompletion.total} champs)
               </p>
               <p className="text-xs text-muted-foreground">
@@ -277,7 +277,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
               onClick={handleGenerateFilters}
               disabled={isGeneratingFilters}
               className={cn(
-                "shrink-0 flex items-center gap-2 h-[36px] px-5 text-[10px] font-bold uppercase tracking-wider border border-foreground transition-colors",
+                "shrink-0 flex items-center gap-2 h-[36px] px-5 text-xs font-bold uppercase tracking-wider border border-foreground transition-colors",
                 isGeneratingFilters
                   ? "bg-muted text-muted-foreground"
                   : "bg-foreground text-background hover:bg-foreground/90"
@@ -295,7 +295,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       {/* AI Suggestions chips */}
       {hasSuggestions && (
         <div className="border-b border-foreground/10 px-4 py-3 space-y-2">
-          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">
             Affiner les filtres
           </p>
           {([
@@ -306,14 +306,14 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
             { key: 'alt_certifications' as const, label: 'Certifications', items: suggestions!.alt_certifications },
           ]).filter(g => g.items.length > 0).map(group => (
             <div key={group.key} className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70 mr-1 shrink-0">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70 mr-1 shrink-0">
                 {group.label}:
               </span>
               {group.items.map(item => (
                 <button
                   key={item}
                   onClick={() => handleAddSuggestion(group.key, item)}
-                  className="group flex items-center gap-1 h-[24px] px-2 text-[10px] font-medium border border-foreground/20 bg-background text-foreground hover:border-foreground hover:bg-foreground hover:text-background transition-colors"
+                  className="group flex items-center gap-1 h-[24px] px-2 text-xs font-medium border border-foreground/20 bg-background text-foreground hover:border-foreground hover:bg-foreground hover:text-background transition-colors"
                 >
                   <Plus className="w-2.5 h-2.5 text-brutal-accent group-hover:text-background" />
                   {item}
@@ -333,11 +333,11 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compte:</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Compte:</span>
           <select
             value={selectedAccount || ''}
             onChange={(e) => setSelectedAccount(e.target.value || null)}
-            className="h-[30px] px-2 text-[10px] uppercase tracking-wider border border-foreground bg-background text-foreground font-medium"
+            className="h-[30px] px-2 text-xs uppercase tracking-wider border border-foreground bg-background text-foreground font-medium"
           >
             {accounts.map(a => (
               <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
@@ -354,14 +354,14 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
               key={sub.value}
               onClick={() => setSourcingTab(sub.value as 'linkedin' | 'database')}
               className={cn(
-                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-[10px] font-bold uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground transition-colors group shrink-0",
                 idx > 0 && "border-l-0",
                 sourcingTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
               )}
             >
               <span className="relative z-10">{sub.icon}</span>
               <span className="relative z-10">{sub.label}</span>
-              {sub.badge && <span className="relative z-10 text-[9px]">{sub.badge}</span>}
+              {sub.badge && <span className="relative z-10 text-xs">{sub.badge}</span>}
               {sourcingTab !== sub.value && (
                 <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               )}
@@ -369,7 +369,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           ))}
         </div>
         {/* Contextual description */}
-        <p className="text-[10px] text-muted-foreground mt-1.5 mb-1">
+        <p className="text-xs text-muted-foreground mt-1.5 mb-1">
           {sourcingTab === 'linkedin'
             ? accounts.length > 0
               ? 'Recherche directe via votre compte LinkedIn. Nécessite une connexion active.'

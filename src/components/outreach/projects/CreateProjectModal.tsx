@@ -524,7 +524,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
               className={cn(
-                "flex-1 h-[42px] text-[10px] sm:text-xs font-medium uppercase tracking-wider transition-colors border-r border-foreground last:border-r-0",
+                "flex-1 h-[42px] text-xs sm:text-xs font-medium uppercase tracking-wider transition-colors border-r border-foreground last:border-r-0",
                 activeTab === tab.value
                   ? "bg-foreground text-background"
                   : "bg-background text-foreground hover:bg-muted"
@@ -572,7 +572,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         autoFocus
                       />
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">
                           {briefText.length > 0 ? `${briefText.length} caractères` : 'Min 20 caractères'}
                         </span>
                       </div>
@@ -590,7 +590,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         </p>
                         <button
                           onClick={handleAcceptUrlSuggestion}
-                          className="shrink-0 h-[28px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+                          className="shrink-0 h-[28px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
                         >
                           Importer
                         </button>
@@ -625,7 +625,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     {/* Nom + Client */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nom de la mission</Label>
+                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nom de la mission</Label>
                         <Input
                           value={briefName}
                           onChange={(e) => setBriefName(e.target.value)}
@@ -634,7 +634,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Client (optionnel)</Label>
+                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Client (optionnel)</Label>
                         <Input
                           value={briefClientName}
                           onChange={(e) => setBriefClientName(e.target.value)}
@@ -647,20 +647,20 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     {/* Stratégie */}
                     {briefAnalysis.analysis.search_rationale && (
                       <div className="border-l-4 border-brutal-accent p-4 bg-muted/20">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">🎯 Stratégie</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">🎯 Stratégie</p>
                         <p className="text-sm text-foreground">{briefAnalysis.analysis.search_rationale}</p>
                       </div>
                     )}
 
                     {/* ICP tags */}
                     <div className="space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">👤 Profil idéal (ICP)</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">👤 Profil idéal (ICP)</p>
 
                       {briefAnalysis.analysis.role_keywords.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Titres:</span>
+                          <span className="text-xs text-muted-foreground uppercase tracking-wider mr-1 self-center">Titres:</span>
                           {briefAnalysis.analysis.role_keywords.map((kw, i) => (
-                            <span key={i} className="px-2 py-0.5 bg-foreground text-background text-[10px] font-medium uppercase tracking-wider">
+                            <span key={i} className="px-2 py-0.5 bg-foreground text-background text-xs font-medium uppercase tracking-wider">
                               {kw}
                             </span>
                           ))}
@@ -669,9 +669,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                       {briefAnalysis.filters.skills_keywords?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Skills:</span>
+                          <span className="text-xs text-muted-foreground uppercase tracking-wider mr-1 self-center">Skills:</span>
                           {briefAnalysis.filters.skills_keywords.map((skill: string, i: number) => (
-                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium uppercase tracking-wider">
+                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-xs font-medium uppercase tracking-wider">
                               {skill}
                             </span>
                           ))}
@@ -679,12 +679,12 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       )}
 
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Expérience:</span>
-                        <span className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Expérience:</span>
+                        <span className="px-2 py-0.5 border border-foreground/30 text-foreground text-xs font-medium">
                           {briefAnalysis.filters.years_of_experience_min ?? '?'} - {briefAnalysis.filters.years_of_experience_max ?? '?'} ans
                         </span>
                         {briefAnalysis.analysis.experience_rationale && (
-                          <span className="text-[10px] text-muted-foreground italic">
+                          <span className="text-xs text-muted-foreground italic">
                             ({briefAnalysis.analysis.experience_rationale})
                           </span>
                         )}
@@ -692,9 +692,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                       {briefAnalysis.filters.location_keywords?.length > 0 && (
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Zone:</span>
+                          <span className="text-xs text-muted-foreground uppercase tracking-wider">Zone:</span>
                           {briefAnalysis.filters.location_keywords.map((loc: string, i: number) => (
-                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-[10px] font-medium">
+                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-xs font-medium">
                               {loc}
                             </span>
                           ))}
@@ -703,9 +703,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                       {briefAnalysis.analysis.domain_expertise.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider mr-1 self-center">Domaines:</span>
+                          <span className="text-xs text-muted-foreground uppercase tracking-wider mr-1 self-center">Domaines:</span>
                           {briefAnalysis.analysis.domain_expertise.map((d, i) => (
-                            <span key={i} className="px-2 py-0.5 border border-foreground/10 bg-muted text-muted-foreground text-[10px] font-medium uppercase tracking-wider">
+                            <span key={i} className="px-2 py-0.5 border border-foreground/10 bg-muted text-muted-foreground text-xs font-medium uppercase tracking-wider">
                               {d}
                             </span>
                           ))}
@@ -716,12 +716,12 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     {/* Boolean */}
                     {briefAnalysis.filters.keywords && (
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">🔍 Boolean généré</p>
-                        <code className="block text-[11px] text-foreground/80 bg-muted p-3 border border-foreground/10 break-all">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">🔍 Boolean généré</p>
+                        <code className="block text-xs text-foreground/80 bg-muted p-3 border border-foreground/10 break-all">
                           {briefAnalysis.filters.keywords}
                         </code>
                         {briefAnalysis.analysis.keyword_rationale && (
-                          <p className="text-[10px] text-muted-foreground mt-1 italic">
+                          <p className="text-xs text-muted-foreground mt-1 italic">
                             {briefAnalysis.analysis.keyword_rationale}
                           </p>
                         )}
@@ -777,7 +777,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={() => setInputMode('name')}
                         className={cn(
-                          "flex-1 h-[34px] text-[10px] font-medium uppercase tracking-wider border border-foreground transition-colors",
+                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-foreground transition-colors",
                           inputMode === 'name' ? "bg-foreground text-background" : "bg-background text-foreground"
                         )}
                       >
@@ -786,7 +786,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={() => setInputMode('url')}
                         className={cn(
-                          "flex-1 h-[34px] text-[10px] font-medium uppercase tracking-wider border border-foreground border-l-0 transition-colors",
+                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 transition-colors",
                           inputMode === 'url' ? "bg-foreground text-background" : "bg-background text-foreground"
                         )}
                       >
@@ -890,7 +890,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                               )}
                               <div className="min-w-0">
                                 <h3 className="font-bold text-foreground uppercase tracking-wide text-sm truncate">{importResult.name}</h3>
-                                {importResult.industry && <p className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">{importResult.industry}</p>}
+                                {importResult.industry && <p className="text-xs text-muted-foreground uppercase tracking-wider truncate">{importResult.industry}</p>}
                               </div>
                             </div>
                             <div className="space-y-2">
@@ -899,14 +899,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                             </div>
                             <div className="border-t border-border pt-3">
                               <div className="text-3xl font-black text-foreground">{importResult.openRoles.length}</div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">postes trouvés</div>
+                              <div className="text-xs uppercase tracking-wider text-muted-foreground">postes trouvés</div>
                             </div>
                             {importResult.sourcesUsed.length > 0 && (
                               <div className="border-t border-border pt-3">
-                                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Sources</div>
+                                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Sources</div>
                                 <div className="flex flex-wrap gap-1">
                                   {importResult.sourcesUsed.map(src => (
-                                    <span key={src} className="text-[10px] uppercase tracking-wider font-medium border border-foreground px-2 py-0.5 text-foreground">{src}</span>
+                                    <span key={src} className="text-xs uppercase tracking-wider font-medium border border-foreground px-2 py-0.5 text-foreground">{src}</span>
                                   ))}
                                 </div>
                               </div>
@@ -928,7 +928,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                               <Checkbox checked={selectedRoles.size === importResult.openRoles.length} className="border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-background" onCheckedChange={toggleAll} />
                               Tout sélectionner
                             </button>
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{selectedRoles.size}/{importResult.openRoles.length}</span>
+                            <span className="text-xs text-muted-foreground uppercase tracking-wider">{selectedRoles.size}/{importResult.openRoles.length}</span>
                           </div>
                           <div className="border border-foreground max-h-[400px] overflow-y-auto">
                             {hasDepartments ? (
@@ -980,7 +980,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <Briefcase className="w-5 h-5 text-foreground" />
                       <div>
                         <p className="font-medium text-foreground text-sm">Lier à un poste</p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider">
                           Associe à un poste Notion pour le scoring
                         </p>
                       </div>
@@ -1122,13 +1122,13 @@ const RoleRow = React.memo(({ role, selected, onToggle, showDepartment }: {
     <div className="flex-1 min-w-0">
       <div className="text-sm font-semibold text-foreground truncate">{role.title}</div>
       <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-        {role.location && <span className="flex items-center gap-1 text-[10px] text-muted-foreground"><MapPin className="w-3 h-3" /> {role.location}</span>}
+        {role.location && <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="w-3 h-3" /> {role.location}</span>}
         {showDepartment && role.department && (
-          <span className="text-[10px] uppercase tracking-wider font-medium border border-border px-1.5 py-0 text-muted-foreground">{role.department}</span>
+          <span className="text-xs uppercase tracking-wider font-medium border border-border px-1.5 py-0 text-muted-foreground">{role.department}</span>
         )}
       </div>
     </div>
-    <span className="text-[10px] uppercase tracking-wider text-muted-foreground border border-muted px-2 py-0.5 shrink-0">{role.source}</span>
+    <span className="text-xs uppercase tracking-wider text-muted-foreground border border-muted px-2 py-0.5 shrink-0">{role.source}</span>
     {role.url && (
       <a href={role.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-muted-foreground hover:text-foreground shrink-0">
         <ExternalLink className="w-3.5 h-3.5" />

@@ -204,7 +204,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       <div className="border border-foreground bg-background p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm">🎯</span>
-          <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Scoring Job</span>
+          <span className="text-xs font-bold text-foreground uppercase tracking-widest">Scoring Job</span>
         </div>
         <Skeleton className="h-9 w-full" />
       </div>
@@ -215,7 +215,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
     <div className="border border-foreground bg-background p-3 space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-sm">🎯</span>
-        <label className="text-[11px] font-bold text-foreground uppercase tracking-widest">
+        <label className="text-xs font-bold text-foreground uppercase tracking-widest">
           Scoring Job
         </label>
         <div className="ml-auto flex items-center gap-1">
@@ -388,7 +388,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                         <span className={cn("font-medium truncate leading-tight", isSelected && "text-foreground")}>
                           {job.title}
                         </span>
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground leading-tight">
                           {job.client?.name && <span className="truncate">{job.client.name}</span>}
                           {job.skills?.length > 0 && (
                             <>
@@ -413,13 +413,13 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           {selectedJob.skills.slice(0, 5).map((skill, i) => (
             <span 
               key={i} 
-              className="text-[10px] px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-foreground/70 font-medium uppercase tracking-wide"
+              className="text-xs px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-foreground/70 font-medium uppercase tracking-wide"
             >
               {skill}
             </span>
           ))}
           {(selectedJob.skills.length) > 5 && (
-            <span className="text-[10px] text-muted-foreground font-medium">
+            <span className="text-xs text-muted-foreground font-medium">
               +{selectedJob.skills.length - 5}
             </span>
           )}

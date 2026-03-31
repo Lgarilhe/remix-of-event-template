@@ -27,7 +27,7 @@ const Field = ({
   readOnly?: boolean;
 }) => (
   <div className={cn('space-y-1.5', className)}>
-    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
     {type === 'textarea' ? (
       <textarea
         defaultValue={value ?? ''}
@@ -73,7 +73,7 @@ const SelectField = ({
   readOnly?: boolean;
 }) => (
   <div className="space-y-1.5">
-    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
@@ -120,7 +120,7 @@ const TagInput = ({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag, i) => (
           <motion.span
@@ -128,7 +128,7 @@ const TagInput = ({
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
-            className={cn('flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border-2', color)}
+            className={cn('flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold uppercase tracking-wider border-2', color)}
           >
             {tag}
             {!readOnly && (
@@ -152,7 +152,7 @@ const TagInput = ({
               if (input.trim()) addTag();
             }}
             placeholder={placeholder || 'Ajouter...'}
-            className="h-[30px] w-32 px-2 text-[11px] border-2 border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground transition-colors focus:outline-none"
+            className="h-[30px] w-32 px-2 text-xs border-2 border-dashed border-foreground/20 bg-transparent text-foreground focus:border-foreground transition-colors focus:outline-none"
           />
         )}
       </div>
@@ -270,11 +270,11 @@ const FullscreenStepDialog: React.FC<{
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-lg font-black uppercase tracking-wider text-foreground truncate">{step.label}</h2>
-              <p className="text-[10px] text-muted-foreground truncate hidden sm:block">{step.subtitle}</p>
+              <p className="text-xs text-muted-foreground truncate hidden sm:block">{step.subtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">
+            <span className="text-xs font-black text-muted-foreground uppercase tracking-wider">
               {stepIndex + 1}/{STEPS.length}
             </span>
             <button
@@ -323,7 +323,7 @@ const FullscreenStepDialog: React.FC<{
           <button
             type="button"
             onClick={isFirst ? onClose : onPrev}
-            className="flex items-center gap-1.5 h-[36px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
+            className="flex items-center gap-1.5 h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             {isFirst ? 'Fermer' : 'Précédent'}
@@ -332,7 +332,7 @@ const FullscreenStepDialog: React.FC<{
           {isLast ? (
             <div className="flex items-center gap-3">
               {!readOnly && score >= 70 && onLaunchSourcing ? (
-                <ShimmerButton onClick={onLaunchSourcing} className="h-[40px] text-[10px] px-6" shimmerDuration="1.5s">
+                <ShimmerButton onClick={onLaunchSourcing} className="h-[40px] text-xs px-6" shimmerDuration="1.5s">
                   <Sparkles className="w-3.5 h-3.5" />
                   Lancer le sourcing
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -342,7 +342,7 @@ const FullscreenStepDialog: React.FC<{
                   {!readOnly && allCriticalMissing.length > 0 && (
                     <div className="hidden sm:flex items-center gap-2 text-destructive">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                      <span className="text-xs font-bold uppercase tracking-wider">
                         {allCriticalMissing.length} champ{allCriticalMissing.length > 1 ? 's' : ''} requis manquant{allCriticalMissing.length > 1 ? 's' : ''}
                       </span>
                     </div>
@@ -350,7 +350,7 @@ const FullscreenStepDialog: React.FC<{
                   <button
                     type="button"
                     onClick={onClose}
-                    className="flex items-center gap-1.5 h-[40px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
+                    className="flex items-center gap-1.5 h-[40px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
                   >
                     <Check className="w-3.5 h-3.5" />
                     {readOnly ? 'Fermer' : 'Terminer'}
@@ -362,7 +362,7 @@ const FullscreenStepDialog: React.FC<{
             <button
               type="button"
               onClick={onNext}
-              className="group relative overflow-hidden flex items-center gap-1.5 h-[40px] px-6 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
+              className="group relative overflow-hidden flex items-center gap-1.5 h-[40px] px-6 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background"
             >
               <span className="relative z-10 flex items-center gap-1.5">
                 Suivant
@@ -443,13 +443,13 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-sm font-black uppercase tracking-wider text-foreground">{step.label}</span>
-                  {pct > 0 && pct < 100 && <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{pct}%</span>}
+                  {pct > 0 && pct < 100 && <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{pct}%</span>}
                 </div>
-                <p className="text-[11px] text-muted-foreground truncate">{step.subtitle}</p>
+                <p className="text-xs text-muted-foreground truncate">{step.subtitle}</p>
                 {hasMissing && (
                   <div className="flex items-center gap-1 mt-1 text-destructive">
                     <AlertTriangle className="w-3 h-3 shrink-0" />
-                    <span className="text-[9px] font-bold uppercase tracking-wider truncate">{comp.missingCritical.join(', ')}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider truncate">{comp.missingCritical.join(', ')}</span>
                   </div>
                 )}
               </div>
@@ -518,7 +518,7 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
     </div>
     <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." readOnly={readOnly} />
     <div className="pt-5 border-t-2 border-foreground/15">
-      <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
+      <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} readOnly={readOnly} />
         <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" readOnly={readOnly} />
@@ -627,11 +627,11 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
+        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
             <div key={key} className="space-y-1">
-              <label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+              <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
@@ -646,24 +646,24 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                     readOnly && 'cursor-default opacity-70 focus:border-foreground/30'
                   )}
                 />
-                <span className="text-[10px] text-muted-foreground font-bold">%</span>
+                <span className="text-xs text-muted-foreground font-bold">%</span>
               </div>
             </div>
           ))}
         </div>
         {Object.values(weights).reduce((a, b) => a + b, 0) !== 100 && (
-          <p className="text-[10px] text-destructive font-bold mt-1">Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit être 100%)</p>
+          <p className="text-xs text-destructive font-bold mt-1">Total : {Object.values(weights).reduce((a, b) => a + b, 0)}% (doit être 100%)</p>
         )}
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Critères ({criteria.length})</p>
+          <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Critères ({criteria.length})</p>
           {!readOnly && !adding && (
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="flex items-center gap-1 h-[28px] px-3 text-[9px] font-black uppercase tracking-wider border-2 border-foreground text-foreground hover:bg-foreground hover:text-background transition-all"
+              className="flex items-center gap-1 h-[28px] px-3 text-xs font-black uppercase tracking-wider border-2 border-foreground text-foreground hover:bg-foreground hover:text-background transition-all"
             >
               <Plus className="w-3 h-3" /> Ajouter
             </button>
@@ -699,7 +699,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                     type="button"
                     onClick={addCriterion}
                     disabled={!newLabel.trim()}
-                    className="h-[34px] px-4 bg-foreground text-background text-[10px] font-black uppercase tracking-wider border-2 border-foreground disabled:opacity-50"
+                    className="h-[34px] px-4 bg-foreground text-background text-xs font-black uppercase tracking-wider border-2 border-foreground disabled:opacity-50"
                   >
                     Ajouter
                   </button>
@@ -709,7 +709,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                       setAdding(false);
                       setNewLabel('');
                     }}
-                    className="h-[34px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
+                    className="h-[34px] px-3 text-xs font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
                   >
                     X
                   </button>
@@ -722,7 +722,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
         {criteria.length === 0 ? (
           <div className="border-2 border-dashed border-foreground/30 p-6 text-center">
             <p className="text-sm text-muted-foreground mb-2 font-bold">Aucun critère défini</p>
-            <p className="text-[10px] text-muted-foreground">Ajoutez les critères que le manager souhaite évaluer.</p>
+            <p className="text-xs text-muted-foreground">Ajoutez les critères que le manager souhaite évaluer.</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -737,7 +737,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 <div className="flex items-start gap-3">
                   <span
                     className={cn(
-                      'mt-0.5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shrink-0 border-2',
+                      'mt-0.5 px-2 py-0.5 text-xs font-black uppercase tracking-wider shrink-0 border-2',
                       c.weight === 3
                         ? 'bg-destructive text-destructive-foreground border-destructive'
                         : c.weight === 2
@@ -750,7 +750,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                   <div className="flex-1 min-w-0 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-foreground">{c.label}</span>
-                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">{CATEGORY_OPTIONS[c.category] || c.category}</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{CATEGORY_OPTIONS[c.category] || c.category}</span>
                       {c.deal_breaker && (
                         <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground border border-destructive">Deal breaker</span>
                       )}
@@ -765,7 +765,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                           readOnly={readOnly}
                           tabIndex={readOnly ? -1 : undefined}
                           className={cn(
-                            'w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none',
+                            'w-full h-[30px] px-2 text-xs border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none',
                             readOnly && 'cursor-default opacity-70 focus:border-foreground/20'
                           )}
                         />
@@ -779,7 +779,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                           readOnly={readOnly}
                           tabIndex={readOnly ? -1 : undefined}
                           className={cn(
-                            'w-full h-[30px] px-2 text-[11px] border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none',
+                            'w-full h-[30px] px-2 text-xs border-2 border-foreground/20 bg-background text-foreground focus:border-foreground focus:outline-none',
                             readOnly && 'cursor-default opacity-70 focus:border-foreground/20'
                           )}
                         />

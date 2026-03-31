@@ -149,7 +149,7 @@ export default function ClientPortal() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-6 h-6 border-2 border-foreground/20 border-t-foreground animate-spin" />
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Chargement du portail client...</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Chargement du portail client...</p>
         </div>
       </div>
     );
@@ -187,12 +187,12 @@ export default function ClientPortal() {
               <h1 className="text-sm font-bold uppercase tracking-wider text-foreground">
                 {data.org_name || 'Portail client'}
               </h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
                 Bienvenue, {data.client_name}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground uppercase tracking-wider">
             <span>{data.projects.length} mission{data.projects.length > 1 ? 's' : ''}</span>
             <span>·</span>
             <span>{totalCandidates} candidat{totalCandidates > 1 ? 's' : ''}</span>
@@ -215,7 +215,7 @@ export default function ClientPortal() {
               <div className="px-4 py-3 bg-foreground/5 border-b border-foreground/20 flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">{project.name}</h2>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">
                     {project.candidates.length} candidat{project.candidates.length > 1 ? 's' : ''}
                   </p>
                 </div>
@@ -233,7 +233,7 @@ export default function ClientPortal() {
                       <div className="px-4 py-3 flex items-center gap-4 hover:bg-muted/20 transition-colors">
                         {/* Avatar placeholder */}
                         <div className="w-8 h-8 bg-foreground/10 flex items-center justify-center shrink-0">
-                          <span className="text-[11px] font-bold text-foreground">
+                          <span className="text-xs font-bold text-foreground">
                             {data.permissions.can_see_names
                               ? (candidate.candidate_name?.[0] || '?').toUpperCase()
                               : '#'}
@@ -248,19 +248,19 @@ export default function ClientPortal() {
                               : `Candidat #${candidate.id.slice(0, 6)}`}
                           </p>
                           {candidate.candidate_headline && data.permissions.can_see_names && (
-                            <p className="text-[10px] text-muted-foreground truncate">{candidate.candidate_headline}</p>
+                            <p className="text-xs text-muted-foreground truncate">{candidate.candidate_headline}</p>
                           )}
                         </div>
 
                         {/* Stage */}
-                        <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border border-foreground/20 text-foreground shrink-0">
+                        <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-foreground/20 text-foreground shrink-0">
                           {candidate.pipeline_stage || 'Nouveau'}
                         </span>
 
                         {/* Score */}
                         {candidate.score != null && (
                           <span className={cn(
-                            "px-1.5 py-0.5 text-[10px] font-bold shrink-0",
+                            "px-1.5 py-0.5 text-xs font-bold shrink-0",
                             candidate.score >= 70 ? "bg-foreground text-background" :
                             candidate.score >= 40 ? "bg-foreground/60 text-background" :
                             "bg-foreground/30 text-foreground"
@@ -270,7 +270,7 @@ export default function ClientPortal() {
                         )}
 
                         {/* Time */}
-                        <span className="text-[9px] text-muted-foreground shrink-0 hidden sm:flex items-center gap-0.5">
+                        <span className="text-xs text-muted-foreground shrink-0 hidden sm:flex items-center gap-0.5">
                           <Clock className="w-2.5 h-2.5" />
                           {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
                         </span>
@@ -295,7 +295,7 @@ export default function ClientPortal() {
 
       {/* Footer */}
       <footer className="border-t border-foreground/10 py-6 text-center">
-        <p className="text-[9px] text-muted-foreground uppercase tracking-wider">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">
           Portail propulsé par Skalr
         </p>
       </footer>

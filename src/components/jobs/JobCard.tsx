@@ -95,7 +95,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                 {job.title || 'Poste sans titre'}
               </h3>
               {isNewJob() && (
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-500 text-white rounded-sm animate-pulse">
+                <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wide bg-emerald-500 text-white rounded-sm animate-pulse">
                   Nouveau
                 </span>
               )}
@@ -282,7 +282,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
           <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-[#1A1A1A]/10">
             {job.xpMin !== null && job.xpMin !== undefined && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Expérience:</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Expérience:</span>
                 <span className="text-sm text-[#1A1A1A]">
                   {job.xpMin}{job.xpMax ? `-${job.xpMax}` : '+'} ans
                 </span>
@@ -290,7 +290,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             )}
             {(job.salaryMin || job.salaryMax) && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Salaire:</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Salaire:</span>
                 <span className="text-sm text-[#1A1A1A]">
                   {job.salaryMin && job.salaryMax 
                     ? `${(job.salaryMin / 1000).toFixed(0)}k€ - ${(job.salaryMax / 1000).toFixed(0)}k€`
@@ -303,19 +303,19 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             )}
             {job.tjm && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">TJM:</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">TJM:</span>
                 <span className="text-sm text-[#1A1A1A]">{job.tjm}€/jour</span>
               </div>
             )}
             {job.startDate && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Démarrage:</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Démarrage:</span>
                 <span className="text-sm text-[#1A1A1A]">{new Date(job.startDate).toLocaleDateString('fr-FR')}</span>
               </div>
             )}
             {job.remote && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60">Remote:</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Remote:</span>
                 <span className="text-sm text-[#1A1A1A]">{job.remote}</span>
               </div>
             )}
@@ -325,7 +325,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Description */}
             {job.description && (
               <div className="md:col-span-2">
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   À propos du poste
                 </h4>
                 <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap leading-relaxed">
@@ -337,7 +337,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Requirements / Must-have */}
             {job.requirements && (
               <div className="md:col-span-2">
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   🔴 Critères essentiels
                 </h4>
                 <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap bg-red-50 p-4 border-l-4 border-red-400">
@@ -349,7 +349,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Interview Process */}
             {job.interviewProcess && (
               <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   Process d'entretien
                 </h4>
                 <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
@@ -361,7 +361,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Team Info */}
             {job.teamInfo && (
               <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   L'équipe
                 </h4>
                 <p className="text-sm text-[#1A1A1A]">
@@ -373,7 +373,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* All skills */}
             {job.skills?.length > 0 && (
               <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   Stack technique / Compétences
                 </h4>
                 <div className="flex flex-wrap gap-2">
@@ -395,7 +395,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Company details */}
             {job.client && (
               <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   L'entreprise
                 </h4>
                 <div className="space-y-2">
@@ -435,7 +435,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Accompagnement type */}
             {job.accompagnement?.length > 0 && (
               <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
                   Type d'accompagnement
                 </h4>
                 <div className="flex flex-wrap gap-2">

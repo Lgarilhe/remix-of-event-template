@@ -332,13 +332,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         {/* Subscription badges */}
                         <div className="flex items-center gap-1">
                           {account.subscriptions?.recruiter && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-purple-100 text-purple-700">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-purple-100 text-purple-700">
                               <Building2 className="w-2.5 h-2.5 mr-0.5" />
                               Recruiter
                             </Badge>
                           )}
                           {account.subscriptions?.sales_navigator && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-blue-100 text-blue-700">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-blue-100 text-blue-700">
                               Sales Nav
                             </Badge>
                           )}
@@ -363,7 +363,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                                     // Force re-render by triggering parent refresh
                                     onAccountConnected();
                                   }}
-                                  className="flex items-center gap-1 text-[10px] text-purple-600 hover:text-purple-800 transition-colors"
+                                  className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 transition-colors"
                                 >
                                   {getSubscriptionOverrides()[account.id]?.recruiter ? (
                                     <ToggleRight className="w-4 h-4 text-purple-600" />

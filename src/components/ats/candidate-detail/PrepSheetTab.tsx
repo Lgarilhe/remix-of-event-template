@@ -17,7 +17,7 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
       <div className="flex items-center justify-center py-12">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-5 h-5 animate-spin text-foreground" />
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Préparation du brief d'appel...</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Préparation du brief d'appel...</p>
         </div>
       </div>
     );
@@ -82,27 +82,27 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
       <div className="border border-foreground/20 p-4">
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare className="w-4 h-4 text-foreground" />
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-foreground">Brief de préparation</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Brief de préparation</h3>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <div className="border border-foreground/10 p-2">
             <p className="text-lg font-bold text-foreground">{ctx.score ?? '—'}</p>
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Score IA</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Score IA</p>
           </div>
           <div className="border border-foreground/10 p-2">
             <p className="text-lg font-bold text-foreground">{matchingSkills.length}</p>
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Skills matchés</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Skills matchés</p>
           </div>
           <div className="border border-foreground/10 p-2">
             <p className="text-lg font-bold text-foreground">{missingSkills.length}</p>
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground">À vérifier</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">À vérifier</p>
           </div>
         </div>
       </div>
 
       {/* Talking points */}
       <div>
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Points à aborder</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Points à aborder</h3>
         <div className="space-y-2">
           {talkingPoints.map((point, i) => (
             <div key={i} className={cn(
@@ -119,7 +119,7 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
               )} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground">{point.label}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{point.detail}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{point.detail}</p>
               </div>
             </div>
           ))}
@@ -129,17 +129,17 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
       {/* Previous context */}
       {hasCallHistory && (
         <div>
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Appels précédents</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Appels précédents</h3>
           {ctx.callTranscripts.slice(0, 2).map((call, i) => (
             <div key={i} className="border border-foreground/10 p-3 mb-2">
               {call.report?.summary && (
                 <p className="text-xs text-foreground">{call.report.summary}</p>
               )}
               {call.report?.recommendation && (
-                <p className="text-[10px] text-muted-foreground mt-1">Recommandation : {call.report.recommendation}</p>
+                <p className="text-xs text-muted-foreground mt-1">Recommandation : {call.report.recommendation}</p>
               )}
               {!call.report?.summary && (
-                <p className="text-[10px] text-muted-foreground italic">Transcript disponible ({Math.round(call.duration_seconds / 60)} min)</p>
+                <p className="text-xs text-muted-foreground italic">Transcript disponible ({Math.round(call.duration_seconds / 60)} min)</p>
               )}
             </div>
           ))}
@@ -148,11 +148,11 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
 
       {hasPreviousEvals && (
         <div>
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Évaluations précédentes</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Évaluations précédentes</h3>
           {ctx.previousEvaluations.slice(0, 3).map((ev, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-2 border border-foreground/10 mb-1">
               <span className={cn(
-                "px-1.5 py-0.5 text-[10px] font-bold",
+                "px-1.5 py-0.5 text-xs font-bold",
                 (ev.overall_score || 0) >= 4 ? "bg-foreground text-background" :
                 (ev.overall_score || 0) >= 3 ? "bg-foreground/60 text-background" :
                 "bg-foreground/30 text-foreground"
@@ -160,8 +160,8 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
                 {ev.overall_score ?? '—'}/5
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-foreground truncate">{ev.job_title || 'Évaluation'}</p>
-                <p className="text-[9px] text-muted-foreground">{ev.interview_stage || ''} · {ev.recommendation || ''}</p>
+                <p className="text-xs text-foreground truncate">{ev.job_title || 'Évaluation'}</p>
+                <p className="text-xs text-muted-foreground">{ev.interview_stage || ''} · {ev.recommendation || ''}</p>
               </div>
             </div>
           ))}
@@ -171,7 +171,7 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
       {/* Recruiter notes */}
       {ctx.notes.length > 0 && (
         <div>
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Notes des collègues</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Notes des collègues</h3>
           {ctx.notes.slice(0, 3).map((note, i) => (
             <div key={i} className="border-l-2 border-foreground/20 pl-3 mb-2">
               <p className="text-xs text-foreground/80">{note.length > 200 ? note.slice(0, 200) + '...' : note}</p>

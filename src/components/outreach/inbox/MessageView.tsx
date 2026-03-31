@@ -242,10 +242,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
             {displayName}
           </h4>
           {headline && (
-            <p className="text-[10px] md:text-xs text-muted-foreground truncate">{headline}</p>
+            <p className="text-xs md:text-xs text-muted-foreground truncate">{headline}</p>
           )}
           {subject && (
-            <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1 hidden md:flex">
+            <p className="text-xs text-muted-foreground truncate flex items-center gap-1 hidden md:flex">
               <span>📧</span> {subject}
             </p>
           )}
@@ -363,7 +363,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         msg.is_sender ? "justify-end" : "justify-start"
                       )}>
                         <span className={cn(
-                          "text-[10px]",
+                          "text-xs",
                           msg.is_sender ? "text-background/70" : "text-muted-foreground"
                         )}>
                           {formatMessageTime(msg.timestamp)}
@@ -440,7 +440,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         <div className="px-3 pt-2">
           <button
             onClick={() => setAiPanelOpen(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-[10px] uppercase tracking-wider font-medium border border-foreground bg-brutal-accent/10 hover:bg-brutal-accent/20 transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 text-xs uppercase tracking-wider font-medium border border-foreground bg-brutal-accent/10 hover:bg-brutal-accent/20 transition-colors"
           >
             <Sparkles className="w-3 h-3" />
             {replySuggestions.length} suggestions IA

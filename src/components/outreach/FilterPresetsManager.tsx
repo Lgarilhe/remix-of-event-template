@@ -130,7 +130,7 @@ export const FilterPresetsManager: React.FC<FilterPresetsManagerProps> = ({
             <Bookmark className="w-3.5 h-3.5" />
             Favoris
             {presets.length > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+              <Badge variant="secondary" className="h-4 px-1 text-xs">
                 {presets.length}
               </Badge>
             )}
@@ -237,7 +237,7 @@ export const FilterPresetsManager: React.FC<FilterPresetsManagerProps> = ({
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm truncate">{preset.name}</span>
                         {preset.job_title && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">
+                          <Badge variant="outline" className="text-xs h-4 px-1 shrink-0">
                             {preset.job_title.substring(0, 15)}...
                           </Badge>
                         )}
@@ -245,7 +245,7 @@ export const FilterPresetsManager: React.FC<FilterPresetsManagerProps> = ({
                       {preset.description && (
                         <p className="text-xs text-muted-foreground truncate">{preset.description}</p>
                       )}
-                      <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Hash className="w-3 h-3" />
                           {countActiveFilters(preset.filters)} filtres

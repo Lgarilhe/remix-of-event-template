@@ -47,7 +47,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       <div className="p-3 border-b border-foreground/20 bg-foreground/5">
         <div className="flex items-center justify-between">
           <h3 className="font-medium text-foreground text-[12px] uppercase tracking-wider">{stage.label}</h3>
-          <span className="text-[11px] text-foreground bg-foreground/10 px-2 py-0.5 font-bold">
+          <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold">
             {candidates.length}
           </span>
         </div>
@@ -56,7 +56,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       {/* Cards */}
       <div className="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto">
         {visibleCandidates.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-[11px] uppercase tracking-wider">
+          <div className="text-center py-8 text-muted-foreground text-xs uppercase tracking-wider">
             Aucun candidat
           </div>
         ) : (
@@ -79,7 +79,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
             {hasMore && (
               <button
                 onClick={() => setVisibleCount(prev => Math.min(prev + LOAD_MORE_COUNT, candidates.length))}
-                className="flex-1 flex items-center justify-center gap-1 h-[28px] text-[10px] font-medium uppercase tracking-wider text-foreground border border-foreground/30 hover:bg-brutal-accent transition-colors"
+                className="flex-1 flex items-center justify-center gap-1 h-[28px] text-xs font-medium uppercase tracking-wider text-foreground border border-foreground/30 hover:bg-brutal-accent transition-colors"
               >
                 <ChevronDown className="w-3 h-3" />
                 Voir plus ({candidates.length - visibleCount})
@@ -88,7 +88,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
             {canCollapse && (
               <button
                 onClick={() => setVisibleCount(INITIAL_VISIBLE)}
-                className={`flex-1 flex items-center justify-center gap-1 h-[28px] text-[10px] font-medium uppercase tracking-wider text-foreground border border-foreground/30 hover:bg-brutal-accent transition-colors ${hasMore ? 'border-l-0' : ''}`}
+                className={`flex-1 flex items-center justify-center gap-1 h-[28px] text-xs font-medium uppercase tracking-wider text-foreground border border-foreground/30 hover:bg-brutal-accent transition-colors ${hasMore ? 'border-l-0' : ''}`}
               >
                 <ChevronUp className="w-3 h-3" />
                 Réduire

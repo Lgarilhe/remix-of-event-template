@@ -302,7 +302,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                           {item.value}
                         </span>
                         {item.sub && (
-                          <span className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
+                          <span className="text-xs text-muted-foreground tabular-nums mt-0.5">
                             {item.sub} taux
                           </span>
                         )}
@@ -318,7 +318,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 <div className="border border-foreground bg-background">
                   <div className="px-3 py-2 border-b border-foreground bg-muted flex items-center gap-2">
                     <TrendingUp className="w-3.5 h-3.5 text-foreground" />
-                    <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+                    <span className="text-xs font-bold text-foreground uppercase tracking-widest">
                       Funnel de conversion
                     </span>
                   </div>
@@ -335,14 +335,14 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                             <div className="flex items-center justify-center py-0.5">
                               <ArrowDown className="w-3 h-3 text-muted-foreground" />
                               {convRate !== null && (
-                                <span className="text-[9px] text-muted-foreground ml-1 tabular-nums font-medium">
+                                <span className="text-xs text-muted-foreground ml-1 tabular-nums font-medium">
                                   {convRate}%
                                 </span>
                               )}
                             </div>
                           )}
                           <div className="flex items-center gap-2">
-                            <div className="w-[70px] text-[9px] text-muted-foreground text-right uppercase tracking-wider font-medium shrink-0">
+                            <div className="w-[70px] text-xs text-muted-foreground text-right uppercase tracking-wider font-medium shrink-0">
                               {item.name}
                             </div>
                             <div className="flex-1 h-6 bg-muted overflow-hidden relative">
@@ -350,7 +350,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                                 className="h-full bg-foreground transition-all duration-500 flex items-center px-2"
                                 style={{ width: `${width}%` }}
                               >
-                                <span className="text-[10px] font-bold text-background tabular-nums">
+                                <span className="text-xs font-bold text-background tabular-nums">
                                   {item.value}
                                 </span>
                               </div>
@@ -366,7 +366,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 {statusData.length > 0 && (
                   <div className="border border-foreground bg-background">
                     <div className="px-3 py-2 border-b border-foreground bg-muted">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">
                         Répartition prospects
                       </span>
                     </div>
@@ -390,7 +390,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                         {statusData.map((item) => (
                           <div key={item.name} className="flex items-center gap-1.5">
                             <span className="text-sm font-bold text-foreground tabular-nums">{item.value}</span>
-                            <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium">
+                            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
                               {item.name}
                             </span>
                           </div>
@@ -404,7 +404,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 {chartData.length > 0 && (
                   <div className="border border-foreground bg-background">
                     <div className="px-3 py-2 border-b border-foreground bg-muted">
-                      <span className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">
                         Activité quotidienne
                       </span>
                     </div>
@@ -471,6 +471,6 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 const LegendDot: React.FC<{ label: string; className: string }> = ({ label, className }) => (
   <div className="flex items-center gap-1.5">
     <div className={cn("w-2 h-2", className)} />
-    <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
+    <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
   </div>
 );

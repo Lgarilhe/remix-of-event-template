@@ -9,7 +9,7 @@ const SafeModeBadge = () => (
   <TooltipProvider>
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 cursor-help">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 cursor-help">
           <Shield className="w-2.5 h-2.5" />
           Safe mode
         </span>
@@ -180,7 +180,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
                 icon={<Mail className="w-3.5 h-3.5" />}
               />
             </div>
-            <p className="text-[10px] text-muted-foreground mt-3 flex items-start gap-1">
+            <p className="text-xs text-muted-foreground mt-3 flex items-start gap-1">
               <Info className="w-3 h-3 mt-0.5 shrink-0" />
               Limites pour {getApiModeLabel(apiMode)} - se réinitialisent chaque jour
             </p>

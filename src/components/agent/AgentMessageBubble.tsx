@@ -180,7 +180,7 @@ function ThinkingCard({ thinking }: { thinking: string }) {
         <span className="text-xs text-muted-foreground font-medium flex-1">
           Réflexion terminée
         </span>
-        <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+        <span className="text-xs text-muted-foreground/50 tabular-nums">
           {displayLines.length} étapes
         </span>
         <ChevronDown className={cn(
@@ -203,7 +203,7 @@ function ThinkingCard({ thinking }: { thinking: string }) {
               {displayLines.map((line, i) => (
                 <div key={i} className="flex items-start gap-2 py-0.5">
                   <span className="mt-[6px] h-1 w-1 bg-foreground/15 shrink-0" />
-                  <p className="text-[11px] leading-relaxed font-mono text-muted-foreground/70">
+                  <p className="text-xs leading-relaxed font-mono text-muted-foreground/70">
                     {line}
                   </p>
                 </div>
@@ -227,7 +227,7 @@ function StepCard({ current, total, title, question }: {
           {current}
         </div>
         <div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">
             Étape {current} sur {total}
           </p>
           <p className="text-sm font-semibold text-foreground">{title}</p>
@@ -277,7 +277,7 @@ function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
       style={{ borderLeft: '3px solid hsl(var(--skalr-purple))' }}
     >
       <p
-        className="text-[10px] font-bold uppercase tracking-[0.12em] mb-2.5"
+        className="text-xs font-bold uppercase tracking-[0.12em] mb-2.5"
         style={{ color: 'hsl(var(--skalr-purple))' }}
       >
         Résumé du poste
@@ -301,7 +301,7 @@ function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
               <span
                 key={i}
                 className={cn(
-                  "text-[10px] font-medium px-2 py-0.5",
+                  "text-xs font-medium px-2 py-0.5",
                   isXp
                     ? "bg-[hsl(var(--skalr-purple)/.12)] text-[hsl(var(--skalr-purple))]"
                     : "bg-muted text-muted-foreground"
@@ -440,20 +440,20 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
   return (
     <div className="border-2 border-foreground/15 overflow-hidden">
       <div className="px-3.5 py-3 flex items-center justify-between border-b border-foreground/10">
-        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
+        <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
           Plan de recherche
         </span>
         {/* LinkedIn count badge */}
         <div className="flex items-center gap-1.5">
           {countLoading ? (
-            <span className="text-[10px] text-muted-foreground/50 animate-pulse">
+            <span className="text-xs text-muted-foreground/50 animate-pulse">
               Estimation…
             </span>
           ) : countError ? (
-            <span className="text-[10px] text-muted-foreground/40">—</span>
+            <span className="text-xs text-muted-foreground/40">—</span>
           ) : estimatedCount !== null ? (
             <span className={cn(
-              "px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] border-2 tabular-nums",
+              "px-2 py-0.5 text-xs font-bold uppercase tracking-[0.1em] border-2 tabular-nums",
               estimatedCount > 100
                 ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5"
                 : estimatedCount > 20
@@ -473,7 +473,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
             <div key={i} className="flex items-start gap-3">
               <span className="h-1.5 w-1.5 bg-foreground/30 shrink-0 mt-[7px]" />
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
                 <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
               </div>
             </div>
@@ -485,17 +485,17 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
       {(locationKeywords.length > 0 || filters.calculated_experience_min != null || stopConditions.target_go_profiles) && (
         <div className="border-t border-foreground/10 px-3.5 py-2.5 flex flex-wrap gap-1.5">
           {locationKeywords.length > 0 && (
-            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
               {locationKeywords.join(', ')}
             </span>
           )}
           {filters.calculated_experience_min != null && (
-            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
               {filters.calculated_experience_min}–{filters.calculated_experience_max} ans
             </span>
           )}
           {stopConditions.target_go_profiles && (
-            <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
               {stopConditions.target_go_profiles} profils Go
             </span>
           )}
@@ -530,7 +530,7 @@ function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
       </div>
       {candidate.score && (
         <span className={cn(
-          "text-[10px] font-bold px-2 py-0.5 shrink-0 uppercase tracking-wider",
+          "text-xs font-bold px-2 py-0.5 shrink-0 uppercase tracking-wider",
           scoreStyles[candidate.score] || ''
         )}>
           {candidate.score}

@@ -83,7 +83,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
             Étape {stepIndex + 1}
           </div>
           {msgType && (
-            <div className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full w-fit mt-0.5 flex items-center gap-1", msgType.color)}>
+            <div className={cn("text-xs font-medium px-2 py-0.5 rounded-full w-fit mt-0.5 flex items-center gap-1", msgType.color)}>
               <MessageSquare className="w-3 h-3" />
               {msgType.label}
             </div>

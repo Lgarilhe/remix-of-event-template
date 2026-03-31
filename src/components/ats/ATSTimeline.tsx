@@ -68,7 +68,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
     return (
       <div className="bg-background border border-foreground p-12 text-center">
         <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-        <p className="text-muted-foreground text-[11px] uppercase tracking-wider">Aucune activité à afficher</p>
+        <p className="text-muted-foreground text-xs uppercase tracking-wider">Aucune activité à afficher</p>
       </div>
     );
   }
@@ -81,9 +81,9 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
             <div key={group.label} className={groupIndex > 0 ? 'mt-8' : ''}>
               {/* Group header */}
               <div className="flex items-center gap-3 mb-4">
-                <h3 className="font-medium text-foreground text-[11px] uppercase tracking-wider">{group.label}</h3>
+                <h3 className="font-medium text-foreground text-xs uppercase tracking-wider">{group.label}</h3>
                 <div className="flex-1 h-px bg-foreground/20" />
-                <span className="text-[11px] text-muted-foreground bg-foreground/10 px-2 py-0.5 font-bold">{group.candidates.length}</span>
+                <span className="text-xs text-muted-foreground bg-foreground/10 px-2 py-0.5 font-bold">{group.candidates.length}</span>
               </div>
 
               {/* Timeline items */}
@@ -117,7 +117,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               {(candidate.notesCount || 0) > 0 && (
                                 <div className="flex items-center gap-0.5 text-muted-foreground">
                                   <StickyNote className="w-3.5 h-3.5" />
-                                  <span className="text-[10px]">{candidate.notesCount}</span>
+                                  <span className="text-xs">{candidate.notesCount}</span>
                                 </div>
                               )}
                             </div>
@@ -127,13 +127,13 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                             )}
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-[10px] px-2 py-0.5 border border-foreground/30 uppercase tracking-wider font-medium">
+                              <span className="text-xs px-2 py-0.5 border border-foreground/30 uppercase tracking-wider font-medium">
                                 {candidate.stage}
                               </span>
                               
                               {candidate.jobTitle && (
                                 <span
-                                  className={`text-[10px] px-2 py-0.5 border border-foreground/20 text-muted-foreground ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+                                  className={`text-xs px-2 py-0.5 border border-foreground/20 text-muted-foreground ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
                                   onClick={(e) => {
                                     if (candidate.jobId && onJobClick) {
                                       e.stopPropagation();
@@ -146,7 +146,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               )}
 
                               {candidate.sequenceName && (
-                                <span className="text-[10px] px-2 py-0.5 border border-foreground/20 flex items-center gap-1 text-muted-foreground">
+                                <span className="text-xs px-2 py-0.5 border border-foreground/20 flex items-center gap-1 text-muted-foreground">
                                   <GitBranch className="w-3 h-3" />
                                   {candidate.sequenceName}
                                 </span>
@@ -156,7 +156,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
 
                           <div className="flex flex-col items-end gap-2">
                             {candidate.lastActivity && (
-                              <span className="text-[10px] text-muted-foreground font-medium">
+                              <span className="text-xs text-muted-foreground font-medium">
                                 {format(parseISO(candidate.lastActivity), 'HH:mm', { locale: fr })}
                               </span>
                             )}

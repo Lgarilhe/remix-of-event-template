@@ -65,7 +65,7 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
             </motion.span>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-wider text-foreground mb-0.5">
+            <p className="text-xs font-black uppercase tracking-wider text-foreground mb-0.5">
               {title}
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed">

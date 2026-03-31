@@ -76,34 +76,34 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           <Icon className={cn("w-3.5 h-3.5 shrink-0", config.color)} />
         )}
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[11px] font-medium text-foreground truncate">
+          <span className="text-xs font-medium text-foreground truncate">
             {isAircall 
               ? `${event.callDirection === 'inbound' ? '📞 Appel entrant' : '📞 Appel sortant'}`
               : config.label
             }
           </span>
           {isAircall && event.callDuration != null && event.callDuration > 0 && (
-            <span className="text-[9px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               ({formatDuration(event.callDuration)})
             </span>
           )}
           {isAircall && event.callUserName && (
-            <span className="text-[9px] text-muted-foreground truncate">
+            <span className="text-xs text-muted-foreground truncate">
               — {event.callUserName}
             </span>
           )}
           {isBooking && event.eventName && (
-            <span className="text-[9px] text-muted-foreground truncate">
+            <span className="text-xs text-muted-foreground truncate">
               — {event.eventName}
             </span>
           )}
           {event.status === 'skipped' && event.skipReason && (
-            <span className="text-[9px] text-muted-foreground truncate">
+            <span className="text-xs text-muted-foreground truncate">
               ({event.skipReason})
             </span>
           )}
           {event.status === 'failed' && event.errorMessage && (
-            <span className="text-[9px] text-destructive truncate">
+            <span className="text-xs text-destructive truncate">
               ({event.errorMessage.slice(0, 40)})
             </span>
           )}
@@ -111,7 +111,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
             <StatusIcon className={cn("w-3 h-3 shrink-0", statusConfig.color)} />
           )}
         </div>
-        <span className="text-[9px] text-muted-foreground whitespace-nowrap shrink-0">
+        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
           {formatMessageTime(event.timestamp)}
         </span>
       </div>

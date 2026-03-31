@@ -170,7 +170,7 @@ const RecruiterPublicProfile: React.FC = () => {
                     </div>
                     <div className="text-left">
                       <p className="text-xs font-bold uppercase tracking-wider text-foreground">Vidéo d'introduction</p>
-                      <p className="text-[10px] text-muted-foreground">Découvrez {name} en quelques minutes</p>
+                      <p className="text-xs text-muted-foreground">Découvrez {name} en quelques minutes</p>
                     </div>
                   </button>
                 )}
@@ -219,14 +219,14 @@ const RecruiterPublicProfile: React.FC = () => {
             {/* Skills */}
             {allSkills.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Spécialisations
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
                   {allSkills.slice(0, 20).map((skill) => (
                     <span
                       key={skill}
-                      className="px-2.5 py-1 text-[11px] font-semibold border-2 border-foreground/15 text-foreground/70"
+                      className="px-2.5 py-1 text-xs font-semibold border-2 border-foreground/15 text-foreground/70"
                     >
                       {skill}
                     </span>
@@ -238,7 +238,7 @@ const RecruiterPublicProfile: React.FC = () => {
             {/* Testimonials */}
             {testimonials.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Témoignages clients
                 </h3>
                 {testimonials.map((t, i) => (
@@ -248,9 +248,9 @@ const RecruiterPublicProfile: React.FC = () => {
                       <p className="text-sm text-foreground/80 italic leading-relaxed">{t.text}</p>
                     </div>
                     <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">{t.client_name}</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-foreground">{t.client_name}</p>
                       {t.date && (
-                        <p className="text-[9px] text-muted-foreground">{t.date}</p>
+                        <p className="text-xs text-muted-foreground">{t.date}</p>
                       )}
                     </div>
                   </div>
@@ -276,7 +276,7 @@ const RecruiterPublicProfile: React.FC = () => {
           </motion.div>
 
           {/* Footer */}
-          <p className="text-center text-[10px] text-muted-foreground/50 mt-8">
+          <p className="text-center text-xs text-muted-foreground/50 mt-8">
             Profil généré par Skalr
           </p>
         </div>
@@ -290,7 +290,7 @@ const StatCard = ({ value, label, icon }: { value: string; label: string; icon: 
   <div className="border border-foreground/15 p-3 text-center space-y-1">
     <div className="flex items-center justify-center text-muted-foreground">{icon}</div>
     <p className="text-lg font-bold text-foreground">{value}</p>
-    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
   </div>
 );
 

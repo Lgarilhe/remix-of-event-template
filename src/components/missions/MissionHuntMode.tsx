@@ -102,7 +102,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           <Target className="w-5 h-5 text-foreground" />
           <div>
             <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Mode chasse</h3>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">
               Publiez cette mission sur le réseau Skalr
             </p>
           </div>
@@ -110,7 +110,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
         <button
           onClick={handleToggle}
           className={cn(
-            "h-[34px] px-5 text-[10px] font-bold uppercase tracking-wider border transition-colors",
+            "h-[34px] px-5 text-xs font-bold uppercase tracking-wider border transition-colors",
             isEnabled
               ? "bg-foreground text-background border-foreground"
               : "bg-background text-foreground border-foreground/30 hover:border-foreground"
@@ -124,9 +124,9 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
         <>
           {/* Status badge */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut :</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Statut :</span>
             <span className={cn(
-              "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+              "px-2 py-0.5 text-xs font-bold uppercase tracking-wider",
               HUNT_STATUS_CONFIG[huntStatus]?.color || 'bg-muted text-muted-foreground'
             )}>
               {HUNT_STATUS_CONFIG[huntStatus]?.label || huntStatus}
@@ -136,7 +136,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           {/* Settings */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <label className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 <DollarSign className="w-3 h-3" /> Bounty (% du salaire)
               </label>
               <input
@@ -149,7 +149,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               />
             </div>
             <div className="space-y-1">
-              <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <label className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 <Users className="w-3 h-3" /> Max recruteurs
               </label>
               <input
@@ -162,7 +162,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               />
             </div>
             <div className="space-y-1">
-              <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <label className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 <Calendar className="w-3 h-3" /> Date limite
               </label>
               <input
@@ -179,7 +179,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             {huntStatus === 'draft' ? (
               <button
                 onClick={handlePublish}
-                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
+                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
               >
                 <Globe className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Publier sur la marketplace</span>
@@ -188,7 +188,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             ) : huntStatus === 'published' ? (
               <button
                 onClick={handleUnpublish}
-                className="flex items-center gap-2 h-[34px] px-5 text-[10px] font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
+                className="flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
               >
                 Retirer de la marketplace
               </button>

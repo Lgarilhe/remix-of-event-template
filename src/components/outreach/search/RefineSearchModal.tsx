@@ -216,7 +216,7 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="secondary" className="text-[10px] font-medium shrink-0">
+                            <Badge variant="secondary" className="text-xs font-medium shrink-0">
                               {FIELD_LABELS[adj.field] || adj.field}
                             </Badge>
                           </div>

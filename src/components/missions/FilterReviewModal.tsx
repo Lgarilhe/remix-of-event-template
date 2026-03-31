@@ -176,7 +176,7 @@ const ChipInput: React.FC<{
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
         placeholder={placeholder}
-        className="h-7 w-[120px] px-2 text-[10px] font-bold uppercase tracking-wider bg-transparent text-foreground placeholder:text-foreground/30 outline-none"
+        className="h-7 w-[120px] px-2 text-xs font-bold uppercase tracking-wider bg-transparent text-foreground placeholder:text-foreground/30 outline-none"
       />
       <button
         onClick={submit}
@@ -218,7 +218,7 @@ const EditableChip: React.FC<{
           onChange={e => setEditValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirm(); } if (e.key === 'Escape') { setEditValue(value); setEditing(false); } }}
           onBlur={confirm}
-          className="h-7 w-[140px] px-2 text-[10px] font-bold uppercase tracking-wider bg-transparent text-foreground outline-none"
+          className="h-7 w-[140px] px-2 text-xs font-bold uppercase tracking-wider bg-transparent text-foreground outline-none"
         />
         <button onClick={confirm} className="h-7 w-6 flex items-center justify-center text-foreground/60 hover:text-foreground">
           <Check className="w-3 h-3" weight="bold" />
@@ -228,7 +228,7 @@ const EditableChip: React.FC<{
   }
 
   return (
-    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-foreground/20 text-[10px] font-bold uppercase tracking-wider text-foreground/80 hover:border-foreground/40 transition-colors cursor-default">
+    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-foreground/20 text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-foreground/40 transition-colors cursor-default">
       <span className="max-w-[200px] truncate">{value}</span>
       <button
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
@@ -367,7 +367,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 </div>
                 <div>
                   <h2 className="text-xs font-black uppercase tracking-wider text-foreground">Filtres proposés</h2>
-                  <p className="text-[10px] text-muted-foreground">{enabledCount} catégorie{enabledCount > 1 ? 's' : ''} active{enabledCount > 1 ? 's' : ''}</p>
+                  <p className="text-xs text-muted-foreground">{enabledCount} catégorie{enabledCount > 1 ? 's' : ''} active{enabledCount > 1 ? 's' : ''}</p>
                 </div>
               </div>
               <button
@@ -381,7 +381,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
             {/* ── Strategy summary ── */}
             {analysis.search_rationale && (
               <div className="shrink-0 px-4 py-3 border-b-2 border-foreground/15 bg-brutal-accent/10">
-                <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-1">
                   <Sparkle className="w-3 h-3 inline mr-1" weight="fill" />
                   Stratégie IA
                 </p>
@@ -408,7 +408,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
                       <div className={cn(
-                        "w-5 h-5 border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-colors",
+                        "w-5 h-5 border-2 flex items-center justify-center shrink-0 text-xs font-black transition-colors",
                         section.enabled
                           ? "bg-foreground text-background border-foreground"
                           : "bg-background text-foreground/30 border-foreground/30"
@@ -416,7 +416,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                         {section.enabled ? '✓' : ''}
                       </div>
                       <section.icon className="w-4 h-4 text-foreground/70 shrink-0" weight="duotone" />
-                      <span className="text-[10px] font-black uppercase tracking-wider text-foreground flex-1">{section.label}</span>
+                      <span className="text-xs font-black uppercase tracking-wider text-foreground flex-1">{section.label}</span>
                       {section.editable && section.enabled && (
                         <PencilSimple className="w-3 h-3 text-foreground/30" weight="bold" />
                       )}
@@ -446,7 +446,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                             section.chips.map((chip, i) => (
                               <span
                                 key={`${chip}-${i}`}
-                                className="group inline-flex items-center gap-1 px-2 py-1 border-2 border-foreground/20 text-[10px] font-bold uppercase tracking-wider text-foreground/80 cursor-default"
+                                className="group inline-flex items-center gap-1 px-2 py-1 border-2 border-foreground/20 text-xs font-bold uppercase tracking-wider text-foreground/80 cursor-default"
                               >
                                 <span className="max-w-[200px] truncate">{chip}</span>
                                 <button
@@ -463,7 +463,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                         {/* AI Suggestions */}
                         {section.suggestions && section.suggestions.length > 0 && (
                           <div className="pt-1.5 border-t border-foreground/10">
-                            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                               <Sparkle className="w-2.5 h-2.5" weight="fill" />
                               Suggestions IA
                             </p>
@@ -472,7 +472,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                                 <button
                                   key={`sug-${suggestion}-${i}`}
                                   onClick={() => addChip(section.id, suggestion)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-foreground/15 text-[10px] font-bold uppercase tracking-wider text-foreground/50 hover:border-foreground/40 hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
+                                  className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-foreground/15 text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-foreground/40 hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
                                 >
                                   <Plus className="w-2.5 h-2.5" />
                                   <span>{suggestion}</span>
@@ -483,7 +483,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                         )}
 
                         {section.extra && (
-                          <p className="text-[10px] text-muted-foreground mt-1 italic">{section.extra}</p>
+                          <p className="text-xs text-muted-foreground mt-1 italic">{section.extra}</p>
                         )}
                       </div>
                     )}
@@ -498,7 +498,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 <button
                   onClick={onRegenerate}
                   disabled={isLoading}
-                  className="h-[36px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
+                  className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
                 >
                   Regénérer
                 </button>
@@ -507,7 +507,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 onClick={handleAccept}
                 disabled={isLoading || enabledCount === 0}
                 className={cn(
-                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground group transition-colors",
+                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground group transition-colors",
                   enabledCount > 0
                     ? "bg-foreground text-background"
                     : "bg-muted text-muted-foreground cursor-not-allowed"

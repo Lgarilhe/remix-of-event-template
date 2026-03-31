@@ -34,9 +34,9 @@ const MetricCard = ({ label, value, sublabel, color }: {
   color: string;
 }) => (
   <div className="border border-foreground p-4 text-center">
-    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
+    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
     <p className={cn("text-2xl font-bold", color)}>{value}</p>
-    <p className="text-[10px] text-muted-foreground mt-0.5">{sublabel}</p>
+    <p className="text-xs text-muted-foreground mt-0.5">{sublabel}</p>
   </div>
 );
 
@@ -236,7 +236,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
         <>
           {/* Section 1: Funnel */}
           <div className="border border-foreground p-4 sm:p-6">
-            <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
               📊 Funnel de conversion
             </h3>
             <ProjectFunnel
@@ -279,7 +279,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           {/* Section 3: Recommandations */}
           {insights.length > 0 && (
             <div className="border border-foreground p-4 sm:p-6">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
                 🤖 Recommandations
               </h3>
               <div className="space-y-3">
@@ -293,11 +293,11 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                     <span className="text-lg shrink-0">{insight.icon}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-foreground">{insight.title}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{insight.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{insight.description}</p>
                       {insight.action && (
                         <button
                           onClick={() => navigateToTab(insight.action!.tab)}
-                          className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-foreground underline underline-offset-2 hover:text-foreground/70"
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-foreground underline underline-offset-2 hover:text-foreground/70"
                         >
                           {insight.action.label} →
                         </button>
@@ -312,7 +312,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           {/* Section 4: Timeline */}
           {recentActivity.length > 0 && (
             <div className="border border-foreground p-4 sm:p-6">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
                 🕐 Activité récente
               </h3>
               <div className="space-y-2">
@@ -327,12 +327,12 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                     )} />
                     <div className="flex-1 min-w-0">
                       <span className="text-xs font-medium text-foreground">{item.name}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">
+                      <span className="text-xs text-muted-foreground ml-2">
                         {statusLabels[item.status] || item.status}
                       </span>
                       {item.score !== null && (
                         <span className={cn(
-                          "text-[10px] font-bold ml-2",
+                          "text-xs font-bold ml-2",
                           item.score >= 70 ? "text-green-600" :
                           item.score >= 40 ? "text-yellow-600" :
                           "text-red-500"
@@ -341,7 +341,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
+                    <span className="text-xs text-muted-foreground shrink-0">
                       {formatDistanceToNow(new Date(item.date), { addSuffix: true, locale: fr })}
                     </span>
                   </div>

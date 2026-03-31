@@ -117,7 +117,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {/* Name */}
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
                 Nom complet *
               </label>
               <input
@@ -133,7 +133,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
 
             {/* Email */}
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
                 Email *
               </label>
               <input
@@ -149,7 +149,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
 
             {/* Phone */}
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
                 Téléphone
               </label>
               <input
@@ -164,7 +164,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
 
             {/* LinkedIn */}
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
                 Profil LinkedIn
               </label>
               <input
@@ -179,7 +179,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
 
             {/* CV URL */}
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
                 Lien vers votre CV
               </label>
               <input
@@ -190,14 +190,14 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 placeholder="https://drive.google.com/..."
                 className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
               />
-              <p className="text-[10px] text-[#1A1A1A]/40 mt-1">
+              <p className="text-xs text-[#1A1A1A]/40 mt-1">
                 Google Drive, Dropbox, ou autre lien public
               </p>
             </div>
 
             {/* Message */}
             <div>
-              <label className="block text-[11px] font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
                 Message de motivation
               </label>
               <textarea

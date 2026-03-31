@@ -111,7 +111,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           <Gauge className="w-4 h-4" />
           <span className="text-xs font-medium uppercase tracking-wider">Gestion d'équipe</span>
         </div>
-        <span className="text-[10px] uppercase tracking-wider opacity-70">{members.length} membre{members.length > 1 ? 's' : ''}</span>
+        <span className="text-xs uppercase tracking-wider opacity-70">{members.length} membre{members.length > 1 ? 's' : ''}</span>
       </div>
 
       <div className="divide-y divide-border">
@@ -140,7 +140,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium text-foreground truncate">{getDisplayName(member.user_id)}</p>
                       {(member.role as string) === 'collaborator' && (
-                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-blue-400 text-blue-600 font-semibold uppercase tracking-wider">
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 border-blue-400 text-blue-600 font-semibold uppercase tracking-wider">
                           <UserCog className="w-2.5 h-2.5 mr-0.5" />
                           Externe
                         </Badge>
@@ -148,17 +148,17 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {linkedInMapping ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
                           {linkedInMapping.linkedin_account_name || 'Connecté'}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground/50 italic">Pas de LinkedIn</span>
+                        <span className="text-xs text-muted-foreground/50 italic">Pas de LinkedIn</span>
                       )}
                       {memberJobs.length > 0 && (
                         <>
                           <span className="text-muted-foreground/30">·</span>
-                          <span className="text-[10px] text-muted-foreground">{memberJobs.length} poste{memberJobs.length > 1 ? 's' : ''}</span>
+                          <span className="text-xs text-muted-foreground">{memberJobs.length} poste{memberJobs.length > 1 ? 's' : ''}</span>
                         </>
                       )}
                     </div>
@@ -177,7 +177,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   <div className="px-4 py-4">
                     <div className="flex items-center gap-2 mb-3">
                       <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Compte LinkedIn</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Compte LinkedIn</span>
                     </div>
 
                     {linkedInMapping ? (
@@ -186,12 +186,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           <img src={linkedinLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                           <div>
                             <p className="text-xs font-medium">{linkedInMapping.linkedin_account_name}</p>
-                            <p className="text-[10px] text-muted-foreground">ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…</p>
+                            <p className="text-xs text-muted-foreground">ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…</p>
                           </div>
                         </div>
                         <button
                           onClick={() => unlinkAccount(linkedInMapping.id)}
-                          className="h-7 px-2 flex items-center gap-1 text-[10px] uppercase tracking-wide text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive transition-colors"
+                          className="h-7 px-2 flex items-center gap-1 text-xs uppercase tracking-wide text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive transition-colors"
                         >
                           <Unlink className="w-3 h-3" />
                           Dissocier
@@ -240,13 +240,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   <div className="px-4 py-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Postes assignés</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Postes assignés</span>
                     </div>
 
                     {memberJobs.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-3">
                         {memberJobs.map(a => (
-                          <span key={a.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-foreground text-background text-[11px] font-medium">
+                          <span key={a.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-foreground text-background text-xs font-medium">
                             {a.job_title || a.job_id}
                             <button onClick={() => unassign(a.id)} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity">
                               <X className="w-3 h-3" />
@@ -294,12 +294,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Sliders className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quotas journaliers</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quotas journaliers</span>
                       </div>
                       {!isEditingQ && (
                         <button
                           onClick={() => startEditingQuotas(member.user_id)}
-                          className="text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground border-b border-dotted border-muted-foreground hover:border-foreground transition-colors"
+                          className="text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground border-b border-dotted border-muted-foreground hover:border-foreground transition-colors"
                         >
                           Modifier
                         </button>
@@ -318,14 +318,14 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center gap-1.5">
                                 <Icon className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-[11px] text-muted-foreground">{label}</span>
+                                <span className="text-xs text-muted-foreground">{label}</span>
                               </div>
                               {isEditingQ ? (
                                 <Input
                                   type="number"
                                   min={0}
                                   max={max}
-                                  className="h-6 w-16 text-[11px] text-right rounded-none border-foreground px-1.5"
+                                  className="h-6 w-16 text-xs text-right rounded-none border-foreground px-1.5"
                                   value={value}
                                   onChange={e => setEditingQuotas(prev => ({
                                     ...prev,
@@ -336,7 +336,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                   }))}
                                 />
                               ) : (
-                                <span className="text-[11px] font-bold tabular-nums">{value}</span>
+                                <span className="text-xs font-bold tabular-nums">{value}</span>
                               )}
                             </div>
                             <div className="h-1 bg-border w-full">

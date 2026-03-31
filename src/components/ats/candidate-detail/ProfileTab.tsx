@@ -57,28 +57,28 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
         {enrichedProfile?.location && (
           <div className="p-3 border border-foreground/10">
             <MapPin className="w-4 h-4 text-muted-foreground mb-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Localisation</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Localisation</p>
             <p className="text-sm font-medium text-foreground mt-0.5">{enrichedProfile.location}</p>
           </div>
         )}
         {enrichedProfile?.yearsOfExperience && (
           <div className="p-3 border border-foreground/10">
             <Briefcase className="w-4 h-4 text-muted-foreground mb-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Expérience</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Expérience</p>
             <p className="text-sm font-medium text-foreground mt-0.5">~{enrichedProfile.yearsOfExperience} ans</p>
           </div>
         )}
         {enrichedProfile?.currentCompany && (
           <div className="p-3 border border-foreground/10">
             <Target className="w-4 h-4 text-muted-foreground mb-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Entreprise</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Entreprise</p>
             <p className="text-sm font-medium text-foreground mt-0.5 truncate">{enrichedProfile.currentCompany}</p>
           </div>
         )}
         {enrichedProfile?.currentRole && (
           <div className="p-3 border border-foreground/10">
             <Activity className="w-4 h-4 text-muted-foreground mb-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Poste</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Poste</p>
             <p className="text-sm font-medium text-foreground mt-0.5 truncate">{enrichedProfile.currentRole}</p>
           </div>
         )}
@@ -113,7 +113,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
         <Section title="Compétences">
           <div className="flex flex-wrap gap-1.5">
             {enrichedProfile.skills.map(s => (
-              <span key={s} className="text-[10px] px-2 py-0.5 border border-foreground/20 text-foreground font-medium uppercase tracking-wider">{s}</span>
+              <span key={s} className="text-xs px-2 py-0.5 border border-foreground/20 text-foreground font-medium uppercase tracking-wider">{s}</span>
             ))}
           </div>
         </Section>
@@ -138,7 +138,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
           <div className="space-y-3">
             {fullProfile.qualificationSessions.map(qs => (
               <div key={qs.id} className="flex items-start gap-3">
-                <div className={cn("h-8 w-8 flex items-center justify-center border shrink-0 text-[10px] font-bold",
+                <div className={cn("h-8 w-8 flex items-center justify-center border shrink-0 text-xs font-bold",
                   qs.verdict === 'go' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
                   qs.verdict === 'no_go' ? 'border-destructive/40 bg-destructive/5 text-destructive' :
                   qs.verdict === 'maybe' ? 'border-amber-400 bg-amber-50 text-amber-700' :
@@ -151,18 +151,18 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
                     <span className="text-sm font-medium text-foreground">
                       {qs.verdict === 'go' ? 'Go' : qs.verdict === 'no_go' ? 'No-Go' : qs.verdict === 'maybe' ? 'Maybe' : 'Planifié'}
                     </span>
-                    {qs.jobTitle && <span className="text-[10px] text-muted-foreground">• {qs.jobTitle}</span>}
+                    {qs.jobTitle && <span className="text-xs text-muted-foreground">• {qs.jobTitle}</span>}
                   </div>
                   {qs.eventStartAt && (
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {format(parseISO(qs.eventStartAt), 'd MMM yyyy à HH:mm', { locale: fr })}
                     </span>
                   )}
                   {qs.verdictNotes && (
-                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{qs.verdictNotes}</p>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{qs.verdictNotes}</p>
                   )}
                   <a href={`/qualification/${qs.id}`} target="_blank" rel="noopener noreferrer"
-                    className="text-[10px] text-foreground underline underline-offset-2 hover:text-brutal-accent flex items-center gap-1 mt-1">
+                    className="text-xs text-foreground underline underline-offset-2 hover:text-brutal-accent flex items-center gap-1 mt-1">
                     <ExternalLink className="w-3 h-3" /> Voir la scorecard
                   </a>
                 </div>
@@ -190,12 +190,12 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
             )}
             {fullProfile.airtableShortlists.length > 0 && (
               <div className="mt-2 pt-2 border-t border-foreground/10">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-foreground mb-2 block">
+                <span className="text-xs font-bold uppercase tracking-wider text-foreground mb-2 block">
                   Shortlists précédentes ({fullProfile.airtableShortlists.length})
                 </span>
                 <div className="space-y-1.5">
                   {fullProfile.airtableShortlists.slice(0, 5).map(s => (
-                    <div key={s.id} className="flex items-center justify-between text-[11px]">
+                    <div key={s.id} className="flex items-center justify-between text-xs">
                       <span className="text-foreground">{s.jobTitle || s.companyName || 'Shortlist'}</span>
                       <div className="flex items-center gap-2">
                         {s.status && <BadgeItem>{s.status}</BadgeItem>}

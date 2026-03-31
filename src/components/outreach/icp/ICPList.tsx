@@ -67,7 +67,7 @@ function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => 
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm">{typeInfo.emoji}</span>
               <h3 className="text-sm font-semibold text-foreground truncate">{icp.name}</h3>
-              <Badge variant="outline" className="text-[10px] shrink-0 border-foreground/20">
+              <Badge variant="outline" className="text-xs shrink-0 border-foreground/20">
                 {typeInfo.label}
               </Badge>
             </div>
@@ -95,7 +95,7 @@ function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => 
         {allCriteria.length > 0 && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground mt-2 transition-colors"
+            className="flex items-center gap-1 text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground mt-2 transition-colors"
           >
             {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             {expanded ? 'Masquer' : 'Voir tous les critères'} ({allCriteria.length})
@@ -107,10 +107,10 @@ function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => 
         <div className="border-t border-foreground/10 px-4 py-3 bg-muted/30 space-y-2">
           {allCriteria.map((item, i) => (
             <div key={i} className="flex items-start gap-2">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground w-28 shrink-0 pt-0.5">{item.label}</span>
+              <span className="text-xs uppercase tracking-wider text-muted-foreground w-28 shrink-0 pt-0.5">{item.label}</span>
               <div className="flex flex-wrap gap-1">
                 {item.values.map((v, j) => (
-                  <Badge key={j} variant="outline" className="text-[10px] border-foreground/15 font-normal">
+                  <Badge key={j} variant="outline" className="text-xs border-foreground/15 font-normal">
                     {v}
                   </Badge>
                 ))}
@@ -157,7 +157,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
         <div className="flex items-center gap-2">
           <Target className="w-4 h-4" />
           <h2 className="text-sm font-bold uppercase tracking-wider">Profils Cibles (ICP)</h2>
-          <Badge variant="outline" className="text-[10px] border-foreground/20">{icps.length}</Badge>
+          <Badge variant="outline" className="text-xs border-foreground/20">{icps.length}</Badge>
         </div>
         <Button
           onClick={() => { setEditingICP(null); setFormOpen(true); }}

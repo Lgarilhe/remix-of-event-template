@@ -75,7 +75,7 @@ export const ModelPicker = ({
             ~{estimatedCost} cr
           </span>
           {isAutoRouted && (
-            <span className="text-[9px] text-muted-foreground/70 uppercase tracking-wider">auto</span>
+            <span className="text-xs text-muted-foreground/70 uppercase tracking-wider">auto</span>
           )}
         </button>
       </DropdownMenuTrigger>
@@ -117,7 +117,7 @@ export const ModelPicker = ({
                 <div className="flex items-center gap-3 w-full">
                   <ModelLogo modelId={modelId} size={22} />
                   <span className="text-sm font-medium">{model.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm ml-auto shrink-0">
+                  <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm ml-auto shrink-0">
                     ~{cost} cr
                   </span>
                 </div>

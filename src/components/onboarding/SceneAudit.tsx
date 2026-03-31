@@ -215,7 +215,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5 px-1">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
+        <span className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
           02 — Marque employeur
         </span>
         <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Votre image employeur</h2>
@@ -245,7 +245,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                     className="flex items-center gap-2"
                   >
                     <div
-                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold border transition-all duration-300 ${
+                      className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
                         s.done ? 'border-transparent text-foreground' : 'border-foreground/20 text-muted-foreground'
                       }`}
                       style={s.done ? { background: 'hsl(var(--brutal-accent))' } : {}}
@@ -348,7 +348,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                   >
                     {overallScore}
                   </motion.span>
-                  <span className="text-[10px] text-muted-foreground">/100</span>
+                  <span className="text-xs text-muted-foreground">/100</span>
                 </div>
               </div>
 
@@ -356,7 +356,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 <div className="flex items-center gap-2 mb-1 justify-center sm:justify-start flex-wrap">
                   <h3 className="font-semibold text-base sm:text-lg">Score Marque Employeur</h3>
                   <span
-                    className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
                     style={{ background: overallScore >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
                   >
                     {overallScore >= 70 ? 'Bon' : 'À améliorer'}
@@ -397,7 +397,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                             transition={{ duration: 0.6, delay: 0.2 }}
                           />
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-1 truncate">{cat.summary}</p>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">{cat.summary}</p>
                       </div>
                       {isExpanded ? <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />}
                     </button>
@@ -432,7 +432,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
                   <span
-                    className="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
                     style={{ background: 'hsl(var(--landing-accent-yellow))' }}
                   >
                     Quick wins

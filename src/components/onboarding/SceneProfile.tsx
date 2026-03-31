@@ -240,7 +240,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         {/* Header */}
         <div className="text-center space-y-2">
           <span
-            className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+            className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
             style={{ fontFamily: "'Space Mono', monospace" }}
           >
             Classification
@@ -262,7 +262,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               transition={{ duration: 0.4, ease: 'easeOut' }}
             />
           </div>
-          <span className="text-[11px] text-muted-foreground" style={{ fontFamily: "'Space Mono', monospace" }}>
+          <span className="text-xs text-muted-foreground" style={{ fontFamily: "'Space Mono', monospace" }}>
             {classifiedCount}/{expClassifications.length}
           </span>
         </div>
@@ -297,7 +297,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                         />
                       ) : null}
                       <div
-                        className={`w-8 h-8 border border-foreground/10 flex items-center justify-center text-[10px] font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
+                        className={`w-8 h-8 border border-foreground/10 flex items-center justify-center text-xs font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
                         style={{ background: `hsl(var(--skalr-purple) / ${0.05 + (i % 3) * 0.03})` }}
                       >
                         {exp.company?.charAt(0)?.toUpperCase() || '?'}
@@ -317,7 +317,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                       <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
                         {exp.title || 'Poste non renseigné'}
                       </p>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         {exp.company || 'Entreprise inconnue'}
                       </p>
                     </div>
@@ -338,7 +338,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                               )
                             );
                           }}
-                          className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider border-2 transition-all ${
+                          className={`px-2.5 py-1 text-xs font-bold uppercase tracking-wider border-2 transition-all ${
                             isActive
                               ? 'text-white'
                               : 'border-foreground/8 text-muted-foreground/30 hover:text-muted-foreground/60 hover:border-foreground/15'
@@ -364,7 +364,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
           })}
         </div>
 
-        <p className="text-[10px] text-muted-foreground text-center">
+        <p className="text-xs text-muted-foreground text-center">
           Vous pouvez laisser certaines expériences non classées si elles ne sont pas liées au recrutement.
         </p>
 
@@ -403,7 +403,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-[11px] uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           {isFreelance ? '02' : '04'} — Votre profil
@@ -487,7 +487,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {scanning ? 'Analyse...' : 'Scanner'}
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             On analyse votre parcours pour générer une bio professionnelle visible sur votre profil public.
           </p>
         </div>
@@ -537,21 +537,21 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Key info badges */}
               <div className="flex flex-wrap gap-1.5">
                 {scanResult.yearsExperience > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border-2 border-foreground/20 text-foreground"
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-foreground/20 text-foreground"
                     style={{ background: 'hsl(var(--skalr-green) / 0.1)' }}>
                     <Briefcase className="w-3 h-3" />
                     {scanResult.yearsExperience} ans d'exp.
                   </span>
                 )}
                 {scanResult.seniority && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border-2 border-foreground/20 text-foreground"
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-foreground/20 text-foreground"
                     style={{ background: 'hsl(var(--skalr-purple) / 0.1)' }}>
                     <Tag className="w-3 h-3" />
                     {scanResult.seniority}
                   </span>
                 )}
                 {scanResult.location && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border-2 border-foreground/20 text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-foreground/20 text-muted-foreground">
                     <MapPin className="w-3 h-3" />
                     {scanResult.location}
                   </span>
@@ -571,7 +571,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                       other: { label: 'Autre', color: 'var(--foreground)' },
                     }[type];
                     return (
-                      <span key={type} className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-2 border-foreground/20"
+                      <span key={type} className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border-2 border-foreground/20"
                         style={{ background: `hsl(${config.color} / 0.1)` }}>
                         {config.label} × {count}
                       </span>
@@ -582,7 +582,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
               {/* Bio */}
               <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bio générée</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Bio générée</p>
                 <p className="text-sm leading-relaxed text-foreground/80">
                   {scanResult.bio}
                 </p>
@@ -592,7 +592,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               <button
                 type="button"
                 onClick={() => setProfileStep('classify')}
-                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
               >
                 Modifier la classification et régénérer
               </button>
@@ -600,12 +600,12 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Industries */}
               {scanResult.industries && scanResult.industries.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                     <Building2 className="w-3 h-3" /> Secteurs
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {scanResult.industries.map((ind) => (
-                      <span key={ind} className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground capitalize">
+                      <span key={ind} className="px-2 py-0.5 text-xs font-semibold border border-foreground/15 text-muted-foreground capitalize">
                         {ind}
                       </span>
                     ))}
@@ -616,10 +616,10 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Skills */}
               {scanResult.skills.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compétences</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Compétences</p>
                   <div className="flex flex-wrap gap-1.5">
                     {scanResult.skills.slice(0, 12).map((skill) => (
-                      <span key={skill} className="px-2 py-0.5 text-[10px] font-semibold border border-foreground/15 text-muted-foreground">
+                      <span key={skill} className="px-2 py-0.5 text-xs font-semibold border border-foreground/15 text-muted-foreground">
                         {skill}
                       </span>
                     ))}
@@ -630,11 +630,11 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Education */}
               {scanResult.education && scanResult.education.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                     <GraduationCap className="w-3 h-3" /> Formation
                   </p>
                   {scanResult.education.map((edu, i) => (
-                    <p key={i} className="text-[11px] text-foreground/60">{edu}</p>
+                    <p key={i} className="text-xs text-foreground/60">{edu}</p>
                   ))}
                 </div>
               )}
@@ -642,16 +642,16 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Recommendations */}
               {scanResult.recommendations && scanResult.recommendations.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                     <Quote className="w-3 h-3" /> Recommandations ({scanResult.recommendations.length})
                   </p>
                   {scanResult.recommendations.slice(0, 3).map((rec, i) => (
                     <div key={i} className="border-l-2 border-foreground/15 pl-3 space-y-0.5">
-                      <p className="text-[11px] text-foreground/70 italic leading-relaxed line-clamp-3">
+                      <p className="text-xs text-foreground/70 italic leading-relaxed line-clamp-3">
                         "{rec.body}"
                       </p>
                       {(rec.recommenderName || rec.recommenderTitle) && (
-                        <p className="text-[10px] text-muted-foreground font-semibold">
+                        <p className="text-xs text-muted-foreground font-semibold">
                           — {[rec.recommenderName, rec.recommenderTitle].filter(Boolean).join(', ')}
                         </p>
                       )}
@@ -664,7 +664,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {scanResult.tags && scanResult.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1 border-t border-foreground/10">
                   {scanResult.tags.map((tag) => (
-                    <span key={tag} className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-foreground/50">
+                    <span key={tag} className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-foreground/50">
                       #{tag}
                     </span>
                   ))}

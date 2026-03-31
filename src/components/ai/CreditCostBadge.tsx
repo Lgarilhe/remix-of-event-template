@@ -35,7 +35,7 @@ export const CreditCostBadge = ({ actionId, modelId, className }: CreditCostBadg
         <TooltipTrigger asChild>
           <span
             className={cn(
-              "inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-sm",
+              "inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-sm",
               "bg-muted/80 text-muted-foreground border border-border/50",
               "select-none shrink-0",
               className

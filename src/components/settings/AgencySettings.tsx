@@ -95,28 +95,28 @@ export const AgencySettings: React.FC = () => {
     <div className="space-y-6">
       {/* Agency info */}
       <div className="border border-foreground/20 p-4 sm:p-6">
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Infos cabinet
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="border border-foreground/10 p-4 text-center">
             <p className="text-2xl font-bold text-foreground">{memberCount}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-1">Membres</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">Membres</p>
           </div>
           <div className="border border-foreground/10 p-4 text-center">
             <p className="text-2xl font-bold text-foreground">{ownerCount}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-1">Owners</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">Owners</p>
           </div>
           <div className="border border-foreground/10 p-4 text-center">
             <p className="text-2xl font-bold text-foreground">{recruiterCount}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-1">Recruteurs</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">Recruteurs</p>
           </div>
         </div>
       </div>
 
       {/* Permissions */}
       <div className="border border-foreground/20 p-4 sm:p-6">
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Permissions agence
         </h3>
         {!isOwner && (
@@ -132,13 +132,13 @@ export const AgencySettings: React.FC = () => {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground">{label}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
               </div>
               <button
                 onClick={() => handleToggle(key)}
                 disabled={!isOwner || saving}
                 className={cn(
-                  "h-[30px] px-4 text-[10px] font-bold uppercase tracking-wider border transition-colors shrink-0 ml-4",
+                  "h-[30px] px-4 text-xs font-bold uppercase tracking-wider border transition-colors shrink-0 ml-4",
                   perms[key]
                     ? "bg-foreground text-background border-foreground"
                     : "bg-background text-muted-foreground border-foreground/30",
@@ -156,7 +156,7 @@ export const AgencySettings: React.FC = () => {
       <div className="border border-foreground/20 p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Métriques agence
           </h3>
         </div>

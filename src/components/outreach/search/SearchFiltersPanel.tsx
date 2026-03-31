@@ -174,10 +174,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                     <span>{account.name || account.identifier}</span>
                     <div className="flex gap-1">
                       {account.subscriptions?.recruiter && (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-foreground/10 text-foreground font-medium">R</span>
+                        <span className="text-xs px-1.5 py-0.5 bg-foreground/10 text-foreground font-medium">R</span>
                       )}
                       {account.subscriptions?.sales_navigator && (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-foreground/10 text-foreground font-medium">SN</span>
+                        <span className="text-xs px-1.5 py-0.5 bg-foreground/10 text-foreground font-medium">SN</span>
                       )}
                     </div>
                   </div>
@@ -209,7 +209,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                     type="button"
                     onClick={() => isAvailable && setFilters(f => ({ ...f, api: option.value as LinkedInApiType }))}
                     disabled={!isAvailable}
-                    className={`w-7 h-7 text-[10px] font-medium transition-all ${
+                    className={`w-7 h-7 text-xs font-medium transition-all ${
                       !isAvailable
                         ? 'text-foreground/20 cursor-not-allowed'
                         : filters.api === option.value
@@ -268,11 +268,11 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <div className="bg-background border border-foreground p-3 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-sm">🎯</span>
-            <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Poste actif</span>
+            <span className="text-xs font-bold text-foreground uppercase tracking-widest">Poste actif</span>
           </div>
           <p className="text-sm font-medium text-foreground truncate">{selectedJob.title}</p>
           {(selectedJob as any).client?.name && (
-            <p className="text-[11px] text-muted-foreground truncate">@ {(selectedJob as any).client.name}</p>
+            <p className="text-xs text-muted-foreground truncate">@ {(selectedJob as any).client.name}</p>
           )}
         </div>
       )}
@@ -299,7 +299,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
           <div className="bg-background border border-foreground p-3">
-            <label className="text-[10px] font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
+            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea
@@ -358,13 +358,13 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 p-3 border border-foreground/10">
             <p className="font-medium text-foreground/70">💡 Astuces Boolean avancées :</p>
             <ul className="space-y-1 list-disc list-inside">
-              <li><strong>OR</strong> entre synonymes : <code className="text-[10px] bg-muted px-1">Java OR JEE OR J2EE</code></li>
-              <li><strong>AND</strong> entre catégories : <code className="text-[10px] bg-muted px-1">(Java OR JEE) AND (Spring OR SpringBoot)</code></li>
-              <li><strong>NOT</strong> pour exclure : <code className="text-[10px] bg-muted px-1">NOT (junior OR stagiaire OR freelance)</code></li>
-              <li><strong>Guillemets</strong> pour expressions exactes : <code className="text-[10px] bg-muted px-1">"data scientist"</code></li>
-              <li><strong>Wildcard *</strong> pour variantes : <code className="text-[10px] bg-muted px-1">cloud*</code> → cloud, cloudops, cloudstack</li>
+              <li><strong>OR</strong> entre synonymes : <code className="text-xs bg-muted px-1">Java OR JEE OR J2EE</code></li>
+              <li><strong>AND</strong> entre catégories : <code className="text-xs bg-muted px-1">(Java OR JEE) AND (Spring OR SpringBoot)</code></li>
+              <li><strong>NOT</strong> pour exclure : <code className="text-xs bg-muted px-1">NOT (junior OR stagiaire OR freelance)</code></li>
+              <li><strong>Guillemets</strong> pour expressions exactes : <code className="text-xs bg-muted px-1">"data scientist"</code></li>
+              <li><strong>Wildcard *</strong> pour variantes : <code className="text-xs bg-muted px-1">cloud*</code> → cloud, cloudops, cloudstack</li>
             </ul>
-            <p className="text-[10px] mt-1 text-muted-foreground/70">⚠️ Mettre les titres de poste dans le champ Rôle, pas ici. Limite ~200 caractères.</p>
+            <p className="text-xs mt-1 text-muted-foreground/70">⚠️ Mettre les titres de poste dans le champ Rôle, pas ici. Limite ~200 caractères.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setKeywordsDialogOpen(false)}>Annuler</Button>

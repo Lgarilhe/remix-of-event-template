@@ -183,11 +183,11 @@ const EDUCATION_DEGREES = [
 function FilterSection({ label, icon, hint, children }: { label: string; icon?: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
+      <label className="text-xs font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
         {icon}{label}
       </label>
       {children}
-      {hint && <p className="text-[10px] text-muted-foreground/60">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
     </div>
   );
 }
@@ -452,8 +452,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           <div className="w-7 h-7 bg-foreground text-background flex items-center justify-center shrink-0">
             <Search className="w-3.5 h-3.5" />
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Filtres</span>
-          <Badge variant="outline" className="text-[9px] border-foreground/40 font-normal bg-background/80 ml-auto">Recherche avancée</Badge>
+          <span className="text-xs font-bold uppercase tracking-widest text-foreground">Filtres</span>
+          <Badge variant="outline" className="text-xs border-foreground/40 font-normal bg-background/80 ml-auto">Recherche avancée</Badge>
         </div>
 
         {/* ICP selector */}
@@ -466,7 +466,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
                 {icps.map(icp => (<SelectItem key={icp.id} value={icp.id}>{icp.name}</SelectItem>))}
               </SelectContent>
             </Select>
-            {selectedICP && (<Badge variant="outline" className="text-[9px] border-foreground/40 gap-1 shrink-0"><Target className="w-3 h-3" /> ICP</Badge>)}
+            {selectedICP && (<Badge variant="outline" className="text-xs border-foreground/40 gap-1 shrink-0"><Target className="w-3 h-3" /> ICP</Badge>)}
           </div>
         )}
 
@@ -494,7 +494,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </div>
 
       {/* ═══ PROSPECT SECTIONS ═══ */}
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground pt-1 px-1">👤 Prospect</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-1 px-1">👤 Prospect</div>
 
       <CollapsibleFilterGroup title="Poste & Fonction" emoji="💼" defaultOpen={true} count={posteCount}>
         <FilterSection label="Titre du poste" icon={<Briefcase className="w-3 h-3" />}>
@@ -540,7 +540,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           </Select>
         </FilterSection>
         <div className="col-span-full">
-          <label className="text-[11px] font-semibold text-foreground/70 mb-2 block">Niveau hiérarchique</label>
+          <label className="text-xs font-semibold text-foreground/70 mb-2 block">Niveau hiérarchique</label>
           <div className="flex flex-wrap gap-1">
             {JOB_TITLE_LEVELS.map(level => (
               <ChipToggle key={level.value} label={level.label} active={jobTitleLevels.includes(level.value)} onClick={() => toggleLevel(level.value)} />
@@ -548,7 +548,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           </div>
           <div className="flex items-center gap-2 mt-2">
             <Switch checked={includeSimilarTitles} onCheckedChange={setIncludeSimilarTitles} className="h-4 w-7" />
-            <span className="text-[10px] text-muted-foreground">Inclure titres similaires</span>
+            <span className="text-xs text-muted-foreground">Inclure titres similaires</span>
           </div>
         </div>
       </CollapsibleFilterGroup>
@@ -650,7 +650,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       </CollapsibleFilterGroup>
 
       {/* ═══ ENTREPRISE SECTIONS ═══ */}
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground pt-2 px-1">🏢 Entreprise</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-2 px-1">🏢 Entreprise</div>
 
       <CollapsibleFilterGroup title="Identité" emoji="🏷️" count={idCount}>
         <FilterSection label="Nom" icon={<Building2 className="w-3 h-3" />}>
@@ -790,7 +790,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
               <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
               <span className="shrink-0">Filtres</span>
               {totalFilters > 0 && (
-                <span className="text-[9px] font-bold bg-foreground text-background px-1.5 py-0.5">{totalFilters}</span>
+                <span className="text-xs font-bold bg-foreground text-background px-1.5 py-0.5">{totalFilters}</span>
               )}
             </Button>
           </SheetTrigger>

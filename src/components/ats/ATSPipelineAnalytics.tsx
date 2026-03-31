@@ -120,7 +120,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
         <div className="border border-foreground bg-background">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground bg-destructive/5">
             <AlertTriangle className="w-4 h-4 text-destructive" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-destructive">
+            <span className="text-xs font-bold uppercase tracking-wider text-destructive">
               Goulots d'étranglement détectés
             </span>
           </div>
@@ -138,7 +138,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                   }`} />
                   <div>
                     <span className="text-sm font-semibold text-foreground">{b.stage}</span>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {b.count} candidat{b.count > 1 ? 's' : ''} bloqué{b.count > 1 ? 's' : ''} depuis &gt; {b.guideTime}j
                     </p>
                   </div>
@@ -149,7 +149,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                   }`}>
                     ~{b.avgDays}j
                   </span>
-                  <p className="text-[9px] text-muted-foreground">moy. en stage</p>
+                  <p className="text-xs text-muted-foreground">moy. en stage</p>
                 </div>
               </div>
             ))}
@@ -161,7 +161,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       <div className="border border-foreground bg-background">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground">
           <Clock className="w-4 h-4 text-foreground" />
-          <span className="text-[11px] font-bold uppercase tracking-wider">
+          <span className="text-xs font-bold uppercase tracking-wider">
             Temps moyen par étape
           </span>
         </div>
@@ -172,7 +172,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
             
             return (
               <div key={metric.key} className="flex items-center gap-3">
-                <span className="text-[10px] font-medium text-foreground w-20 shrink-0 truncate uppercase tracking-wider">
+                <span className="text-xs font-medium text-foreground w-20 shrink-0 truncate uppercase tracking-wider">
                   {metric.label}
                 </span>
                 <div className="flex-1 h-6 bg-muted/30 border border-border relative overflow-hidden">
@@ -183,10 +183,10 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                     style={{ width: `${barWidth}%` }}
                   />
                   <div className="absolute inset-0 flex items-center px-2 justify-between">
-                    <span className="text-[10px] font-bold tabular-nums text-foreground">
+                    <span className="text-xs font-bold tabular-nums text-foreground">
                       {metric.count}
                     </span>
-                    <span className={`text-[9px] font-medium tabular-nums ${
+                    <span className={`text-xs font-medium tabular-nums ${
                       isOverGuide ? 'text-destructive font-bold' : 'text-muted-foreground'
                     }`}>
                       {metric.avgDays}j / {metric.guideTime}j
@@ -194,7 +194,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                   </div>
                 </div>
                 {metric.stagnantCount > 0 && (
-                  <span className="text-[9px] text-destructive font-bold tabular-nums shrink-0">
+                  <span className="text-xs text-destructive font-bold tabular-nums shrink-0">
                     ⚠ {metric.stagnantCount}
                   </span>
                 )}
@@ -208,18 +208,18 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       <div className="border border-foreground bg-background">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground">
           <TrendingDown className="w-4 h-4 text-foreground" />
-          <span className="text-[11px] font-bold uppercase tracking-wider">
+          <span className="text-xs font-bold uppercase tracking-wider">
             Taux de conversion entre étapes
           </span>
         </div>
         <div className="p-4 space-y-1">
           {funnelSteps.map((step, i) => (
             <div key={step.from} className="flex items-center gap-2">
-              <span className="text-[10px] font-medium text-foreground w-20 shrink-0 truncate uppercase tracking-wider">
+              <span className="text-xs font-medium text-foreground w-20 shrink-0 truncate uppercase tracking-wider">
                 {step.from}
               </span>
               <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="text-[10px] font-medium text-foreground w-20 shrink-0 truncate uppercase tracking-wider">
+              <span className="text-xs font-medium text-foreground w-20 shrink-0 truncate uppercase tracking-wider">
                 {step.to}
               </span>
               <div className="flex-1 h-5 bg-muted/30 border border-border relative overflow-hidden">
@@ -232,12 +232,12 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                   style={{ width: `${step.rate}%` }}
                 />
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[10px] font-bold tabular-nums text-foreground">
+                  <span className="text-xs font-bold tabular-nums text-foreground">
                     {step.rate}%
                   </span>
                 </div>
               </div>
-              <span className="text-[9px] text-muted-foreground tabular-nums shrink-0 w-16 text-right">
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0 w-16 text-right">
                 {step.fromCount} → {step.toCount}
               </span>
             </div>

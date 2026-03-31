@@ -21,7 +21,7 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ data, stages }) =>
         <div className="p-3 border border-foreground bg-muted/30">
           <div className="flex items-center gap-2 mb-1">
             <Users className="w-4 h-4 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</span>
+            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total</span>
           </div>
           <p className="text-2xl font-bold text-foreground">{totalCandidates}</p>
         </div>
@@ -29,7 +29,7 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ data, stages }) =>
         <div className="p-3 border border-foreground border-l-0 bg-blue-50/50">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-blue-600" />
-            <span className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">En cours</span>
+            <span className="text-xs text-blue-600 font-medium uppercase tracking-wider">En cours</span>
           </div>
           <p className="text-2xl font-bold text-blue-700">{inProgressCount}</p>
         </div>
@@ -37,7 +37,7 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ data, stages }) =>
         <div className="p-3 border border-foreground border-l-0 bg-green-50/50">
           <div className="flex items-center gap-2 mb-1">
             <Award className="w-4 h-4 text-green-600" />
-            <span className="text-[10px] text-green-600 font-medium uppercase tracking-wider">Gagnés</span>
+            <span className="text-xs text-green-600 font-medium uppercase tracking-wider">Gagnés</span>
           </div>
           <p className="text-2xl font-bold text-green-700">{wonCount}</p>
         </div>
@@ -45,7 +45,7 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ data, stages }) =>
         <div className="p-3 border border-foreground border-l-0 bg-red-50/50">
           <div className="flex items-center gap-2 mb-1">
             <XCircle className="w-4 h-4 text-red-600" />
-            <span className="text-[10px] text-red-600 font-medium uppercase tracking-wider">Perdus</span>
+            <span className="text-xs text-red-600 font-medium uppercase tracking-wider">Perdus</span>
           </div>
           <p className="text-2xl font-bold text-red-700">{lostCount}</p>
         </div>
