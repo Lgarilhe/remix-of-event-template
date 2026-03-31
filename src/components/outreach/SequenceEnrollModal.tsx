@@ -225,7 +225,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           </div>
 
           {/* Profiles preview */}
-          <ScrollArea className="h-[240px] rounded-lg border bg-muted/30 p-1">
+          <ScrollArea className="h-[200px] sm:h-[240px] border border-foreground/10 bg-muted/30 p-1">
             <div className="space-y-1.5">
               {profiles.map((profile) => (
                 <div
