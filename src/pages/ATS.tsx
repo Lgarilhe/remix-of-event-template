@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
-import { Navbar } from '@/components/Navbar';
+import { SEOHead } from '@/components/SEOHead';
 import { SEOHead } from '@/components/SEOHead';
 import { ATSKanban } from '@/components/ats/ATSKanban';
 import { ATSTable } from '@/components/ats/ATSTable';
