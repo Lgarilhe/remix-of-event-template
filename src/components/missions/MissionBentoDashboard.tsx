@@ -18,10 +18,6 @@ interface MissionBentoDashboardProps {
   onTabChange: (tab: string) => void;
 }
 
-/* ═══════════════════════════════════════════════
-   MAIN COMPONENT
-   ═══════════════════════════════════════════════ */
-
 export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ project, onTabChange }) => {
   const { data: candidates = [] } = useProjectCandidates(project.id);
   const { data: stats } = useProjectStats(project.id);
@@ -57,7 +53,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
       <button
         type="button"
         onClick={() => onTabChange('brief')}
-        className="w-full text-left p-4 sm:p-6 hover:bg-foreground/[0.02] active:bg-foreground/[0.04] transition-colors group"
+        className="w-full text-left p-5 sm:p-6 hover:bg-foreground/[0.02] active:bg-foreground/[0.04] transition-colors group"
         style={{ WebkitTapHighlightColor: 'transparent' }}
       >
         <div className="flex items-start justify-between mb-3">
@@ -66,20 +62,20 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
               <FileText className="w-4 h-4 text-background" weight="duotone" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Brief Mission</p>
-              <p className="text-[9px] text-muted-foreground/60">Cliquez pour compléter</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Brief Mission</p>
+              <p className="text-xs text-muted-foreground/60">Cliquez pour compléter</p>
             </div>
           </div>
-          <div className={cn('flex items-baseline gap-0.5 font-black', pctColor)}>
-            <NumberTicker value={briefPct} className={cn('text-2xl font-black', pctColor)} />
+          <div className={cn('flex items-baseline gap-0.5 font-bold', pctColor)}>
+            <NumberTicker value={briefPct} className={cn('text-2xl font-bold', pctColor)} />
             <span className="text-sm">%</span>
           </div>
         </div>
 
-        <h2 className="text-base sm:text-lg font-black text-foreground mb-1 truncate">
+        <h2 className="text-base sm:text-lg font-bold text-foreground mb-1 truncate">
           {jd.title || project.name}
         </h2>
-        <p className="text-[11px] text-muted-foreground line-clamp-2 mb-3">
+        <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
           {jd.mission_description || jd.raw_brief || 'Complétez le brief pour commencer le sourcing'}
         </p>
 
@@ -97,53 +93,53 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
         {jd.skills_must_have && jd.skills_must_have.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-3">
             {jd.skills_must_have.slice(0, 5).map((s, i) => (
-              <span key={i} className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border-2 border-foreground/20 text-foreground/70">{s}</span>
+              <span key={i} className="px-2 py-0.5 text-xs font-medium border border-foreground/20 text-foreground/70">{s}</span>
             ))}
             {jd.skills_must_have.length > 5 && (
-              <span className="px-2 py-0.5 text-[9px] text-muted-foreground">+{jd.skills_must_have.length - 5}</span>
+              <span className="px-2 py-0.5 text-xs text-muted-foreground">+{jd.skills_must_have.length - 5}</span>
             )}
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 mt-3 text-[10px] font-black uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
+        <div className="flex items-center gap-1.5 mt-3 text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
           <span>Éditer le brief</span>
           <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
         </div>
       </button>
 
       {/* ── Stats ── */}
-      <div className="border-t-2 border-foreground p-4 sm:p-6 space-y-4">
-        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Métriques</p>
-        {statItems.map((item, i) => (
+      <div className="border-t-2 border-foreground p-5 sm:p-6 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Métriques</p>
+        {statItems.map((item) => (
           <div key={item.label} className="flex items-center gap-3">
             <div className={cn('w-8 h-8 flex items-center justify-center border-2 shrink-0', item.border)}>
               <item.icon className="w-3.5 h-3.5 text-foreground" weight="duotone" />
             </div>
             <div className="flex items-baseline gap-2 flex-1">
-              <span className="text-xl font-black text-foreground tabular-nums">
+              <span className="text-xl font-bold text-foreground tabular-nums">
                 <NumberTicker value={item.value} className="text-foreground" />
               </span>
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{item.label}</span>
+              <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
             </div>
             <div className="h-[1px] flex-1 bg-foreground/10" />
           </div>
         ))}
       </div>
 
-      {/* ── Launch Sourcing CTA (when filters exist) ── */}
+      {/* ── Launch Sourcing CTA ── */}
       {hasFilters && (
         <button
           type="button"
           onClick={() => setShowFilterReview(true)}
-          className="w-full border-t-2 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80 transition-colors group"
+          className="w-full border-t-2 border-foreground p-5 sm:p-6 flex items-center gap-4 text-left bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80 transition-colors group"
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <div className="w-10 h-10 flex items-center justify-center border-2 border-background/30 shrink-0">
             <Rocket className="w-4 h-4 text-background" weight="fill" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-xs font-black uppercase tracking-wider text-background mb-0.5">Lancer le sourcing</h3>
-            <p className="text-[10px] text-background/70 leading-relaxed">Voir et ajuster les filtres IA avant de chercher</p>
+            <h3 className="text-xs font-bold text-background mb-0.5">Lancer le sourcing</h3>
+            <p className="text-xs text-background/70 leading-relaxed">Voir et ajuster les filtres IA avant de chercher</p>
           </div>
           <ArrowRight className="w-4 h-4 text-background/70 group-hover:translate-x-1 transition-all shrink-0" />
         </button>
@@ -155,15 +151,15 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           key={action.tab}
           type="button"
           onClick={() => onTabChange(action.tab)}
-          className="w-full border-t-2 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left hover:bg-foreground/[0.03] active:bg-foreground/[0.06] transition-colors group"
+          className="w-full border-t-2 border-foreground p-5 sm:p-6 flex items-center gap-4 text-left hover:bg-foreground/[0.03] active:bg-foreground/[0.06] transition-colors group"
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <div className="w-10 h-10 flex items-center justify-center border-2 border-foreground/20 group-hover:border-foreground/50 transition-colors shrink-0">
             <action.icon className="w-4 h-4 text-foreground" weight="duotone" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-xs font-black uppercase tracking-wider text-foreground mb-0.5">{action.title}</h3>
-            <p className="text-[10px] text-muted-foreground leading-relaxed">{action.desc}</p>
+            <h3 className="text-xs font-bold text-foreground mb-0.5">{action.title}</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">{action.desc}</p>
           </div>
           <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all shrink-0" />
         </button>

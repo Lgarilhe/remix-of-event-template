@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { CollapsibleSection } from './shared';
-import { BorderBeam } from '@/components/magicui/border-beam';
+
 
 const DIMENSION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
   skills: { label: 'Compétences', icon: <Target className="w-3 h-3" /> },
@@ -35,7 +35,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
 
   return (
     <div className="relative border border-foreground/10 p-3 space-y-3">
-      {scoring.score > 80 && <BorderBeam size={150} duration={6} />}
+      {scoring.score > 80 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brutal-accent" />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

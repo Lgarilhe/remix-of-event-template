@@ -201,31 +201,6 @@ export default {
   					transform: 'translateX(100%)'
   				}
   			},
-  			'shimmer-spin': {
-  				'0%': {
-  					transform: 'rotate(0deg)'
-  				},
-  				'100%': {
-  					transform: 'rotate(360deg)'
-  				}
-  			},
-  			'border-beam': {
-  				'0%': {
-  					backgroundPosition: '0% 0%, 100% 100%, 0% 100%, 100% 0%'
-  				},
-  				'25%': {
-  					backgroundPosition: '100% 0%, 0% 100%, 0% 0%, 100% 100%'
-  				},
-  				'50%': {
-  					backgroundPosition: '100% 100%, 0% 0%, 0% 0%, 100% 100%'
-  				},
-  				'75%': {
-  					backgroundPosition: '0% 100%, 100% 0%, 100% 100%, 0% 0%'
-  				},
-  				'100%': {
-  					backgroundPosition: '0% 0%, 100% 100%, 100% 100%, 0% 0%'
-  				}
-  			}
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
@@ -236,8 +211,6 @@ export default {
   			'slide-in-left': 'slide-in-left 0.25s ease-out',
   			'scroll-left': 'scroll-left 40s linear infinite',
   			'scroll-left-fast': 'scroll-left 110s linear infinite',
-  			'shimmer-spin': 'shimmer-spin 2.5s linear infinite',
-  			'border-beam': 'border-beam 8s linear infinite'
   		},
   		boxShadow: {
   			'2xs': 'var(--shadow-2xs)',

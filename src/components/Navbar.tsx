@@ -45,7 +45,6 @@ const NavLogo: React.FC = () => {
 
   const lookX = face === 'look-left' ? -0.8 : face === 'look-right' ? 0.8 : 0;
 
-  // Eyes — cute round dots with pupils
   const eyeL = { cx: 5, cy: 5.5 };
   const eyeR = { cx: 9, cy: 5.5 };
 
@@ -59,7 +58,6 @@ const NavLogo: React.FC = () => {
     <circle cx={eyeR.cx + lookX * 0.3} cy={eyeR.cy} r="1.15" fill="currentColor" />
   );
 
-  // Mouth
   let mouth: React.ReactNode;
   if (face === 'surprise') {
     mouth = <circle cx="7" cy="9.8" r="0.9" fill="none" stroke="currentColor" strokeWidth="0.9" />;
@@ -69,7 +67,6 @@ const NavLogo: React.FC = () => {
     mouth = <path d="M5.8 9 Q7.5 10.6 9.8 8.8" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />;
   }
 
-  // Eyebrows
   const eyebrows = face === 'surprise' ? (
     <>
       <path d="M3.6 3.8 Q5 3 6.2 3.8" stroke="currentColor" strokeWidth="0.7" strokeLinecap="round" fill="none" />
@@ -77,7 +74,6 @@ const NavLogo: React.FC = () => {
     </>
   ) : null;
 
-  // Blush cheeks for happy
   const blush = face === 'happy' ? (
     <>
       <circle cx="3.5" cy="7.5" r="1" fill="hsl(var(--brutal-accent))" opacity="0.35" />
@@ -105,6 +101,10 @@ const NavLogo: React.FC = () => {
   );
 };
 
+/* ─── Shared nav link style ─── */
+const navLinkClass = "relative overflow-hidden bg-background text-foreground h-10 px-4 flex items-center text-xs font-semibold border-l-0 border border-foreground leading-none group";
+const navHoverReveal = <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />;
+
 export const Navbar: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -116,7 +116,6 @@ export const Navbar: React.FC = () => {
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const lastScrollY = useRef(0);
 
-  // Auto-hide on scroll down, show on scroll up
   useEffect(() => {
     const handleScroll = () => {
       const currentY = window.scrollY;
@@ -141,7 +140,6 @@ export const Navbar: React.FC = () => {
 
   return createPortal(
     <>
-      {/* Hover zone to bring navbar back */}
       {isCollapsed && (
         <div
           className="fixed top-0 left-0 right-0 h-6 z-[1999]"
@@ -154,71 +152,50 @@ export const Navbar: React.FC = () => {
         }`}
       >
       <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 flex items-center gap-0">
-      {/* Logo */}
       <NavLogo />
 
       {/* Desktop Navigation */}
-      <div className="hidden md:flex items-center h-[34px] flex-1">
+      <div className="hidden md:flex items-center h-10 flex-1">
         {user ? (
           <>
-            <Link
-              to="/dashboard"
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">DASHBOARD</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            <Link to="/dashboard" className={navLinkClass}>
+              <span className="relative z-10">Dashboard</span>
+              {navHoverReveal}
             </Link>
-            <Link
-              to="/missions" 
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">MISSIONS</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            <Link to="/missions" className={navLinkClass}>
+              <span className="relative z-10">Missions</span>
+              {navHoverReveal}
             </Link>
-            <Link 
-              to="/pipeline" 
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">PIPELINE</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            <Link to="/pipeline" className={navLinkClass}>
+              <span className="relative z-10">Pipeline</span>
+              {navHoverReveal}
             </Link>
-            <Link 
-              to="/inbox" 
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">MESSAGES</span>
+            <Link to="/inbox" className={navLinkClass}>
+              <span className="relative z-10">Messages</span>
               {unreadMsgCount > 0 && (
-                <span className="relative z-10 ml-1 min-w-[16px] h-4 flex items-center justify-center px-1 text-[9px] font-bold bg-destructive text-destructive-foreground rounded-full">
+                <span className="relative z-10 ml-1.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-xs font-bold bg-destructive text-destructive-foreground rounded-full">
                   {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                 </span>
               )}
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+              {navHoverReveal}
             </Link>
             {hasFeature(orgType, 'marketplace_browse') && (
-              <Link
-                to="/marketplace"
-                className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-              >
-                <span className="relative z-10">MARKETPLACE</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+              <Link to="/marketplace" className={navLinkClass}>
+                <span className="relative z-10">Marketplace</span>
+                {navHoverReveal}
               </Link>
             )}
-            <Link
-              to="/settings"
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
-            >
-              <span className="relative z-10">PARAMÈTRES</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+            <Link to="/settings" className={navLinkClass}>
+              <span className="relative z-10">Paramètres</span>
+              {navHoverReveal}
             </Link>
-            {/* Spacer */}
             <div className="flex-1" />
-            {/* Quick create menu — hidden for freelance */}
             {hasFeature(orgType, 'create_missions') && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="relative overflow-hidden glass text-foreground h-[34px] w-[34px] flex items-center justify-center text-sm font-bold border border-foreground leading-none group">
+                  <button className="relative overflow-hidden bg-background text-foreground h-10 w-10 flex items-center justify-center text-sm font-bold border border-foreground leading-none group">
                     <span className="relative z-10">+</span>
-                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+                    {navHoverReveal}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -234,17 +211,14 @@ export const Navbar: React.FC = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {/* Right group: credits + notifications + sign out */}
             <CreditBalanceIndicator />
             <NotificationDropdown />
             <button 
-              onClick={async () => {
-                await supabase.auth.signOut();
-              }}
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border-l-0 border border-foreground leading-none group"
+              onClick={async () => { await supabase.auth.signOut(); }}
+              className={navLinkClass}
             >
-              <span className="relative z-10">DÉCONNEXION</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+              <span className="relative z-10">Déconnexion</span>
+              {navHoverReveal}
             </button>
           </>
         ) : (
@@ -252,10 +226,10 @@ export const Navbar: React.FC = () => {
             <div className="flex-1" />
             <button 
               onClick={() => setIsAuthOpen(true)}
-              className="relative overflow-hidden glass text-foreground h-[34px] px-3 flex items-center text-[11px] font-medium uppercase border border-l-0 border-foreground leading-none group"
+              className={navLinkClass}
             >
-              <span className="relative z-10">SIGN IN</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+              <span className="relative z-10">Sign in</span>
+              {navHoverReveal}
             </button>
           </>
         )}
@@ -263,74 +237,49 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Navigation - Full Screen */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[3000] flex flex-col animate-in slide-in-from-top duration-300 glass-strong">
-          {/* Close header */}
+        <div className="md:hidden fixed inset-0 z-[3000] flex flex-col animate-in slide-in-from-top duration-300 bg-background">
           <div className="bg-foreground flex items-center justify-center py-16 animate-in fade-in duration-500">
             <button
               onClick={() => setIsMobileMenuOpen(false)}
-              className="text-background text-[11px] font-medium uppercase tracking-wider"
+              className="text-background text-xs font-semibold uppercase tracking-wider"
             >
-              CLOSE
+              Fermer
             </button>
           </div>
           
-          {/* Menu items */}
           <div className="flex-1 flex flex-col">
             {user ? (
               <>
-                <Link
-                  to="/dashboard"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.15s', animationFillMode: 'both' }}
-                >
-                  DASHBOARD
-                </Link>
-                <Link
-                  to="/missions" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.25s', animationFillMode: 'both' }}
-                >
-                  MISSIONS
-                </Link>
-                <Link 
-                  to="/pipeline" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.3s', animationFillMode: 'both' }}
-                >
-                  PIPELINE
-                </Link>
-                <Link 
-                  to="/inbox" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.35s', animationFillMode: 'both' }}
-                >
-                  MESSAGES
-                  {unreadMsgCount > 0 && (
-                    <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full">
-                      {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
-                    </span>
-                  )}
-                </Link>
-                <Link 
-                  to="/settings" 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
-                  style={{ animationDelay: '0.4s', animationFillMode: 'both' }}
-                >
-                  PARAMÈTRES
-                </Link>
+                {[
+                  { to: '/dashboard', label: 'Dashboard', delay: '0.15s' },
+                  { to: '/missions', label: 'Missions', delay: '0.25s' },
+                  { to: '/pipeline', label: 'Pipeline', delay: '0.3s' },
+                  { to: '/inbox', label: 'Messages', delay: '0.35s', badge: unreadMsgCount },
+                  { to: '/settings', label: 'Paramètres', delay: '0.4s' },
+                ].map(item => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground text-base font-semibold border-b border-foreground animate-fade-in"
+                    style={{ animationDelay: item.delay, animationFillMode: 'both' }}
+                  >
+                    {item.label}
+                    {item.badge && item.badge > 0 && (
+                      <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-destructive text-destructive-foreground rounded-full">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
+                  </Link>
+                ))}
                 {hasFeature(orgType, 'marketplace_browse') && (
                   <Link
                     to="/marketplace"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex-1 flex items-center justify-center bg-background text-foreground text-[17px] font-medium uppercase border-b border-foreground tracking-[-0.34px] animate-fade-in"
+                    className="flex-1 flex items-center justify-center bg-background text-foreground text-base font-semibold border-b border-foreground animate-fade-in"
                     style={{ animationDelay: '0.45s', animationFillMode: 'both' }}
                   >
-                    MARKETPLACE
+                    Marketplace
                   </Link>
                 )}
                 <button
@@ -338,10 +287,10 @@ export const Navbar: React.FC = () => {
                     await supabase.auth.signOut();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="flex-1 flex items-center justify-center text-foreground text-[17px] font-medium uppercase tracking-[-0.34px] animate-fade-in"
+                  className="flex-1 flex items-center justify-center text-foreground text-base font-semibold animate-fade-in"
                   style={{ animationDelay: '0.5s', animationFillMode: 'both' }}
                 >
-                  DÉCONNEXION
+                  Déconnexion
                 </button>
               </>
             ) : (
@@ -350,10 +299,10 @@ export const Navbar: React.FC = () => {
                   setIsAuthOpen(true);
                   setIsMobileMenuOpen(false);
                 }}
-                className="flex-1 flex items-center justify-center text-foreground text-[17px] font-medium uppercase tracking-[-0.34px] animate-fade-in"
+                className="flex-1 flex items-center justify-center text-foreground text-base font-semibold animate-fade-in"
                 style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
               >
-                SIGN IN
+                Sign in
               </button>
             )}
           </div>
@@ -366,10 +315,10 @@ export const Navbar: React.FC = () => {
         {user && <NotificationDropdown />}
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="relative overflow-hidden glass text-foreground h-[34px] px-3 border border-l-0 border-foreground flex items-center justify-center text-[11px] font-medium uppercase leading-none group"
+          className="relative overflow-hidden bg-background text-foreground h-10 px-4 border border-l-0 border-foreground flex items-center justify-center text-xs font-semibold leading-none group"
         >
-          <span className="relative z-10">MENU</span>
-          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+          <span className="relative z-10">Menu</span>
+          {navHoverReveal}
         </button>
       </div>
       </div>

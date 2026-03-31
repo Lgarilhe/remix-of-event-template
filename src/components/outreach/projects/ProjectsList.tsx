@@ -59,24 +59,24 @@ interface ProjectsListProps {
 }
 
 const statusConfig = {
-  active: { label: 'Actif', color: 'bg-green-100 text-green-700', icon: Play },
-  paused: { label: 'En pause', color: 'bg-yellow-100 text-yellow-700', icon: Pause },
-  completed: { label: 'Terminé', color: 'bg-blue-100 text-blue-700', icon: CheckCircle },
-  archived: { label: 'Archivé', color: 'bg-gray-100 text-gray-500', icon: Archive },
+  active: { label: 'Actif', variant: 'success' as const, icon: Play },
+  paused: { label: 'En pause', variant: 'warning' as const, icon: Pause },
+  completed: { label: 'Terminé', variant: 'info' as const, icon: CheckCircle },
+  archived: { label: 'Archivé', variant: 'muted' as const, icon: Archive },
 };
 
-const priorityConfig: Record<string, { label: string; color: string }> = {
-  haute: { label: 'Haute', color: 'bg-red-100 text-red-700' },
-  high: { label: 'Haute', color: 'bg-red-100 text-red-700' },
-  moyenne: { label: 'Moyenne', color: 'bg-yellow-100 text-yellow-700' },
-  medium: { label: 'Moyenne', color: 'bg-yellow-100 text-yellow-700' },
-  basse: { label: 'Basse', color: 'bg-blue-100 text-blue-700' },
-  low: { label: 'Basse', color: 'bg-blue-100 text-blue-700' },
+const priorityConfig: Record<string, { label: string; variant: 'destructive' | 'warning' | 'info' }> = {
+  haute: { label: 'Haute', variant: 'destructive' },
+  high: { label: 'Haute', variant: 'destructive' },
+  moyenne: { label: 'Moyenne', variant: 'warning' },
+  medium: { label: 'Moyenne', variant: 'warning' },
+  basse: { label: 'Basse', variant: 'info' },
+  low: { label: 'Basse', variant: 'info' },
 };
 
-const visibilityConfig: Record<string, { label: string; color: string; icon: typeof EyeIcon }> = {
-  collaborator: { label: 'Collaborateurs', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: UsersIcon },
-  public: { label: 'Marketplace', color: 'bg-green-100 text-green-700 border-green-200', icon: Globe },
+const visibilityConfig: Record<string, { label: string; variant: 'info' | 'success'; icon: typeof EyeIcon }> = {
+  collaborator: { label: 'Collaborateurs', variant: 'info', icon: UsersIcon },
+  public: { label: 'Marketplace', variant: 'success', icon: Globe },
 };
 
 function computeCardInsight(
@@ -131,7 +131,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
 
-  // Auto-open create dialog from ?create= query param
   useEffect(() => {
     const createMode = searchParams.get('create');
     if (createMode && ['brief', 'import', 'manual'].includes(createMode)) {
@@ -145,13 +144,11 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  // Merge Notion jobs + manual projects into unified list
   const unifiedProjects = useMemo(
     () => mergeProjectsAndJobs(notionJobs, sourcingProjects),
     [notionJobs, sourcingProjects]
   );
 
-  // Navigate to workspace — create sourcing_project on the fly for Notion jobs
   const navigateToWorkspace = useCallback(async (project: UnifiedProject, tab?: string) => {
     let spId = project.sourcingProject?.id;
 
@@ -176,7 +173,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     navigate(`/missions/${spId}${tab ? `?tab=${tab}` : ''}`);
   }, [createProject, navigate]);
 
-  // Get sourcing project IDs for batch stats
   const spIds = useMemo(
     () => unifiedProjects
       .map(p => p.sourcingProject?.id)
@@ -199,7 +195,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
   };
 
-  // Filter
   const filteredProjects = unifiedProjects.filter(project => {
     const matchesSearch = !searchQuery ||
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -212,21 +207,17 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     return matchesSearch && matchesStatus;
   });
 
-  // Sort: active first, then by last search date, then by creation date
   const sortedProjects = useMemo(() => {
     return [...filteredProjects].sort((a, b) => {
-      // Active first
       const statusOrder = { active: 0, paused: 1, completed: 2, archived: 3 };
       const statusDiff = statusOrder[a.status] - statusOrder[b.status];
       if (statusDiff !== 0) return statusDiff;
 
-      // Then by priority
       const prioOrder: Record<string, number> = { haute: 0, high: 0, moyenne: 1, medium: 1, basse: 2, low: 2 };
       const aPrio = prioOrder[a.priority?.toLowerCase() || ''] ?? 3;
       const bPrio = prioOrder[b.priority?.toLowerCase() || ''] ?? 3;
       if (aPrio !== bPrio) return aPrio - bPrio;
 
-      // Then by last activity
       const aDate = a.lastSearchAt || a.createdAt;
       const bDate = b.lastSearchAt || b.createdAt;
       return new Date(bDate).getTime() - new Date(aDate).getTime();
@@ -246,10 +237,8 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     }
   };
 
-  // Convert UnifiedProject to SourcingProject for downstream components
   const toSourcingProject = (project: UnifiedProject): SourcingProject => {
     if (project.sourcingProject) return project.sourcingProject;
-    // Create a virtual SourcingProject for Notion jobs without one
     return {
       id: '',
       organization_id: '',
@@ -301,10 +290,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             />
           </div>
 
-          {/* Status filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="relative overflow-hidden flex items-center gap-2 h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0">
+              <button className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-foreground bg-background text-foreground group shrink-0">
                 <Filter className="w-3.5 h-3.5 relative z-10" />
                 <span className="hidden sm:inline relative z-10">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
                 <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -331,7 +319,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               setCreateInitialTab('import');
               setShowCreateModal(true);
             }}
-            className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground shrink-0 group"
+            className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-foreground bg-background text-foreground shrink-0 group"
           >
             <span className="relative z-10">📥 Importer</span>
             <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -347,7 +335,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               setCreateInitialTab(undefined);
               setShowCreateModal(true);
             }}
-            className="relative overflow-hidden flex items-center gap-2 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 bg-foreground text-background shrink-0 group"
+            className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-foreground border-l-0 bg-foreground text-background shrink-0 group"
           >
             <Plus className="w-3.5 h-3.5 relative z-10" />
             <span className="relative z-10">Nouveau projet</span>
@@ -356,7 +344,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
       </div>
 
       {/* Count */}
-      <div className="text-xs text-muted-foreground uppercase tracking-wider">
+      <div className="text-xs text-muted-foreground">
         {sortedProjects.length} projet{sortedProjects.length > 1 ? 's' : ''}
         {sortedProjects.length !== unifiedProjects.length && ` (sur ${unifiedProjects.length})`}
       </div>
@@ -369,7 +357,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
                 <FolderOpen className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-foreground mb-2 uppercase tracking-wide">Aucun projet trouvé</h3>
+              <h3 className="text-lg font-bold text-foreground mb-2">Aucun projet trouvé</h3>
               <p className="text-muted-foreground mb-6 text-sm">Essayez de modifier vos filtres</p>
             </div>
           ) : (
@@ -390,41 +378,40 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             return (
               <div
                 key={project.key}
-                className="bg-background border border-foreground p-4 sm:p-5 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
+                className="bg-background border border-foreground p-5 sm:p-6 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
                 onClick={() => navigateToWorkspace(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Left: Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <h3 className="text-sm sm:text-base font-bold text-foreground truncate max-w-[240px] sm:max-w-none uppercase tracking-wide">
+                      <h3 className="text-sm sm:text-base font-bold text-foreground truncate max-w-[240px] sm:max-w-none">
                         {project.name}
                       </h3>
                       {project.source === 'manual' && (
-                        <Badge variant="outline" className="text-[10px] border-foreground/30">
+                        <Badge variant="outline" className="text-xs">
                           <Wrench className="w-2.5 h-2.5 mr-0.5" />
                           Manuel
                         </Badge>
                       )}
                       {hasSourcingProject && (
-                        <Badge className={statusConfig[project.status].color}>
+                        <Badge variant={statusConfig[project.status].variant}>
                           <StatusIcon className="w-3 h-3 mr-1" />
                           {statusConfig[project.status].label}
                         </Badge>
                       )}
                       {prioConf && (
-                        <Badge className={prioConf.color}>
+                        <Badge variant={prioConf.variant}>
                           <Star className="w-3 h-3 mr-1" />
                           {prioConf.label}
                         </Badge>
                       )}
-                      {/* Visibility badge */}
                       {(() => {
                         const vis = (project.sourcingProject as any)?.visibility as string | undefined;
                         const conf = vis ? visibilityConfig[vis] : null;
                         if (!conf) return null;
                         return (
-                          <Badge variant="outline" className={`text-[10px] border ${conf.color}`}>
+                          <Badge variant={conf.variant}>
                             <conf.icon className="w-3 h-3 mr-1" />
                             {conf.label}
                           </Badge>
@@ -460,13 +447,13 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                         {project.skills.slice(0, 5).map((skill) => (
                           <span
                             key={skill}
-                            className="px-1.5 py-0.5 bg-muted text-muted-foreground text-[10px] uppercase tracking-wider border border-foreground/10"
+                            className="px-2 py-0.5 bg-muted text-muted-foreground text-xs border border-foreground/10"
                           >
                             {skill}
                           </span>
                         ))}
                         {project.skills.length > 5 && (
-                          <span className="px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          <span className="px-2 py-0.5 text-xs text-muted-foreground">
                             +{project.skills.length - 5}
                           </span>
                         )}
@@ -476,17 +463,17 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                     {/* Progression badges */}
                     {(stats.total > 0 || hasSourcingProject) && (
                       <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs">
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-xs font-medium">
                           {stats.total} sourcés
                         </span>
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-xs font-medium">
                           {stats.messaged} contactés
                         </span>
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-[10px] font-medium">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-xs font-medium">
                           {stats.shortlisted} réponses
                         </span>
                         {stats.shortlisted > 0 && stats.messaged > 0 && (
-                          <span className="px-2 py-0.5 bg-foreground text-background text-[10px] font-bold">
+                          <span className="px-2 py-0.5 bg-foreground text-background text-xs font-bold">
                             {Math.round((stats.shortlisted / stats.messaged) * 100)}%
                           </span>
                         )}
@@ -502,7 +489,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                           e.stopPropagation();
                           navigateToWorkspace(project, 'sourcing');
                         }}
-                        className="relative overflow-hidden flex items-center gap-1.5 h-[28px] px-3 text-[10px] font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
+                        className="relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-semibold border border-foreground bg-foreground text-background group"
                       >
                         <ArrowRight className="w-3 h-3 relative z-10" />
                         <span className="relative z-10">Ouvrir</span>
@@ -511,7 +498,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                       {hasSourcingProject && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Button variant="ghost" size="icon" className="h-9 w-9">
                               <MoreVertical className="w-3.5 h-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -553,7 +540,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground ml-auto sm:ml-0">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto sm:ml-0">
                       <Calendar className="w-3 h-3 shrink-0" />
                       <span className="truncate max-w-[120px]">
                         {project.lastSearchAt
@@ -571,7 +558,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                   return (
                     <div className="mt-3 pt-2.5 border-t border-foreground/10 flex items-center gap-2">
                       <span className="text-xs shrink-0">{insight.icon}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">
+                      <span className="text-xs text-muted-foreground truncate">
                         {insight.text}
                       </span>
                     </div>
