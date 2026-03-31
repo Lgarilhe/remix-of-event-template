@@ -481,7 +481,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
             console.warn(`[generate-search-filters] AI error ${response.status} (attempt ${attempt}/${maxRetries}):`, errorText?.slice(0, 500));
             
             if (attempt < maxRetries) {
-              const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+              const delay = Math.pow(2, attempt) * 3000; // 6s, 12s, 24s — generous backoff for overloaded gateway
               console.log(`[generate-search-filters] Retrying in ${delay}ms...`);
               await new Promise(resolve => setTimeout(resolve, delay));
               continue;
