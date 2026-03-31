@@ -385,12 +385,15 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 
           return (
             <button
+              type="button"
               key={step.key}
-              onClick={() => { if (!readOnly) setOpenStep(i); }}
+              disabled={readOnly}
+              onClick={() => setOpenStep(i)}
               className={cn(
-                "w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group",
-                readOnly ? "cursor-default" : "hover:bg-foreground/[0.03] active:bg-foreground/[0.06] cursor-pointer"
+                "w-full border-2 border-t-0 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group relative",
+                readOnly ? "cursor-default opacity-60" : "hover:bg-foreground/[0.03] active:bg-foreground/[0.06] cursor-pointer"
               )}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               {/* Step number */}
               <div className={cn(
