@@ -871,7 +871,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             <Zap className="w-4 h-4 text-emerald-600" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {availableActions.map(action => (
                               <button
                                 key={action.value}
