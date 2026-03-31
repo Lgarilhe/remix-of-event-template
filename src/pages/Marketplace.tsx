@@ -115,7 +115,7 @@ export default function Marketplace() {
               </p>
             </div>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
