@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
-import { Navbar } from '@/components/Navbar';
+import { SEOHead } from '@/components/SEOHead';
 import { SEOHead } from '@/components/SEOHead';
 import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
 import { PipelineStats } from '@/components/candidates/PipelineStats';
