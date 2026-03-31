@@ -905,7 +905,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 onClick={() => addStep(trigger.value)}
                                 className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
                               >
-                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", trigger.color)}>
+                                <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}>
                                   <trigger.icon className="w-4 h-4" />
                                 </div>
                                 <div className="flex-1 min-w-0">
