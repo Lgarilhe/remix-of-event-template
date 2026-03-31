@@ -688,10 +688,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Check connection configuration */}
                         {step.actionType === 'check_connection' && (
-                          <div className="space-y-4 p-3 bg-indigo-50 border border-indigo-200">
-                            <div className="flex items-center gap-2 text-indigo-700">
+                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                            <div className="flex items-center gap-2 text-foreground">
                               <GitBranch className="w-4 h-4" />
-                              <span className="font-medium text-sm">Vérification du degré de connexion</span>
+                              <span className="font-medium text-sm uppercase tracking-wide">Vérification du degré de connexion</span>
                             </div>
                             
                             <div>
