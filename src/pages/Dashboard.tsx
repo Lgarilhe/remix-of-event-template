@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navbar } from '@/components/Navbar';
+import { SEOHead } from '@/components/SEOHead';
 import { SEOHead } from '@/components/SEOHead';
 import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
