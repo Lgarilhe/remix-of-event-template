@@ -18,7 +18,6 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { SEOHead } from '@/components/SEOHead';
-import { SEOHead } from '@/components/SEOHead';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
 import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';

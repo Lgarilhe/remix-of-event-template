@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { SEOHead } from '@/components/SEOHead';
-import { SEOHead } from '@/components/SEOHead';
 import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';

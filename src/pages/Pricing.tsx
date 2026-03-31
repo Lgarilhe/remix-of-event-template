@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSubscriptionPlans, useSubscription } from '@/hooks/useSubscription';
 import { SEOHead } from '@/components/SEOHead';
-import { SEOHead } from '@/components/SEOHead';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
 import { Check, Plus } from 'lucide-react';
