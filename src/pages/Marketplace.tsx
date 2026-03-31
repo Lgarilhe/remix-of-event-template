@@ -104,8 +104,8 @@ export default function Marketplace() {
     return (
       <div className="min-h-screen bg-background">
         <SEOHead title="Marketplace | Skalr" description="Missions en mode chasse" />
-        <Navbar />
-        <main className="pt-20 pb-14">
+
+        <div className="py-6 pb-14">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
             <div className="border border-foreground p-12 text-center">
               <Lock className="w-8 h-8 text-muted-foreground mx-auto mb-4" />
