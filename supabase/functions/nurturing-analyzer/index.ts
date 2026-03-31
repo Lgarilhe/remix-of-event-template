@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
     let UNIPILE_DSN: string | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(authUserId);
+      const orgId = authUserId ? await resolveOrgIdFromUser(authUserId) : null;
       const creds = await resolveUnipileCredentials(orgId);
       if (creds) {
         UNIPILE_API_KEY = creds.apiKey;
