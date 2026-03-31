@@ -130,6 +130,25 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
         ))}
       </div>
 
+      {/* ── Launch Sourcing CTA (when filters exist) ── */}
+      {hasFilters && (
+        <button
+          type="button"
+          onClick={() => setShowFilterReview(true)}
+          className="w-full border-t-2 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80 transition-colors group"
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          <div className="w-10 h-10 flex items-center justify-center border-2 border-background/30 shrink-0">
+            <Rocket className="w-4 h-4 text-background" weight="fill" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-xs font-black uppercase tracking-wider text-background mb-0.5">Lancer le sourcing</h3>
+            <p className="text-[10px] text-background/70 leading-relaxed">Voir et ajuster les filtres IA avant de chercher</p>
+          </div>
+          <ArrowRight className="w-4 h-4 text-background/70 group-hover:translate-x-1 transition-all shrink-0" />
+        </button>
+      )}
+
       {/* ── Quick Actions ── */}
       {actions.map((action) => (
         <button
@@ -149,6 +168,17 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all shrink-0" />
         </button>
       ))}
+
+      {/* Filter Review Modal */}
+      {hasFilters && filtersSnapshot && (
+        <FilterReviewModal
+          open={showFilterReview}
+          onOpenChange={setShowFilterReview}
+          filters={filtersSnapshot}
+          analysis={filtersSnapshot.analysis || { search_rationale: null, keyword_rationale: null, experience_rationale: null, role_keywords: filtersSnapshot.role?.map((r: any) => r.keywords) || [], skills_to_search: filtersSnapshot.skills_keywords || [], domain_expertise: [], location_hint: null, job_category: '' }}
+          onAccept={() => { setShowFilterReview(false); onTabChange('sourcing'); }}
+        />
+      )}
     </div>
   );
 };
