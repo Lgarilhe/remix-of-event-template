@@ -209,7 +209,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           {/* Summary */}
           <div className="p-4 bg-muted/50 border border-foreground/10 space-y-3">
             <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-[#0077B5]" />
+              <Users className="w-5 h-5 text-foreground" />
               <span className="font-medium">{profiles.length} candidat(s)</span>
             </div>
             
