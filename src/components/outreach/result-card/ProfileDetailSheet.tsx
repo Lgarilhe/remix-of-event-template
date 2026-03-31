@@ -262,25 +262,32 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         if (unipileResponse?.success && unipileResponse.profile) {
           emitQuotaAction('profileVisits', 1, accountId);
           const p = unipileResponse.profile as Record<string, any>;
+
+          // Only replace fields that are ACTUALLY better than what we already have
+          // This prevents Apollo data from being overwritten with empty Unipile responses
+          const enrichedSkills = p.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean);
+          const enrichedWorkExp = (p.positions || p.experiences || []).map((exp: any) => ({
+            role: exp.title,
+            company: exp.company_name || exp.company,
+            company_logo: exp.company_logo || exp.logo_url || exp.logo,
+            description: exp.description,
+            start: exp.start_date || exp.starts_at,
+            end: exp.end_date || exp.ends_at,
+          }));
+          const enrichedEducation = (p.education || []).map((edu: any) => ({
+            school: edu.school_name || edu.school,
+            degree: edu.degree_name || edu.degree,
+            field_of_study: edu.field_of_study || edu.field,
+            start: edu.start_date || edu.starts_at,
+            end: edu.end_date || edu.ends_at,
+          }));
+
           setEnrichedProfile({
             ...profile,
             summary: p.about || p.summary || profile.summary,
-            skills: p.skills?.map((s: any) => typeof s === 'string' ? s : s.name) || [],
-            work_experience: (p.positions || p.experiences || []).map((exp: any) => ({
-              role: exp.title,
-              company: exp.company_name || exp.company,
-              company_logo: exp.company_logo || exp.logo_url || exp.logo,
-              description: exp.description,
-              start: exp.start_date || exp.starts_at,
-              end: exp.end_date || exp.ends_at,
-            })),
-            education: (p.education || []).map((edu: any) => ({
-              school: edu.school_name || edu.school,
-              degree: edu.degree_name || edu.degree,
-              field_of_study: edu.field_of_study || edu.field,
-              start: edu.start_date || edu.starts_at,
-              end: edu.end_date || edu.ends_at,
-            })),
+            skills: enrichedSkills?.length ? enrichedSkills : (profile.skills || []),
+            work_experience: enrichedWorkExp.length ? enrichedWorkExp : (profile.work_experience || []),
+            education: enrichedEducation.length ? enrichedEducation : ((profile as any).education || []),
             location: p.location?.name || p.location || profile.location,
             profile_picture_url: p.profile_picture_url || p.picture_url || profile.profile_picture_url,
             connections_count: p.connections_count || profile.connections_count,
