@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Plus, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Plus, Sparkles, Bell } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -26,112 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-
-// ── Logo ──
-
-type FaceState = 'idle' | 'wink' | 'surprise' | 'happy' | 'look-left' | 'look-right';
-
-const EXPRESSIONS: { state: FaceState; duration: number }[] = [
-  { state: 'wink', duration: 400 },
-  { state: 'look-left', duration: 600 },
-  { state: 'look-right', duration: 600 },
-  { state: 'surprise', duration: 500 },
-  { state: 'happy', duration: 700 },
-];
-
-const SidebarLogo: React.FC = () => {
-  const [face, setFace] = useState<FaceState>('idle');
-  const indexRef = useRef(0);
-  const { state } = useSidebar();
-  const collapsed = state === 'collapsed';
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const expr = EXPRESSIONS[indexRef.current % EXPRESSIONS.length];
-      setFace(expr.state);
-      setTimeout(() => setFace('idle'), expr.duration);
-      indexRef.current++;
-    }, 3500);
-    return () => clearInterval(interval);
-  }, []);
-
-  const lookX = face === 'look-left' ? -0.8 : face === 'look-right' ? 0.8 : 0;
-
-  const leftEye = <circle cx={5 + lookX * 0.3} cy={5.5} r="1.15" fill="currentColor" />;
-  const rightEye = face === 'wink' ? (
-    <path d="M7.9 5.5 Q9 6.5 10.1 5.5" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />
-  ) : (
-    <circle cx={9 + lookX * 0.3} cy={5.5} r="1.15" fill="currentColor" />
-  );
-
-  const mouth = face === 'surprise'
-    ? <circle cx="7" cy="9.8" r="0.9" fill="none" stroke="currentColor" strokeWidth="0.9" />
-    : face === 'happy'
-    ? <path d="M4.2 8.6 Q7 11.8 9.8 8.6" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />
-    : <path d="M5.8 9 Q7.5 10.6 9.8 8.8" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" fill="none" />;
-
-  const eyebrows = face === 'surprise' ? (
-    <>
-      <path d="M3.6 3.8 Q5 3 6.2 3.8" stroke="currentColor" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-      <path d="M7.8 3.8 Q9 3 10.4 3.8" stroke="currentColor" strokeWidth="0.7" strokeLinecap="round" fill="none" />
-    </>
-  ) : null;
-
-  const blush = face === 'happy' ? (
-    <>
-      <circle cx="3.5" cy="7.5" r="1" fill="hsl(var(--brutal-accent))" opacity="0.35" />
-      <circle cx="10.5" cy="7.5" r="1" fill="hsl(var(--brutal-accent))" opacity="0.35" />
-    </>
-  ) : null;
-
-  return (
-    <Link to="/dashboard" className="flex items-center gap-3 group">
-      <div
-        className="bg-foreground text-background h-9 w-9 flex items-center justify-center shrink-0"
-        onClick={(e) => {
-          e.preventDefault();
-          const rand = EXPRESSIONS[Math.floor(Math.random() * EXPRESSIONS.length)];
-          setFace(rand.state);
-          setTimeout(() => setFace('idle'), rand.duration);
-        }}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" className="w-[18px] h-[18px]" style={{ transition: 'transform 0.15s', transform: face === 'surprise' ? 'scale(1.08)' : 'scale(1)' }}>
-          <circle cx="7" cy="7" r="6.2" fill="hsl(var(--background))" stroke="hsl(var(--foreground))" strokeWidth="1.2" />
-          {eyebrows}{leftEye}{rightEye}{blush}{mouth}
-        </svg>
-      </div>
-      {!collapsed && (
-        <span className="text-base font-black tracking-tight text-foreground uppercase">Skalr</span>
-      )}
-    </Link>
-  );
-};
-
-// ── Compact credit display for sidebar ──
-
-const SidebarCredits: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
-  const navigate = useNavigate();
-  const { creditsRemaining, isLow, isOut, isLoading } = useAICredits();
-  if (isLoading) return null;
-
-  const display = creditsRemaining > 9999
-    ? `${Math.round(creditsRemaining / 1000)}k`
-    : creditsRemaining.toLocaleString();
-
-  return (
-    <button
-      onClick={() => navigate('/settings?tab=credits')}
-      className={cn(
-        "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
-        isOut ? "text-destructive" : isLow ? "text-orange-500" : "text-muted-foreground",
-        "hover:text-foreground"
-      )}
-    >
-      <Sparkles className="h-3.5 w-3.5 shrink-0" />
-      {!collapsed && <span>{display} crédits</span>}
-    </button>
-  );
-};
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // ── Nav items ──
 
@@ -150,6 +45,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const unreadMsgCount = useUnreadMessageNotifications();
   const { orgType, organization } = useOrganization();
+  const { creditsRemaining, isLow, isOut, isLoading: creditsLoading } = useAICredits();
 
   const isActive = (path: string) => {
     if (path === '/missions') return location.pathname === '/missions' || location.pathname.startsWith('/missions/');
@@ -161,37 +57,48 @@ export function AppSidebar() {
     setOpenMobile(false);
   };
 
+  const creditDisplay = creditsRemaining > 9999
+    ? `${Math.round(creditsRemaining / 1000)}k`
+    : creditsRemaining.toLocaleString();
+
   return (
-    <Sidebar collapsible="icon" className="border-r border-foreground/10 bg-background">
+    <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
       {/* Header — Logo */}
-      <SidebarHeader className="px-4 py-5 border-b border-foreground/10">
-        <SidebarLogo />
+      <SidebarHeader className="px-4 py-4">
+        <Link to="/dashboard" className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <span className="text-primary-foreground font-bold text-sm">S</span>
+          </div>
+          {!collapsed && (
+            <span className="text-[15px] font-semibold tracking-tight text-foreground">Skalr</span>
+          )}
+        </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-3 pt-4">
+      <SidebarContent className="px-3 pt-1">
         {/* Create mission CTA */}
         {hasFeature(orgType, 'create_missions') && (
-          <div className="mb-3">
+          <div className="mb-2 px-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={cn(
-                  "w-full flex items-center gap-2.5 h-9 px-3 text-xs font-bold uppercase tracking-wider",
-                  "bg-foreground text-background",
-                  "hover:bg-brutal-accent hover:text-foreground transition-colors",
+                  "w-full flex items-center gap-2 h-9 px-3 text-sm font-medium rounded-lg",
+                  "bg-primary text-primary-foreground",
+                  "hover:bg-primary/90 transition-colors",
                   collapsed && "justify-center px-0"
                 )}>
                   <Plus className="h-4 w-4 shrink-0" />
                   {!collapsed && <span>Nouvelle mission</span>}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="right" sideOffset={8}>
-                <DropdownMenuItem onClick={() => handleNav('/missions?create=brief')}>
+              <DropdownMenuContent align="start" side="right" sideOffset={8} className="rounded-lg">
+                <DropdownMenuItem onClick={() => handleNav('/missions?create=brief')} className="rounded-md">
                   📋 Brief IA
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleNav('/missions?create=import')}>
+                <DropdownMenuItem onClick={() => handleNav('/missions?create=import')} className="rounded-md">
                   📥 Importer
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleNav('/missions?create=manual')}>
+                <DropdownMenuItem onClick={() => handleNav('/missions?create=manual')} className="rounded-md">
                   ✏️ Manuelle
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -202,7 +109,7 @@ export function AppSidebar() {
         {/* Navigation */}
         <SidebarGroup className="p-0">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
+            <SidebarMenu className="gap-0.5 px-1">
               {NAV_ITEMS.map((item) => {
                 const active = isActive(item.to);
                 return (
@@ -212,26 +119,29 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={item.label}
                       className={cn(
-                        "rounded-none h-10 text-sm font-medium transition-all duration-150",
+                        "h-9 rounded-lg text-[13px] font-medium transition-colors",
                         active
-                          ? "bg-foreground text-background font-semibold"
-                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
+                          ? "bg-accent text-accent-foreground font-semibold"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                       )}
                     >
                       <Link to={item.to} onClick={() => setOpenMobile(false)} className="flex items-center gap-3">
-                        <item.icon className={cn("h-[18px] w-[18px] shrink-0", active && "text-brutal-accent")} />
+                        <item.icon className={cn(
+                          "h-[18px] w-[18px] shrink-0",
+                          active ? "text-primary" : "text-muted-foreground"
+                        )} />
                         {!collapsed && (
-                          <>
+                          <div className="flex items-center justify-between flex-1 min-w-0">
                             <span>{item.label}</span>
                             {item.badgeKey === 'unread' && unreadMsgCount > 0 && (
-                              <span className="ml-auto min-w-[20px] h-5 flex items-center justify-center px-1.5 text-xs font-bold bg-destructive text-destructive-foreground rounded-full">
+                              <span className="ml-auto min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[11px] font-semibold bg-primary text-primary-foreground rounded-full">
                                 {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                               </span>
                             )}
-                          </>
+                          </div>
                         )}
                         {item.badgeKey === 'unread' && unreadMsgCount > 0 && collapsed && (
-                          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
+                          <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
                         )}
                       </Link>
                     </SidebarMenuButton>
@@ -246,14 +156,17 @@ export function AppSidebar() {
                     isActive={isActive('/marketplace')}
                     tooltip="Marketplace"
                     className={cn(
-                      "rounded-none h-10 text-sm font-medium transition-all duration-150",
+                      "h-9 rounded-lg text-[13px] font-medium transition-colors",
                       isActive('/marketplace')
-                        ? "bg-foreground text-background font-semibold"
-                        : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
+                        ? "bg-accent text-accent-foreground font-semibold"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                     )}
                   >
                     <Link to="/marketplace" onClick={() => setOpenMobile(false)} className="flex items-center gap-3">
-                      <Target className={cn("h-[18px] w-[18px] shrink-0", isActive('/marketplace') && "text-brutal-accent")} />
+                      <Target className={cn(
+                        "h-[18px] w-[18px] shrink-0",
+                        isActive('/marketplace') ? "text-primary" : "text-muted-foreground"
+                      )} />
                       {!collapsed && <span>Marketplace</span>}
                     </Link>
                   </SidebarMenuButton>
@@ -265,16 +178,30 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter className="border-t border-foreground/10 px-3 py-3 space-y-1">
-        <SidebarCredits collapsed={collapsed} />
+      <SidebarFooter className="border-t border-border px-3 py-3 space-y-1">
+        {/* AI Credits */}
+        {!creditsLoading && (
+          <button
+            onClick={() => navigate('/settings?tab=credits')}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+              "hover:bg-accent/50",
+              isOut ? "text-destructive" : isLow ? "text-status-warning" : "text-muted-foreground",
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+            {!collapsed && <span>{creditDisplay} crédits</span>}
+          </button>
+        )}
 
+        {/* Notifications */}
         <div className={cn("flex items-center", collapsed ? "justify-center" : "px-1")}>
           <NotificationDropdown />
         </div>
 
-        {/* Org name + sign out */}
+        {/* Org + Sign out */}
         <div className={cn(
-          "flex items-center gap-2 px-3 py-2",
+          "flex items-center gap-2 px-3 py-2 rounded-lg",
           collapsed && "justify-center px-0"
         )}>
           {!collapsed && organization?.name && (
@@ -282,10 +209,10 @@ export function AppSidebar() {
           )}
           <button
             onClick={async () => { await supabase.auth.signOut(); }}
-            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1 rounded-md hover:bg-accent/50"
             title="Déconnexion"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
           </button>
         </div>
       </SidebarFooter>
