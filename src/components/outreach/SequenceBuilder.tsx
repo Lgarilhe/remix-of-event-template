@@ -507,7 +507,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             </span>
                           )}
                           {step.useAiPersonalization && (
-                            <span className="flex items-center gap-1 text-purple-600">
+                            <span className="flex items-center gap-1 text-foreground">
                               <Sparkles className="w-3 h-3" />
                               IA
                             </span>
