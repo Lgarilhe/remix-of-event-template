@@ -93,7 +93,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
       if (response.error) throw new Error(response.error.message || 'Erreur IA');
       if (!response.data?.success) throw new Error('Analyse échouée');
       setAnalysis({ filters: response.data.filters as any, analysis: response.data.analysis as any });
-      toast.success('Analyse terminée');
+      setShowFilterReview(true);
     } catch (err: any) {
       toast.error(err.message || "Erreur lors de l'analyse");
     } finally {
