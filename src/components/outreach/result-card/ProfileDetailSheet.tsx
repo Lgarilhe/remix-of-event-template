@@ -221,7 +221,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     const isPoolProfile = Boolean((profile as any)._fromPool);
     const needsEnrichment =
       (isPoolProfile || isDatabaseProfile) &&
-      (!profile.summary || !profile.skills?.length || !profile.work_experience?.length);
+      (!profile.work_experience?.length); // Only enrich if missing work experience — don't enrich just for summary/skills
 
     if (!needsEnrichment) {
       setIsEnriching(false);
