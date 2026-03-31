@@ -260,37 +260,17 @@ const FullscreenStepDialog: React.FC<{
     >
       {/* Header */}
       <div className="shrink-0 border-b-2 border-foreground bg-background">
-        <div className="flex items-center justify-between px-4 sm:px-8 py-4">
-          <div className="flex items-center gap-4">
-            <motion.div
-              className="w-10 h-10 bg-foreground text-background flex items-center justify-center text-sm font-black border-2 border-foreground"
-              initial={{ scale: 0, rotate: -90 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            >
+        <div className="flex items-center justify-between px-4 sm:px-8 py-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-black border-2 border-foreground shrink-0">
               {step.emoji}
-            </motion.div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black uppercase tracking-wider text-foreground">{step.label}</h2>
-              <p className="text-[11px] text-muted-foreground">{step.subtitle}</p>
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-lg font-black uppercase tracking-wider text-foreground truncate">{step.label}</h2>
+              <p className="text-[10px] text-muted-foreground truncate hidden sm:block">{step.subtitle}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1">
-              {STEPS.map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'w-2 h-2 border transition-all',
-                    i === stepIndex
-                      ? 'bg-foreground border-foreground scale-125'
-                      : i < stepIndex
-                        ? 'bg-foreground/50 border-foreground/50'
-                        : 'bg-transparent border-foreground/20'
-                  )}
-                />
-              ))}
-            </div>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">
               {stepIndex + 1}/{STEPS.length}
             </span>
@@ -315,7 +295,7 @@ const FullscreenStepDialog: React.FC<{
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 sm:py-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={stepIndex}
