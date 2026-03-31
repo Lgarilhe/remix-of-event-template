@@ -85,8 +85,7 @@ const MissionWorkspace = () => {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
         <SEOHead title="Mission | Skalr" description="Espace de travail mission" />
-        <Navbar />
-        <main className="pt-20 pb-14 w-full max-w-full">
+        <div className="py-6 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
             <BrutalLoader variant="default" rows={3} messages={['Chargement de la mission…', 'Récupération des données…']} />
           </div>
