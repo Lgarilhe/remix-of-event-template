@@ -222,7 +222,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     const source = (profile as any)._source;
     const linkedinUrl = profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url;
 
-    if (source === 'database' && linkedinUrl && selectedAccount) {
+    // Only enrich via Unipile if the profile lacks work experience data
+    const hasWorkExperience = profile.work_experience?.length > 0;
+    if (source === 'database' && linkedinUrl && selectedAccount && !hasWorkExperience) {
       setEnriching(true);
       try {
         const { data } = await invokeUnipile({
