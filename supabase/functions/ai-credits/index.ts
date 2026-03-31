@@ -403,6 +403,6 @@ Deno.serve(async (req) => {
     }
   } catch (err) {
     console.error("[ai-credits] Error:", err);
-    return json({ error: err.message }, 500);
+    return json({ error: (err as Error).message }, 500);
   }
 });

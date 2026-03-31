@@ -458,7 +458,7 @@ Deno.serve(async (req) => {
           .select('created_by')
           .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
           .limit(1);
-        userIds = statusRecs?.map(r => r.created_by) || [];
+        userIds = statusRecs?.map((r: any) => r.created_by) || [];
       }
 
       const uniqueUserIds = [...new Set(userIds)];
