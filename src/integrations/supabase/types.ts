@@ -3261,9 +3261,12 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          multi_sender_enabled: boolean | null
           name: string
           organization_id: string | null
           project_id: string | null
+          stop_on_company_reply: boolean | null
+          template_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3272,9 +3275,12 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          multi_sender_enabled?: boolean | null
           name: string
           organization_id?: string | null
           project_id?: string | null
+          stop_on_company_reply?: boolean | null
+          template_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3283,9 +3289,12 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          multi_sender_enabled?: boolean | null
           name?: string
           organization_id?: string | null
           project_id?: string | null
+          stop_on_company_reply?: boolean | null
+          template_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3301,6 +3310,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_sequences_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -3828,14 +3844,17 @@ export type Database = {
       sequence_enrollments: {
         Row: {
           account_id: string
+          company_name: string | null
           completed_at: string | null
           connection_status: string | null
           created_at: string
           created_by: string
           current_step_order: number
+          email_used: string | null
           id: string
           job_id: string | null
           job_title: string | null
+          label: string | null
           last_check_at: string | null
           network_distance: string | null
           organization_id: string | null
@@ -3853,14 +3872,17 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          company_name?: string | null
           completed_at?: string | null
           connection_status?: string | null
           created_at?: string
           created_by: string
           current_step_order?: number
+          email_used?: string | null
           id?: string
           job_id?: string | null
           job_title?: string | null
+          label?: string | null
           last_check_at?: string | null
           network_distance?: string | null
           organization_id?: string | null
@@ -3878,14 +3900,17 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          company_name?: string | null
           completed_at?: string | null
           connection_status?: string | null
           created_at?: string
           created_by?: string
           current_step_order?: number
+          email_used?: string | null
           id?: string
           job_id?: string | null
           job_title?: string | null
+          label?: string | null
           last_check_at?: string | null
           network_distance?: string | null
           organization_id?: string | null
@@ -3936,8 +3961,51 @@ export type Database = {
         }
         Relationships: []
       }
+      sequence_snippets: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_snippets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_step_executions: {
         Row: {
+          ai_snippet: string | null
+          channel: string | null
           created_at: string
           enrollment_id: string
           error_message: string | null
@@ -3946,15 +4014,19 @@ export type Database = {
           final_subject: string | null
           id: string
           organization_id: string | null
+          personalized_subject: string | null
           retry_count: number
           scheduled_at: string
           skip_reason: string | null
           status: string
           step_id: string
           step_order: number
+          tracking_data: Json | null
           updated_at: string
         }
         Insert: {
+          ai_snippet?: string | null
+          channel?: string | null
           created_at?: string
           enrollment_id: string
           error_message?: string | null
@@ -3963,15 +4035,19 @@ export type Database = {
           final_subject?: string | null
           id?: string
           organization_id?: string | null
+          personalized_subject?: string | null
           retry_count?: number
           scheduled_at: string
           skip_reason?: string | null
           status?: string
           step_id: string
           step_order: number
+          tracking_data?: Json | null
           updated_at?: string
         }
         Update: {
+          ai_snippet?: string | null
+          channel?: string | null
           created_at?: string
           enrollment_id?: string
           error_message?: string | null
@@ -3980,12 +4056,14 @@ export type Database = {
           final_subject?: string | null
           id?: string
           organization_id?: string | null
+          personalized_subject?: string | null
           retry_count?: number
           scheduled_at?: string
           skip_reason?: string | null
           status?: string
           step_id?: string
           step_order?: number
+          tracking_data?: Json | null
           updated_at?: string
         }
         Relationships: [
@@ -4015,7 +4093,12 @@ export type Database = {
       sequence_steps: {
         Row: {
           action_type: string
+          ai_personalization_prompt: string | null
+          ai_personalization_source: string | null
           ai_tone: string | null
+          bcc_emails: string[] | null
+          branch: string | null
+          cc_emails: string[] | null
           condition_type: string | null
           created_at: string
           delay_days: number
@@ -4024,12 +4107,17 @@ export type Database = {
           id: string
           if_false_goto_step: string | null
           if_true_goto_step: string | null
+          include_unsubscribe: boolean | null
           message_template: string | null
           next_step_id: string | null
           organization_id: string | null
+          parent_step_id: string | null
           preferred_hour_end: number | null
           preferred_hour_start: number | null
+          sender_id: string | null
           sequence_id: string
+          signature_id: string | null
+          step_channel: string | null
           step_order: number
           subject_template: string | null
           timeout_branch_step_id: string | null
@@ -4039,7 +4127,12 @@ export type Database = {
         }
         Insert: {
           action_type: string
+          ai_personalization_prompt?: string | null
+          ai_personalization_source?: string | null
           ai_tone?: string | null
+          bcc_emails?: string[] | null
+          branch?: string | null
+          cc_emails?: string[] | null
           condition_type?: string | null
           created_at?: string
           delay_days?: number
@@ -4048,12 +4141,17 @@ export type Database = {
           id?: string
           if_false_goto_step?: string | null
           if_true_goto_step?: string | null
+          include_unsubscribe?: boolean | null
           message_template?: string | null
           next_step_id?: string | null
           organization_id?: string | null
+          parent_step_id?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
+          sender_id?: string | null
           sequence_id: string
+          signature_id?: string | null
+          step_channel?: string | null
           step_order: number
           subject_template?: string | null
           timeout_branch_step_id?: string | null
@@ -4063,7 +4161,12 @@ export type Database = {
         }
         Update: {
           action_type?: string
+          ai_personalization_prompt?: string | null
+          ai_personalization_source?: string | null
           ai_tone?: string | null
+          bcc_emails?: string[] | null
+          branch?: string | null
+          cc_emails?: string[] | null
           condition_type?: string | null
           created_at?: string
           delay_days?: number
@@ -4072,12 +4175,17 @@ export type Database = {
           id?: string
           if_false_goto_step?: string | null
           if_true_goto_step?: string | null
+          include_unsubscribe?: boolean | null
           message_template?: string | null
           next_step_id?: string | null
           organization_id?: string | null
+          parent_step_id?: string | null
           preferred_hour_end?: number | null
           preferred_hour_start?: number | null
+          sender_id?: string | null
           sequence_id?: string
+          signature_id?: string | null
+          step_channel?: string | null
           step_order?: number
           subject_template?: string | null
           timeout_branch_step_id?: string | null
@@ -4115,6 +4223,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sequence_steps_parent_step_id_fkey"
+            columns: ["parent_step_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_steps"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sequence_steps_sequence_id_fkey"
             columns: ["sequence_id"]
             isOneToOne: false
@@ -4126,6 +4241,53 @@ export type Database = {
             columns: ["timeout_branch_step_id"]
             isOneToOne: false
             referencedRelation: "sequence_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_templates: {
+        Row: {
+          category: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_system: boolean
+          name: string
+          organization_id: string | null
+          steps_config: Json
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_system?: boolean
+          name: string
+          organization_id?: string | null
+          steps_config?: Json
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_system?: boolean
+          name?: string
+          organization_id?: string | null
+          steps_config?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
