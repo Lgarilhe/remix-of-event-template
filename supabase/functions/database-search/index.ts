@@ -106,10 +106,11 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
       payload.person_titles = [kw];
     }
   } else if (payload.q_keywords) {
-    // When we have person_titles, reduce keywords to avoid over-filtering
-    // Apollo ANDs keywords with titles, so too many keywords = 0 results
-    const terms = String(payload.q_keywords).split(" ").filter(t => t.length >= 3).slice(0, 4);
-    payload.q_keywords = terms.join(" ");
+    // When we have person_titles, DROP q_keywords entirely.
+    // Apollo ANDs keywords with titles — combining both almost always yields 0 results.
+    // The titles alone are specific enough; skills will be added back below if present.
+    console.log("[database-search] Dropping q_keywords (have person_titles):", payload.q_keywords);
+    delete payload.q_keywords;
   }
 
   // Seniority → person_seniorities
