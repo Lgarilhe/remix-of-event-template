@@ -28,6 +28,10 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
   const jd = (project.job_details || {}) as JobDetails;
   const briefPct = getBriefCompletionPercent(project);
 
+  const [showFilterReview, setShowFilterReview] = useState(false);
+  const hasFilters = !!(project as any).filters_snapshot?.role?.length || !!(project as any).filters_snapshot?.skills_keywords?.length;
+  const filtersSnapshot = (project as any).filters_snapshot;
+
   const totalCandidates = stats?.total || candidates.length || 0;
   const messaged = stats?.messaged || 0;
   const shortlisted = stats?.shortlisted || 0;
