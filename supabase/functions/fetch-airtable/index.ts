@@ -378,7 +378,7 @@ function transformKpi(record: AirtableRecord, sourceBase: string) {
 
 // Upsert records into Supabase
 async function upsertRecords(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   tableName: string,
   records: Record<string, unknown>[],
 ) {
