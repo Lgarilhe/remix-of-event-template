@@ -640,10 +640,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Condition branch configuration */}
                         {step.actionType === 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-rose-50 border border-rose-200">
-                            <div className="flex items-center gap-2 text-rose-700">
+                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                            <div className="flex items-center gap-2 text-foreground">
                               <GitBranch className="w-4 h-4" />
-                              <span className="font-medium text-sm">Configuration du branchement</span>
+                              <span className="font-medium text-sm uppercase tracking-wide">Configuration du branchement</span>
                             </div>
                             
                             <div>
