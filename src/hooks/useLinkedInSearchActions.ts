@@ -203,8 +203,8 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     baseParams.company = { include: filters.company.map(f => f.id) };
   }
 
-  // Company keywords (Recruiter only)
-  if (filters.api === 'recruiter' && filters.company_keywords.length) {
+  // Company keywords (Recruiter + Database)
+  if ((filters.api === 'recruiter' || filters.api === 'database') && filters.company_keywords.length) {
     baseParams.company_keywords = filters.company_keywords.map(c => ({
       keywords: c.keywords,
       priority: c.priority,
@@ -278,7 +278,7 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
   }));
 
-  if (filters.api === 'recruiter' && filters.seniority.length) {
+  if ((filters.api === 'recruiter' || filters.api === 'database') && filters.seniority.length) {
     const titlesByLevel: Record<string, string[]> = {
       '1': ['Intern', 'Internship', 'Stagiaire', 'Apprentice', 'Trainee', 'Graduate'],
       '2': ['Associate', 'Junior', 'Assistant', 'Consultant', 'Analyst'],

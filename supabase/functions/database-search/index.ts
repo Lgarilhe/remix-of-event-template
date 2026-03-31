@@ -223,6 +223,13 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     if (tags.length) payload.q_organization_keyword_tags = tags;
   }
 
+  // Industry keywords (AI-generated text) → organization keyword tags
+  const industryKeywords = params.industry_keywords as string[] | undefined;
+  if (industryKeywords?.length) {
+    const existing = (payload.q_organization_keyword_tags as string[]) || [];
+    payload.q_organization_keyword_tags = [...existing, ...industryKeywords].slice(0, 5);
+  }
+
   // School — only use text names, skip numeric LinkedIn IDs
   const school = params.school;
   if (school && Array.isArray(school) && school.length) {
