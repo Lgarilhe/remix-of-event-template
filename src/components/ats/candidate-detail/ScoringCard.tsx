@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { CollapsibleSection } from './shared';
-import { BorderBeam } from '@/components/magicui/border-beam';
+
 
 const DIMENSION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
   skills: { label: 'Compétences', icon: <Target className="w-3 h-3" /> },
