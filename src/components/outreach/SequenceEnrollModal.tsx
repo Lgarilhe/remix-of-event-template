@@ -283,7 +283,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} className="border-foreground rounded-none">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
           {!results && (
