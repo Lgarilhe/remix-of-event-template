@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
       const costUsd = calculateUSDCost(tokensIn, tokensOut, modelId);
       await adminClient.from("ai_credit_transactions").insert({
         organization_id,
-        user_id: user.id,
+        user_id: user!.id,
         action: aiAction,
         amount: -credits,
         credits_used: credits,
