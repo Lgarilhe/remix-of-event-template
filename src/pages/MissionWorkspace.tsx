@@ -130,8 +130,7 @@ const MissionWorkspace = () => {
       <BackgroundPaths className="fixed inset-0 pointer-events-none z-0 opacity-40" pathCount={6} />
 
       <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
-      <Navbar />
-      <main className="pt-20 pb-14 w-full max-w-full relative z-10">
+      <div className="py-6 pb-14 w-full max-w-full relative z-10">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
