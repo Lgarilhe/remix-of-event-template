@@ -258,7 +258,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
           {/* Results */}
           {results && (
-            <div className="p-4 rounded-lg border space-y-2">
+            <div className="p-4 border border-foreground/10 space-y-2">
               {results.success > 0 && (
                 <div className="flex items-center gap-2 text-green-600">
                   <CheckCircle className="w-4 h-4" />
