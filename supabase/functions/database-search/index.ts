@@ -674,13 +674,17 @@ Deno.serve(async (req) => {
         pagination.total ??
         pagination.total_results ??
         pagination.total_people ??
+        data.total_entries ??
+        data.total ??
+        data.total_results ??
+        data.num_fetch_result ??
         profiles.length
       );
-      const currentPage = Number(pagination.page || pagination.current_page || apolloPayload.page || 1);
-      const perPage = Number(pagination.per_page || apolloPayload.per_page || 25);
+      const currentPage = Number(pagination.page || pagination.current_page || data.page || apolloPayload.page || 1);
+      const perPage = Number(pagination.per_page || data.per_page || apolloPayload.per_page || 25);
       // Calculate total pages from total entries if not provided by Apollo
       const totalPages = Number(
-        pagination.total_pages || pagination.pages || Math.ceil(totalEntries / perPage) || 1
+        pagination.total_pages || pagination.pages || data.total_pages || Math.ceil(totalEntries / perPage) || 1
       );
       const hasMore = currentPage < totalPages && totalEntries > currentPage * perPage;
 
