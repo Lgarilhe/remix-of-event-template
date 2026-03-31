@@ -464,7 +464,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       />
 
       {/* Input bar */}
-      <div className="shrink-0 glass border-t border-foreground/10 px-4 py-3 z-10 space-y-2">
+      <div className="shrink-0 bg-background border-t border-foreground/10 px-4 py-3 z-10 space-y-2">
         {selectedJob && conversationId !== jobSentForConv && (
           <div className="flex items-center gap-1.5">
             <span className="bg-brutal-accent/10 text-xs px-2 py-1 border border-brutal-accent/30 flex items-center gap-1.5 truncate max-w-full">
