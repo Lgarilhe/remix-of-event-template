@@ -428,47 +428,6 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
   return (
     <>
       <div className="space-y-0">
-        <div className="border-2 border-foreground p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div
-              className={cn(
-                'relative w-14 h-14 flex items-center justify-center border-2 shrink-0 transition-colors',
-                score < 30 ? 'border-destructive' : score < 70 ? 'border-brutal-accent' : 'border-foreground'
-              )}
-            >
-              <div className="flex items-baseline">
-                <NumberTicker value={score} className={cn('text-lg font-black tabular-nums', score >= 70 ? 'text-foreground' : 'text-muted-foreground')} />
-                <span className={cn('text-sm font-black', score >= 70 ? 'text-foreground' : 'text-muted-foreground')}>%</span>
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1.5">Complétude du brief</p>
-              <div className="h-2 w-full bg-foreground/10 overflow-hidden border border-foreground/20">
-                <motion.div
-                  className={cn('h-full transition-colors duration-500', progressColor)}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${score}%` }}
-                  transition={{ duration: 0.8, ease: 'easeOut' }}
-                />
-              </div>
-            </div>
-          </div>
-          {!readOnly && score >= 70 && onLaunchSourcing ? (
-            <ShimmerButton onClick={onLaunchSourcing} className="h-[36px] text-[10px] px-5 shrink-0" shimmerDuration="1.5s">
-              <Sparkles className="w-3 h-3" />
-              Lancer le sourcing
-              <ArrowRight className="w-3 h-3" />
-            </ShimmerButton>
-          ) : !readOnly && allCriticalMissing.length > 0 ? (
-            <div className="flex items-center gap-2 text-destructive shrink-0">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">
-                {allCriticalMissing.length} requis manquant{allCriticalMissing.length > 1 ? 's' : ''}
-              </span>
-            </div>
-          ) : null}
-        </div>
-
         {STEPS.map((step, i) => {
           const comp = stepCompletions[i];
           const pct = comp.total > 0 ? Math.round((comp.filled / comp.total) * 100) : 0;
