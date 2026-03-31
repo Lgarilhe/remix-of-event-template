@@ -316,7 +316,7 @@ const FullscreenStepDialog: React.FC<{
 
       {/* Footer navigation */}
       <div className="shrink-0 border-t-2 border-foreground bg-background">
-        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between gap-4">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={isFirst ? onClose : onPrev}
@@ -417,7 +417,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               key={step.key}
               onClick={() => setOpenStep(i)}
               className={cn(
-                'w-full border-2 border-foreground p-4 sm:p-5 flex items-center gap-4 text-left transition-all group relative cursor-pointer',
+                'w-full border-2 border-foreground p-4 sm:p-5 flex items-center gap-3 text-left transition-all group relative cursor-pointer',
                 i > 0 && 'border-t-0',
                 readOnly ? 'hover:bg-foreground/[0.02]' : 'hover:bg-foreground/[0.03] active:bg-foreground/[0.06]'
               )}
@@ -483,14 +483,14 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 
 const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
   <div className="space-y-4">
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Titre du poste *" value={d.title} onChange={(v) => updateField('title', v)} placeholder="Ex: DevOps Senior" readOnly={readOnly} />
       <Field label="Référence interne" value={d.reference} onChange={(v) => updateField('reference', v)} placeholder="Ex: SKL-2026-042" readOnly={readOnly} />
       <SelectField label="Type de contrat *" value={d.contract_type} onChange={(v) => updateField('contract_type', v)} options={CONTRACT_TYPE_LABELS} readOnly={readOnly} />
       <SelectField label="Urgence" value={d.urgency} onChange={(v) => updateField('urgency', v)} options={URGENCY_LABELS} readOnly={readOnly} />
       <Field label="Date de démarrage" value={d.start_date} onChange={(v) => updateField('start_date', v)} placeholder="Ex: ASAP, Septembre 2026" readOnly={readOnly} />
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Localisation *" value={d.location} onChange={(v) => updateField('location', v)} placeholder="Ex: Paris, Lyon" readOnly={readOnly} />
       <SelectField label="Politique remote *" value={d.remote_policy} onChange={(v) => updateField('remote_policy', v)} options={REMOTE_LABELS} readOnly={readOnly} />
       {d.remote_policy === 'hybrid' && (
@@ -505,8 +505,8 @@ const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (
 // ─── Step 2: Le client ─────────────────────────────────────
 
 const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
-  <div className="space-y-5">
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div className="space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Nom du client *" value={d.client?.name} onChange={(v) => updateField('client.name', v)} placeholder="Ex: Numspot" readOnly={readOnly} />
       <Field label="Secteur" value={d.client?.sector} onChange={(v) => updateField('client.sector', v)} placeholder="Ex: Cloud, Fintech" readOnly={readOnly} />
       <SelectField label="Taille" value={d.client?.size} onChange={(v) => updateField('client.size', v)} options={SIZE_LABELS} readOnly={readOnly} />
@@ -515,7 +515,7 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
     <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." readOnly={readOnly} />
     <div className="pt-5 border-t-2 border-foreground/15">
       <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} readOnly={readOnly} />
         <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" readOnly={readOnly} />
         <Field label="Email" value={d.client?.hiring_manager?.email} onChange={(v) => updateField('client.hiring_manager.email', v)} type="email" readOnly={readOnly} />
@@ -528,24 +528,24 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
 // ─── Step 3: Profil recherché ──────────────────────────────
 
 const StepProfil = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
-  <div className="space-y-5">
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div className="space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Seniorité *" value={d.seniority} onChange={(v) => updateField('seniority', v)} placeholder="Ex: Senior, Lead, Junior" readOnly={readOnly} />
       <div className="flex gap-2">
         <Field label="XP min (années)" value={d.experience_min} onChange={(v) => updateField('experience_min', v ? Number(v) : undefined)} type="number" className="flex-1" readOnly={readOnly} />
         <Field label="XP max" value={d.experience_max} onChange={(v) => updateField('experience_max', v ? Number(v) : undefined)} type="number" className="flex-1" readOnly={readOnly} />
       </div>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <Field label="Salaire min *" value={d.salary_min} onChange={(v) => updateField('salary_min', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
       <Field label="Salaire max" value={d.salary_max} onChange={(v) => updateField('salary_max', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
       <SelectField label="Type" value={d.salary_type} onChange={(v) => updateField('salary_type', v)} options={SALARY_TYPE_LABELS} readOnly={readOnly} />
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Equity / variable" value={d.equity} onChange={(v) => updateField('equity', v)} placeholder="Ex: BSPCE, 0.5%" readOnly={readOnly} />
       <Field label="Avantages" value={d.benefits} onChange={(v) => updateField('benefits', v)} placeholder="Ex: TR, mutuelle, télétravail" readOnly={readOnly} />
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Taille de l'équipe" value={d.team_size} onChange={(v) => updateField('team_size', v ? Number(v) : undefined)} type="number" readOnly={readOnly} />
       <Field label="Reporte à" value={d.reports_to} onChange={(v) => updateField('reports_to', v)} placeholder="Ex: CTO, VP Engineering" readOnly={readOnly} />
     </div>
