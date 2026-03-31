@@ -88,7 +88,7 @@ const Pricing = () => {
         description="Découvrez les plans Skalr : Starter gratuit, Pro pour les équipes ambitieuses, Enterprise sur mesure."
         keywords="pricing, tarifs, recrutement, ATS, sourcing"
       />
-      <Navbar />
+      
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-20">
         {/* ── Hero ── */}

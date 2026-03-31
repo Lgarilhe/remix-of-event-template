@@ -123,8 +123,8 @@ export default function Marketplace() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead title="Marketplace | Skalr" description="Missions en mode chasse — trouvez des opportunités de recrutement" />
-      <Navbar />
-      <main className="pt-20 pb-14">
+
+      <div className="py-6 pb-14">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">

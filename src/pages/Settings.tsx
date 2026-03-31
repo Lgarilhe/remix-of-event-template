@@ -123,9 +123,8 @@ const Settings = () => {
         title="Paramètres | Skalr"
         description="Gérez les paramètres de votre organisation"
       />
-      <Navbar />
 
-      <main className="pt-16 sm:pt-20 pb-8">
+      <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header brutal */}
           <div className="flex items-center gap-2 min-w-0 mb-4">

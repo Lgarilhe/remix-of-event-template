@@ -405,7 +405,7 @@ export default function ATS() {
             </Tabs>
           </div>
         </div>
-      </main>
+      </div>
 
       {selectedCandidate && (
         <CandidateDetailModal
