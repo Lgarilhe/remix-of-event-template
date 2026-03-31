@@ -785,7 +785,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
-                          className="text-red-600"
+                          className="text-destructive"
                           onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(seq.id); }}
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
