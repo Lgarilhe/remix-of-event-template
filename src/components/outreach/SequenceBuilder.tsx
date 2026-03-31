@@ -876,7 +876,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <button
                                 key={action.value}
                                 onClick={() => addStep(action.value)}
-                                className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left"
                               >
                                 <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
                                   <action.icon className="w-4 h-4" />
