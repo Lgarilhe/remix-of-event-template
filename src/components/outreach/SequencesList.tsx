@@ -766,7 +766,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       checked={seq.is_active}
                       onCheckedChange={() => handleToggleActive(seq.id, seq.is_active)}
                       onClick={(e) => e.stopPropagation()}
-                      className="data-[state=checked]:bg-blue-600 scale-90"
+                      className="data-[state=checked]:bg-foreground scale-90"
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
