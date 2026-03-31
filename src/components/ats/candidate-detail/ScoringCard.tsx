@@ -35,7 +35,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
 
   return (
     <div className="relative border border-foreground/10 p-3 space-y-3">
-      {scoring.score > 80 && <BorderBeam size={150} duration={6} />}
+      {scoring.score > 80 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brutal-accent" />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

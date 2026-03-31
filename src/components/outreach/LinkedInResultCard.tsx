@@ -199,15 +199,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
         onOpenDetail?.();
       }}
     >
-      {/* BorderBeam for high-score profiles */}
+      {/* High score indicator — left accent bar */}
       {hasHighScore && (
-        <BorderBeam
-          size={300}
-          duration={6}
-          colorFrom="hsl(var(--accent))"
-          colorTo="hsl(var(--brutal-accent))"
-          borderWidth={2}
-        />
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brutal-accent" />
       )}
 
       {/* Score flash overlay */}
