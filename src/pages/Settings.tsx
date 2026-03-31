@@ -17,7 +17,7 @@ import iconIntegrations3d from '@/assets/icon-integrations-3d.webp';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
-import { Navbar } from '@/components/Navbar';
+import { SEOHead } from '@/components/SEOHead';
 import { SEOHead } from '@/components/SEOHead';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
 import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
