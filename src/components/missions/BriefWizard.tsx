@@ -316,11 +316,11 @@ const FullscreenStepDialog: React.FC<{
 
       {/* Footer navigation */}
       <div className="shrink-0 border-t-2 border-foreground bg-background">
-        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between gap-3">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={isFirst ? onClose : onPrev}
-            className="flex items-center gap-1.5 h-[40px] px-5 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
+            className="flex items-center gap-1.5 h-[36px] px-4 text-[10px] font-black uppercase tracking-wider border-2 border-foreground/30 text-muted-foreground hover:text-foreground hover:border-foreground transition-all"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             {isFirst ? 'Fermer' : 'Précédent'}
