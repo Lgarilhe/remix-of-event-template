@@ -23,6 +23,8 @@ import {
   MessageSquare,
   Activity,
   Zap,
+  FileText,
+  BookTemplate,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -48,6 +50,7 @@ import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
 import { SequenceAnalytics } from './SequenceAnalytics';
+import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
