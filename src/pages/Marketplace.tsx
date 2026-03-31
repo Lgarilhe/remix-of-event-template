@@ -299,7 +299,7 @@ export default function Marketplace() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

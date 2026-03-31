@@ -265,7 +265,7 @@ export default function Candidates() {
             </Tabs>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
