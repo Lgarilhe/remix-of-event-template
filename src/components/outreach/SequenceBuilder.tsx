@@ -86,10 +86,10 @@ const ACTIONS = [
 
 // TRIGGERS = ce qu'on ATTEND
 const TRIGGERS = [
-  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-indigo-100 text-indigo-600', description: 'Route selon le degré', requiresPrevious: [], excludeIfPrevious: [] },
-  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
-  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
-  { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
+  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-muted text-foreground', description: 'Route selon le degré', requiresPrevious: [], excludeIfPrevious: [] },
+  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
+  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
+  { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
