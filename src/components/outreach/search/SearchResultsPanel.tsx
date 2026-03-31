@@ -241,13 +241,18 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           console.log('[SearchResults] Enrichment skills:', (enriched.skills as any[])?.length || 0);
           console.log('[SearchResults] Enrichment summary:', (enriched.summary as string)?.slice(0, 100) || 'none');
 
-          // Merge enriched data — spread ALL enriched fields over the base profile
-          // This ensures we pick up any field Unipile returns (work_experience,
-          // education, skills, summary, current_positions, past_positions, etc.)
+          // Merge enriched data — only override fields that are non-empty
+          // Prevents Apollo data from being wiped by empty Unipile responses
+          const safeEnriched: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(enriched)) {
+            if (value === null || value === undefined) continue;
+            if (Array.isArray(value) && value.length === 0) continue;
+            if (typeof value === 'string' && value.trim() === '') continue;
+            safeEnriched[key] = value;
+          }
           const merged: LinkedInProfile = {
-            ...profile,       // Base Konekt data (keep as fallback)
-            ...enriched,      // Unipile data (overrides everything)
-            // Keep original ID and source flag
+            ...profile,         // Base Konekt data (keep as fallback)
+            ...safeEnriched,    // Unipile data (only non-empty fields)
             id: profile.id,
             _source: (profile as any)._source,
           } as LinkedInProfile;
