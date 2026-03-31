@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
-import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
 import { PipelineStats } from '@/components/candidates/PipelineStats';
@@ -170,9 +169,8 @@ export default function Candidates() {
         title="Gestion des candidats | Skalr"
         description="Gérez vos candidats et suivez leur progression dans le pipeline de recrutement"
       />
-      <Navbar />
 
-      <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">
+      <div className="py-6 pb-8 sm:pb-12">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Deprecation banner */}
           <div className="mb-4 border border-foreground bg-brutal-accent/30 px-4 py-2.5 flex items-center gap-2 text-xs uppercase tracking-wider font-medium">
@@ -266,7 +264,7 @@ export default function Candidates() {
             </Tabs>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

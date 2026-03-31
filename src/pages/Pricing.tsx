@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSubscriptionPlans, useSubscription } from '@/hooks/useSubscription';
-import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
@@ -88,7 +87,7 @@ const Pricing = () => {
         description="Découvrez les plans Skalr : Starter gratuit, Pro pour les équipes ambitieuses, Enterprise sur mesure."
         keywords="pricing, tarifs, recrutement, ATS, sourcing"
       />
-      <Navbar />
+      
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-20">
         {/* ── Hero ── */}

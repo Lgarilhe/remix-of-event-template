@@ -1,7 +1,6 @@
 import React, { useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
@@ -86,12 +85,11 @@ const MissionWorkspace = () => {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
         <SEOHead title="Mission | Skalr" description="Espace de travail mission" />
-        <Navbar />
-        <main className="pt-20 pb-14 w-full max-w-full">
+        <div className="py-6 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
             <BrutalLoader variant="default" rows={3} messages={['Chargement de la mission…', 'Récupération des données…']} />
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -101,8 +99,7 @@ const MissionWorkspace = () => {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
         <SEOHead title="Mission introuvable | Skalr" description="Mission introuvable" />
-        <Navbar />
-        <main className="pt-20 pb-14 w-full max-w-full">
+        <div className="py-6 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
             <div className="bg-background border border-foreground p-12 text-center">
               <div className="text-4xl mb-4">🔍</div>
@@ -119,7 +116,7 @@ const MissionWorkspace = () => {
               </button>
             </div>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -133,8 +130,7 @@ const MissionWorkspace = () => {
       <BackgroundPaths className="fixed inset-0 pointer-events-none z-0 opacity-40" pathCount={6} />
 
       <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
-      <Navbar />
-      <main className="pt-20 pb-14 w-full max-w-full relative z-10">
+      <div className="py-6 pb-14 w-full max-w-full relative z-10">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
@@ -302,7 +298,7 @@ const MissionWorkspace = () => {
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
+      </div>
 
       <MissionCopilot project={project} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>

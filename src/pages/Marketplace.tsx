@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature, getOrgTypeEmoji, getOrgTypeLabel } from '@/lib/featureGates';
@@ -104,8 +103,8 @@ export default function Marketplace() {
     return (
       <div className="min-h-screen bg-background">
         <SEOHead title="Marketplace | Skalr" description="Missions en mode chasse" />
-        <Navbar />
-        <main className="pt-20 pb-14">
+
+        <div className="py-6 pb-14">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
             <div className="border border-foreground p-12 text-center">
               <Lock className="w-8 h-8 text-muted-foreground mx-auto mb-4" />
@@ -115,7 +114,7 @@ export default function Marketplace() {
               </p>
             </div>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -123,8 +122,8 @@ export default function Marketplace() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead title="Marketplace | Skalr" description="Missions en mode chasse — trouvez des opportunités de recrutement" />
-      <Navbar />
-      <main className="pt-20 pb-14">
+
+      <div className="py-6 pb-14">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -299,7 +298,7 @@ export default function Marketplace() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

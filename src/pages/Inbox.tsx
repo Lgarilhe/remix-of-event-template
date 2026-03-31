@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Navbar } from '@/components/Navbar';
 import { SEOHead } from '@/components/SEOHead';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
 import { LinkedInAccount } from '@/pages/Outreach';
@@ -35,10 +34,9 @@ export default function Inbox() {
   }, [accounts, selectedAccount]);
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background">
       <SEOHead title="Messages — Skalr" description="Messagerie LinkedIn unifiée" />
-      <Navbar />
-      <div className="flex-1 min-h-0 px-3 pt-[57px] sm:px-6 lg:px-8">
+      <div className="flex-1 min-h-0 px-3 sm:px-6 lg:px-8">
         <div className="mx-auto h-full max-w-[1600px] md:px-[34px]">
           <AttendeePicturesProvider organizationId={organizationId || null}>
             <MessagesInbox
