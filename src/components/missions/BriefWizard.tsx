@@ -482,7 +482,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 // ─── Step 1: Le poste ──────────────────────────────────────
 
 const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
-  <div className="space-y-5">
+  <div className="space-y-4">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="Titre du poste *" value={d.title} onChange={(v) => updateField('title', v)} placeholder="Ex: DevOps Senior" readOnly={readOnly} />
       <Field label="Référence interne" value={d.reference} onChange={(v) => updateField('reference', v)} placeholder="Ex: SKL-2026-042" readOnly={readOnly} />
