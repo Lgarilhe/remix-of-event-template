@@ -715,10 +715,10 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
         const { settleCredits } = await import("../_shared/settle-credits.ts");
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const orgId = await resolveOrgIdFromUser(auth.userId, svcSettle);
-        if (orgId) {
+        const orgId = auth.userId ? await resolveOrgIdFromUser(auth.userId, svcSettle) : null;
+        if (orgId && auth.userId) {
           settleCredits(svcSettle, {
-            organizationId: orgId, userId: auth.userId,
+            organizationId: orgId, userId: auth.userId!,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,

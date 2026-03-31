@@ -250,11 +250,11 @@ Génère la scorecard d'évaluation sur mesure.`;
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const orgId = await resolveOrgIdFromUser(userId, adminClient);
-        if (orgId) {
+        const orgId = userId ? await resolveOrgIdFromUser(userId, adminClient) : null;
+        if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {
-            organizationId: orgId, userId,
+            organizationId: orgId, userId: userId!,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
