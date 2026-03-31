@@ -398,7 +398,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 <button
                   key={starter.title}
                   onClick={() => handleSend(starter.prompt)}
-                  className="border border-foreground/10 hover:border-brutal-accent/50 p-4 transition-all duration-200 hover:bg-brutal-accent/5 glass-subtle cursor-pointer group text-left"
+                  className="border border-foreground/10 hover:border-foreground/30 p-4 transition-all duration-200 hover:bg-muted cursor-pointer group text-left"
                 >
                   <starter.icon className="w-5 h-5 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
                   <p className="text-sm font-semibold text-foreground mt-2">{starter.title}</p>

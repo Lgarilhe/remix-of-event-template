@@ -79,7 +79,7 @@ export const AgentDrawer: React.FC = () => {
       <Sheet open={isOpen} onOpenChange={(open) => { if (!open) closeAgent(); }}>
         <SheetContent
           side="right"
-          className="w-full sm:w-[420px] p-0 glass-strong border-l border-foreground/10 border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
+          className="w-full sm:w-[420px] p-0 bg-background border-l border-foreground border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
         >
           <SheetTitle className="sr-only">Assistant IA</SheetTitle>
           <SheetDescription className="sr-only">
