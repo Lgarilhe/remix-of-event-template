@@ -101,13 +101,13 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
     }
   };
 
-  const handleAcceptAndSource = async () => {
-    if (!analysis) return;
+  const handleAcceptFilters = async (updatedFilters: any) => {
     try {
       await updateProject({
         id: project.id,
-        filters_snapshot: { ...analysis.filters, generated_at: new Date().toISOString() },
+        filters_snapshot: { ...updatedFilters, generated_at: new Date().toISOString() },
       });
+      setShowFilterReview(false);
       toast.success('Filtres sauvegardés — lancement du sourcing');
       setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', 'sourcing'); return next; }, { replace: true });
     } catch {
