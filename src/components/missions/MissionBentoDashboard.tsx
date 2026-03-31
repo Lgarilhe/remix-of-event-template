@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { JobDetails } from '@/types/jobDetails';
 import { motion } from 'framer-motion';
 import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjects';
@@ -6,10 +6,11 @@ import { useProjectStats } from '@/hooks/useProjectStats';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
   FileText, Users, PaperPlaneTilt, Crosshair, Sparkle, ArrowRight,
-  Lightning, TrendUp,
+  Lightning, TrendUp, Rocket,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getBriefCompletionPercent } from '@/lib/missionUtils';
+import { FilterReviewModal } from './FilterReviewModal';
 
 /* ─── Props ─── */
 interface MissionBentoDashboardProps {
