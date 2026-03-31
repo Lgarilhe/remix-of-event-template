@@ -387,7 +387,7 @@ async function upsertRecords(
   let count = 0;
   for (let i = 0; i < records.length; i += 50) {
     const batch = records.slice(i, i + 50);
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from(tableName)
       .upsert(batch, { onConflict: 'airtable_id,source_base' });
 

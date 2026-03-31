@@ -436,7 +436,7 @@ Deno.serve(async (req) => {
 
     // Build RAG query text from job context + candidate name for better matching
     const ragCandidateName = profile?.name || '';
-    const ragCandidateHeadline = profile?.headline || profile?.current_title || '';
+    const ragCandidateHeadline = profile?.headline || (profile as any)?.current_title || '';
     const ragQueryText = `${ragCandidateName} ${ragCandidateHeadline} ${job.title || ''} ${job.skills?.join(' ') || ''} ${job.client?.name || ''}`.trim();
 
     // Fetch posts in parallel with RAG context (non-blocking)

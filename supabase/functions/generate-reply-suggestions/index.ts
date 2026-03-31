@@ -628,11 +628,11 @@ Réponds UNIQUEMENT en JSON valide:
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const orgId2 = await resolveOrgIdFromUser(userId, adminClient);
+        const orgId2 = await resolveOrgIdFromUser(userId, adminClient) as string | null;
         if (orgId2) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
           settleCredits(adminClient, {
-            organizationId: orgId2, userId,
+            organizationId: orgId2, userId: userId!,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
