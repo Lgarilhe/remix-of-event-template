@@ -422,8 +422,6 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 
   const { score, items } = useMemo(() => computeCompletionScore(d), [d]);
   const stepCompletions = useMemo(() => STEPS.map((_, i) => getStepCompletion(i, d)), [d]);
-  const allCriticalMissing = items.filter((i) => i.critical && !i.done);
-  const progressColor = score < 30 ? 'bg-destructive' : score < 70 ? 'bg-brutal-accent' : 'bg-foreground';
 
   return (
     <>
