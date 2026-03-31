@@ -868,7 +868,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                       {availableActions.length > 0 && (
                         <div className="mb-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <Zap className="w-4 h-4 text-emerald-600" />
+                            <Zap className="w-4 h-4 text-foreground" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
                           </div>
                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
