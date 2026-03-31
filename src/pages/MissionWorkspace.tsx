@@ -298,7 +298,7 @@ const MissionWorkspace = () => {
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
+      </div>
 
       <MissionCopilot project={project} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
