@@ -513,7 +513,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             </span>
                           )}
                           {stepIsTrigger && step.timeoutDays && (
-                            <span className="flex items-center gap-1 text-amber-600">
+                            <span className="flex items-center gap-1 text-muted-foreground">
                               <Timer className="w-3 h-3" />
                               Timeout {step.timeoutDays}j
                             </span>
