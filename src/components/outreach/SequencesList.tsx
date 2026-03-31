@@ -23,6 +23,8 @@ import {
   MessageSquare,
   Activity,
   Zap,
+  FileText,
+  BookTemplate,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -48,6 +50,7 @@ import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
 import { SequenceAnalytics } from './SequenceAnalytics';
+import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -101,6 +104,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showGlobalAnalytics, setShowGlobalAnalytics] = useState(false);
   const [analyticsSequence, setAnalyticsSequence] = useState<SequenceWithStats | null>(null);
   const [forceRescheduling, setForceRescheduling] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [saveTemplateSeq, setSaveTemplateSeq] = useState<SequenceWithStats | null>(null);
 
   const handleForceReschedule = async () => {
     setForceRescheduling(true);
@@ -498,7 +503,18 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   };
 
   const handleCreateNew = () => {
+    setShowTemplateSelector(true);
+  };
+
+  const handleSelectBlank = () => {
+    setShowTemplateSelector(false);
     setEditingSequence(null);
+    setShowBuilder(true);
+  };
+
+  const handleSelectTemplate = (sequence: Sequence) => {
+    setShowTemplateSelector(false);
+    setEditingSequence(sequence);
     setShowBuilder(true);
   };
 
@@ -704,6 +720,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       <Edit2 className="w-4 h-4 mr-2" />
                       Modifier
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSaveTemplateSeq(seq); }}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Sauvegarder comme template
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
                       className="text-red-600"
@@ -791,6 +811,26 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Template Selector */}
+      <SequenceTemplateSelector
+        isOpen={showTemplateSelector}
+        onClose={() => setShowTemplateSelector(false)}
+        onSelectBlank={handleSelectBlank}
+        onSelectTemplate={handleSelectTemplate}
+        existingSequences={sequences}
+      />
+
+      {/* Save as Template */}
+      {saveTemplateSeq && (
+        <SaveAsTemplateModal
+          isOpen={!!saveTemplateSeq}
+          onClose={() => setSaveTemplateSeq(null)}
+          sequenceId={saveTemplateSeq.id}
+          sequenceName={saveTemplateSeq.name}
+          steps={saveTemplateSeq.steps}
+        />
       )}
 
       {/* Builder modal */}
