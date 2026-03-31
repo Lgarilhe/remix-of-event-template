@@ -287,7 +287,7 @@ Deno.serve(async (req) => {
       const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+      const { data: { user }, error: authError } = await (supabaseAuth as any).auth.getUser();
       if (authError || !user) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
@@ -450,7 +450,7 @@ Deno.serve(async (req) => {
         .eq('account_id', account_id)
         .limit(1);
 
-      let userIds: string[] = existingEntries?.map(e => e.created_by) || [];
+      let userIds: string[] = existingEntries?.map((e: any) => e.created_by) || [];
       
       if (userIds.length === 0 && candidateId) {
         const { data: statusRecs } = await supabase
@@ -458,7 +458,7 @@ Deno.serve(async (req) => {
           .select('created_by')
           .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
           .limit(1);
-        userIds = statusRecs?.map(r => r.created_by) || [];
+        userIds = statusRecs?.map((r: any) => r.created_by) || [];
       }
 
       const uniqueUserIds = [...new Set(userIds)];

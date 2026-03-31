@@ -6,7 +6,8 @@
  *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolvePDLCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
  */
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+type SupabaseClient = ReturnType<typeof createClient>;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

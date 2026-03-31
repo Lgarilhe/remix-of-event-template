@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
       const costUsd = calculateUSDCost(tokensIn, tokensOut, modelId);
       await adminClient.from("ai_credit_transactions").insert({
         organization_id,
-        user_id: user.id,
+        user_id: user!.id,
         action: aiAction,
         amount: -credits,
         credits_used: credits,
@@ -403,6 +403,6 @@ Deno.serve(async (req) => {
     }
   } catch (err) {
     console.error("[ai-credits] Error:", err);
-    return json({ error: err.message }, 500);
+    return json({ error: (err as Error).message }, 500);
   }
 });

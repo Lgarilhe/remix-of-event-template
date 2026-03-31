@@ -46,7 +46,7 @@ export async function requireAuth(
   const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
-  const { data: { user }, error } = await authClient.auth.getUser();
+  const { data: { user }, error } = await (authClient as any).auth.getUser();
 
   if (error || !user) {
     throw new Response(

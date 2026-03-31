@@ -23,7 +23,8 @@
  *   });
  */
 
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+type SupabaseClient = ReturnType<typeof createClient>;
 import { calculateTokenCredits, calculateUSDCost, getModel, ACTION_COSTS } from "./ai-config.ts";
 
 // ─── Extract AI params from frontend request body ───────────────────────────
