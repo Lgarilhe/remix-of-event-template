@@ -599,10 +599,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Trigger configuration */}
                         {stepIsTrigger && step.actionType !== 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-amber-50 border border-amber-200">
-                            <div className="flex items-center gap-2 text-amber-700">
+                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                            <div className="flex items-center gap-2 text-foreground">
                               <Zap className="w-4 h-4" />
-                              <span className="font-medium text-sm">Configuration du trigger</span>
+                              <span className="font-medium text-sm uppercase tracking-wide">Configuration du trigger</span>
                             </div>
                             
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
