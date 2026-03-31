@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Navbar } from '@/components/Navbar';
+import { SEOHead } from '@/components/SEOHead';
 import { SEOHead } from '@/components/SEOHead';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature, getOrgTypeEmoji, getOrgTypeLabel } from '@/lib/featureGates';
