@@ -7,7 +7,7 @@ import { LikelyToSwitchBadge } from './LikelyToSwitchBadge';
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
-import { BorderBeam } from '@/components/magicui/border-beam';
+
 import { PreScoreBar } from './result-card/PreScoreBar';
 import { PreScoreResult } from '@/hooks/linkedin/preScoring';
 import { Job } from '@/types/jobs';
