@@ -377,7 +377,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col bg-white w-[calc(100%-1rem)] sm:w-full rounded-lg">
+      <DialogContent className="max-w-xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col bg-background border-foreground rounded-none w-[calc(100%-1rem)] sm:w-full">
         <DialogHeader>
           <DialogTitle>
             {initialSequence ? 'Modifier la séquence' : 'Nouvelle séquence'}
