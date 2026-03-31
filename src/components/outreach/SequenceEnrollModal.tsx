@@ -197,8 +197,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-foreground rounded-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GitBranch className="w-5 h-5 text-[#0077B5]" />
-            Inscrire dans la séquence
+             <GitBranch className="w-5 h-5 text-foreground" />
+             <span className="uppercase tracking-wide text-sm">Inscrire dans la séquence</span>
           </DialogTitle>
           <DialogDescription>
             Ajouter les candidats sélectionnés à "{sequence.name}"
