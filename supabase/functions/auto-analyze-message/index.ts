@@ -450,7 +450,7 @@ Deno.serve(async (req) => {
         .eq('account_id', account_id)
         .limit(1);
 
-      let userIds: string[] = existingEntries?.map(e => e.created_by) || [];
+      let userIds: string[] = existingEntries?.map((e: any) => e.created_by) || [];
       
       if (userIds.length === 0 && candidateId) {
         const { data: statusRecs } = await supabase
