@@ -477,7 +477,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                      className={cn(
                        "border border-foreground transition-all",
                        isExpanded && "bg-muted/30",
-                       stepIsTrigger && "border-l-4 border-l-amber-400"
+                       stepIsTrigger && "border-l-4 border-l-foreground/40"
                      )}
                    >
                     {/* Step header */}
