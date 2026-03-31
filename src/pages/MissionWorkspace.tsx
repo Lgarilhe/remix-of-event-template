@@ -116,7 +116,7 @@ const MissionWorkspace = () => {
               </button>
             </div>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
