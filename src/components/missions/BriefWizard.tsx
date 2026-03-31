@@ -555,7 +555,7 @@ const StepProfil = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
 // ─── Step 4: Compétences ───────────────────────────────────
 
 const StepCompetences = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
-  <div className="space-y-6">
+  <div className="space-y-4">
     <TagInput label="Must-have — indispensable" tags={d.skills_must_have || []} onChange={(tags) => onUpdate({ skills_must_have: tags })} color="bg-destructive text-destructive-foreground border-destructive" placeholder="Skill obligatoire" readOnly={readOnly} />
     <TagInput label="Should-have — important" tags={d.skills_should_have || []} onChange={(tags) => onUpdate({ skills_should_have: tags })} color="bg-brutal-accent/30 text-foreground border-brutal-accent" placeholder="Skill important" readOnly={readOnly} />
     <TagInput label="Nice-to-have — bonus" tags={d.skills_nice_to_have || []} onChange={(tags) => onUpdate({ skills_nice_to_have: tags })} color="bg-foreground text-background border-foreground" placeholder="Skill bonus" readOnly={readOnly} />
@@ -621,7 +621,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
