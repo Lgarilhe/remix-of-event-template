@@ -652,7 +652,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   checked={seq.is_active}
                   onCheckedChange={() => handleToggleActive(seq.id, seq.is_active)}
                   onClick={(e) => e.stopPropagation()}
-                  className="data-[state=checked]:bg-blue-600"
+                  className="data-[state=checked]:bg-foreground"
                 />
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-lg">{getSequenceEmoji(index)}</span>
