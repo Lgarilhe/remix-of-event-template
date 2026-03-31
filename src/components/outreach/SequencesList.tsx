@@ -813,6 +813,26 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         </div>
       )}
 
+      {/* Template Selector */}
+      <SequenceTemplateSelector
+        isOpen={showTemplateSelector}
+        onClose={() => setShowTemplateSelector(false)}
+        onSelectBlank={handleSelectBlank}
+        onSelectTemplate={handleSelectTemplate}
+        existingSequences={sequences}
+      />
+
+      {/* Save as Template */}
+      {saveTemplateSeq && (
+        <SaveAsTemplateModal
+          isOpen={!!saveTemplateSeq}
+          onClose={() => setSaveTemplateSeq(null)}
+          sequenceId={saveTemplateSeq.id}
+          sequenceName={saveTemplateSeq.name}
+          steps={saveTemplateSeq.steps}
+        />
+      )}
+
       {/* Builder modal */}
       {showBuilder && (
         <SequenceBuilder
