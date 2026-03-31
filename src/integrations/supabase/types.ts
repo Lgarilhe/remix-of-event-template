@@ -3791,6 +3791,9 @@ export type Database = {
         Row: {
           created_at: string | null
           date: string
+          emails_clicked: number | null
+          emails_opened: number | null
+          emails_sent: number | null
           id: string
           invites_accepted: number | null
           invites_sent: number | null
@@ -3803,6 +3806,9 @@ export type Database = {
         Insert: {
           created_at?: string | null
           date: string
+          emails_clicked?: number | null
+          emails_opened?: number | null
+          emails_sent?: number | null
           id?: string
           invites_accepted?: number | null
           invites_sent?: number | null
@@ -3815,6 +3821,9 @@ export type Database = {
         Update: {
           created_at?: string | null
           date?: string
+          emails_clicked?: number | null
+          emails_opened?: number | null
+          emails_sent?: number | null
           id?: string
           invites_accepted?: number | null
           invites_sent?: number | null
@@ -3837,6 +3846,38 @@ export type Database = {
             columns: ["sequence_id"]
             isOneToOne: false
             referencedRelation: "outreach_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_email_tracking: {
+        Row: {
+          created_at: string | null
+          email_message_id: string | null
+          execution_id: string
+          id: string
+          tracking_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email_message_id?: string | null
+          execution_id: string
+          id?: string
+          tracking_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email_message_id?: string | null
+          execution_id?: string
+          id?: string
+          tracking_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_email_tracking_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_step_executions"
             referencedColumns: ["id"]
           },
         ]
