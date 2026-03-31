@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Plus, Sparkles, ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -250,18 +251,20 @@ const FullscreenStepDialog: React.FC<{
   const { filled, total } = getStepCompletion(stepIndex, d);
   const allCriticalMissing = items.filter((i) => i.critical && !i.done);
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-[3000] bg-background flex flex-col"
+      className="fixed inset-0 z-[4000] flex h-[100dvh] flex-col bg-background pointer-events-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
       {/* Header */}
-      <div className="shrink-0 border-b-2 border-foreground bg-background">
+      <div className="relative z-10 shrink-0 border-b-2 border-foreground bg-background">
         <div className="flex items-center justify-between px-4 sm:px-8 py-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-black border-2 border-foreground shrink-0">
               {step.emoji}
             </div>
@@ -294,8 +297,8 @@ const FullscreenStepDialog: React.FC<{
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-4 sm:py-8">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 pt-4 sm:pt-6 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={stepIndex}
@@ -315,7 +318,7 @@ const FullscreenStepDialog: React.FC<{
       </div>
 
       {/* Footer navigation */}
-      <div className="shrink-0 border-t-2 border-foreground bg-background">
+      <div className="relative z-10 shrink-0 border-t-2 border-foreground bg-background">
         <div className="max-w-2xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
           <button
             type="button"
@@ -370,7 +373,8 @@ const FullscreenStepDialog: React.FC<{
           )}
         </div>
       </div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 };
 
