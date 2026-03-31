@@ -46,6 +46,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [showFilterReview, setShowFilterReview] = useState(false);
 
   // Auto-save job_details (debounced)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
