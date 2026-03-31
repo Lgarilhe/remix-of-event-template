@@ -89,7 +89,7 @@ const MissionWorkspace = () => {
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
             <BrutalLoader variant="default" rows={3} messages={['Chargement de la mission…', 'Récupération des données…']} />
           </div>
-        </main>
+        </div>
       </div>
     );
   }
