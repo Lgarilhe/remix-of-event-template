@@ -230,8 +230,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               {profiles.map((profile) => (
                 <div
                   key={profile.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg bg-background border border-border/60 shadow-sm"
-                >
+                   className="flex items-center gap-3 p-2.5 bg-background border border-foreground/10"
+                 >
                   {profile.profile_picture_url ? (
                     <img
                       src={profile.profile_picture_url}
