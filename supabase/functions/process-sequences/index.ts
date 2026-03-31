@@ -177,7 +177,40 @@ async function handleProcess(supabase: any, force = false) {
 
   try {
     const now = new Date().toISOString();
-    
+
+    // Recovery: unstick executions stuck in 'sending' for more than 5 minutes
+    // This happens when sequence-send-email times out or crashes mid-execution
+    const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: stuckExecs } = await supabase
+      .from('sequence_step_executions')
+      .select('id, retry_count')
+      .eq('status', 'sending')
+      .lt('updated_at', stuckCutoff)
+      .limit(20);
+
+    if (stuckExecs?.length) {
+      console.warn(`[process] Recovering ${stuckExecs.length} stuck 'sending' execution(s)`);
+      for (const stuck of stuckExecs) {
+        const retryCount = stuck.retry_count || 0;
+        if (retryCount < 3) {
+          // Reschedule for retry
+          await supabase.from('sequence_step_executions').update({
+            status: 'scheduled',
+            retry_count: retryCount + 1,
+            error_message: `Recovered from stuck 'sending' state (retry ${retryCount + 1}/3)`,
+            scheduled_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // retry in 10 min
+          }).eq('id', stuck.id);
+        } else {
+          // Max retries reached — mark as failed
+          await supabase.from('sequence_step_executions').update({
+            status: 'failed',
+            error_message: 'Failed after 3 retries (stuck in sending state)',
+            executed_at: new Date().toISOString(),
+          }).eq('id', stuck.id);
+        }
+      }
+    }
+
     // Smart batching: fetch more candidates, then split by action visibility
     // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
     // Visible actions (message, inmail, connection_request) = keep conservative but maximized
@@ -270,10 +303,28 @@ async function handleProcess(supabase: any, force = false) {
           results.skipped++;
           continue;
         }
+
+        // For condition_branch steps with parent_step_id children: evaluate and route to branch
+        const hasChildren = step.action_type === 'condition_branch' || step.action_type === 'check_connection';
+        const { data: branchChildren } = hasChildren && step.id
+          ? await supabase.from('sequence_steps').select('id').eq('parent_step_id', step.id).limit(1)
+          : { data: null };
+        const useTreeBranching = branchChildren && branchChildren.length > 0;
+
         if (!conditionResult) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: new Date().toISOString() }).eq('id', exec.id);
           results.skipped++;
-          await scheduleNextStep(supabase, enrollment, step.step_order);
+          // Route to 'no' branch if tree branching, otherwise linear fallback
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, useTreeBranching ? 'no' : undefined);
+          continue;
+        }
+
+        // Condition is true — if this is a pure condition node with tree children, route to 'yes' branch directly
+        if (useTreeBranching && (step.action_type === 'condition_branch')) {
+          await supabase.from('sequence_step_executions').update({ status: 'sent', executed_at: new Date().toISOString(), final_message: `Condition "${step.condition_type}" → true` }).eq('id', exec.id);
+          await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, 'yes');
+          results.processed++;
           continue;
         }
 
@@ -286,7 +337,7 @@ async function handleProcess(supabase: any, force = false) {
             .select('id, status, step:sequence_steps!inner(action_type)')
             .eq('enrollment_id', enrollment.id)
             .lt('step_order', step.step_order)
-            .in('step.action_type', ['message', 'inmail', 'smart_message']);
+            .in('step.action_type', ['message', 'inmail', 'smart_message', 'email']);
 
           // If no prior message-type steps exist at all, this IS the first message → allow it
           const hasPriorMessageSteps = priorMessageSteps && priorMessageSteps.length > 0;
@@ -543,7 +594,7 @@ async function handleCheckReplies(supabase: any) {
       .select('executed_at, step:sequence_steps!inner(action_type)')
       .eq('enrollment_id', enrollment.id)
       .eq('status', 'sent')
-      .in('step.action_type', ['message', 'inmail', 'smart_message', 'connection_request'])
+      .in('step.action_type', ['message', 'inmail', 'smart_message', 'connection_request', 'email'])
       .order('executed_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -741,7 +792,7 @@ async function handleCheckWaitEvents(supabase: any) {
 // ============ UTILITIES ============
 
 
-function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message'].includes(actionType); }
+function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message', 'email'].includes(actionType); }
 
 function isLikelyRealFirstName(name: string): boolean {
   if (!name || name.trim().length < 2) return false;
@@ -1197,7 +1248,15 @@ async function handleForceReschedule(supabase: any) {
 }
 
 // deno-lint-ignore no-explicit-any
-async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no') {
+async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no', _depth = 0) {
+  // Guard: prevent infinite recursion on deeply nested or circular branches
+  const MAX_BRANCH_DEPTH = 10;
+  if (_depth >= MAX_BRANCH_DEPTH) {
+    console.error(`[scheduleNextStep] MAX_BRANCH_DEPTH (${MAX_BRANCH_DEPTH}) reached for enrollment ${enrollment.id} at step_order ${currentStepOrder}. Completing sequence to prevent infinite loop.`);
+    await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+    return;
+  }
+
   let nextStep;
 
   if (forceBranchStepId) {
@@ -1245,7 +1304,7 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
           .single();
         if (parentStep) {
           // Recurse: schedule the step after the parent (using parent's context)
-          return scheduleNextStep(supabase, enrollment, parentStep.step_order);
+          return scheduleNextStep(supabase, enrollment, parentStep.step_order, undefined, undefined, _depth + 1);
         }
       }
     }
@@ -2099,7 +2158,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     // deno-lint-ignore no-explicit-any
     const hadInvite = prevSteps?.some((ps: any) => ps.step?.action_type === 'connection_request');
     // deno-lint-ignore no-explicit-any
-    const prevMessages = prevSteps?.filter((ps: any) => ['message', 'inmail', 'smart_message'].includes(ps.step?.action_type)) || [];
+    const prevMessages = prevSteps?.filter((ps: any) => ['message', 'inmail', 'smart_message', 'email'].includes(ps.step?.action_type)) || [];
     const hadMsg = prevMessages.length > 0;
     const isInvite = step.action_type === 'connection_request';
     const isInMail = step.action_type === 'inmail' || step.action_type === 'smart_message';

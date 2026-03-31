@@ -276,8 +276,30 @@ async function handleMailReceived(
     if (tracking) executionId = tracking.execution_id;
   }
 
+  // Fallback 2: match by sender email → enrollment.email_used
   if (!executionId) {
-    console.log('[webhooks] mail_received: no matching tracking record');
+    const fromEmail = (payload.from_attendee as Record<string, unknown>)?.email as string
+      || payload.from as string
+      || payload.sender_email as string;
+
+    if (fromEmail) {
+      const { data: enrollments } = await supabase
+        .from('sequence_enrollments')
+        .select('id')
+        .eq('email_used', fromEmail)
+        .eq('status', 'active');
+
+      if (enrollments?.length) {
+        console.log(`[webhooks] mail_received: matched ${enrollments.length} enrollment(s) by email_used=${fromEmail}`);
+        const timestamp = (payload.timestamp as string) || new Date().toISOString();
+        for (const enrollment of enrollments) {
+          await handleReply(supabase, enrollment.id, timestamp);
+        }
+        return;
+      }
+    }
+
+    console.log('[webhooks] mail_received: no matching tracking record or enrollment');
     return;
   }
 
