@@ -948,21 +948,22 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button 
-            onClick={handleSave} 
-            disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-          >
-            {isSaving ? 'Enregistrement...' : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Enregistrer
-              </>
-            )}
-          </Button>
+         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-foreground/10">
+           <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
+             Annuler
+           </Button>
+           <Button 
+             onClick={handleSave} 
+             disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+             className="bg-foreground text-background rounded-none"
+           >
+             {isSaving ? 'Enregistrement...' : (
+               <>
+                 <Save className="w-4 h-4 mr-2" />
+                 Enregistrer
+               </>
+             )}
+           </Button>
         </div>
       </DialogContent>
     </Dialog>

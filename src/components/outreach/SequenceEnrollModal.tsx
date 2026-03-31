@@ -288,9 +288,9 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           </Button>
           {!results && (
             <Button
-              onClick={handleEnroll}
-              disabled={isEnrolling}
-              className="bg-[#0077B5] hover:bg-[#005E93]"
+               onClick={handleEnroll}
+               disabled={isEnrolling}
+               className="bg-foreground text-background rounded-none"
             >
               {isEnrolling ? (
                 <>
