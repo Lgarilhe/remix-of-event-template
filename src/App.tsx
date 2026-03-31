@@ -130,34 +130,36 @@ const AppContent = () => {
       <Sonner />
       <Suspense fallback={suspenseFallback}>
         <Routes>
+          {/* Public routes — no sidebar */}
           <Route path="/" element={<SkalrLanding />} />
           <Route path="/index" element={<Navigate to={withPreviewAccessToken('/')} replace />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-          <Route path="/candidates" element={<ProtectedRoute><OrganizationGuard><Candidates /></OrganizationGuard></ProtectedRoute>} />
-          {/* New canonical routes */}
-          <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><Outreach /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><MissionWorkspace /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><ATS /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><Inbox /></OrganizationGuard></ProtectedRoute>} />
-          {/* Legacy redirects */}
-          <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
-          <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
-          <Route path="/prospection" element={<Navigate to={withPreviewAccessToken('/missions', '?tab=prospection')} replace />} />
-          <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><Dashboard /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><Qualification /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><Settings /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><Pricing /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><Marketplace /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
           <Route path="/client/:token" element={<ClientPortalPage />} />
           <Route path="/mission-invite/:token" element={<ProtectedRoute><AcceptMissionInvite /></ProtectedRoute>} />
           <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
           <Route path="/privacy" element={<Suspense fallback={null}><PrivacyPage /></Suspense>} />
           <Route path="/r/:slug" element={<RecruiterPublicProfile />} />
+
+          {/* Authenticated routes — with sidebar layout */}
+          <Route path="/admin" element={<ProtectedRoute><AppLayout><Admin /></AppLayout></ProtectedRoute>} />
+          <Route path="/candidates" element={<ProtectedRoute><OrganizationGuard><AppLayout><Candidates /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><AppLayout><ATS /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          {/* Legacy redirects */}
+          <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
+          <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
+          <Route path="/prospection" element={<Navigate to={withPreviewAccessToken('/missions', '?tab=prospection')} replace />} />
+          <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><AppLayout><Dashboard /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><Qualification /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><AppLayout><ScorecardFullPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><AppLayout><ScorecardFullPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><AppLayout><Pricing /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><AppLayout><Marketplace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
