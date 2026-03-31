@@ -720,6 +720,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       <Edit2 className="w-4 h-4 mr-2" />
                       Modifier
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSaveTemplateSeq(seq); }}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Sauvegarder comme template
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
                       className="text-red-600"
