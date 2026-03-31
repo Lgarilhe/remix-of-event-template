@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BriefWizard } from './BriefWizard';
 import { VoiceDictation } from './VoiceDictation';
+import { FilterReviewModal } from './FilterReviewModal';
 import type { JobDetails } from '@/types/jobDetails';
 
 interface AnalysisResult {
