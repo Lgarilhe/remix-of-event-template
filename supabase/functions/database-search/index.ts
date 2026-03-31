@@ -563,7 +563,9 @@ Deno.serve(async (req) => {
       const data = await response.json();
       const rawPeople = data.people || [];
 
-      console.log(`[database-search] Search returned ${rawPeople.length} raw results`);
+      // Log pagination info from Apollo
+      const paginationInfo = data.pagination || {};
+      console.log(`[database-search] Search returned ${rawPeople.length} raw results | pagination:`, JSON.stringify(paginationInfo));
       if (rawPeople.length > 0) {
         const sample = rawPeople[0];
         console.log(`[database-search] Sample raw person:`, JSON.stringify({
@@ -667,9 +669,15 @@ Deno.serve(async (req) => {
         pagination.total_people ??
         profiles.length
       );
-      const currentPage = Number(pagination.page || pagination.current_page || 1);
-      const totalPages = Number(pagination.total_pages || pagination.pages || 1);
-      const hasMore = currentPage < totalPages;
+      const currentPage = Number(pagination.page || pagination.current_page || apolloPayload.page || 1);
+      const perPage = Number(pagination.per_page || apolloPayload.per_page || 25);
+      // Calculate total pages from total entries if not provided by Apollo
+      const totalPages = Number(
+        pagination.total_pages || pagination.pages || Math.ceil(totalEntries / perPage) || 1
+      );
+      const hasMore = currentPage < totalPages && totalEntries > currentPage * perPage;
+
+      console.log(`[database-search] Pagination: page ${currentPage}/${totalPages}, total ${totalEntries}, hasMore: ${hasMore}`);
 
       return json({
         success: true,
