@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
     const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
     if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
 
-    const svc = createClient(supabaseUrl, serviceKey);
+    const svc = createClient(supabaseUrl2, serviceKey2);
     // deno-lint-ignore no-explicit-any
     const stats: Record<string, any> = {};
 
