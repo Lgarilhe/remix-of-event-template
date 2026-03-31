@@ -377,7 +377,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col bg-white w-[calc(100%-1rem)] sm:w-full rounded-lg">
+      <DialogContent className="max-w-xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col bg-background border-foreground rounded-none w-[calc(100%-1rem)] sm:w-full">
         <DialogHeader>
           <DialogTitle>
             {initialSequence ? 'Modifier la séquence' : 'Nouvelle séquence'}
@@ -409,10 +409,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
             </div>
             {/* Template button - only show when creating new (no steps yet) */}
             {sequence.steps.length === 0 && !initialSequence && (
-              <div className="p-4 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5">
+              <div className="p-4 border-2 border-dashed border-foreground/30 bg-muted/30">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-primary" />
+                   <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center">
+                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-sm">Séquence recommandée</p>
@@ -474,23 +474,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 return (
                   <div
                     key={step.id}
-                    className={cn(
-                      "border rounded-lg transition-all",
-                      isExpanded ? "border-primary bg-muted/30" : "border-border",
-                      stepIsTrigger && "border-l-4 border-l-amber-400"
-                    )}
-                  >
+                     className={cn(
+                       "border border-foreground transition-all",
+                       isExpanded && "bg-muted/30",
+                       stepIsTrigger && "border-l-4 border-l-amber-400"
+                     )}
+                   >
                     {/* Step header */}
                     <div
                       className="flex items-center gap-3 p-3 cursor-pointer"
                       onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
                     >
                       <GripVertical className="w-4 h-4 text-muted-foreground" />
-                      <div className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center",
-                        stepConfig?.color || "bg-muted"
-                      )}>
-                        <StepIcon className="w-4 h-4" />
+                       <div className={cn(
+                         "w-8 h-8 flex items-center justify-center",
+                         stepConfig?.color || "bg-muted"
+                       )}>
+                         <StepIcon className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -539,7 +539,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                       <div className="px-4 pb-4 pt-2 border-t space-y-4">
                         {/* Delay (not for first step) */}
                         {index > 0 && (
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                               <Label>Jours</Label>
                               <Input
@@ -599,13 +599,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Trigger configuration */}
                         {stepIsTrigger && step.actionType !== 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div className="space-y-4 p-3 bg-amber-50 border border-amber-200">
                             <div className="flex items-center gap-2 text-amber-700">
                               <Zap className="w-4 h-4" />
                               <span className="font-medium text-sm">Configuration du trigger</span>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <Label>Timeout (jours max)</Label>
                                 <Input
@@ -640,7 +640,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Condition branch configuration */}
                         {step.actionType === 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                          <div className="space-y-4 p-3 bg-rose-50 border border-rose-200">
                             <div className="flex items-center gap-2 text-rose-700">
                               <GitBranch className="w-4 h-4" />
                               <span className="font-medium text-sm">Configuration du branchement</span>
@@ -688,7 +688,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                         {/* Check connection configuration */}
                         {step.actionType === 'check_connection' && (
-                          <div className="space-y-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                          <div className="space-y-4 p-3 bg-indigo-50 border border-indigo-200">
                             <div className="flex items-center gap-2 text-indigo-700">
                               <GitBranch className="w-4 h-4" />
                               <span className="font-medium text-sm">Vérification du degré de connexion</span>
@@ -746,7 +746,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                         {needsMessage(step.actionType) && (
                           <>
                             {/* AI toggle */}
-                            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                            <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/10">
                               <div className="flex items-center gap-2">
                                 <Sparkles className="w-4 h-4 text-purple-600" />
                                 <span className="text-sm font-medium">Personnalisation IA</span>
@@ -841,12 +841,12 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
               const hasNoOptions = availableActions.length === 0 && availableTriggers.length === 0;
 
               return (
-                <div className={cn(
-                  "mt-4 p-4 border-2 border-dashed rounded-lg",
-                  sequence.steps.length === 0 
-                    ? "border-primary bg-primary/5" 
-                    : "border-primary/30 bg-muted/20"
-                )}>
+                 <div className={cn(
+                   "mt-4 p-4 border-2 border-dashed",
+                   sequence.steps.length === 0 
+                     ? "border-foreground bg-muted/30" 
+                     : "border-foreground/30 bg-muted/20"
+                 )}>
                   <div className="flex items-center justify-between mb-4">
                     <span className="font-medium text-sm">
                       {sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}
@@ -871,14 +871,14 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             <Zap className="w-4 h-4 text-emerald-600" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {availableActions.map(action => (
                               <button
                                 key={action.value}
                                 onClick={() => addStep(action.value)}
-                                className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left"
                               >
-                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
+                                <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", action.color)}>
                                   <action.icon className="w-4 h-4" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -898,14 +898,14 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             <Timer className="w-4 h-4 text-amber-600" />
                             <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {availableTriggers.map(trigger => (
                               <button
                                 key={trigger.value}
                                 onClick={() => addStep(trigger.value)}
-                                className="flex items-center gap-2 p-2.5 rounded-lg border border-border hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
+                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
                               >
-                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", trigger.color)}>
+                                <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}>
                                   <trigger.icon className="w-4 h-4" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -948,21 +948,22 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button 
-            onClick={handleSave} 
-            disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-          >
-            {isSaving ? 'Enregistrement...' : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Enregistrer
-              </>
-            )}
-          </Button>
+         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-foreground/10">
+           <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
+             Annuler
+           </Button>
+           <Button 
+             onClick={handleSave} 
+             disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+             className="bg-foreground text-background rounded-none"
+           >
+             {isSaving ? 'Enregistrement...' : (
+               <>
+                 <Save className="w-4 h-4 mr-2" />
+                 Enregistrer
+               </>
+             )}
+           </Button>
         </div>
       </DialogContent>
     </Dialog>

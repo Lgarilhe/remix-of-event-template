@@ -528,7 +528,7 @@ Réponds en JSON strict :
   } catch (err) {
     console.error("[enrich-vivier-contacts] Error:", err);
     return new Response(
-      JSON.stringify({ success: false, error: err.message }),
+      JSON.stringify({ success: false, error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

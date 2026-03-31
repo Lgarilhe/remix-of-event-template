@@ -168,8 +168,8 @@ Deno.serve(async (req) => {
       const _authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: claimsData, error: claimsError } = await _authClient.auth.getClaims(token);
-      if (claimsError || !claimsData?.claims?.sub) {
+      const { data: claimsData, error: claimsError } = await (_authClient as any).auth.getUser();
+      if (claimsError || !claimsData?.user?.id) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -190,12 +190,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl2 = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey2 = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
     if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
 
-    const svc = createClient(supabaseUrl, serviceKey);
+    const svc = createClient(supabaseUrl2, serviceKey2);
     // deno-lint-ignore no-explicit-any
     const stats: Record<string, any> = {};
 

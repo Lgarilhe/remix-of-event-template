@@ -194,11 +194,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-foreground rounded-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GitBranch className="w-5 h-5 text-[#0077B5]" />
-            Inscrire dans la séquence
+             <GitBranch className="w-5 h-5 text-foreground" />
+             <span className="uppercase tracking-wide text-sm">Inscrire dans la séquence</span>
           </DialogTitle>
           <DialogDescription>
             Ajouter les candidats sélectionnés à "{sequence.name}"
@@ -207,9 +207,9 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
         <div className="space-y-4">
           {/* Summary */}
-          <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+          <div className="p-4 bg-muted/50 border border-foreground/10 space-y-3">
             <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-[#0077B5]" />
+              <Users className="w-5 h-5 text-foreground" />
               <span className="font-medium">{profiles.length} candidat(s)</span>
             </div>
             
@@ -225,13 +225,13 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           </div>
 
           {/* Profiles preview */}
-          <ScrollArea className="h-[240px] rounded-lg border bg-muted/30 p-1">
+          <ScrollArea className="h-[200px] sm:h-[240px] border border-foreground/10 bg-muted/30 p-1">
             <div className="space-y-1.5">
               {profiles.map((profile) => (
                 <div
                   key={profile.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg bg-background border border-border/60 shadow-sm"
-                >
+                   className="flex items-center gap-3 p-2.5 bg-background border border-foreground/10"
+                 >
                   {profile.profile_picture_url ? (
                     <img
                       src={profile.profile_picture_url}
@@ -258,7 +258,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
           {/* Results */}
           {results && (
-            <div className="p-4 rounded-lg border space-y-2">
+            <div className="p-4 border border-foreground/10 space-y-2">
               {results.success > 0 && (
                 <div className="flex items-center gap-2 text-green-600">
                   <CheckCircle className="w-4 h-4" />
@@ -283,14 +283,14 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} className="border-foreground rounded-none">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
           {!results && (
             <Button
-              onClick={handleEnroll}
-              disabled={isEnrolling}
-              className="bg-[#0077B5] hover:bg-[#005E93]"
+               onClick={handleEnroll}
+               disabled={isEnrolling}
+               className="bg-foreground text-background rounded-none"
             >
               {isEnrolling ? (
                 <>
