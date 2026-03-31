@@ -205,7 +205,7 @@ function buildChunksFromSequenceExecutions(record: Record<string, unknown>) {
 }
 
 // ── Table → builder mapping ────────────────────────────────────────────
-const TABLE_BUILDERS: Record<string, (r: Record<string, unknown>) => ReturnType<typeof buildChunksFromCandidateNotes>> = {
+const TABLE_BUILDERS: Record<string, (r: Record<string, unknown>) => { entity_type: string; entity_id: string; organization_id: string; chunks: Array<{ chunk_type: string; content: string; metadata?: any }> } | null> = {
   job_candidate_status: buildChunksFromJobCandidateStatus,
   candidate_notes: buildChunksFromCandidateNotes,
   candidate_comments: buildChunksFromCandidateComments,
