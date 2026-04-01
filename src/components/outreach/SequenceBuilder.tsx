@@ -1024,9 +1024,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
       case 'review':
         return (
-          <div className="space-y-6 max-w-2xl">
+          <div className="space-y-8 max-w-2xl">
             <div>
-              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Vérification</h2>
+              <h2 className="text-xl font-semibold mb-1">Vérification</h2>
               <p className="text-sm text-muted-foreground">Vérifiez que tout est prêt avant d'activer la séquence.</p>
             </div>
 
