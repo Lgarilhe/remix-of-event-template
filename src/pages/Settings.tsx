@@ -25,6 +25,7 @@ import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { LinkedInQuotaSettings } from '@/components/settings/LinkedInQuotaSettings';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
+import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
@@ -243,6 +244,7 @@ const Settings = () => {
               <div className="space-y-6">
                 <MyLinkedInAccount />
                 <LinkedInQuotaSettings />
+                <MyEmailAccount />
                 <MyWhatsAppAccount />
               </div>
             )}
