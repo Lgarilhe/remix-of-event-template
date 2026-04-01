@@ -196,8 +196,8 @@ Deno.serve(async (req) => {
       }
 
       const embeddingData = await embeddingRes.json();
-      queryEmbedding = embeddingData.data[0].embedding;
-      setCachedEmbedding(queryHash, queryEmbedding);
+      queryEmbedding = embeddingData.data[0].embedding as number[];
+      setCachedEmbedding(queryHash, queryEmbedding!);
     }
 
     // ── 4. Call the RPC ────────────────────────────────────────
@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
       }
 
       // Call retrieve_context_multi
-      const embeddingStr = `[${queryEmbedding.join(",")}]`;
+      const embeddingStr = `[${queryEmbedding!.join(",")}]`;
       const { data, error } = await svc.rpc("retrieve_context_multi", {
         p_org_id: organizationId,
         p_entity_ids: entityIds,
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
       chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
     } else {
       // Call retrieve_context (single entity)
-      const embeddingStr = `[${queryEmbedding.join(",")}]`;
+      const embeddingStr = `[${queryEmbedding!.join(",")}]`;
       const { data, error } = await svc.rpc("retrieve_context", {
         p_org_id: organizationId,
         p_entity_type: entity_type,

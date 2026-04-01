@@ -188,10 +188,10 @@ ${JSON.stringify(currentFilters, null, 2)}`;
     if (_tokensIn + _tokensOut > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const orgId = await resolveOrgIdFromUser(userId, svc);
-        if (orgId) {
+        const orgId = userId ? await resolveOrgIdFromUser(userId, svc as any) : null;
+        if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(svc, {
+          settleCredits(svc as any, {
             organizationId: orgId, userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,

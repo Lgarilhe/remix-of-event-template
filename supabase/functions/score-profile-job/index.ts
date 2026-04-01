@@ -895,7 +895,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
 
 // ─── Layer 3: Semantic Similarity (pgvector) ─────────────────────────────────
 
-async function getSemanticScore(supabase: SupabaseClient, candidateId: string, jobId: string): Promise<number | null> {
+async function getSemanticScore(supabase: ReturnType<typeof createClient>, candidateId: string, jobId: string): Promise<number | null> {
   try {
     const { data, error } = await supabase.rpc("cosine_similarity_match", {
       p_candidate_id: candidateId,
@@ -917,12 +917,15 @@ interface LLMResult {
   overallScore: number;
   techFitScore: number;
   softSkillsScore: number;
+  pedigreeScore: number | null;
   matchedSkills: string[];
   missingCriticalSkills: string[];
   summary: string;
   strengths: string[];
   concerns: string[];
+  notableCompanies: string[] | null;
   mustHavePassed: boolean;
+  mustHaveUncertain: boolean;
   mustHaveDetails: string | null;
   tokensUsed: { input: number; output: number };
 }

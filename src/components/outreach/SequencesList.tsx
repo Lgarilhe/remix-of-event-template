@@ -223,7 +223,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             name: sequence.name,
             description: sequence.description,
             is_active: sequence.isActive,
-          })
+            stop_conditions: sequence.stopConditions || null,
+            sender_accounts: sequence.senderAccounts || null,
+            rotation_mode: sequence.rotationMode || null,
+            multi_sender_enabled: sequence.multiSenderEnabled || false,
+          } as any)
           .eq('id', sequence.id);
 
         if (updateError) throw updateError;
@@ -240,6 +244,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           step_order: step.order,
           action_type: step.actionType,
           condition_type: step.conditionType,
+          condition_value: step.conditionValue || null,
           delay_days: step.delayDays,
           delay_hours: step.delayHours,
           delay_minutes: step.delayMinutes || 0,
@@ -251,6 +256,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           ai_tone: step.aiTone,
           timeout_days: step.timeoutDays,
           wait_for_event: step.waitForEvent,
+          variant_group: step.variantGroup || null,
+          variant_weight: step.variantWeight || 100,
           timeout_branch_step_id: null,
           if_true_goto_step: null,
           if_false_goto_step: null,

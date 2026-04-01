@@ -32,12 +32,17 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
+import { StopConditionsSettings } from './sequence/StopConditionsSettings';
+import { MultiSenderSettings } from './sequence/MultiSenderSettings';
+import type { StopConditions as StopConditionsType } from './sequence/StopConditionsSettings';
+import type { SenderAccount } from './sequence/MultiSenderSettings';
 
 export interface SequenceStep {
   id: string;
   order: number;
   actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
-  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response';
+  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'if_email_opened' | 'if_email_not_opened' | 'if_link_clicked' | 'if_link_not_clicked' | 'if_has_email' | 'if_no_email' | 'if_has_phone' | 'if_no_phone' | 'if_bounced' | 'if_unsubscribed' | 'if_score_above';
+  conditionValue?: string;
   delayDays: number;
   delayHours: number;
   delayMinutes: number;
@@ -58,6 +63,22 @@ export interface SequenceStep {
   nextStepId?: string;
   // Timeout branch (e.g. wait_connection timeout → InMail)
   timeoutBranchStepId?: string;
+  // A/B testing
+  variantGroup?: string | null;
+  variantWeight?: number;
+}
+
+export interface StopConditions {
+  on_reply: boolean;
+  on_click: boolean;
+  on_unsubscribe: boolean;
+  on_meeting_booked: boolean;
+}
+
+export interface SenderAccountConfig {
+  account_id: string;
+  email: string;
+  daily_limit: number;
 }
 
 export interface Sequence {
@@ -66,6 +87,10 @@ export interface Sequence {
   description?: string;
   steps: SequenceStep[];
   isActive: boolean;
+  stopConditions?: StopConditions;
+  senderAccounts?: SenderAccountConfig[];
+  rotationMode?: string;
+  multiSenderEnabled?: boolean;
 }
 
 interface SequenceBuilderProps {
@@ -99,6 +124,20 @@ const CONDITION_TYPES = [
   { value: 'if_connected', label: 'Si connecté' },
   { value: 'if_not_connected', label: 'Si non connecté' },
   { value: 'if_no_response', label: 'Si pas de réponse' },
+  // Engagement email
+  { value: 'if_email_opened', label: '📧 Si email ouvert' },
+  { value: 'if_email_not_opened', label: '📧 Si email PAS ouvert' },
+  { value: 'if_link_clicked', label: '🔗 Si lien cliqué' },
+  { value: 'if_link_not_clicked', label: '🔗 Si lien PAS cliqué' },
+  // Données candidat
+  { value: 'if_has_email', label: '📬 Si a un email' },
+  { value: 'if_no_email', label: '📬 Si pas d\'email' },
+  { value: 'if_has_phone', label: '📞 Si a un téléphone' },
+  { value: 'if_no_phone', label: '📞 Si pas de téléphone' },
+  // Statut
+  { value: 'if_bounced', label: '⚠️ Si email bouncé' },
+  { value: 'if_unsubscribed', label: '🚫 Si désinscrit' },
+  { value: 'if_score_above', label: '⭐ Si score au-dessus de...' },
 ];
 
 const TIMEOUT_ACTIONS = [
@@ -407,6 +446,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 className="mt-1.5"
               />
             </div>
+
+            {/* Stop Conditions */}
+            <StopConditionsSettings
+              value={sequence.stopConditions || { on_reply: true, on_click: false, on_unsubscribe: true, on_meeting_booked: false }}
+              onChange={(stopConditions) => setSequence(prev => ({ ...prev, stopConditions }))}
+            />
+
+            {/* Multi-sender */}
+            <MultiSenderSettings
+              enabled={sequence.multiSenderEnabled || false}
+              onEnabledChange={(multiSenderEnabled) => setSequence(prev => ({ ...prev, multiSenderEnabled }))}
+              senderAccounts={sequence.senderAccounts || []}
+              onSenderAccountsChange={(senderAccounts) => setSequence(prev => ({ ...prev, senderAccounts }))}
+              rotationMode={sequence.rotationMode || 'round_robin'}
+              onRotationModeChange={(rotationMode) => setSequence(prev => ({ ...prev, rotationMode }))}
+            />
+
             {/* Template button - only show when creating new (no steps yet) */}
             {sequence.steps.length === 0 && !initialSequence && (
               <div className="p-4 border-2 border-dashed border-foreground/30 bg-muted/30">
@@ -594,6 +650,21 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 ))}
                               </SelectContent>
                             </Select>
+                            {/* Score threshold for if_score_above */}
+                            {step.conditionType === 'if_score_above' && (
+                              <div className="mt-2">
+                                <Label>Seuil de score (0-100)</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={step.conditionValue || '70'}
+                                  onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
+                                  placeholder="70"
+                                  className="mt-1 w-32"
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 

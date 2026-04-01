@@ -269,9 +269,9 @@ async function handleProcess(supabase: any, force = false) {
 
     let visibleActionsExecuted = 0;
     for (const exec of batchedExecutions) {
+      const enrollment = exec.enrollment;
+      const step = exec.step;
       try {
-        const enrollment = exec.enrollment;
-        const step = exec.step;
         
         if (!enrollment || enrollment.status !== 'active') {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'Enrollment inactive' }).eq('id', exec.id);
@@ -2284,13 +2284,13 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
         const accomp = jobNotionData['Accompagnement'] || jobNotionData['Type accompagnement'] || '';
         if (accomp) jobAccompagnement = accomp.split(',').map(s => s.trim()).filter(Boolean);
     } catch { /* ignore */ }
+    }
 
     // RAG context (after Notion data is loaded so jobTitle is available)
     const orgId = enrollment.organization_id as string || '';
     const ragJobTitle = jobNotionData?.['Poste'] || jobNotionData?.['Titre'] || enrollment.job_title as string || '';
     const ragJobSkills = jobNotionData?.['Compétences'] || jobNotionData?.['Skills'] || '';
-    const ragPromise = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`) : Promise.resolve(null);
-    }
+    const ragPromise: Promise<any> = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`) : Promise.resolve(null);
 
     // Fetch candidate history from Airtable cache
     const historyPromise = (async () => {
@@ -2506,7 +2506,7 @@ Tu parles EN TANT QUE recruteur externe indépendant.
 
     // Build posts section
     const postsSection = recentPosts.length > 0
-      ? `\nPUBLICATIONS LINKEDIN RÉCENTES:\n${recentPosts.map((p, i) => `POST ${i + 1} (${p.date}): "${p.text}"`).join('\n')}\n→ Utilise un post comme accroche SI pertinent par rapport au poste.`
+      ? `\nPUBLICATIONS LINKEDIN RÉCENTES:\n${recentPosts.map((p: any, i: number) => `POST ${i + 1} (${p.date}): "${p.text}"`).join('\n')}\n→ Utilise un post comme accroche SI pertinent par rapport au poste.`
       : '';
 
     // Build rich job context

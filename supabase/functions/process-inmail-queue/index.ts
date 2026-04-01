@@ -134,7 +134,7 @@ Deno.serve(async (req: Request) => {
         },
       });
       
-      const { data: { user }, error: authError } = await userClient.auth.getUser(token);
+      const { data: { user }, error: authError } = await (userClient as any).auth.getUser(token);
       
       if (authError || !user) {
         console.error("Auth error:", authError);
@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
             {
               method: "POST",
               headers: {
-                "X-API-KEY": unipileApiKey,
+                "X-API-KEY": unipileApiKey!,
                 "accept": "application/json",
               },
               body: formData,
