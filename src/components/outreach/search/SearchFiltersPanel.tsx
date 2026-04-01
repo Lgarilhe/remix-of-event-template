@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { Target } from '@phosphor-icons/react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
