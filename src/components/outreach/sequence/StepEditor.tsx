@@ -33,6 +33,8 @@ const TIMEOUT_ACTIONS = [
   { value: 'end_sequence', label: 'Terminer la séquence' },
 ];
 
+const HOURS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${i}h` }));
+
 const AI_TONES = [
   { value: 'professional', label: 'Professionnel' },
   { value: 'casual', label: 'Décontracté' },
