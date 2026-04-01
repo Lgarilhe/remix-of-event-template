@@ -481,20 +481,20 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[4000] flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-[4000] flex h-[100dvh] items-end sm:items-center justify-center pointer-events-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
           {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-foreground/60"
+            className="absolute inset-0 bg-foreground/60 pointer-events-auto"
             onClick={() => onOpenChange(false)}
           />
 
           {/* Panel */}
           <motion.div
-            className="relative w-full sm:max-w-xl max-h-[90dvh] flex flex-col bg-background border-2 border-foreground sm:mx-4 overflow-hidden"
+            className="relative z-[1] w-full sm:max-w-xl max-h-[90dvh] flex flex-col bg-background border-2 border-foreground sm:mx-4 overflow-hidden pointer-events-auto"
             initial={{ y: '100%', opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
