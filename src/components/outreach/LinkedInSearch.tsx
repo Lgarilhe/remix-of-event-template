@@ -12,7 +12,7 @@ import { useFilteredResults, type ScoredSortBy } from '@/hooks/useFilteredResult
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { LinkedInProfile, INITIAL_FILTERS } from './types';
+import { LinkedInProfile, LinkedInFiltersState, INITIAL_FILTERS } from './types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { extractTraitsFromProfile, traitsToFilters } from '@/hooks/linkedin/extractSimilarFilters';
