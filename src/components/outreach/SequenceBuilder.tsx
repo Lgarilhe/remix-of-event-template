@@ -1139,6 +1139,15 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     </TabsContent>
                                   ))}
                                 </Tabs>
+                                {/* A/B weight total */}
+                                {(() => {
+                                  const totalWeight = variants.reduce((sum, v) => sum + (v.variantWeight || 0), 0);
+                                  return (
+                                    <div className={cn("text-xs font-medium px-3 py-1.5 border-t border-foreground/10", totalWeight === 100 ? "text-emerald-600" : "text-destructive")}>
+                                      Total : {totalWeight}%{totalWeight !== 100 && " — doit être 100%"}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             )}
 
