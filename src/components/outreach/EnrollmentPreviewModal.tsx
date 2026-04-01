@@ -794,6 +794,7 @@ function SummaryMode({
   const emailSteps = steps.filter(s => s.actionType === 'send_email');
   const whatsappSteps = steps.filter(s => s.actionType === 'send_whatsapp');
   const linkedinSteps = steps.filter(s => ['send_message', 'send_inmail', 'send_connection'].includes(s.actionType));
+  const shouldForcePreview = hasMessageSteps;
 
   return (
     <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">
@@ -862,14 +863,19 @@ function SummaryMode({
       {/* Action buttons */}
       <div className="flex flex-col gap-2 pt-2">
         <Button
-          onClick={onEnroll}
+          onClick={shouldForcePreview ? onSwitchToPreview : onEnroll}
           disabled={isEnrolling}
           className="w-full h-10 gap-2 bg-foreground text-background hover:bg-foreground/90"
         >
-          {isEnrolling ? (
+          {isEnrolling && !shouldForcePreview ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
               Inscription en cours…
+            </>
+          ) : shouldForcePreview ? (
+            <>
+              <Eye className="w-4 h-4" />
+              Ouvrir la préparation des previews
             </>
           ) : (
             <>
@@ -878,15 +884,10 @@ function SummaryMode({
             </>
           )}
         </Button>
-        {hasMessageSteps && (
-          <Button
-            variant="outline"
-            onClick={onSwitchToPreview}
-            className="w-full h-9 gap-2 text-xs"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            Voir les previews des messages
-          </Button>
+        {shouldForcePreview && (
+          <p className="text-xs text-muted-foreground text-center">
+            Les messages seront préparés et validés avant l’enrôlement final.
+          </p>
         )}
       </div>
     </div>
