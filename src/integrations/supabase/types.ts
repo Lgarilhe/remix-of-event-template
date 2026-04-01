@@ -3200,6 +3200,7 @@ export type Database = {
       organizations: {
         Row: {
           agency_permissions: Json | null
+          ai_model_default: string | null
           annual_hires: string | null
           careers_url: string | null
           created_at: string
@@ -3218,6 +3219,7 @@ export type Database = {
         }
         Insert: {
           agency_permissions?: Json | null
+          ai_model_default?: string | null
           annual_hires?: string | null
           careers_url?: string | null
           created_at?: string
@@ -3236,6 +3238,7 @@ export type Database = {
         }
         Update: {
           agency_permissions?: Json | null
+          ai_model_default?: string | null
           annual_hires?: string | null
           careers_url?: string | null
           created_at?: string
