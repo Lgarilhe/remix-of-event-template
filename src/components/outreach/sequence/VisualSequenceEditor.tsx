@@ -174,10 +174,10 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   const filteredTriggers = getFilteredTriggers();
 
   return (
-    <div className="flex h-[560px] border border-border rounded-lg overflow-hidden bg-background">
+    <div className="flex flex-col sm:flex-row h-[400px] sm:h-[560px] border border-border rounded-lg overflow-hidden bg-background">
       {/* Left: Visual Flow Canvas */}
-      <div className="flex-1 border-r border-border/60 bg-muted/5 flex flex-col min-w-0">
-        <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between">
+      <div className="flex-1 border-b sm:border-b-0 sm:border-r border-border/60 bg-muted/5 flex flex-col min-w-0 min-h-[200px] sm:min-h-0">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-border/40 flex items-center justify-between">
           <span className="text-[11px] font-medium text-muted-foreground">
             Workflow
           </span>
@@ -201,8 +201,8 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       </div>
 
       {/* Right: Step Editor / Step Picker */}
-      <div className="w-[300px] flex flex-col bg-background">
-        <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between">
+      <div className="w-full sm:w-[300px] flex flex-col bg-background min-h-0 flex-shrink-0 max-h-[200px] sm:max-h-none">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-border/40 flex items-center justify-between">
           <span className="text-[11px] font-medium text-muted-foreground">
             {showStepPicker 
               ? pendingBranch 

@@ -505,11 +505,11 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
           >
             {/* Step header */}
             <div
-              className="flex items-center gap-3 p-3 cursor-pointer"
+              className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 cursor-pointer"
               onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
             >
-              <GripVertical className="w-4 h-4 text-muted-foreground" />
-              <div className={cn("w-8 h-8 flex items-center justify-center", stepConfig?.color || "bg-muted")}>
+              <GripVertical className="w-4 h-4 text-muted-foreground hidden sm:block" />
+              <div className={cn("w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0", stepConfig?.color || "bg-muted")}>
                 <StepIcon className="w-4 h-4" />
               </div>
               <div className="flex-1 min-w-0">
@@ -550,7 +550,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
             {/* Step details (expanded) */}
             {isExpanded && (
-              <div className="px-4 pb-4 pt-2 border-t space-y-4">
+              <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-2 border-t space-y-4">
                 {/* Delay */}
                 {index > 0 && (
                   <div className="grid grid-cols-3 gap-3">
@@ -861,7 +861,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 {availableActions.length > 0 && (
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2"><Zap className="w-4 h-4" /><span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span></div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {availableActions.map(action => (
                         <button key={action.value} onClick={() => addStep(action.value)} className="flex items-center gap-2 p-3 border border-border rounded-lg hover:border-foreground/30 hover:bg-muted/30 transition-all text-left group">
                           <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", action.color)}><action.icon className="w-4 h-4" /></div>
@@ -877,7 +877,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 {availableTriggers.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2"><Timer className="w-4 h-4" /><span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span></div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {availableTriggers.map(trigger => (
                         <button key={trigger.value} onClick={() => addStep(trigger.value)} className="flex items-center gap-2 p-3 border border-border rounded-lg hover:border-foreground/30 hover:bg-muted/30 transition-all text-left group">
                           <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}><trigger.icon className="w-4 h-4" /></div>
@@ -1079,29 +1079,26 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   const content = (
     <div className="fixed inset-0 z-[4000] bg-background flex flex-col">
       {/* Top bar — clean, minimal */}
-      <div className="h-14 border-b border-border/60 flex items-center justify-between px-5 shrink-0 bg-background">
-        <div className="flex items-center gap-4">
+      <div className="h-12 sm:h-14 border-b border-border/60 flex items-center justify-between px-3 sm:px-5 shrink-0 bg-background">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Retour</span>
           </button>
-          <div className="w-px h-6 bg-border" />
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">
-              {isEditing ? 'Modifier la séquence' : 'Nouvelle séquence'}
+          <div className="w-px h-6 bg-border hidden sm:block" />
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs sm:text-sm font-semibold truncate">
+              {isEditing ? 'Modifier' : 'Nouvelle séquence'}
             </span>
             {sequence.name && (
-              <>
-                <span className="text-muted-foreground/40">—</span>
-                <span className="text-sm text-muted-foreground truncate max-w-[200px]">{sequence.name}</span>
-              </>
+              <span className="text-xs sm:text-sm text-muted-foreground truncate max-w-[100px] sm:max-w-[200px] hidden sm:inline">{sequence.name}</span>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Mode toggle — pill style */}
           <div className="flex items-center bg-muted rounded-full p-0.5">
             <button
@@ -1163,7 +1160,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
         {/* Main content */}
         <div className="flex-1 overflow-y-auto bg-background">
-          <div className="p-8 max-w-3xl mx-auto">
+          <div className="p-4 sm:p-8 max-w-3xl mx-auto">
             {mode === 'wizard' ? (
               <AnimatePresence mode="wait">
                 <motion.div
@@ -1246,7 +1243,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
       {/* Bottom bar for wizard navigation — refined */}
       {mode === 'wizard' && (
-        <div className="h-16 border-t border-border/60 flex items-center justify-between px-8 shrink-0 bg-background">
+        <div className="h-14 sm:h-16 border-t border-border/60 flex items-center justify-between px-4 sm:px-8 shrink-0 bg-background">
           <Button
             variant="ghost"
             onClick={goPrevWizardStep}
