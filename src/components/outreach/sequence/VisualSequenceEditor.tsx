@@ -157,10 +157,10 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
 
   const getFilteredActions = () => {
     if (pendingBranch?.branch === 'true') {
-      return ACTIONS.filter(a => ['message', 'smart_message', 'profile_visit', 'whatsapp_message'].includes(a.value));
+      return ACTIONS.filter(a => ['message', 'smart_message', 'email', 'profile_visit', 'whatsapp_message'].includes(a.value));
     }
     if (pendingBranch?.branch === 'false') {
-      return ACTIONS.filter(a => ['connection_request', 'inmail', 'profile_visit', 'whatsapp_message'].includes(a.value));
+      return ACTIONS.filter(a => ['connection_request', 'inmail', 'email', 'profile_visit', 'whatsapp_message'].includes(a.value));
     }
     return ACTIONS;
   };
