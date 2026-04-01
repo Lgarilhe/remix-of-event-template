@@ -3268,6 +3268,9 @@ export type Database = {
           name: string
           organization_id: string | null
           project_id: string | null
+          rotation_mode: string | null
+          sender_accounts: Json | null
+          stop_conditions: Json | null
           stop_on_company_reply: boolean | null
           template_id: string | null
           updated_at: string
@@ -3282,6 +3285,9 @@ export type Database = {
           name: string
           organization_id?: string | null
           project_id?: string | null
+          rotation_mode?: string | null
+          sender_accounts?: Json | null
+          stop_conditions?: Json | null
           stop_on_company_reply?: boolean | null
           template_id?: string | null
           updated_at?: string
@@ -3296,6 +3302,9 @@ export type Database = {
           name?: string
           organization_id?: string | null
           project_id?: string | null
+          rotation_mode?: string | null
+          sender_accounts?: Json | null
+          stop_conditions?: Json | null
           stop_on_company_reply?: boolean | null
           template_id?: string | null
           updated_at?: string
@@ -3888,6 +3897,7 @@ export type Database = {
       sequence_enrollments: {
         Row: {
           account_id: string
+          assigned_sender_id: string | null
           company_name: string | null
           completed_at: string | null
           connection_status: string | null
@@ -3916,6 +3926,7 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          assigned_sender_id?: string | null
           company_name?: string | null
           completed_at?: string | null
           connection_status?: string | null
@@ -3944,6 +3955,7 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          assigned_sender_id?: string | null
           company_name?: string | null
           completed_at?: string | null
           connection_status?: string | null
@@ -4067,6 +4079,7 @@ export type Database = {
           step_order: number
           tracking_data: Json | null
           updated_at: string
+          variant_assigned: string | null
         }
         Insert: {
           ai_snippet?: string | null
@@ -4088,6 +4101,7 @@ export type Database = {
           step_order: number
           tracking_data?: Json | null
           updated_at?: string
+          variant_assigned?: string | null
         }
         Update: {
           ai_snippet?: string | null
@@ -4109,6 +4123,7 @@ export type Database = {
           step_order?: number
           tracking_data?: Json | null
           updated_at?: string
+          variant_assigned?: string | null
         }
         Relationships: [
           {
@@ -4144,6 +4159,7 @@ export type Database = {
           branch: string | null
           cc_emails: string[] | null
           condition_type: string | null
+          condition_value: string | null
           created_at: string
           delay_days: number
           delay_hours: number
@@ -4167,6 +4183,8 @@ export type Database = {
           timeout_branch_step_id: string | null
           timeout_days: number | null
           use_ai_personalization: boolean
+          variant_group: string | null
+          variant_weight: number | null
           wait_for_event: string | null
         }
         Insert: {
@@ -4178,6 +4196,7 @@ export type Database = {
           branch?: string | null
           cc_emails?: string[] | null
           condition_type?: string | null
+          condition_value?: string | null
           created_at?: string
           delay_days?: number
           delay_hours?: number
@@ -4201,6 +4220,8 @@ export type Database = {
           timeout_branch_step_id?: string | null
           timeout_days?: number | null
           use_ai_personalization?: boolean
+          variant_group?: string | null
+          variant_weight?: number | null
           wait_for_event?: string | null
         }
         Update: {
@@ -4212,6 +4233,7 @@ export type Database = {
           branch?: string | null
           cc_emails?: string[] | null
           condition_type?: string | null
+          condition_value?: string | null
           created_at?: string
           delay_days?: number
           delay_hours?: number
@@ -4235,6 +4257,8 @@ export type Database = {
           timeout_branch_step_id?: string | null
           timeout_days?: number | null
           use_ai_personalization?: boolean
+          variant_group?: string | null
+          variant_weight?: number | null
           wait_for_event?: string | null
         }
         Relationships: [
