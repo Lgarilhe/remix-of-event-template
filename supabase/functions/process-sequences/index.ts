@@ -295,9 +295,19 @@ async function handleProcess(supabase: any, force = false) {
           const { data: suppressed } = await supabase.from('suppressed_emails').select('id').eq('email', enrollment.email_used).limit(1);
           if (suppressed?.length) { shouldStop = true; stopReason = 'Stop condition: unsubscribed'; }
         }
-        if (!shouldStop && stopCond.on_meeting_booked && enrollment.email_used) {
-          // Check if a Calendly event exists for this candidate (via calendly_events or similar)
-          // For now, this is a placeholder — integrate with calendly webhook data when available
+        if (!shouldStop && stopCond.on_meeting_booked) {
+          // Check if a Calendly meeting was booked for this candidate (qualification_sessions table)
+          const meetingFilters = [];
+          if (enrollment.email_used) meetingFilters.push(`invitee_email.eq.${enrollment.email_used}`);
+          if (enrollment.profile_id) meetingFilters.push(`candidate_profile_id.eq.${enrollment.profile_id}`);
+          if (enrollment.profile_url) {
+            const slugMatch = (enrollment.profile_url as string).match(/linkedin\.com\/in\/([^/?#]+)/i);
+            if (slugMatch) meetingFilters.push(`candidate_linkedin_url.ilike.%${slugMatch[1]}%`);
+          }
+          if (meetingFilters.length > 0) {
+            const { data: meetings } = await supabase.from('qualification_sessions').select('id').or(meetingFilters.join(',')).limit(1);
+            if (meetings?.length) { shouldStop = true; stopReason = 'Stop condition: meeting booked (Calendly)'; }
+          }
         }
         if (shouldStop) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: stopReason, executed_at: new Date().toISOString() }).eq('id', exec.id);
