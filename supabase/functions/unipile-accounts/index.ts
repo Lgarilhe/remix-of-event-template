@@ -222,14 +222,17 @@ Deno.serve(async (req) => {
         const EMAIL_TYPES = new Set(['GOOGLE', 'OUTLOOK', 'IMAP', 'MAIL', 'GMAIL']);
         const emailAccounts = (emailData.items || [])
           .filter((acc: { type: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()))
-          .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }> }) => {
+          .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }>; connection_params?: { mail?: { imap_user?: string; smtp_user?: string } } }) => {
             const sources = acc.sources || [];
             const okSource = sources.find((s: { status: string }) => s.status === 'OK');
             const mainStatus = okSource?.status || sources[0]?.status || 'UNKNOWN';
+            // Extract actual email address from connection_params (imap_user or smtp_user)
+            const mailParams = acc.connection_params?.mail;
+            const emailAddress = mailParams?.imap_user || mailParams?.smtp_user || acc.name;
             return {
               id: acc.id,
               name: acc.name,
-              identifier: acc.name,
+              identifier: emailAddress,
               type: acc.type,
               status: mainStatus,
             };
