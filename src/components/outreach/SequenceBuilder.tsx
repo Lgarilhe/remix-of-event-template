@@ -1031,7 +1031,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
             </div>
 
             {/* Summary card */}
-            <div className="border border-foreground p-4 space-y-3">
+            <div className="border border-border rounded-lg p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold uppercase">{sequence.name || '(Sans nom)'}</span>
                 <Badge variant="outline" className="rounded-none">{sequence.steps.length} étapes</Badge>
