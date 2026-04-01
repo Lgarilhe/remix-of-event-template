@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { execution_id, enrollment_id, step_id } = await req.json();
+    const { execution_id, enrollment_id, step_id, pre_personalized_message, pre_personalized_subject } = await req.json();
     if (!execution_id || !enrollment_id || !step_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
@@ -347,12 +347,24 @@ Deno.serve(async (req) => {
       calendly_link: calendlyLink,
     };
 
-    let messageBody = resolveVariables(step.message_template || '', templateVars);
-    let subject = resolveVariables(step.subject_template || '', templateVars);
+    // Use pre-personalized message from process-sequences if available (rich AI pipeline)
+    // Otherwise fall back to template variable resolution + basic AI snippet
+    let messageBody: string;
+    let subject: string;
 
-    // 5. AI Personalization
+    if (pre_personalized_message) {
+      // process-sequences already ran the full AI personalization pipeline
+      messageBody = pre_personalized_message;
+      subject = pre_personalized_subject || resolveVariables(step.subject_template || '', templateVars);
+      console.log('[sequence-send-email] Using pre-personalized message from process-sequences');
+    } else {
+      messageBody = resolveVariables(step.message_template || '', templateVars);
+      subject = resolveVariables(step.subject_template || '', templateVars);
+    }
+
+    // 5. AI Personalization (only if NOT pre-personalized)
     let aiSnippet: string | null = null;
-    if (step.use_ai_personalization) {
+    if (!pre_personalized_message && step.use_ai_personalization) {
       const orgId = sequence?.organization_id || enrollment.organization_id || null;
       aiSnippet = await generateAiSnippet(supabase, enrollment, step, orgId);
 

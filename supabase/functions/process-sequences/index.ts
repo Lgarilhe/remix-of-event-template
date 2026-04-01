@@ -484,8 +484,9 @@ async function handleProcess(supabase: any, force = false) {
         let finalMessage = (exec.final_message || step.message_template || '') as string;
         let finalSubject = (step.subject_template || '') as string;
 
-        // Skip inline AI personalization for email steps — sequence-send-email handles its own
-        if (step.use_ai_personalization && needsMessage(step.action_type) && step.step_channel !== 'email') {
+        // AI personalization: use the rich pipeline for ALL message types including email
+        // For email steps, the personalized message is passed to sequence-send-email
+        if (step.use_ai_personalization && needsMessage(step.action_type)) {
           const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
@@ -1671,6 +1672,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
     switch (actionType) {
       case 'email': {
         // Delegate to sequence-send-email edge function
+        // Pass pre-personalized message so sequence-send-email uses it instead of its basic AI
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
         try {
@@ -1686,6 +1688,8 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
                 execution_id: execution.id,
                 enrollment_id: enrollment.id,
                 step_id: step.id,
+                pre_personalized_message: msg || undefined,
+                pre_personalized_subject: subj || undefined,
               }),
             },
             30000, // 30s timeout for email sending
