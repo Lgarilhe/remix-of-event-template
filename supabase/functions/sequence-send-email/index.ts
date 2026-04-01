@@ -212,6 +212,8 @@ async function sendViaUnipile(
       ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
       ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
       ...(senderName ? { from: { display_name: senderName } } : {}),
+      // Enable Unipile's native email tracking (opens + clicks) in addition to our pixel
+      tracking_options: { opens: true, links: true },
     };
 
     const res = await fetch(`${UNIPILE_DSN}/api/v1/emails`, {

@@ -1940,7 +1940,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
             console.log(`[connection_request] Saved resolved_profile_id: ${providerId}`);
           }
         }
-        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify({ account_id: accountId, provider_id: providerId }) });
+        const invitePayload: Record<string, string> = { account_id: accountId, provider_id: providerId };
+        if (msg && msg.trim()) invitePayload.message = msg.trim().slice(0, 300); // LinkedIn invite note max ~300 chars
+        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Invite ${r.status}: ${e}` }; }
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
         await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
