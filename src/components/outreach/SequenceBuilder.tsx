@@ -505,7 +505,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
           >
             {/* Step header */}
             <div
-              className="flex items-center gap-3 p-3 cursor-pointer"
+              className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 cursor-pointer"
               onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
             >
               <GripVertical className="w-4 h-4 text-muted-foreground" />
