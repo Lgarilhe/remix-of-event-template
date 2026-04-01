@@ -1679,7 +1679,9 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
 // deno-lint-ignore no-explicit-any
 async function executeStepAction(actionType: string, enrollment: Record<string, unknown>, step: Record<string, unknown>, execution: Record<string, unknown>, supabase: any): Promise<{ success: boolean; error?: string; subject?: string; message?: string }> {
   try {
-    const accountId = enrollment.account_id as string, profileId = enrollment.profile_id as string;
+    // Use assigned_sender_id (from rotation) if available, otherwise original account_id
+    const accountId = ((step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string);
+    const profileId = enrollment.profile_id as string;
     const msg = (execution.final_message || step.message_template || '') as string;
     const subj = (execution.final_subject || step.subject_template || '') as string;
 
