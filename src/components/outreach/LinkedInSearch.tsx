@@ -370,12 +370,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, selectedAccount]);
 
-  // Force API type to 'database' when using Base Konekt
+  // Force API type to match searchSource toggle
   useEffect(() => {
     if (searchSource === 'database' && search.filters.api !== 'database') {
       search.setFilters(f => ({ ...f, api: 'database' }));
+    } else if (searchSource === 'linkedin' && search.filters.api === 'database') {
+      // When switching back to LinkedIn, restore appropriate API mode
+      if (subscriptions?.recruiter) {
+        search.setFilters(f => ({ ...f, api: 'recruiter' }));
+      } else if (subscriptions?.sales_navigator) {
+        search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
+      } else {
+        search.setFilters(f => ({ ...f, api: 'classic' }));
+      }
     }
-  }, [searchSource, search.filters.api]);
+  }, [searchSource, search.filters.api, subscriptions]);
 
   // Treated/dismissed counts
   const treatedCount = useMemo(() => {
