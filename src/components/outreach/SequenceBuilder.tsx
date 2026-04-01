@@ -550,7 +550,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
             {/* Step details (expanded) */}
             {isExpanded && (
-              <div className="px-4 pb-4 pt-2 border-t space-y-4">
+              <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-2 border-t space-y-4">
                 {/* Delay */}
                 {index > 0 && (
                   <div className="grid grid-cols-3 gap-3">
