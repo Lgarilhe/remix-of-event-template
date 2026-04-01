@@ -37,7 +37,6 @@ const LINKEDIN_CONDITIONS = [
 
 const WHATSAPP_CONDITIONS = [
   ...COMMON_CONDITIONS,
-  'if_connected', 'if_not_connected', 'if_no_response',
 ];
 
 /**
