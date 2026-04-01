@@ -629,6 +629,21 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 ))}
                               </SelectContent>
                             </Select>
+                            {/* Score threshold for if_score_above */}
+                            {step.conditionType === 'if_score_above' && (
+                              <div className="mt-2">
+                                <Label>Seuil de score (0-100)</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={step.conditionValue || '70'}
+                                  onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
+                                  placeholder="70"
+                                  className="mt-1 w-32"
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 
