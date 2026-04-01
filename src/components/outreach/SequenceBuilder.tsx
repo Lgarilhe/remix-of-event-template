@@ -32,6 +32,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
+import { StopConditionsSettings } from './sequence/StopConditionsSettings';
+import { MultiSenderSettings } from './sequence/MultiSenderSettings';
+import type { StopConditions as StopConditionsType } from './sequence/StopConditionsSettings';
+import type { SenderAccount } from './sequence/MultiSenderSettings';
 
 export interface SequenceStep {
   id: string;
