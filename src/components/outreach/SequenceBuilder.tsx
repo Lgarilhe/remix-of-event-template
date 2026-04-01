@@ -116,9 +116,11 @@ interface SequenceBuilderProps {
 const ACTIONS = [
   { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-muted text-foreground', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
   { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-muted text-foreground', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-muted text-foreground', description: 'Envoyer un email', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-muted text-foreground', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-muted text-foreground', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-foreground text-background', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'whatsapp_message', label: 'WhatsApp', icon: MessageSquare, color: 'bg-emerald-100 text-emerald-800', description: 'Envoyer un message WhatsApp', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
