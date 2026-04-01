@@ -145,6 +145,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   );
 
+  // Auto-relaunch search when source toggle changes
+  useEffect(() => {
+    if (prevSearchSourceRef.current !== searchSource) {
+      prevSearchSourceRef.current = searchSource;
+      // Small delay to let the api type effect fire first
+      const timer = setTimeout(() => {
+        handleSearch();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [searchSource, handleSearch]);
+
   // Ref for merged results (includes pool profiles) - used by scoring hook
   const allAvailableProfilesRef = useRef<LinkedInProfile[]>([]);
 
