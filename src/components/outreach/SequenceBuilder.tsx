@@ -612,8 +612,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                 {/* Trigger config */}
                 {isTrigger(step.actionType) && step.actionType !== 'check_connection' && (
-                  <div className="space-y-3 p-3 bg-muted/30 border border-foreground/20">
-                    <div className="flex items-center gap-2"><Timer className="w-4 h-4" /><span className="font-medium text-sm uppercase tracking-wide">Configuration du trigger</span></div>
+                  <div className="space-y-3 p-3 bg-muted/20 border border-border rounded-md">
+                    <div className="flex items-center gap-2"><Timer className="w-4 h-4 text-muted-foreground" /><span className="font-medium text-sm">Configuration du trigger</span></div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label>Timeout (jours)</Label>
