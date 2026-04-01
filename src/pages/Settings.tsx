@@ -26,6 +26,7 @@ import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { LinkedInQuotaSettings } from '@/components/settings/LinkedInQuotaSettings';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
+import { EmailSignatures } from '@/components/settings/EmailSignatures';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
@@ -245,6 +246,7 @@ const Settings = () => {
                 <MyLinkedInAccount />
                 <LinkedInQuotaSettings />
                 <MyEmailAccount />
+                <EmailSignatures />
                 <MyWhatsAppAccount />
               </div>
             )}

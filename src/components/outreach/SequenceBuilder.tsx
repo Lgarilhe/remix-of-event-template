@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { getConditionsForActionType, isEmailStep, isWhatsAppStep, isLinkedInStep, isCrossChannelCondition, ALL_CONDITION_TYPES } from './sequence/conditionTypes';
+import { VariableInserter } from './sequence/VariableInserter';
+import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 import { 
   Plus, 
   Trash2, 
@@ -43,7 +47,7 @@ import type { SenderAccount } from './sequence/MultiSenderSettings';
 export interface SequenceStep {
   id: string;
   order: number;
-  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
+  actionType: 'inmail' | 'email' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
   conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'if_email_opened' | 'if_email_not_opened' | 'if_link_clicked' | 'if_link_not_clicked' | 'if_has_email' | 'if_no_email' | 'if_has_phone' | 'if_no_phone' | 'if_bounced' | 'if_unsubscribed' | 'if_score_above';
   conditionValue?: string;
   delayDays: number;
@@ -69,6 +73,11 @@ export interface SequenceStep {
   // A/B testing
   variantGroup?: string | null;
   variantWeight?: number;
+  // Email-specific fields
+  ccEmails?: string[];
+  bccEmails?: string[];
+  includeUnsubscribe?: boolean;
+  signatureId?: string;
 }
 
 export interface StopConditions {
@@ -107,41 +116,24 @@ interface SequenceBuilderProps {
 const ACTIONS = [
   { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-muted text-foreground', description: 'Envoyer une demande de connexion', requiresPrevious: [], excludeIfPrevious: ['connection_request'], requiresConnection: false },
   { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-muted text-foreground', description: 'Envoyer un InMail (payant)', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-muted text-foreground', description: 'Envoyer un email', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-muted text-foreground', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-muted text-foreground', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-foreground text-background', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
+  { value: 'whatsapp_message', label: 'WhatsApp', icon: MessageSquare, color: 'bg-emerald-100 text-emerald-800', description: 'Envoyer un message WhatsApp', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
 const TRIGGERS = [
   { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-muted text-foreground', description: 'Route selon le degré', requiresPrevious: [], excludeIfPrevious: [] },
   { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à acceptation', waitEvent: 'connection_accepted', requiresPrevious: ['connection_request'], excludeIfPrevious: ['wait_connection'] },
-  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'message', 'smart_message'], excludeIfPrevious: [] },
+  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause jusqu\'à réponse', waitEvent: 'reply_received', requiresPrevious: ['inmail', 'email', 'message', 'smart_message', 'whatsapp_message'], excludeIfPrevious: [] },
   { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-brutal-accent/30 text-foreground', description: 'Pause si visite profil', waitEvent: 'profile_visited', requiresPrevious: ['profile_visit'], excludeIfPrevious: [] },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
 
-const CONDITION_TYPES = [
-  { value: 'always', label: 'Toujours exécuter' },
-  { value: 'if_connected', label: 'Si connecté' },
-  { value: 'if_not_connected', label: 'Si non connecté' },
-  { value: 'if_no_response', label: 'Si pas de réponse' },
-  // Engagement email
-  { value: 'if_email_opened', label: '📧 Si email ouvert' },
-  { value: 'if_email_not_opened', label: '📧 Si email PAS ouvert' },
-  { value: 'if_link_clicked', label: '🔗 Si lien cliqué' },
-  { value: 'if_link_not_clicked', label: '🔗 Si lien PAS cliqué' },
-  // Données candidat
-  { value: 'if_has_email', label: '📬 Si a un email' },
-  { value: 'if_no_email', label: '📬 Si pas d\'email' },
-  { value: 'if_has_phone', label: '📞 Si a un téléphone' },
-  { value: 'if_no_phone', label: '📞 Si pas de téléphone' },
-  // Statut
-  { value: 'if_bounced', label: '⚠️ Si email bouncé' },
-  { value: 'if_unsubscribed', label: '🚫 Si désinscrit' },
-  { value: 'if_score_above', label: '⭐ Si score au-dessus de...' },
-];
+// CONDITION_TYPES now imported from conditionTypes.ts — use getConditionsForActionType()
 
 const TIMEOUT_ACTIONS = [
   { value: 'skip', label: 'Passer à l\'étape suivante' },
@@ -340,9 +332,9 @@ const generateRecommendedSequence = (): SequenceStep[] => {
 
 const isAction = (actionType: string) => ACTIONS.some(a => a.value === actionType);
 const isTrigger = (actionType: string) => TRIGGERS.some(t => t.value === actionType);
-const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
-const needsSubject = (type: string) => type === 'inmail';
-const canABTest = (type: string) => ['inmail', 'message', 'smart_message', 'connection_request'].includes(type);
+const needsMessage = (type: string) => ['inmail', 'email', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(type);
+const needsSubject = (type: string) => ['inmail', 'email'].includes(type);
+const canABTest = (type: string) => ['inmail', 'email', 'message', 'smart_message', 'connection_request', 'whatsapp_message'].includes(type);
 
 /** Group steps by variant_group (steps with same order but different variant) */
 const getVariantGroups = (steps: SequenceStep[]): Map<number, SequenceStep[]> => {
@@ -396,6 +388,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   );
   // Show step picker immediately if no steps yet
   const [showStepPicker, setShowStepPicker] = useState(!initialSequence || initialSequence.steps.length === 0);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const { signatures } = useEmailSignatures();
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const subjectRef = useRef<HTMLInputElement>(null);
 
   const updateStep = (stepId: string, updates: Partial<SequenceStep>) => {
     setSequence(prev => ({
@@ -502,18 +498,40 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
   const handleSave = async () => {
     if (!sequence.name.trim() || sequence.steps.length === 0) return;
-    // Validate that message-requiring steps have content
-    const stepsNeedingMessage = sequence.steps.filter(s =>
-      needsMessage(s.actionType) && !s.useAiPersonalization && !s.messageTemplate?.trim()
-    );
-    if (stepsNeedingMessage.length > 0) {
-      const stepLabels = stepsNeedingMessage.map(s => {
-        const config = ALL_STEP_TYPES.find(a => a.value === s.actionType);
-        return `Étape ${s.order + 1} (${config?.label || s.actionType})${s.variantGroup ? ` — Variante ${s.variantGroup}` : ''}`;
-      }).join(', ');
-      alert(`Les étapes suivantes n'ont pas de message : ${stepLabels}. Ajoutez un message ou activez la personnalisation IA.`);
+    
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    sequence.steps.forEach(s => {
+      const stepLabel = `Étape ${s.order + 1}${s.variantGroup ? ` (${s.variantGroup})` : ''}`;
+      // Message required
+      if (needsMessage(s.actionType) && !s.useAiPersonalization && !s.messageTemplate?.trim()) {
+        errors.push(`${stepLabel}: message requis`);
+      }
+      // Email subject required
+      if (needsSubject(s.actionType) && !s.useAiPersonalization && !s.subjectTemplate?.trim()) {
+        errors.push(`${stepLabel}: un objet est requis pour les steps email`);
+      }
+      // Connection request > 300 chars
+      if (s.actionType === 'connection_request' && (s.messageTemplate?.length || 0) > 300) {
+        errors.push(`${stepLabel}: note d'invitation trop longue (max 300 caractères)`);
+      }
+      // Score threshold required
+      if (s.conditionType === 'if_score_above' && !s.conditionValue?.trim()) {
+        errors.push(`${stepLabel}: le seuil de score est requis`);
+      }
+      // Cross-channel condition warning
+      if (isCrossChannelCondition(s.actionType, s.conditionType)) {
+        warnings.push(`${stepLabel}: condition "${s.conditionType}" inhabituelle pour ce type de step`);
+      }
+    });
+    
+    if (errors.length > 0) {
+      setValidationErrors(errors);
       return;
     }
+    setValidationErrors([...warnings]); // show warnings but don't block
+    
     setIsSaving(true);
     try {
       await onSave(sequence);
@@ -777,7 +795,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {CONDITION_TYPES.map(cond => (
+                                {getConditionsForActionType(step.actionType).map(cond => (
                                   <SelectItem key={cond.value} value={cond.value}>
                                     {cond.label}
                                   </SelectItem>
@@ -861,7 +879,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {CONDITION_TYPES.filter(c => c.value !== 'always').map(cond => (
+                                  {ALL_CONDITION_TYPES.filter(c => c.value !== 'always').map(cond => (
                                     <SelectItem key={cond.value} value={cond.value}>
                                       {cond.label}
                                     </SelectItem>
@@ -1050,6 +1068,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             {/* Standard message fields (no A/B test) */}
                             {!hasVariants && (
                               <>
+                                {/* WhatsApp indicator */}
+                                {isWhatsAppStep(step.actionType) && (
+                                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                                    📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement.
+                                  </div>
+                                )}
+
                                 {/* AI toggle */}
                                 <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
                                   <div className="flex items-center gap-2">
@@ -1086,13 +1111,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                   </div>
                                 ) : (
                                   <>
+                                    {/* Subject for email/inmail */}
                                     {needsSubject(step.actionType) && (
                                       <div>
-                                        <Label>Objet</Label>
+                                        <div className="flex items-center justify-between">
+                                          <Label>Objet</Label>
+                                          <VariableInserter
+                                            targetRef={subjectRef}
+                                            currentValue={step.subjectTemplate || ''}
+                                            onInsert={(val) => updateStep(step.id, { subjectTemplate: val })}
+                                            showEmailVariables={isEmailStep(step.actionType)}
+                                          />
+                                        </div>
                                         <Input
+                                          ref={subjectRef}
                                           value={step.subjectTemplate || ''}
                                           onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
-                                          placeholder="Objet de l'InMail"
+                                          placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
                                           className="mt-1.5"
                                         />
                                       </div>
@@ -1100,37 +1135,104 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     <div>
                                       <div className="flex items-center justify-between">
                                         <Label>Message</Label>
-                                        {step.actionType === 'connection_request' && (
-                                          <span className={cn(
-                                            "text-xs",
-                                            (step.messageTemplate?.length || 0) > 50 ? "text-destructive font-medium" : "text-muted-foreground"
-                                          )}>
-                                            {step.messageTemplate?.length || 0}/50
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                          <VariableInserter
+                                            targetRef={messageRef}
+                                            currentValue={step.messageTemplate || ''}
+                                            onInsert={(val) => updateStep(step.id, { messageTemplate: val })}
+                                            showEmailVariables={isEmailStep(step.actionType)}
+                                          />
+                                          {step.actionType === 'connection_request' && (
+                                            <span className={cn(
+                                              "text-xs",
+                                              (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground"
+                                            )}>
+                                              {step.messageTemplate?.length || 0}/300
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                       <Textarea
+                                        ref={messageRef}
                                         value={step.messageTemplate || ''}
                                         onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
-                                        placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
+                                        placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300 car.)" : "Bonjour {{first_name}}, ..."}
                                         rows={step.actionType === 'connection_request' ? 2 : 3}
-                                        maxLength={step.actionType === 'connection_request' ? 50 : undefined}
+                                        maxLength={step.actionType === 'connection_request' ? 300 : undefined}
                                         className={cn(
                                           "mt-1.5",
-                                          step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-destructive focus-visible:ring-destructive"
+                                          step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-destructive focus-visible:ring-destructive"
                                         )}
                                       />
-                                      {step.actionType === 'connection_request' ? (
+                                      {step.actionType === 'connection_request' && (
                                         <p className="text-xs text-muted-foreground mt-1">
-                                          LinkedIn limite les notes d'invitation à 50 caractères.
-                                        </p>
-                                      ) : (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{company}}'}, {'{{headline}}'}
+                                          LinkedIn limite les notes d'invitation à 300 caractères.
                                         </p>
                                       )}
                                     </div>
                                   </>
+                                )}
+
+                                {/* Email-specific fields */}
+                                {isEmailStep(step.actionType) && !step.useAiPersonalization && (
+                                  <div className="space-y-3 pt-2 border-t border-foreground/10">
+                                    {/* CC / BCC collapsible */}
+                                    <Collapsible>
+                                      <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                                        ▸ CC / BCC
+                                      </CollapsibleTrigger>
+                                      <CollapsibleContent className="space-y-2 pt-2">
+                                        <div>
+                                          <Label className="text-xs">CC</Label>
+                                          <Input
+                                            value={(step.ccEmails || []).join(', ')}
+                                            onChange={(e) => updateStep(step.id, { ccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                                            placeholder="email1@ex.com, email2@ex.com"
+                                            className="mt-1 h-8 text-xs"
+                                          />
+                                        </div>
+                                        <div>
+                                          <Label className="text-xs">BCC</Label>
+                                          <Input
+                                            value={(step.bccEmails || []).join(', ')}
+                                            onChange={(e) => updateStep(step.id, { bccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                                            placeholder="email@ex.com"
+                                            className="mt-1 h-8 text-xs"
+                                          />
+                                        </div>
+                                      </CollapsibleContent>
+                                    </Collapsible>
+
+                                    {/* Unsubscribe toggle */}
+                                    <div className="flex items-center justify-between">
+                                      <Label className="text-xs">Lien de désinscription</Label>
+                                      <Switch
+                                        checked={step.includeUnsubscribe ?? false}
+                                        onCheckedChange={(checked) => updateStep(step.id, { includeUnsubscribe: checked })}
+                                      />
+                                    </div>
+
+                                    {/* Signature */}
+                                    <div>
+                                      <Label className="text-xs">Signature</Label>
+                                      <Select
+                                        value={step.signatureId || '__none__'}
+                                        onValueChange={(value) => updateStep(step.id, { signatureId: value === '__none__' ? undefined : value })}
+                                      >
+                                        <SelectTrigger className="mt-1 h-8 text-xs">
+                                          <SelectValue placeholder="Aucune" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__none__">Aucune</SelectItem>
+                                          {signatures.map(sig => (
+                                            <SelectItem key={sig.id} value={sig.id}>
+                                              {sig.name}{sig.is_default ? ' ⭐' : ''}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
                                 )}
                               </>
                             )}
@@ -1255,22 +1357,36 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         </div>
 
         {/* Footer */}
-         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-foreground/10">
-           <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
-             Annuler
-           </Button>
-           <Button 
-             onClick={handleSave} 
-             disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-             className="bg-foreground text-background rounded-none"
-           >
-             {isSaving ? 'Enregistrement...' : (
-               <>
-                 <Save className="w-4 h-4 mr-2" />
-                 Enregistrer
-               </>
-             )}
-           </Button>
+        <div className="pt-4 border-t border-foreground/10 space-y-2">
+          {validationErrors.length > 0 && (
+            <div className="space-y-1">
+              {validationErrors.map((err, i) => (
+                <p key={i} className={cn(
+                  "text-xs",
+                  err.includes('inhabituelle') ? "text-amber-600" : "text-destructive"
+                )}>
+                  {err.includes('inhabituelle') ? '⚠️' : '❌'} {err}
+                </p>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+            <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+              className="bg-foreground text-background rounded-none"
+            >
+              {isSaving ? 'Enregistrement...' : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Enregistrer
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
