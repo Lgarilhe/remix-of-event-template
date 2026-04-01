@@ -7,11 +7,10 @@ import {
   Sparkles,
   GitBranch,
   Timer,
-  ArrowDown,
-  Check,
-  X,
   Plus,
   Trash2,
+  Check,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -35,7 +34,8 @@ const STEP_ICONS: Record<string, React.ElementType | null> = {
   profile_visit: Eye,
   message: MessageSquare,
   smart_message: Sparkles,
-  whatsapp_message: null, // uses custom image
+  whatsapp_message: null,
+  email: Mail,
   wait_connection: Timer,
   wait_reply: MessageSquare,
   wait_profile_visit: Eye,
@@ -43,18 +43,34 @@ const STEP_ICONS: Record<string, React.ElementType | null> = {
   check_connection: GitBranch,
 };
 
-const STEP_COLORS: Record<string, string> = {
-  inmail: 'bg-blue-100 text-blue-600 border-blue-300',
-  connection_request: 'bg-emerald-100 text-emerald-600 border-emerald-300',
-  profile_visit: 'bg-sky-100 text-sky-600 border-sky-300',
-  message: 'bg-orange-100 text-orange-600 border-orange-300',
-  smart_message: 'bg-purple-100 text-purple-600 border-purple-300',
-  whatsapp_message: 'bg-green-100 text-green-600 border-green-300',
-  wait_connection: 'bg-amber-100 text-amber-600 border-amber-300',
-  wait_reply: 'bg-amber-100 text-amber-600 border-amber-300',
-  wait_profile_visit: 'bg-amber-100 text-amber-600 border-amber-300',
-  condition_branch: 'bg-rose-100 text-rose-600 border-rose-300',
-  check_connection: 'bg-indigo-100 text-indigo-600 border-indigo-300',
+const STEP_BG: Record<string, string> = {
+  inmail: 'bg-blue-50 border-blue-200/80',
+  connection_request: 'bg-emerald-50 border-emerald-200/80',
+  profile_visit: 'bg-sky-50 border-sky-200/80',
+  message: 'bg-orange-50 border-orange-200/80',
+  smart_message: 'bg-purple-50 border-purple-200/80',
+  whatsapp_message: 'bg-green-50 border-green-200/80',
+  email: 'bg-violet-50 border-violet-200/80',
+  wait_connection: 'bg-amber-50 border-amber-200/80',
+  wait_reply: 'bg-amber-50 border-amber-200/80',
+  wait_profile_visit: 'bg-amber-50 border-amber-200/80',
+  condition_branch: 'bg-rose-50 border-rose-200/80',
+  check_connection: 'bg-indigo-50 border-indigo-200/80',
+};
+
+const STEP_ICON_BG: Record<string, string> = {
+  inmail: 'bg-blue-100 text-blue-600',
+  connection_request: 'bg-emerald-100 text-emerald-600',
+  profile_visit: 'bg-sky-100 text-sky-600',
+  message: 'bg-orange-100 text-orange-600',
+  smart_message: 'bg-purple-100 text-purple-600',
+  whatsapp_message: 'bg-green-100 text-green-600',
+  email: 'bg-violet-100 text-violet-600',
+  wait_connection: 'bg-amber-100 text-amber-600',
+  wait_reply: 'bg-amber-100 text-amber-600',
+  wait_profile_visit: 'bg-amber-100 text-amber-600',
+  condition_branch: 'bg-rose-100 text-rose-600',
+  check_connection: 'bg-indigo-100 text-indigo-600',
 };
 
 const STEP_LABELS: Record<string, string> = {
@@ -64,13 +80,15 @@ const STEP_LABELS: Record<string, string> = {
   message: 'Message',
   smart_message: 'Smart Msg',
   whatsapp_message: 'WhatsApp',
+  email: 'Email',
   wait_connection: 'Attendre',
-  wait_reply: 'Attendre réponse',
-  wait_profile_visit: 'Attendre visite',
+  wait_reply: 'Att. réponse',
+  wait_profile_visit: 'Att. visite',
   condition_branch: 'Branchement',
-  check_connection: 'Vérifier connexion',
+  check_connection: 'Vérifier co.',
 };
 
+// ── Step Node ──
 const StepNode: React.FC<{
   step: SequenceStep;
   index: number;
@@ -83,155 +101,126 @@ const StepNode: React.FC<{
 }> = ({ step, index, allSteps, onClick, onRemove, isSelected, canRemove, compact = false }) => {
   const Icon = STEP_ICONS[step.actionType];
   const isWhatsApp = step.actionType === 'whatsapp_message';
-  const colorClass = STEP_COLORS[step.actionType] || 'bg-gray-100 text-gray-600 border-gray-300';
+  const bgClass = STEP_BG[step.actionType] || 'bg-muted/40 border-border';
+  const iconBg = STEP_ICON_BG[step.actionType] || 'bg-muted text-muted-foreground';
   const msgType = getStepMessageType(step, allSteps);
-  
+
+  const hasDelay = step.delayDays > 0 || step.delayHours > 0 || (step.delayMinutes && step.delayMinutes > 0);
+  const delayLabel = [
+    step.delayDays > 0 ? `${step.delayDays}j` : '',
+    step.delayHours > 0 ? `${step.delayHours}h` : '',
+    step.delayMinutes && step.delayMinutes > 0 ? `${step.delayMinutes}m` : '',
+  ].filter(Boolean).join(' ');
+
   if (compact) {
     return (
-      <div 
+      <div
         className={cn(
-          "relative group cursor-pointer transition-all",
-          isSelected && "scale-105"
+          "relative group cursor-pointer transition-all duration-150",
+          isSelected && "scale-[1.03]"
         )}
         onClick={onClick}
       >
-        <div
-          className={cn(
-            "flex flex-col gap-1 px-3 py-2 rounded-lg border-2 transition-all",
-            colorClass,
-            isSelected && "ring-2 ring-primary ring-offset-1 shadow-md"
-          )}
-        >
-          <div className="flex items-center gap-2">
-            {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
-            <span className="text-xs font-medium">{STEP_LABELS[step.actionType]}</span>
+        <div className={cn(
+          "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all",
+          bgClass,
+          isSelected && "ring-2 ring-foreground/20 ring-offset-1 shadow-sm"
+        )}>
+          <div className={cn("w-5 h-5 rounded flex items-center justify-center shrink-0", iconBg)}>
+            {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-3 h-3" /> : Icon ? <Icon className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
           </div>
-          {msgType && (
-            <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full w-fit", msgType.color)}>
-              {msgType.shortLabel}
-            </span>
-          )}
+          <span className="text-[11px] font-medium truncate">{STEP_LABELS[step.actionType]}</span>
         </div>
-        
         {canRemove && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           >
-            <Trash2 className="w-2.5 h-2.5" />
+            <Trash2 className="w-2 h-2" />
           </button>
         )}
       </div>
     );
   }
-  
+
   return (
-    <div 
+    <div
       className={cn(
-        "relative group cursor-pointer transition-all",
-        isSelected && "scale-105"
+        "relative group cursor-pointer transition-all duration-150",
+        isSelected && "scale-[1.02]"
       )}
       onClick={onClick}
     >
-      <div
-        className={cn(
-          "flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all min-w-[180px]",
-          colorClass,
-          isSelected && "ring-2 ring-primary ring-offset-2 shadow-lg"
-        )}
-      >
-        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/50">
+      <div className={cn(
+        "flex items-center gap-3 px-4 py-3 rounded-xl border transition-all min-w-[170px] max-w-[200px]",
+        bgClass,
+        isSelected && "ring-2 ring-foreground/20 ring-offset-2 shadow-md"
+      )}>
+        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", iconBg)}>
           {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-muted-foreground">Étape {index + 1}</div>
-          <div className="font-medium text-sm truncate">
+          <div className="text-[10px] text-muted-foreground/50 leading-none mb-0.5">Étape {index + 1}</div>
+          <div className="text-[13px] font-semibold truncate leading-tight">
             {STEP_LABELS[step.actionType]}
           </div>
           {msgType && (
-            <div className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full w-fit mt-0.5", msgType.color)}>
+            <div className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full w-fit mt-1", msgType.color)}>
               {msgType.shortLabel}
             </div>
           )}
-          {step.delayDays > 0 || step.delayHours > 0 || (step.delayMinutes && step.delayMinutes > 0) ? (
-            <div className="text-xs opacity-70 mt-0.5">
-              ⏱ {step.delayDays > 0 ? `${step.delayDays}j` : ''} 
-              {step.delayHours > 0 ? `${step.delayHours}h` : ''} 
-              {step.delayMinutes && step.delayMinutes > 0 ? `${step.delayMinutes}min` : ''}
-            </div>
-          ) : null}
+          {hasDelay && (
+            <div className="text-[10px] text-muted-foreground/50 mt-0.5">{delayLabel}</div>
+          )}
         </div>
       </div>
-      
       {canRemove && (
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
         >
-          <Trash2 className="w-3 h-3" />
+          <Trash2 className="w-2.5 h-2.5" />
         </button>
       )}
     </div>
   );
 };
 
-const Arrow: React.FC<{ className?: string }> = ({ className }) => (
-  <div className={cn("flex justify-center py-2", className)}>
-    <ArrowDown className="w-5 h-5 text-muted-foreground" />
+// ── Connector line ──
+const Connector: React.FC<{ className?: string }> = ({ className }) => (
+  <div className={cn("flex flex-col items-center py-1", className)}>
+    <div className="w-px h-5 bg-border" />
+    <div className="w-1.5 h-1.5 rounded-full bg-border -mt-px" />
   </div>
 );
 
-// Helper to get the chain of steps in a branch (follow nextStepId)
+// ── Branch helpers ──
 const getBranchChain = (startStepId: string | undefined, allSteps: SequenceStep[]): SequenceStep[] => {
   if (!startStepId) return [];
-  
   const chain: SequenceStep[] = [];
   let currentId: string | undefined = startStepId;
   const visited = new Set<string>();
-  
   while (currentId && currentId !== '__end__' && !visited.has(currentId)) {
     visited.add(currentId);
     const step = allSteps.find(s => s.id === currentId);
-    if (step) {
-      chain.push(step);
-      // Follow nextStepId if defined, otherwise stop (end of branch)
-      currentId = step.nextStepId;
-    } else {
-      break;
-    }
+    if (step) { chain.push(step); currentId = step.nextStepId; } else break;
   }
-  
   return chain;
 };
 
-// Get all step IDs that are part of any branch (directly or through nextStepId chaining)
 const getAllBranchStepIds = (allSteps: SequenceStep[]): Set<string> => {
   const branchIds = new Set<string>();
-  
   const collectChain = (stepId: string | undefined, visited: Set<string>) => {
     if (!stepId || stepId === '__end__' || visited.has(stepId)) return;
-    visited.add(stepId);
-    branchIds.add(stepId);
-    
+    visited.add(stepId); branchIds.add(stepId);
     const step = allSteps.find(s => s.id === stepId);
     if (step) {
-      // Follow nextStepId
       if (step.nextStepId) collectChain(step.nextStepId, visited);
-      // Also collect sub-branches if this step is also a check_connection
       if (step.ifTrueGotoStep) collectChain(step.ifTrueGotoStep, visited);
       if (step.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
-      // Collect timeout branch chains
       if (step.timeoutBranchStepId) collectChain(step.timeoutBranchStepId, visited);
     }
   };
-  
-  // Find all check_connection steps and collect their branch targets
   for (const step of allSteps) {
     if (step.actionType === 'check_connection') {
       const visited = new Set<string>();
@@ -239,10 +228,10 @@ const getAllBranchStepIds = (allSteps: SequenceStep[]): Set<string> => {
       if (step.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
     }
   }
-  
   return branchIds;
 };
 
+// ── Branch column ──
 const BranchColumn: React.FC<{
   branchSteps: SequenceStep[];
   allSteps: SequenceStep[];
@@ -254,71 +243,59 @@ const BranchColumn: React.FC<{
   selectedStepId: string | null;
 }> = ({ branchSteps, allSteps, branchType, parentStepId, onStepClick, onAddBranchStep, onRemoveStep, selectedStepId }) => {
   const isTrue = branchType === 'true';
-  const colorClasses = isTrue 
-    ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300', line: 'bg-emerald-400', hover: 'hover:bg-emerald-50 hover:border-emerald-400' }
-    : { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300', line: 'bg-orange-400', hover: 'hover:bg-orange-50 hover:border-orange-400' };
-  
+  const accentLine = isTrue ? 'bg-emerald-300' : 'bg-orange-300';
   const label = isTrue ? '1er degré' : '2e/3e degré';
-  const Icon = isTrue ? Check : X;
-  
+  const LabelIcon = isTrue ? Check : X;
+  const labelColor = isTrue ? 'text-emerald-600 bg-emerald-50 border-emerald-200/60' : 'text-orange-600 bg-orange-50 border-orange-200/60';
+  const addBorder = isTrue ? 'border-emerald-200 text-emerald-500 hover:bg-emerald-50' : 'border-orange-200 text-orange-500 hover:bg-orange-50';
+
   return (
-    <div className="flex flex-col items-center min-w-[120px]">
-      <div className={cn("flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full mb-2 shadow-sm", colorClasses.bg, colorClasses.text)}>
-        <Icon className="w-3 h-3" />
+    <div className="flex flex-col items-center min-w-[110px]">
+      <div className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border mb-1.5", labelColor)}>
+        <LabelIcon className="w-2.5 h-2.5" />
         {label}
       </div>
-      <div className={cn("w-px h-3", colorClasses.line)} />
-      
+      <div className={cn("w-px h-2", accentLine)} />
+
       {branchSteps.length > 0 ? (
         <>
           {branchSteps.map((branchStep, idx) => {
             const stepIndex = allSteps.findIndex(s => s.id === branchStep.id);
             return (
               <React.Fragment key={branchStep.id}>
-                {idx > 0 && (
-                  <div className={cn("w-px h-3", colorClasses.line)} />
-                )}
+                {idx > 0 && <div className={cn("w-px h-2", accentLine)} />}
                 <StepNode
-                  step={branchStep}
-                  index={stepIndex}
-                  allSteps={allSteps}
+                  step={branchStep} index={stepIndex} allSteps={allSteps}
                   onClick={() => onStepClick(branchStep.id)}
                   onRemove={() => onRemoveStep(branchStep.id)}
                   isSelected={selectedStepId === branchStep.id}
-                  canRemove={allSteps.length > 1}
-                  compact
+                  canRemove={allSteps.length > 1} compact
                 />
               </React.Fragment>
             );
           })}
-          {/* Add more steps button after the last step in this branch */}
-          <div className={cn("w-px h-3", colorClasses.line)} />
+          <div className={cn("w-px h-2", accentLine)} />
           <button
             onClick={() => onAddBranchStep(branchType, branchSteps[branchSteps.length - 1]?.id)}
-            className={cn(
-              "flex items-center justify-center w-6 h-6 rounded-full border-2 border-dashed transition-colors",
-              colorClasses.border, colorClasses.text, colorClasses.hover
-            )}
+            className={cn("w-5 h-5 rounded-full border border-dashed flex items-center justify-center transition-colors", addBorder)}
           >
-            <Plus className="w-3 h-3" />
+            <Plus className="w-2.5 h-2.5" />
           </button>
         </>
       ) : (
         <button
           onClick={() => onAddBranchStep(branchType)}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors",
-            colorClasses.border, colorClasses.text, colorClasses.hover
-          )}
+          className={cn("flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-dashed text-[10px] font-medium transition-colors", addBorder)}
         >
-          <Plus className="w-3.5 h-3.5" />
-          <span className="text-xs font-medium">Ajouter</span>
+          <Plus className="w-3 h-3" />
+          Ajouter
         </button>
       )}
     </div>
   );
 };
 
+// ── Branch split ──
 const BranchSplit: React.FC<{
   step: SequenceStep;
   stepIndex: number;
@@ -328,145 +305,92 @@ const BranchSplit: React.FC<{
   onRemoveStep: (stepId: string) => void;
   selectedStepId: string | null;
 }> = ({ step, stepIndex, allSteps, onStepClick, onAddBranchStep, onRemoveStep, selectedStepId }) => {
-  // Get all steps in each branch
   const trueBranchSteps = getBranchChain(step.ifTrueGotoStep, allSteps);
   const falseBranchSteps = getBranchChain(step.ifFalseGotoStep, allSteps);
-  
+
   return (
-    <div className="flex flex-col items-center w-full mt-3">
-      {/* Branch lines */}
+    <div className="flex flex-col items-center w-full mt-2">
       <div className="flex items-center justify-center w-full gap-1">
-        <div className="flex-1 h-px bg-emerald-400 max-w-[80px]" />
-        <div className="w-3 h-3 rounded-full bg-indigo-500 border-2 border-white shadow" />
-        <div className="flex-1 h-px bg-orange-400 max-w-[80px]" />
+        <div className="flex-1 h-px bg-emerald-300 max-w-[70px]" />
+        <div className="w-2 h-2 rounded-full bg-indigo-400" />
+        <div className="flex-1 h-px bg-orange-300 max-w-[70px]" />
       </div>
-      
-      {/* Two branches */}
-      <div className="flex justify-center gap-4 w-full mt-2">
-        <BranchColumn
-          branchSteps={trueBranchSteps}
-          allSteps={allSteps}
-          branchType="true"
-          parentStepId={step.id}
-          onStepClick={onStepClick}
-          onAddBranchStep={onAddBranchStep}
-          onRemoveStep={onRemoveStep}
-          selectedStepId={selectedStepId}
-        />
-        
-        <BranchColumn
-          branchSteps={falseBranchSteps}
-          allSteps={allSteps}
-          branchType="false"
-          parentStepId={step.id}
-          onStepClick={onStepClick}
-          onAddBranchStep={onAddBranchStep}
-          onRemoveStep={onRemoveStep}
-          selectedStepId={selectedStepId}
-        />
+      <div className="flex justify-center gap-3 w-full mt-1.5">
+        <BranchColumn branchSteps={trueBranchSteps} allSteps={allSteps} branchType="true" parentStepId={step.id} onStepClick={onStepClick} onAddBranchStep={onAddBranchStep} onRemoveStep={onRemoveStep} selectedStepId={selectedStepId} />
+        <BranchColumn branchSteps={falseBranchSteps} allSteps={allSteps} branchType="false" parentStepId={step.id} onStepClick={onStepClick} onAddBranchStep={onAddBranchStep} onRemoveStep={onRemoveStep} selectedStepId={selectedStepId} />
       </div>
     </div>
   );
 };
 
+// ── Main diagram ──
 export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
-  steps,
-  onStepClick,
-  onAddStep,
-  onRemoveStep,
-  selectedStepId,
+  steps, onStepClick, onAddStep, onRemoveStep, selectedStepId,
 }) => {
-  // Use the helper that follows nextStepId chains
   const branchStepIds = getAllBranchStepIds(steps);
-  
+
   const renderFlow = () => {
     const elements: React.ReactNode[] = [];
     let prevStepWasBranch = false;
-    
+
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
-      
-      // Skip if this step belongs to a branch (rendered inside BranchSplit)
       if (branchStepIds.has(step.id)) continue;
-      
-      // Add arrow before step (except first)
+
       if (elements.length > 0 && !prevStepWasBranch) {
-        elements.push(<Arrow key={`arrow-${step.id}`} />);
+        elements.push(<Connector key={`conn-${step.id}`} />);
       }
-      
-      // Render step node
+
       elements.push(
-        <StepNode
-          key={step.id}
-          step={step}
-          index={i}
-          allSteps={steps}
-          onClick={() => onStepClick(step.id)}
-          onRemove={() => onRemoveStep(step.id)}
-          isSelected={selectedStepId === step.id}
-          canRemove={steps.length > 1}
+        <StepNode key={step.id} step={step} index={i} allSteps={steps}
+          onClick={() => onStepClick(step.id)} onRemove={() => onRemoveStep(step.id)}
+          isSelected={selectedStepId === step.id} canRemove={steps.length > 1}
         />
       );
-      
+
       prevStepWasBranch = step.actionType === 'check_connection';
-      
-      // If this is a check_connection step, render branches
+
       if (step.actionType === 'check_connection') {
         elements.push(
-          <BranchSplit
-            key={`branch-${step.id}`}
-            step={step}
-            stepIndex={i}
-            allSteps={steps}
+          <BranchSplit key={`branch-${step.id}`} step={step} stepIndex={i} allSteps={steps}
             onStepClick={onStepClick}
             onAddBranchStep={(branch, afterStepId) => onAddStep({ parentStepId: step.id, branch, afterStepId })}
-            onRemoveStep={onRemoveStep}
-            selectedStepId={selectedStepId}
+            onRemoveStep={onRemoveStep} selectedStepId={selectedStepId}
           />
         );
       }
     }
-    
     return elements;
   };
 
-  // Check if the last step is a check_connection with branches defined
   const lastStep = steps[steps.length - 1];
   const lastStepIsBranch = lastStep?.actionType === 'check_connection';
-  const branchesAreFilled = lastStepIsBranch && (lastStep.ifTrueGotoStep || lastStep.ifFalseGotoStep);
 
   return (
-    <div className="flex flex-col items-center py-4 px-2">
+    <div className="flex flex-col items-center py-6 px-4">
       {steps.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-            <Plus className="w-8 h-8 text-muted-foreground" />
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
+            <Plus className="w-5 h-5 text-muted-foreground/40" />
           </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Aucune étape dans la séquence
-          </p>
-          <Button onClick={() => onAddStep()} size="sm">
-            <Plus className="w-4 h-4 mr-2" />
-            Ajouter une étape
+          <p className="text-xs text-muted-foreground/60 mb-3">Aucune étape</p>
+          <Button onClick={() => onAddStep()} size="sm" variant="outline" className="h-7 text-xs">
+            <Plus className="w-3 h-3 mr-1.5" />Ajouter
           </Button>
         </div>
       ) : (
         <>
           {renderFlow()}
-          
-          {/* Add step button - only show if last step is not a branch or branches are not complete */}
-          {(!lastStepIsBranch || !branchesAreFilled) && !lastStepIsBranch && (
+          {!lastStepIsBranch && (
             <>
-              <Arrow />
-              <Button
-                variant="outline"
-                size="sm"
+              <Connector />
+              <button
                 onClick={() => onAddStep()}
-                className="border-dashed border-2 hover:border-primary hover:bg-primary/5"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 hover:bg-muted/30 transition-colors"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-3 h-3" />
                 Ajouter une étape
-              </Button>
+              </button>
             </>
           )}
         </>

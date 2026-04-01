@@ -12,43 +12,42 @@ import {
   Timer,
   GitBranch,
   Zap,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
 import { StepEditor } from './StepEditor';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface VisualSequenceEditorProps {
   steps: SequenceStep[];
   onStepsChange: (steps: SequenceStep[]) => void;
 }
 
-// Pending branch info when adding a step to a specific branch
 interface PendingBranch {
   parentStepId: string;
   branch: 'true' | 'false';
-  afterStepId?: string; // For adding after a specific step in a branch chain
+  afterStepId?: string;
 }
 
-// ACTIONS = ce qu'on FAIT
 const ACTIONS = [
-  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion' },
-  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-100 text-blue-600', description: 'Envoyer un InMail (payant)' },
-  { value: 'email', label: 'Email', icon: Mail, color: 'bg-violet-100 text-violet-600', description: 'Envoyer un email' },
-  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect' },
-  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)' },
-  { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA' },
-  { value: 'whatsapp_message', label: 'Message WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-100 text-green-600', description: 'Envoyer un WhatsApp (si numéro)' },
+  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-50 text-emerald-600', description: 'Demande de connexion' },
+  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-50 text-blue-600', description: 'InMail payant' },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-violet-50 text-violet-600', description: 'Envoyer un email' },
+  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-50 text-sky-600', description: 'Visiter le profil' },
+  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-50 text-orange-600', description: 'Si connecté' },
+  { value: 'smart_message', label: 'Smart Message', icon: Sparkles, color: 'bg-purple-50 text-purple-600', description: 'Personnalisé par IA' },
+  { value: 'whatsapp_message', label: 'WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-50 text-green-600', description: 'Si numéro dispo' },
 ];
 
-// TRIGGERS = ce qu'on ATTEND
 const TRIGGERS = [
-  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-indigo-100 text-indigo-600', description: 'Route selon le degré' },
-  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à acceptation' },
-  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-100 text-amber-600', description: 'Pause jusqu\'à réponse' },
-  { value: 'wait_profile_visit', label: 'Attendre visite retour', icon: Eye, color: 'bg-amber-100 text-amber-600', description: 'Pause si visite profil' },
-  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-rose-100 text-rose-600', description: 'Si/Sinon conditionnel' },
+  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-indigo-50 text-indigo-600', description: 'Route par degré' },
+  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-50 text-amber-600', description: 'Pause acceptation' },
+  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-50 text-amber-600', description: 'Pause réponse' },
+  { value: 'wait_profile_visit', label: 'Attendre visite', icon: Eye, color: 'bg-amber-50 text-amber-600', description: 'Pause visite' },
+  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-rose-50 text-rose-600', description: 'Si/Sinon' },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
@@ -58,7 +57,7 @@ const createEmptyStep = (order: number, actionType: string): SequenceStep => ({
   order,
   actionType: actionType as SequenceStep['actionType'],
   conditionType: 'always',
-  delayDays: order === 0 ? 0 : 0,
+  delayDays: 0,
   delayHours: 0,
   delayMinutes: 0,
   preferredHourStart: 9,
@@ -85,39 +84,25 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
     
     if (pendingBranch) {
       const { parentStepId, branch, afterStepId } = pendingBranch;
-      
       if (afterStepId) {
-        // We're adding after a specific step in an existing branch chain
-        // Set the afterStep's nextStepId to point to the new step
-        const updatedSteps = [...steps, newStep].map(s => {
-          if (s.id === afterStepId) {
-            return { ...s, nextStepId: newStep.id };
-          }
-          return s;
-        });
-        
+        const updatedSteps = [...steps, newStep].map(s =>
+          s.id === afterStepId ? { ...s, nextStepId: newStep.id } : s
+        );
         onStepsChange(updatedSteps);
       } else {
-        // First step in the branch - update the parent step's branch pointer
         const updatedSteps = [...steps, newStep].map(s => {
           if (s.id === parentStepId) {
-            if (branch === 'true') {
-              return { ...s, ifTrueGotoStep: newStep.id };
-            } else {
-              return { ...s, ifFalseGotoStep: newStep.id };
-            }
+            return branch === 'true'
+              ? { ...s, ifTrueGotoStep: newStep.id }
+              : { ...s, ifFalseGotoStep: newStep.id };
           }
           return s;
         });
-        
         onStepsChange(updatedSteps);
       }
-      
       setPendingBranch(null);
     } else {
-      // Normal add at the end - if there's a previous step, link it
       const lastMainStep = steps.filter(s => {
-        // Find steps that are not part of a branch
         const isInBranch = steps.some(parent => 
           parent.actionType === 'check_connection' && 
           (parent.ifTrueGotoStep === s.id || parent.ifFalseGotoStep === s.id)
@@ -126,13 +111,9 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       }).pop();
       
       if (lastMainStep && lastMainStep.actionType !== 'check_connection') {
-        // Link the last step to the new one
-        const updatedSteps = [...steps, newStep].map(s => {
-          if (s.id === lastMainStep.id) {
-            return { ...s, nextStepId: newStep.id };
-          }
-          return s;
-        });
+        const updatedSteps = [...steps, newStep].map(s =>
+          s.id === lastMainStep.id ? { ...s, nextStepId: newStep.id } : s
+        );
         onStepsChange(updatedSteps);
       } else {
         onStepsChange([...steps, newStep]);
@@ -144,48 +125,29 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   };
 
   const handleOpenStepPicker = (branchTarget?: { parentStepId: string; branch: 'true' | 'false'; afterStepId?: string }) => {
-    if (branchTarget) {
-      setPendingBranch(branchTarget);
-    } else {
-      setPendingBranch(null);
-    }
+    setPendingBranch(branchTarget || null);
     setShowStepPicker(true);
   };
 
   const handleRemoveStep = (stepId: string) => {
     if (steps.length <= 1) return;
-    
-    // Also clean up any references to this step in branch targets
     const newSteps = steps
       .filter(s => s.id !== stepId)
-      .map((s, idx) => {
-        const updates: Partial<SequenceStep> = { order: idx };
-        if (s.ifTrueGotoStep === stepId) {
-          updates.ifTrueGotoStep = undefined;
-        }
-        if (s.ifFalseGotoStep === stepId) {
-          updates.ifFalseGotoStep = undefined;
-        }
-        if (s.nextStepId === stepId) {
-          updates.nextStepId = undefined;
-        }
-        if (s.timeoutBranchStepId === stepId) {
-          updates.timeoutBranchStepId = undefined;
-        }
-        return { ...s, ...updates };
-      });
-    
+      .map((s, idx) => ({
+        ...s,
+        order: idx,
+        ...(s.ifTrueGotoStep === stepId ? { ifTrueGotoStep: undefined } : {}),
+        ...(s.ifFalseGotoStep === stepId ? { ifFalseGotoStep: undefined } : {}),
+        ...(s.nextStepId === stepId ? { nextStepId: undefined } : {}),
+        ...(s.timeoutBranchStepId === stepId ? { timeoutBranchStepId: undefined } : {}),
+      }));
     onStepsChange(newSteps);
-    if (selectedStepId === stepId) {
-      setSelectedStepId(newSteps[0]?.id || null);
-    }
+    if (selectedStepId === stepId) setSelectedStepId(newSteps[0]?.id || null);
   };
 
   const handleUpdateStep = (updates: Partial<SequenceStep>) => {
     if (!selectedStepId) return;
-    onStepsChange(
-      steps.map(s => s.id === selectedStepId ? { ...s, ...updates } : s)
-    );
+    onStepsChange(steps.map(s => s.id === selectedStepId ? { ...s, ...updates } : s));
   };
 
   const handleCancelStepPicker = () => {
@@ -193,24 +155,18 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
     setPendingBranch(null);
   };
 
-  // Filter actions/triggers based on pending branch context
   const getFilteredActions = () => {
     if (pendingBranch?.branch === 'true') {
-      // Connected branch - show message-related actions
       return ACTIONS.filter(a => ['message', 'smart_message', 'profile_visit', 'whatsapp_message'].includes(a.value));
     }
     if (pendingBranch?.branch === 'false') {
-      // Not connected branch - show connection actions
       return ACTIONS.filter(a => ['connection_request', 'inmail', 'profile_visit', 'whatsapp_message'].includes(a.value));
     }
     return ACTIONS;
   };
 
   const getFilteredTriggers = () => {
-    if (pendingBranch) {
-      // In branch context, limit triggers
-      return TRIGGERS.filter(t => ['wait_connection', 'wait_reply'].includes(t.value));
-    }
+    if (pendingBranch) return TRIGGERS.filter(t => ['wait_connection', 'wait_reply'].includes(t.value));
     return TRIGGERS;
   };
 
@@ -218,15 +174,18 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   const filteredTriggers = getFilteredTriggers();
 
   return (
-    <div className="flex h-[450px] border rounded-lg overflow-hidden bg-white">
+    <div className="flex h-[520px] border border-border rounded-lg overflow-hidden bg-background">
       {/* Left: Visual Flow */}
-      <div className="flex-1 border-r bg-gray-50/50">
-        <div className="p-2 border-b bg-white">
-          <span className="text-xs font-semibold text-muted-foreground uppercase">
-            Workflow visuel
+      <div className="flex-1 border-r border-border/60 bg-muted/10 flex flex-col min-w-0">
+        <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between">
+          <span className="text-[11px] font-medium text-muted-foreground">
+            Workflow
+          </span>
+          <span className="text-[10px] text-muted-foreground/60">
+            {steps.length} étape{steps.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <ScrollArea className="h-[calc(100%-36px)]">
+        <ScrollArea className="flex-1">
           <InteractiveFlowDiagram
             steps={steps}
             onStepClick={(stepId) => {
@@ -234,13 +193,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
               setShowStepPicker(false);
               setPendingBranch(null);
             }}
-            onAddStep={(branchTarget) => {
-              if (branchTarget) {
-                handleOpenStepPicker(branchTarget);
-              } else {
-                handleOpenStepPicker();
-              }
-            }}
+            onAddStep={(branchTarget) => handleOpenStepPicker(branchTarget || undefined)}
             onRemoveStep={handleRemoveStep}
             selectedStepId={selectedStepId}
           />
@@ -248,107 +201,134 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       </div>
 
       {/* Right: Step Editor / Step Picker */}
-      <div className="w-[280px] flex flex-col">
-        <div className="p-2 border-b bg-white flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground uppercase">
+      <div className="w-[300px] flex flex-col bg-background">
+        <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between">
+          <span className="text-[11px] font-medium text-muted-foreground">
             {showStepPicker 
               ? pendingBranch 
-                ? `Étape ${pendingBranch.branch === 'true' ? '(1er degré)' : '(2e/3e degré)'}`
-                : 'Nouvelle étape' 
+                ? `Ajouter ${pendingBranch.branch === 'true' ? '(1er degré)' : '(2e/3e degré)'}`
+                : 'Ajouter une étape' 
               : 'Configuration'}
           </span>
           {showStepPicker && (
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCancelStepPicker}>
-              <X className="w-4 h-4" />
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={handleCancelStepPicker}>
+              <X className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>
         
-        <ScrollArea className="flex-1 p-3">
-          {showStepPicker ? (
-            <div className="space-y-4">
-              {/* Branch context indicator */}
-              {pendingBranch && (
-                <div className={cn(
-                  "p-2 rounded-lg text-xs font-medium flex items-center gap-2",
-                  pendingBranch.branch === 'true' 
-                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
-                    : "bg-orange-50 text-orange-700 border border-orange-200"
-                )}>
-                  <GitBranch className="w-4 h-4" />
-                  {pendingBranch.branch === 'true' 
-                    ? "Branche: Connecté (1er degré)" 
-                    : "Branche: Non connecté (2e/3e)"}
-                </div>
-              )}
-              
-              {/* Actions */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Zap className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
-                </div>
-                <div className="space-y-2">
-                  {filteredActions.map(action => (
-                    <button
-                      key={action.value}
-                      onClick={() => handleAddStep(action.value)}
-                      className="flex items-center gap-3 w-full p-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
-                    >
-                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", action.color)}>
-                        {(action as any).customIcon ? (
-                          <img src={(action as any).customIcon} alt={action.label} className="w-4 h-4" />
-                        ) : action.icon ? (
-                          <action.icon className="w-4 h-4" />
-                        ) : null}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm">{action.label}</div>
-                        <div className="text-xs text-muted-foreground truncate">{action.description}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+        <ScrollArea className="flex-1">
+          <div className="p-4">
+            <AnimatePresence mode="wait">
+              {showStepPicker ? (
+                <motion.div
+                  key="picker"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.15 }}
+                  className="space-y-5"
+                >
+                  {/* Branch context */}
+                  {pendingBranch && (
+                    <div className={cn(
+                      "px-3 py-2 rounded-md text-xs font-medium flex items-center gap-2",
+                      pendingBranch.branch === 'true' 
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60" 
+                        : "bg-orange-50 text-orange-700 border border-orange-200/60"
+                    )}>
+                      <GitBranch className="w-3.5 h-3.5" />
+                      {pendingBranch.branch === 'true' ? "Connecté (1er degré)" : "Non connecté (2e/3e)"}
+                    </div>
+                  )}
+                  
+                  {/* Actions */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Zap className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Actions</span>
+                    </div>
+                    <div className="space-y-1">
+                      {filteredActions.map(action => (
+                        <button
+                          key={action.value}
+                          onClick={() => handleAddStep(action.value)}
+                          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-md hover:bg-muted/60 transition-colors text-left group"
+                        >
+                          <div className={cn("w-7 h-7 rounded-md flex items-center justify-center shrink-0", action.color)}>
+                            {(action as any).customIcon ? (
+                              <img src={(action as any).customIcon} alt={action.label} className="w-3.5 h-3.5" />
+                            ) : action.icon ? (
+                              <action.icon className="w-3.5 h-3.5" />
+                            ) : null}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium leading-tight">{action.label}</div>
+                            <div className="text-[10px] text-muted-foreground/60 leading-tight">{action.description}</div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Triggers */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Timer className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
-                </div>
-                <div className="space-y-2">
-                  {filteredTriggers.map(trigger => (
-                    <button
-                      key={trigger.value}
-                      onClick={() => handleAddStep(trigger.value)}
-                      className="flex items-center gap-3 w-full p-2 rounded-lg border border-border hover:border-amber-400 hover:bg-amber-50 transition-colors text-left"
-                    >
-                      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", trigger.color)}>
-                        <trigger.icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm">{trigger.label}</div>
-                        <div className="text-xs text-muted-foreground truncate">{trigger.description}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : selectedStep ? (
-            <StepEditor
-              step={selectedStep}
-              stepIndex={selectedStepIndex}
-              allSteps={steps}
-              onUpdate={handleUpdateStep}
-              allStepTypes={ALL_STEP_TYPES}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-              <p className="text-sm">Sélectionnez une étape pour la configurer</p>
-            </div>
-          )}
+                  {/* Triggers */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Timer className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Triggers</span>
+                    </div>
+                    <div className="space-y-1">
+                      {filteredTriggers.map(trigger => (
+                        <button
+                          key={trigger.value}
+                          onClick={() => handleAddStep(trigger.value)}
+                          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-md hover:bg-muted/60 transition-colors text-left group"
+                        >
+                          <div className={cn("w-7 h-7 rounded-md flex items-center justify-center shrink-0", trigger.color)}>
+                            <trigger.icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium leading-tight">{trigger.label}</div>
+                            <div className="text-[10px] text-muted-foreground/60 leading-tight">{trigger.description}</div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              ) : selectedStep ? (
+                <motion.div
+                  key={`editor-${selectedStepId}`}
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <StepEditor
+                    step={selectedStep}
+                    stepIndex={selectedStepIndex}
+                    allSteps={steps}
+                    onUpdate={handleUpdateStep}
+                    allStepTypes={ALL_STEP_TYPES}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center justify-center py-12 text-center"
+                >
+                  <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center mb-3">
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                  </div>
+                  <p className="text-xs text-muted-foreground/60">Sélectionnez une étape</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </ScrollArea>
       </div>
     </div>
