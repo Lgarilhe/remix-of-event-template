@@ -990,9 +990,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
       case 'guardrails':
         return (
-          <div className="space-y-6 max-w-2xl">
+          <div className="space-y-8 max-w-2xl">
             <div>
-              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Garde-fous</h2>
+              <h2 className="text-xl font-semibold mb-1">Garde-fous</h2>
               <p className="text-sm text-muted-foreground">Définissez quand arrêter la séquence et protégez vos comptes.</p>
             </div>
             <StopConditionsSettings
