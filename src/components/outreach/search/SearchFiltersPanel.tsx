@@ -47,6 +47,7 @@ interface SearchFiltersPanelProps {
 
   // Search source
   searchSource?: 'linkedin' | 'database';
+  onSearchSourceChange?: (source: 'linkedin' | 'database') => void;
   
   // Quota
   quota: {
