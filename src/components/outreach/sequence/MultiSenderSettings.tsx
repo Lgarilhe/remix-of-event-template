@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Users, Mail } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Trash2, Users, Mail, Linkedin, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrganization } from '@/hooks/useOrganization';
 
 export interface SenderAccount {
   account_id: string;
@@ -30,23 +35,95 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   rotationMode,
   onRotationModeChange,
 }) => {
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newEmail, setNewEmail] = useState('');
-  const [newLimit, setNewLimit] = useState(50);
+  const { organizationId } = useOrganization();
+  const [showPickerModal, setShowPickerModal] = useState(false);
 
-  const handleAdd = () => {
-    if (!newEmail.trim()) return;
+  // Fetch team members with their linked accounts
+  const { data: teamMembers = [], isLoading } = useQuery({
+    queryKey: ['multi-sender-team', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      const [membersRes, linkedInRes, emailRes] = await Promise.all([
+        supabase
+          .from('organization_members')
+          .select('user_id, role')
+          .eq('organization_id', organizationId),
+        supabase
+          .from('member_linkedin_accounts')
+          .select('user_id, linkedin_account_id, linkedin_account_name')
+          .eq('organization_id', organizationId),
+        supabase
+          .from('member_email_accounts')
+          .select('user_id, email_account_id, email_address')
+          .eq('organization_id', organizationId),
+      ]);
+
+      if (membersRes.error) throw membersRes.error;
+      const members = membersRes.data || [];
+
+      // Fetch profiles for all member user_ids
+      const userIds = members.map(m => m.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, first_name, last_name, avatar_url, email')
+        .in('user_id', userIds);
+
+      const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
+      const linkedInMap = new Map((linkedInRes.data || []).map(l => [l.user_id, l]));
+      const emailMap = new Map((emailRes.data || []).map(e => [e.user_id, e]));
+
+      return members.map(m => {
+        const profile = profileMap.get(m.user_id);
+        const linkedin = linkedInMap.get(m.user_id);
+        const email = emailMap.get(m.user_id);
+        const displayName = profile?.display_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Membre';
+        return {
+          userId: m.user_id,
+          role: m.role,
+          displayName,
+          email: email?.email_address || profile?.email || '',
+          avatarUrl: profile?.avatar_url || '',
+          hasLinkedIn: !!linkedin,
+          linkedInAccountId: linkedin?.linkedin_account_id || null,
+          linkedInAccountName: linkedin?.linkedin_account_name || null,
+          hasEmail: !!email,
+          emailAccountId: email?.email_account_id || null,
+        };
+      });
+    },
+    enabled: !!organizationId && showPickerModal,
+    staleTime: 30_000,
+  });
+
+  const existingSenderUserIds = useMemo(() => {
+    // Try to match existing senders by account_id
+    const ids = new Set<string>();
+    for (const sender of senderAccounts) {
+      // Check if any team member has this account_id
+      const member = teamMembers.find(
+        m => m.linkedInAccountId === sender.account_id || m.emailAccountId === sender.account_id || m.userId === sender.account_id
+      );
+      if (member) ids.add(member.userId);
+    }
+    return ids;
+  }, [senderAccounts, teamMembers]);
+
+  const handleSelectMember = (member: typeof teamMembers[number]) => {
+    const accountId = member.linkedInAccountId || member.emailAccountId || member.userId;
     onSenderAccountsChange([
       ...senderAccounts,
-      { account_id: crypto.randomUUID(), email: newEmail.trim(), daily_limit: newLimit },
+      { account_id: accountId, email: member.email, daily_limit: 50 },
     ]);
-    setNewEmail('');
-    setNewLimit(50);
-    setShowAddModal(false);
+    setShowPickerModal(false);
   };
 
-  const handleRemove = (accountId: string) => {
-    onSenderAccountsChange(senderAccounts.filter(s => s.account_id !== accountId));
+  const handleRemove = (acctId: string) => {
+    onSenderAccountsChange(senderAccounts.filter(s => s.account_id !== acctId));
+  };
+
+  const handleDailyLimitChange = (acctId: string, limit: number) => {
+    onSenderAccountsChange(senderAccounts.map(s => s.account_id === acctId ? { ...s, daily_limit: limit } : s));
   };
 
   return (
@@ -68,7 +145,17 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{sender.email}</p>
-                    <p className="text-xs text-muted-foreground">{sender.daily_limit}/jour</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={sender.daily_limit}
+                        onChange={(e) => handleDailyLimitChange(sender.account_id, parseInt(e.target.value) || 50)}
+                        className="h-6 w-16 text-xs px-1.5"
+                      />
+                      <span className="text-xs text-muted-foreground">/jour</span>
+                    </div>
                   </div>
                   <Button
                     variant="ghost"
@@ -90,7 +177,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setShowAddModal(true)}
+              onClick={() => setShowPickerModal(true)}
             className="w-full border-dashed border-foreground/30"
           >
             <Plus className="w-3.5 h-3.5 mr-1.5" />
@@ -112,38 +199,83 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             </Select>
           </div>
 
-          {/* Add sender modal */}
-          <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-            <DialogContent className="max-w-sm bg-background border-foreground rounded-none">
+          {/* Team member picker modal */}
+          <Dialog open={showPickerModal} onOpenChange={setShowPickerModal}>
+            <DialogContent className="max-w-md bg-background border-foreground rounded-none">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Users className="w-4 h-4" />
-                  Ajouter un sender
+                  Sélectionner un membre
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Email</Label>
-                  <Input
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="sender@example.com"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label>Limite quotidienne</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={newLimit}
-                    onChange={(e) => setNewLimit(parseInt(e.target.value) || 50)}
-                    className="mt-1"
-                  />
-                </div>
-                <Button onClick={handleAdd} className="w-full bg-foreground text-background rounded-none">
-                  Ajouter
-                </Button>
+              <div className="space-y-1 max-h-80 overflow-y-auto">
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+                  </div>
+                ) : teamMembers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">Aucun membre trouvé</p>
+                ) : (
+                  teamMembers.map(member => {
+                    const alreadyAdded = existingSenderUserIds.has(member.userId);
+                    const hasAnyAccount = member.hasLinkedIn || member.hasEmail;
+                    const disabled = alreadyAdded || !hasAnyAccount;
+
+                    return (
+                      <button
+                        key={member.userId}
+                        onClick={() => !disabled && handleSelectMember(member)}
+                        disabled={disabled}
+                        className={cn(
+                          'w-full flex items-center gap-3 p-3 text-left transition-colors',
+                          disabled
+                            ? 'opacity-50 cursor-not-allowed'
+                            : 'hover:bg-muted/50 cursor-pointer'
+                        )}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={member.avatarUrl} />
+                          <AvatarFallback className="text-xs bg-muted">
+                            {member.displayName.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{member.displayName}</p>
+                          {member.email && (
+                            <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {member.hasLinkedIn && (
+                            <Badge variant="outline" className="text-[10px] h-5 gap-1 border-blue-300 text-blue-700 bg-blue-50">
+                              <Linkedin className="w-3 h-3" /> ✓
+                            </Badge>
+                          )}
+                          {member.hasEmail && (
+                            <Badge variant="outline" className="text-[10px] h-5 gap-1 border-purple-300 text-purple-700 bg-purple-50">
+                              <Mail className="w-3 h-3" /> ✓
+                            </Badge>
+                          )}
+                          {!hasAnyAccount && (
+                            <Badge variant="outline" className="text-[10px] h-5 gap-1 text-muted-foreground">
+                              <AlertCircle className="w-3 h-3" /> Pas de compte
+                            </Badge>
+                          )}
+                          {alreadyAdded && (
+                            <Badge variant="secondary" className="text-[10px] h-5">
+                              Déjà ajouté
+                            </Badge>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+                {!isLoading && teamMembers.some(m => !m.hasLinkedIn && !m.hasEmail) && (
+                  <p className="text-xs text-muted-foreground p-3 border-t border-foreground/10">
+                    Les membres grisés doivent connecter leur compte LinkedIn ou Email dans Paramètres.
+                  </p>
+                )}
               </div>
             </DialogContent>
           </Dialog>
