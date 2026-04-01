@@ -28,44 +28,10 @@ interface MissionSourcingProps {
 
 const getSourcingTabStorageKey = (projectId: string) => `mission-sourcing-tab:${projectId}`;
 
-const getDefaultSourcingTab = (project: SourcingProject): 'linkedin' | 'database' => {
-  const api = (project.filters_snapshot as { api?: string } | null)?.api;
-  return api === 'database' ? 'database' : 'linkedin';
-};
-
 // ── Main component ──
 
 export const MissionSourcing = ({ project }: MissionSourcingProps) => {
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
-  const [sourcingTab, setSourcingTab] = useState<'linkedin' | 'database'>(() => {
-    if (typeof window === 'undefined') return getDefaultSourcingTab(project);
-
-    const savedTab = window.localStorage.getItem(getSourcingTabStorageKey(project.id));
-    if (savedTab === 'linkedin' || savedTab === 'database') return savedTab;
-
-    return getDefaultSourcingTab(project);
-  });
-
-  // Database sub-tab state
-  const [prospectResults, setProspectResults] = useState<any[]>([]);
-  const [prospectSearching, setProspectSearching] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const savedTab = window.localStorage.getItem(getSourcingTabStorageKey(project.id));
-    if (savedTab === 'linkedin' || savedTab === 'database') {
-      setSourcingTab(savedTab);
-      return;
-    }
-
-    setSourcingTab(getDefaultSourcingTab(project));
-  }, [project]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(getSourcingTabStorageKey(project.id), sourcingTab);
-  }, [project.id, sourcingTab]);
 
   // Check if brief has data but no filters generated yet
   const jd = (project.job_details || {}) as JobDetails;
