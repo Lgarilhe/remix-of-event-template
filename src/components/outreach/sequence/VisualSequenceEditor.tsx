@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { 
@@ -79,7 +79,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   const selectedStep = steps.find(s => s.id === selectedStepId);
   const selectedStepIndex = steps.findIndex(s => s.id === selectedStepId);
 
-  const handleAddStep = (actionType: string) => {
+  const handleAddStep = useCallback((actionType: string) => {
     const newStep = createEmptyStep(steps.length, actionType);
     
     if (pendingBranch) {
@@ -122,14 +122,20 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
     
     setSelectedStepId(newStep.id);
     setShowStepPicker(false);
-  };
+  }, [onStepsChange, pendingBranch, steps]);
 
-  const handleOpenStepPicker = (branchTarget?: { parentStepId: string; branch: 'true' | 'false'; afterStepId?: string }) => {
+  const handleOpenStepPicker = useCallback((branchTarget?: PendingBranch) => {
     setPendingBranch(branchTarget || null);
     setShowStepPicker(true);
-  };
+  }, []);
 
-  const handleRemoveStep = (stepId: string) => {
+  const handleSelectStep = useCallback((stepId: string) => {
+    setSelectedStepId(stepId);
+    setShowStepPicker(false);
+    setPendingBranch(null);
+  }, []);
+
+  const handleRemoveStep = useCallback((stepId: string) => {
     if (steps.length <= 1) return;
     const newSteps = steps
       .filter(s => s.id !== stepId)
@@ -143,17 +149,17 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
       }));
     onStepsChange(newSteps);
     if (selectedStepId === stepId) setSelectedStepId(newSteps[0]?.id || null);
-  };
+  }, [onStepsChange, selectedStepId, steps]);
 
-  const handleUpdateStep = (updates: Partial<SequenceStep>) => {
+  const handleUpdateStep = useCallback((updates: Partial<SequenceStep>) => {
     if (!selectedStepId) return;
     onStepsChange(steps.map(s => s.id === selectedStepId ? { ...s, ...updates } : s));
-  };
+  }, [onStepsChange, selectedStepId, steps]);
 
-  const handleCancelStepPicker = () => {
+  const handleCancelStepPicker = useCallback(() => {
     setShowStepPicker(false);
     setPendingBranch(null);
-  };
+  }, []);
 
   const getFilteredActions = () => {
     if (pendingBranch?.branch === 'true') {
@@ -188,12 +194,8 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
         <div className="flex-1 min-h-0">
           <WorkflowCanvas
             steps={steps}
-            onStepClick={(stepId) => {
-              setSelectedStepId(stepId);
-              setShowStepPicker(false);
-              setPendingBranch(null);
-            }}
-            onAddStep={(branchTarget) => handleOpenStepPicker(branchTarget || undefined)}
+            onStepClick={handleSelectStep}
+            onAddStep={handleOpenStepPicker}
             onRemoveStep={handleRemoveStep}
             selectedStepId={selectedStepId}
           />
