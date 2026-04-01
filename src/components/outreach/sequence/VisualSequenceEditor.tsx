@@ -174,9 +174,9 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   const filteredTriggers = getFilteredTriggers();
 
   return (
-    <div className="flex h-[520px] border border-border rounded-lg overflow-hidden bg-background">
-      {/* Left: Visual Flow */}
-      <div className="flex-1 border-r border-border/60 bg-muted/10 flex flex-col min-w-0">
+    <div className="flex h-[560px] border border-border rounded-lg overflow-hidden bg-background">
+      {/* Left: Visual Flow Canvas */}
+      <div className="flex-1 border-r border-border/60 bg-muted/5 flex flex-col min-w-0">
         <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between">
           <span className="text-[11px] font-medium text-muted-foreground">
             Workflow
