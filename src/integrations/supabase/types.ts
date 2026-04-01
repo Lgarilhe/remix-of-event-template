@@ -3956,6 +3956,7 @@ export type Database = {
           last_check_at: string | null
           network_distance: string | null
           organization_id: string | null
+          phone_used: string | null
           profile_headline: string | null
           profile_id: string
           profile_name: string | null
@@ -3985,6 +3986,7 @@ export type Database = {
           last_check_at?: string | null
           network_distance?: string | null
           organization_id?: string | null
+          phone_used?: string | null
           profile_headline?: string | null
           profile_id: string
           profile_name?: string | null
@@ -4014,6 +4016,7 @@ export type Database = {
           last_check_at?: string | null
           network_distance?: string | null
           organization_id?: string | null
+          phone_used?: string | null
           profile_headline?: string | null
           profile_id?: string
           profile_name?: string | null
