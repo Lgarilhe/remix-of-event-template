@@ -102,6 +102,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const steps = useMemo(() => mapSteps(sequence.steps), [sequence.steps]);
   const isSingle = profiles.length === 1;
   const isBulk = profiles.length > 10;
+  const candidateIds = useMemo(() => profiles.map(profile => profile.id), [profiles]);
+  const firstProfileId = candidateIds[0] ?? '';
 
   const {
     messageSteps, hasMessageSteps, hasAiSteps,
@@ -111,7 +113,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     editMessage, generateAll, cancelBulkGeneration, getMessageOverrides,
   } = useEnrollmentPreview({ steps, profiles, job, accountId });
 
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>(profiles[0]?.id || '');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>(firstProfileId);
   const [mode, setMode] = useState<'preview' | 'summary'>(
     !hasMessageSteps ? 'summary' : (isBulk ? 'summary' : 'preview')
   );
@@ -122,21 +124,37 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const [page, setPage] = useState(0);
   const pageSize = 10;
 
+  useEffect(() => {
+    if (!candidateIds.length) {
+      if (selectedCandidateId) {
+        setSelectedCandidateId('');
+      }
+      return;
+    }
+
+    if (!selectedCandidateId || !candidateIds.includes(selectedCandidateId)) {
+      setSelectedCandidateId(candidateIds[0]);
+    }
+  }, [candidateIds, selectedCandidateId]);
+
   // Auto-generate for single candidate
   useEffect(() => {
-    if (isSingle && hasMessageSteps && mode === 'preview' && profiles[0]) {
-      generateForCandidateById(profiles[0].id);
+    if (isSingle && hasMessageSteps && mode === 'preview' && selectedCandidateId) {
+      generateForCandidateById(selectedCandidateId);
     }
-  }, [isSingle, hasMessageSteps, mode]);
+  }, [isSingle, hasMessageSteps, mode, selectedCandidateId]);
 
   // Auto-generate first candidate in list mode
   useEffect(() => {
-    if (!isSingle && !isBulk && mode === 'preview' && profiles[0]) {
-      generateForCandidateById(profiles[0].id);
+    if (!isSingle && !isBulk && hasMessageSteps && mode === 'preview' && firstProfileId && selectedCandidateId === firstProfileId) {
+      generateForCandidateById(firstProfileId);
     }
-  }, [isSingle, isBulk, mode]);
+  }, [isSingle, isBulk, hasMessageSteps, mode, firstProfileId, selectedCandidateId]);
 
-  const selectedProfile = profiles.find(p => p.id === selectedCandidateId);
+  const selectedProfile = useMemo(
+    () => profiles.find(p => p.id === selectedCandidateId) ?? null,
+    [profiles, selectedCandidateId]
+  );
 
   const filteredProfiles = useMemo(() => {
     if (!searchQuery.trim()) return profiles;
@@ -152,6 +170,16 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   }, [filteredProfiles, page]);
 
   const totalPages = Math.ceil(filteredProfiles.length / pageSize);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (page > 0 && page >= totalPages) {
+      setPage(Math.max(totalPages - 1, 0));
+    }
+  }, [page, totalPages]);
 
   const handleSelectCandidate = (id: string) => {
     setSelectedCandidateId(id);
@@ -344,7 +372,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        <AnimatePresence mode="wait">
+        <AnimatePresence initial={false}>
           {enrollResults ? (
             <motion.div
               key="results"
@@ -494,7 +522,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
                 {/* Message previews */}
                 <ScrollArea className="flex-1 p-4 sm:p-6">
-                  {selectedProfile && (
+                  {selectedProfile ? (
                     <div className="max-w-2xl mx-auto space-y-4">
                       {/* Candidate header */}
                       <div className="flex items-center gap-3 pb-4 border-b border-border">
@@ -552,6 +580,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                         );
                       })}
                     </div>
+                  ) : (
+                    <PreviewPanelFallback hasProfiles={profiles.length > 0} />
                   )}
                 </ScrollArea>
 
@@ -902,6 +932,42 @@ function EnrollmentResults({ results, onClose }: { results: { success: number; s
       <Button onClick={onClose} className="bg-foreground text-background">
         Fermer
       </Button>
+    </div>
+  );
+}
+
+function PreviewPanelFallback({ hasProfiles }: { hasProfiles: boolean }) {
+  if (!hasProfiles) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center text-sm text-muted-foreground">
+        Aucun candidat sélectionné.
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <div className="flex items-center gap-3 pb-4 border-b border-border">
+        <Skeleton className="w-10 h-10 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-64 max-w-full" />
+        </div>
+      </div>
+
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="rounded-lg border border-border overflow-hidden">
+          <div className="px-3 py-2 border-b border-border bg-muted/20">
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <div className="px-3 py-3 space-y-2 bg-background/80">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-5/6" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
