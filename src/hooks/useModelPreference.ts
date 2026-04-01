@@ -25,7 +25,7 @@ export const useModelPreference = (orgId?: string | null) => {
         .from('organizations')
         .select('ai_model_default')
         .eq('id', orgId)
-        .maybeSingle() as Promise<{ data: Record<string, unknown> | null; error: unknown }>);
+        .maybeSingle() as unknown as Promise<{ data: Record<string, unknown> | null; error: unknown }>);
       const dbValue = (data as Record<string, unknown>)?.ai_model_default as string | null ?? null;
       setModelIdState(dbValue);
       try {
