@@ -151,7 +151,7 @@ async function generateAiSnippet(
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const text = result?.content?.[0]?.text;
+    const text = (result as any)?.content?.[0]?.text;
 
     // Settle credits (fire-and-forget)
     if (orgId && result?.usage) {
