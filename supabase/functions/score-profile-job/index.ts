@@ -1892,8 +1892,8 @@ Deno.serve(async (req) => {
     let resolvedUnipile: { apiKey: string; dsn: string } | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(userId, supabase);
-      resolvedUnipile = await resolveUnipileCredentials(orgId, supabase);
+      const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
+      resolvedUnipile = await resolveUnipileCredentials(orgId, supabase as any);
     } catch (e) {
       console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
       const envKey = Deno.env.get("UNIPILE_API_KEY");
