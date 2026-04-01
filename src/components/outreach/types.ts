@@ -238,6 +238,9 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   db_revenue_max: '',
   db_funding_stage: '',
   db_company_domain: '',
+  db_org_job_titles: '',
+  db_org_num_jobs_min: '',
+  db_org_num_jobs_max: '',
 };
 
 // Predefined day ranges for activity filters
