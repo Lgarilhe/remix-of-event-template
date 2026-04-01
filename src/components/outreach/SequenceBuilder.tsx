@@ -388,6 +388,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   );
   // Show step picker immediately if no steps yet
   const [showStepPicker, setShowStepPicker] = useState(!initialSequence || initialSequence.steps.length === 0);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const { signatures } = useEmailSignatures();
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const subjectRef = useRef<HTMLInputElement>(null);
 
   const updateStep = (stepId: string, updates: Partial<SequenceStep>) => {
     setSequence(prev => ({
