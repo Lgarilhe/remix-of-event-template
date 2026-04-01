@@ -166,16 +166,16 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       // Fetch A/B test results from executions with variant_assigned
       const filterForAB = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
       if (filterForAB) {
-        const { data: execData } = await supabase
+        const { data: execData } = await (supabase as any)
           .from('sequence_step_executions')
           .select('variant_assigned, status')
           .eq('sequence_id', filterForAB)
-          .not('variant_assigned', 'is', null);
+          .not('variant_assigned', 'is', null) as { data: { variant_assigned: string | null; status: string }[] | null };
 
         if (execData && execData.length > 0) {
           const variantMap = new Map<string, { sent: number; opened: number; clicked: number; replied: number }>();
           for (const exec of execData) {
-            const v = exec.variant_assigned as string;
+            const v = exec.variant_assigned;
             if (!v) continue;
             const existing = variantMap.get(v) || { sent: 0, opened: 0, clicked: 0, replied: 0 };
             if (['sent', 'executed'].includes(exec.status)) existing.sent++;
