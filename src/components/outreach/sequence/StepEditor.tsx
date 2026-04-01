@@ -335,7 +335,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 <div className="flex items-center justify-between">
                   <Label className="text-[10px] text-muted-foreground">Message</Label>
                   <div className="flex items-center gap-1.5">
-                    <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                    <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                     {step.actionType === 'connection_request' && (
                       <span className={cn("text-[10px]", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground/50")}>
                         {step.messageTemplate?.length || 0}/300
