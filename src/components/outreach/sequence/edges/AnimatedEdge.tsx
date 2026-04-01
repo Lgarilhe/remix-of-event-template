@@ -8,7 +8,7 @@ export const AnimatedEdge: React.FC<EdgeProps> = ({
   const [edgePath] = getSmoothStepPath({
     sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
-    borderRadius: 16,
+    borderRadius: 20,
   });
 
   return (
@@ -16,7 +16,7 @@ export const AnimatedEdge: React.FC<EdgeProps> = ({
       id={id}
       path={edgePath}
       style={{
-        strokeWidth: 1.5,
+        strokeWidth: 2,
         ...style,
       }}
       markerEnd={markerEnd}

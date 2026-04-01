@@ -11,18 +11,17 @@ type BranchLabelData = {
 export const WorkflowBranchLabelNode = memo(({ data }: NodeProps) => {
   const { label, variant } = data as unknown as BranchLabelData;
   const isTrue = variant === 'true';
-  const Icon = isTrue ? Check : X;
 
   return (
     <>
       <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-transparent !border-transparent" />
       <div className={cn(
-        "flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border shadow-sm",
+        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border-2 shadow-sm",
         isTrue
-          ? "text-emerald-700 bg-emerald-50 border-emerald-200/60 dark:text-emerald-400 dark:bg-emerald-950/60 dark:border-emerald-800/60"
-          : "text-orange-700 bg-orange-50 border-orange-200/60 dark:text-orange-400 dark:bg-orange-950/60 dark:border-orange-800/60"
+          ? "text-white bg-emerald-500 border-emerald-400 dark:bg-emerald-600 dark:border-emerald-500"
+          : "text-white bg-orange-500 border-orange-400 dark:bg-orange-600 dark:border-orange-500"
       )}>
-        <Icon className="w-3 h-3" />
+        {isTrue ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
         {label}
       </div>
       <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-transparent !border-transparent" />
