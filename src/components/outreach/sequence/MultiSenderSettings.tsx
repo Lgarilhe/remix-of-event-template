@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Users, Mail, Linkedin, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -66,10 +67,10 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
       const userIds = members.map(m => m.user_id);
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, display_name, first_name, last_name, avatar_url, email')
+        .select('user_id, display_name')
         .in('user_id', userIds);
 
-      const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
+      const profileMap = new Map((profiles || []).map(p => [p.user_id, p as { user_id: string; display_name: string | null }]));
       const linkedInMap = new Map((linkedInRes.data || []).map(l => [l.user_id, l]));
       const emailMap = new Map((emailRes.data || []).map(e => [e.user_id, e]));
 
@@ -77,13 +78,13 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
         const profile = profileMap.get(m.user_id);
         const linkedin = linkedInMap.get(m.user_id);
         const email = emailMap.get(m.user_id);
-        const displayName = profile?.display_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Membre';
+        const displayName = profile?.display_name || 'Membre';
         return {
           userId: m.user_id,
           role: m.role,
           displayName,
-          email: email?.email_address || profile?.email || '',
-          avatarUrl: profile?.avatar_url || '',
+          email: email?.email_address || '',
+          avatarUrl: '',
           hasLinkedIn: !!linkedin,
           linkedInAccountId: linkedin?.linkedin_account_id || null,
           linkedInAccountName: linkedin?.linkedin_account_name || null,
