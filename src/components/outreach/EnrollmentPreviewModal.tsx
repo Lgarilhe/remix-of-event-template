@@ -582,9 +582,37 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               exit={{ opacity: 0, x: 10 }}
               className="flex-1 flex flex-col sm:flex-row overflow-hidden"
             >
-              {/* Candidate Sidebar */}
+              {/* Mobile pane toggle */}
               {!isSingle && (
-                <div className="w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0 max-h-[160px] sm:max-h-none">
+                <div className="sm:hidden flex items-center border-b border-border bg-muted/10">
+                  <button
+                    onClick={() => setMobilePane('list')}
+                    className={cn(
+                      "flex-1 py-2 text-[11px] font-medium text-center transition-colors",
+                      mobilePane === 'list' ? "text-foreground border-b-2 border-primary" : "text-muted-foreground"
+                    )}
+                  >
+                    Candidats ({activeProfiles.length})
+                  </button>
+                  <button
+                    onClick={() => setMobilePane('preview')}
+                    className={cn(
+                      "flex-1 py-2 text-[11px] font-medium text-center transition-colors",
+                      mobilePane === 'preview' ? "text-foreground border-b-2 border-primary" : "text-muted-foreground"
+                    )}
+                  >
+                    Aperçu
+                  </button>
+                </div>
+              )}
+
+              {/* Candidate Sidebar — hidden on mobile when viewing preview */}
+              {!isSingle && (
+                <div className={cn(
+                  "w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0",
+                  "sm:flex",
+                  mobilePane === 'list' ? "flex flex-1 sm:flex-none" : "hidden sm:flex"
+                )}>
                   <div className="p-2 border-b border-border">
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
