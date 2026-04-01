@@ -104,17 +104,35 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
       if (step.useAiPersonalization) {
         try {
+          // Build rich profile data — the more context, the better the AI personalization
           const profileData = {
-            id: profile.id,
             name: profile.name,
-            first_name: profile.first_name,
-            last_name: profile.last_name,
             headline: profile.headline,
             location: profile.location,
-            summary: profile.summary,
-            current_company: profile.work_experience?.[0]?.company,
-            current_title: profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position,
-            skills: profile.skills?.map(s => s.name) || [],
+            summary: profile.summary || (profile as any).about,
+            currentRole: profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position,
+            currentCompany: profile.work_experience?.[0]?.company,
+            skills: profile.skills?.map(s => typeof s === 'string' ? s : s.name).filter(Boolean) || [],
+            pastPositions: profile.work_experience?.slice(0, 4).map(w =>
+              `${w.role || w.position || ''} @ ${w.company || ''}`.trim()
+            ).filter(Boolean) || [],
+            education: (profile as any).education?.slice(0, 2).map((e: any) =>
+              [e.school_name || e.school, e.degree_name || e.degree, e.field_of_study || e.field].filter(Boolean).join(' - ')
+            ) || [],
+            yearsOfExperience: (() => {
+              const exps = profile.work_experience || [];
+              if (exps.length === 0) return undefined;
+              let earliest = 9999;
+              for (const exp of exps) {
+                const start = (exp as any).start_date || (exp as any).starts_at;
+                if (start) {
+                  const year = typeof start === 'object' && start?.year ? start.year
+                    : typeof start === 'string' ? parseInt(start.split('-')[0]) : 9999;
+                  if (year < earliest) earliest = year;
+                }
+              }
+              return earliest < 9999 ? new Date().getFullYear() - earliest : undefined;
+            })(),
           };
 
           const { data, error } = await invokeWithCredits<{
@@ -134,6 +152,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             tone: step.aiTone || 'professional',
             accountId,
             profileId: profile.provider_id || profile.id,
+            candidateLinkedInUrl: (profile as any).profile_url || (profile as any).public_profile_url || (profile as any).linkedin_url,
             messageTemplate: step.messageTemplate,
             subjectTemplate: step.subjectTemplate,
           });
