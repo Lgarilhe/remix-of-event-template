@@ -342,6 +342,39 @@ const isAction = (actionType: string) => ACTIONS.some(a => a.value === actionTyp
 const isTrigger = (actionType: string) => TRIGGERS.some(t => t.value === actionType);
 const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
 const needsSubject = (type: string) => type === 'inmail';
+const canABTest = (type: string) => ['inmail', 'message', 'smart_message', 'connection_request'].includes(type);
+
+/** Group steps by variant_group (steps with same order but different variant) */
+const getVariantGroups = (steps: SequenceStep[]): Map<number, SequenceStep[]> => {
+  const groups = new Map<number, SequenceStep[]>();
+  for (const step of steps) {
+    if (step.variantGroup) {
+      const existing = groups.get(step.order) || [];
+      existing.push(step);
+      groups.set(step.order, existing);
+    }
+  }
+  return groups;
+};
+
+/** Get the "primary" steps (variant A or non-variant steps) for display */
+const getPrimarySteps = (steps: SequenceStep[]): SequenceStep[] => {
+  const seen = new Set<number>();
+  const result: SequenceStep[] = [];
+  for (const step of steps) {
+    if (step.variantGroup && step.variantGroup !== 'A') continue;
+    if (step.variantGroup === 'A' && seen.has(step.order)) continue;
+    seen.add(step.order);
+    result.push(step);
+  }
+  // Add non-variant steps that weren't added
+  for (const step of steps) {
+    if (!step.variantGroup && !result.includes(step)) {
+      result.push(step);
+    }
+  }
+  return result.sort((a, b) => a.order - b.order);
+};
 
 export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   isOpen,
