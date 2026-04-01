@@ -769,7 +769,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {CONDITION_TYPES.map(cond => (
+                                {getConditionsForActionType(step.actionType).map(cond => (
                                   <SelectItem key={cond.value} value={cond.value}>
                                     {cond.label}
                                   </SelectItem>
