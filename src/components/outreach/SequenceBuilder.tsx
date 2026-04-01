@@ -47,7 +47,7 @@ import type { SenderAccount } from './sequence/MultiSenderSettings';
 export interface SequenceStep {
   id: string;
   order: number;
-  actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
+  actionType: 'inmail' | 'email' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
   conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'if_email_opened' | 'if_email_not_opened' | 'if_link_clicked' | 'if_link_not_clicked' | 'if_has_email' | 'if_no_email' | 'if_has_phone' | 'if_no_phone' | 'if_bounced' | 'if_unsubscribed' | 'if_score_above';
   conditionValue?: string;
   delayDays: number;
@@ -73,6 +73,11 @@ export interface SequenceStep {
   // A/B testing
   variantGroup?: string | null;
   variantWeight?: number;
+  // Email-specific fields
+  ccEmails?: string[];
+  bccEmails?: string[];
+  includeUnsubscribe?: boolean;
+  signatureId?: string;
 }
 
 export interface StopConditions {
