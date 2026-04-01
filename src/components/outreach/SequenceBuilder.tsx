@@ -778,10 +778,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <div>
                                 <div className="flex items-center justify-between">
                                   <Label>Objet</Label>
-                                  <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => updateStep(step.id, { subjectTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                                   <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => updateStep(step.id, { subjectTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                                 </div>
-                                <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })} placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"} className={cn("mt-1.5", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
-                                {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-xs text-destructive mt-0.5">Objet requis</p>}
+                                <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })} placeholder={step.actionType === 'email' ? "Objet de l'email" : "Objet de l'InMail"} className={cn("mt-1.5", needsSubject(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
+                                {needsSubject(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-xs text-destructive mt-0.5">Objet requis</p>}
                               </div>
                             )}
                             <div>
