@@ -4851,10 +4851,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      invoke_process_sequences: {
-        Args: { p_action: string }
-        Returns: undefined
-      }
+      invoke_process_sequences:
+        | { Args: { p_action: string }; Returns: undefined }
+        | { Args: { p_action: string; p_force?: boolean }; Returns: undefined }
       is_mission_team_member: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
