@@ -1751,7 +1751,23 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
         const isConnected = p?.network_distance === 'FIRST_DEGREE' || (enrollment as any).connection_status === 'connected';
         const needsInMail = !isConnected && (actionType === 'inmail' || actionType === 'smart_message');
-        console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | network_distance=${p?.network_distance} | connection_status=${(enrollment as any).connection_status} | isConnected=${isConnected} | needsInMail=${needsInMail}`);
+
+        // Resolve LinkedIn API mode: recruiter vs sales_navigator vs classic
+        // Based on which subscription has InMail credits available
+        let linkedinApiMode = 'classic';
+        if (needsInMail) {
+          try {
+            const balRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+            if (balRes.ok) {
+              const bal = await balRes.json();
+              if ((bal.recruiter || 0) > 0) linkedinApiMode = 'recruiter';
+              else if ((bal.sales_navigator || 0) > 0) linkedinApiMode = 'sales_navigator';
+              else if ((bal.premium || 0) > 0) linkedinApiMode = 'classic'; // Premium uses classic API
+            }
+          } catch { linkedinApiMode = 'recruiter'; /* fallback */ }
+        }
+
+        console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | isConnected=${isConnected} | needsInMail=${needsInMail} | apiMode=${linkedinApiMode}`);
         
         // *** SINGLE THREAD LOGIC ***
         // Try to find an existing chat with this candidate to avoid creating duplicate threads
@@ -1800,7 +1816,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
             console.warn(`[executeStepAction] Send to existing chat ${existingChatId} failed (${r.status}), falling back to new chat`);
             const fd2 = new FormData();
             fd2.append('account_id', accountId); fd2.append('attendees_ids', profileId); fd2.append('text', msg);
-            if (needsInMail) { fd2.append('linkedin[api]', 'recruiter'); fd2.append('linkedin[inmail]', 'true'); if (subj) fd2.append('subject', subj); }
+            if (needsInMail) { fd2.append('linkedin[api]', linkedinApiMode); fd2.append('linkedin[inmail]', 'true'); if (subj) fd2.append('subject', subj); }
             r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd2 });
           }
         } else {
@@ -1808,7 +1824,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           console.log(`[executeStepAction] No existing chat found for ${(enrollment as any).profile_name}, creating new`);
           const fd = new FormData();
           fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
-          if (needsInMail) { fd.append('linkedin[api]', 'recruiter'); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
+          if (needsInMail) { fd.append('linkedin[api]', linkedinApiMode); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
           r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
         }
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Unipile ${r.status}: ${e}` }; }
