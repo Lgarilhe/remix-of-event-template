@@ -1183,7 +1183,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                       </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground mt-2">
-                                      Le message sera généré automatiquement par l'IA.
+                                      L'IA générera un message personnalisé pour chaque candidat au moment de l'envoi, basé sur son profil LinkedIn, l'historique CRM et le brief du poste. Vous pouvez ajouter une instruction spécifique ci-dessous.
                                     </p>
                                   </div>
                                 ) : (
