@@ -1079,7 +1079,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   const content = (
     <div className="fixed inset-0 z-[4000] bg-background flex flex-col">
       {/* Top bar — clean, minimal */}
-      <div className="h-12 sm:h-14 border-b border-border/60 flex items-center justify-between px-3 sm:px-5 shrink-0 bg-background">
+      <div className="h-12 sm:h-14 border-b border-border/60 flex items-center justify-between px-3 sm:px-5 shrink-0 bg-background relative z-10">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <button
             onClick={onClose}
