@@ -929,9 +929,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
       case 'senders':
         return (
-          <div className="space-y-6 max-w-2xl">
+          <div className="space-y-8 max-w-2xl">
             <div>
-              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Expéditeurs</h2>
+              <h2 className="text-xl font-semibold mb-1">Expéditeurs</h2>
               <p className="text-sm text-muted-foreground">Configurez qui envoie les messages. Activez le multi-sender pour répartir la charge.</p>
             </div>
             <MultiSenderSettings
