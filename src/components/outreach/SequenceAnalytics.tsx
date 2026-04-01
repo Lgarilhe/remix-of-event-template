@@ -496,7 +496,12 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                   </div>
                 )}
               </>
-            )}
+                )}
+
+                {/* A/B Test Results */}
+                {abResults.length > 0 && (
+                  <ABTestResults results={abResults} />
+                )}
           </div>
         </ScrollArea>
       </SheetContent>

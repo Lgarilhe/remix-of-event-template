@@ -748,8 +748,15 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                               </span>
                                             )}
                                             {exec.status === 'skipped' && exec.skip_reason && (
-                                              <span className="text-muted-foreground">
-                                                {exec.skip_reason}
+                                              <span className={cn(
+                                                "text-muted-foreground flex items-center gap-1",
+                                                isChannelSkip && "italic"
+                                              )}>
+                                                {isChannelSkip && <span>⏭️</span>}
+                                                {isChannelSkip 
+                                                  ? `Étape ${step.step_order + 1} skippée — canal indisponible`
+                                                  : exec.skip_reason
+                                                }
                                               </span>
                                             )}
                                             {exec.status === 'cancelled' && exec.skip_reason && (
