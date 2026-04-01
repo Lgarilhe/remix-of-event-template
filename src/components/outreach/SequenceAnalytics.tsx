@@ -90,6 +90,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   const [selectedSeqId, setSelectedSeqId] = useState<string>(sequenceId || 'all');
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'7' | '30' | '90'>('30');
+  const [abResults, setAbResults] = useState<VariantResult[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
