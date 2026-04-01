@@ -1160,7 +1160,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
         {/* Main content */}
         <div className="flex-1 overflow-y-auto bg-background">
-          <div className="p-8 max-w-3xl mx-auto">
+          <div className="p-4 sm:p-8 max-w-3xl mx-auto">
             {mode === 'wizard' ? (
               <AnimatePresence mode="wait">
                 <motion.div
