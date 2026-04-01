@@ -319,6 +319,19 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     payload.currently_using_any_of_technology_uids = dbTechnologies;
   }
 
+  // Organization job titles (open positions at employer)
+  const dbOrgJobTitles = params.db_org_job_titles as string | undefined;
+  if (dbOrgJobTitles) {
+    const titles = dbOrgJobTitles.split(',').map((t: string) => t.trim()).filter(Boolean);
+    if (titles.length) payload.q_organization_job_titles = titles;
+  }
+
+  // Organization number of jobs range
+  const dbOrgNumJobsMin = params.db_org_num_jobs_min as number | string | undefined;
+  const dbOrgNumJobsMax = params.db_org_num_jobs_max as number | string | undefined;
+  if (dbOrgNumJobsMin !== undefined && dbOrgNumJobsMin !== '') payload['organization_num_jobs_range[min]'] = Number(dbOrgNumJobsMin);
+  if (dbOrgNumJobsMax !== undefined && dbOrgNumJobsMax !== '') payload['organization_num_jobs_range[max]'] = Number(dbOrgNumJobsMax);
+
   // Company headcount (shared filter, Apollo-specific format)
   const headcount = params.company_headcount as string[] | undefined;
   if (headcount?.length) {

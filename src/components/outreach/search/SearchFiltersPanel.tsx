@@ -13,11 +13,13 @@ import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
 import { Job } from '@/types/jobs';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Search, Loader2, AlertTriangle, Lock, Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface SearchFiltersPanelProps {
   // Account
@@ -45,6 +47,7 @@ interface SearchFiltersPanelProps {
 
   // Search source
   searchSource?: 'linkedin' | 'database';
+  onSearchSourceChange?: (source: 'linkedin' | 'database') => void;
   
   // Quota
   quota: {
@@ -88,6 +91,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   subscriptions,
   activeProject,
   searchSource,
+  onSearchSourceChange,
   quota,
   onSearch,
   onClearFilters,
@@ -127,7 +131,47 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </Alert>
       )}
 
-      {/* Account selector */}
+      {/* Source Toggle: Apollo (Base Konekt) vs LinkedIn */}
+      {onSearchSourceChange && (
+        <div className="bg-background border border-foreground p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                🔍 Source
+              </span>
+              <span className={cn(
+                "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border",
+                searchSource === 'database'
+                  ? "border-emerald-500/30 text-emerald-600 bg-emerald-50"
+                  : "border-blue-500/30 text-blue-600 bg-blue-50"
+              )}>
+                {searchSource === 'database' ? '🟢 Base Konekt · 232M+' : '🔵 LinkedIn'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors", searchSource === 'database' ? 'text-foreground' : 'text-muted-foreground/50')}>
+                Apollo
+              </span>
+              <Switch
+                checked={searchSource === 'linkedin'}
+                onCheckedChange={(checked) => onSearchSourceChange(checked ? 'linkedin' : 'database')}
+                className="data-[state=checked]:bg-blue-500"
+              />
+              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors", searchSource === 'linkedin' ? 'text-foreground' : 'text-muted-foreground/50')}>
+                LinkedIn
+              </span>
+            </div>
+          </div>
+          {searchSource === 'linkedin' && accounts.length === 0 && (
+            <p className="text-[10px] text-destructive mt-1.5">
+              ⚠️ Aucun compte LinkedIn connecté. Connectez-en un dans Paramètres.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Account selector — only visible in LinkedIn mode */}
+      {searchSource !== 'database' && (
       <div className="bg-background border border-foreground p-3 space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compte</label>
@@ -251,6 +295,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           </Alert>
         )}
       </div>
+      )}
 
       {/* Job Selector — hidden when in mission context (job auto-selected) */}
       {!activeProject && (

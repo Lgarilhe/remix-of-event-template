@@ -900,16 +900,18 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           </FilterGroup>
         </FilterSection>
 
-        {/* ===== RECRUITER / ADVANCED FILTERS (extracted) ===== */}
-        <RecruiterFiltersSection
-          filters={filters}
-          onChange={onChange}
-          accountId={accountId}
-          isOpen={openSections.recruiter}
-          onToggle={() => toggleSection('recruiter')}
-          activeFiltersPreview={recruiterFiltersPreview}
-          countRecruiterFilters={countRecruiterFilters}
-        />
+        {/* ===== RECRUITER / ADVANCED FILTERS — LinkedIn only ===== */}
+        {filters.api !== 'database' && (
+          <RecruiterFiltersSection
+            filters={filters}
+            onChange={onChange}
+            accountId={accountId}
+            isOpen={openSections.recruiter}
+            onToggle={() => toggleSection('recruiter')}
+            activeFiltersPreview={recruiterFiltersPreview}
+            countRecruiterFilters={countRecruiterFilters}
+          />
+        )}
 
         {/* ===== BASE KONEKT FILTERS (database only) ===== */}
         {filters.api === 'database' && (

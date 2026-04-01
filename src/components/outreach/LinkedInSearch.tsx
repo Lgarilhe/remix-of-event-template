@@ -61,12 +61,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onAccountChange,
   activeProject,
   onProjectChange,
-  searchSource = 'linkedin',
+  searchSource: initialSearchSource = 'linkedin',
 }) => {
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [scoringInstructions, setScoringInstructions] = useLocalState('');
+
+  // Internal search source toggle (Apollo vs LinkedIn)
+  const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
+
+  // Handler to toggle search source — preserves common filters, swaps api type
+  const handleSearchSourceChange = useCallback((source: 'linkedin' | 'database') => {
+    setSearchSource(source);
+  }, []);
 
   // Auto-generate scoring instructions from brief's evaluation criteria
   React.useEffect(() => {
@@ -362,12 +370,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, selectedAccount]);
 
-  // Force API type to 'database' when using Base Konekt
+  // Force API type to match searchSource toggle
   useEffect(() => {
     if (searchSource === 'database' && search.filters.api !== 'database') {
       search.setFilters(f => ({ ...f, api: 'database' }));
+    } else if (searchSource === 'linkedin' && search.filters.api === 'database') {
+      // When switching back to LinkedIn, restore appropriate API mode
+      if (subscriptions?.recruiter) {
+        search.setFilters(f => ({ ...f, api: 'recruiter' }));
+      } else if (subscriptions?.sales_navigator) {
+        search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
+      } else {
+        search.setFilters(f => ({ ...f, api: 'classic' }));
+      }
     }
-  }, [searchSource, search.filters.api]);
+  }, [searchSource, search.filters.api, subscriptions]);
 
   // Treated/dismissed counts
   const treatedCount = useMemo(() => {
@@ -693,6 +710,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       subscriptions={subscriptions}
       activeProject={activeProject || null}
       searchSource={searchSource}
+      onSearchSourceChange={handleSearchSourceChange}
       quota={{
         quotas: search.quota.quotas,
         apiMode: search.quota.apiMode,

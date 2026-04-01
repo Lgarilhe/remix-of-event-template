@@ -173,6 +173,9 @@ export interface LinkedInFiltersState {
   db_revenue_max: string;
   db_funding_stage: string;              // Seed | Series A | B | C | D | IPO
   db_company_domain: string;             // Free text
+  db_org_job_titles: string;             // Job titles open at employer
+  db_org_num_jobs_min: string;           // Min open positions
+  db_org_num_jobs_max: string;           // Max open positions
 }
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
@@ -235,6 +238,9 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   db_revenue_max: '',
   db_funding_stage: '',
   db_company_domain: '',
+  db_org_job_titles: '',
+  db_org_num_jobs_min: '',
+  db_org_num_jobs_max: '',
 };
 
 // Predefined day ranges for activity filters
