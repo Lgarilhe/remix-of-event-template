@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LinkedInProfile } from '@/components/outreach/types';
@@ -14,11 +14,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
-  X, ArrowLeft, ArrowRight, Check, CheckCircle, AlertTriangle, AlertCircle,
+  X, Check, CheckCircle, AlertTriangle,
   Sparkles, RefreshCw, Pencil, Eye, Send, Users, Mail, MessageSquare,
-  Linkedin, Phone, Loader2, ChevronLeft, ChevronRight, Search, Zap,
-  Clock, GitBranch,
+  Linkedin, Loader2, ChevronLeft, ChevronRight, Search, Zap,
+  Clock, GitBranch, ListChecks,
 } from 'lucide-react';
+import { CandidateSidebarCard } from './enrollment-preview/CandidateSidebarCard';
+import { CandidateContextHeader } from './enrollment-preview/CandidateContextHeader';
+import { ScoringPopover } from './enrollment-preview/ScoringPopover';
+import { HistoryPopover } from './enrollment-preview/HistoryPopover';
+import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
+import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
 
 // ── Types ──
 
@@ -136,14 +142,80 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const [page, setPage] = useState(0);
   const pageSize = 10;
 
+  // ── Candidate states (remove/skip) ──
+  const [candidateStates, setCandidateStates] = useState<CandidateStatesMap>(new Map());
+  const [scoringPopoverId, setScoringPopoverId] = useState<string | null>(null);
+  const [historyPopoverId, setHistoryPopoverId] = useState<string | null>(null);
+  // Score cache
+  const [scoreCache, setScoreCache] = useState<Map<string, { score: number | null; recommendation: string | null }>>(new Map());
+  const scoreFetchedRef = useRef(false);
+
+  // Fetch scores for all candidates at mount
+  useEffect(() => {
+    if (scoreFetchedRef.current || !job?.id || profiles.length === 0) return;
+    scoreFetchedRef.current = true;
+
+    const fetchScores = async () => {
+      const { data } = await supabase
+        .from('job_candidate_status')
+        .select('candidate_id, score, recommendation')
+        .eq('job_id', job!.id)
+        .in('candidate_id', profiles.map(p => p.id));
+
+      if (data) {
+        const map = new Map<string, { score: number | null; recommendation: string | null }>();
+        data.forEach((r: any) => map.set(r.candidate_id, { score: r.score, recommendation: r.recommendation }));
+        setScoreCache(map);
+      }
+    };
+    fetchScores();
+  }, [job?.id, profiles]);
+
+  const getCandidateState = useCallback((id: string): CandidateState =>
+    candidateStates.get(id) || { removed: false, skipped: false }, [candidateStates]);
+
+  const handleRemoveCandidate = useCallback((id: string) => {
+    const name = profiles.find(p => p.id === id)?.name || 'Candidat';
+    setCandidateStates(prev => {
+      const next = new Map(prev);
+      next.set(id, { ...getCandidateState(id), removed: true });
+      return next;
+    });
+    toast(`${name} retiré de la sélection`, {
+      action: {
+        label: 'Annuler',
+        onClick: () => {
+          setCandidateStates(prev => {
+            const next = new Map(prev);
+            next.set(id, { ...getCandidateState(id), removed: false });
+            return next;
+          });
+        },
+      },
+    });
+  }, [profiles, getCandidateState]);
+
+  const handleSkipCandidate = useCallback((id: string) => {
+    setCandidateStates(prev => {
+      const next = new Map(prev);
+      const current = getCandidateState(id);
+      next.set(id, { ...current, skipped: !current.skipped });
+      return next;
+    });
+  }, [getCandidateState]);
+
+  // Active profiles (not removed, not skipped)
+  const activeProfiles = useMemo(() =>
+    profiles.filter(p => {
+      const s = getCandidateState(p.id);
+      return !s.removed && !s.skipped;
+    }), [profiles, getCandidateState, candidateStates]);
+
   useEffect(() => {
     if (!candidateIds.length) {
-      if (selectedCandidateId) {
-        setSelectedCandidateId('');
-      }
+      if (selectedCandidateId) setSelectedCandidateId('');
       return;
     }
-
     if (!selectedCandidateId || !candidateIds.includes(selectedCandidateId)) {
       setSelectedCandidateId(candidateIds[0]);
     }
@@ -169,13 +241,14 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   );
 
   const filteredProfiles = useMemo(() => {
-    if (!searchQuery.trim()) return profiles;
+    const list = profiles.filter(p => !getCandidateState(p.id).removed);
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
-    return profiles.filter(p =>
+    return list.filter(p =>
       (p.name || '').toLowerCase().includes(q) ||
       (p.headline || '').toLowerCase().includes(q)
     );
-  }, [profiles, searchQuery]);
+  }, [profiles, searchQuery, candidateStates, getCandidateState]);
 
   const pagedProfiles = useMemo(() => {
     return filteredProfiles.slice(page * pageSize, (page + 1) * pageSize);
@@ -183,23 +256,16 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   const totalPages = Math.ceil(filteredProfiles.length / pageSize);
 
-  useEffect(() => {
-    setPage(0);
-  }, [searchQuery]);
+  useEffect(() => { setPage(0); }, [searchQuery]);
 
   useEffect(() => {
-    if (page > 0 && page >= totalPages) {
-      setPage(Math.max(totalPages - 1, 0));
-    }
+    if (page > 0 && page >= totalPages) setPage(Math.max(totalPages - 1, 0));
   }, [page, totalPages]);
 
   const handleSelectCandidate = (id: string) => {
     setSelectedCandidateId(id);
-    // Lazy generate
     const existing = messageSteps.every(s => getPreview(id, s.stepId)?.isGenerated);
-    if (!existing) {
-      generateForCandidateById(id);
-    }
+    if (!existing) generateForCandidateById(id);
   };
 
   const toggleEditing = (stepId: string) => {
@@ -210,6 +276,37 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       return next;
     });
   };
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    if (!isOpen || mode !== 'preview' || enrollResults) return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const currentIdx = filteredProfiles.findIndex(p => p.id === selectedCandidateId);
+
+      if (e.key === 'ArrowDown' && currentIdx < filteredProfiles.length - 1) {
+        e.preventDefault();
+        handleSelectCandidate(filteredProfiles[currentIdx + 1].id);
+      } else if (e.key === 'ArrowUp' && currentIdx > 0) {
+        e.preventDefault();
+        handleSelectCandidate(filteredProfiles[currentIdx - 1].id);
+      } else if ((e.key === 'Delete' || e.key === 'x') && selectedCandidateId) {
+        e.preventDefault();
+        handleRemoveCandidate(selectedCandidateId);
+      } else if (e.key === ' ' && selectedCandidateId) {
+        e.preventDefault();
+        handleSkipCandidate(selectedCandidateId);
+      } else if (e.key === 'Enter' && selectedCandidateId) {
+        e.preventDefault();
+        generateForCandidateById(selectedCandidateId);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, mode, enrollResults, filteredProfiles, selectedCandidateId, handleRemoveCandidate, handleSkipCandidate]);
 
   // ── Enrollment Logic ──
 
@@ -225,7 +322,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       const userId = user?.id || '00000000-0000-0000-0000-000000000000';
       const firstStep = sequence.steps.find((s: any) => (s.step_order ?? s.stepOrder) === 0) || sequence.steps[0];
 
-      for (const profile of profiles) {
+      for (const profile of activeProfiles) {
         try {
           const { data: existing } = await supabase
             .from('sequence_enrollments')
@@ -246,7 +343,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             ? 'THIRD_DEGREE'
             : typeof networkDist === 'string' ? networkDist : null;
 
-          // Get any message overrides for this candidate
           const overrides = getMessageOverrides(profile.id);
 
           const { data: enrollment, error: enrollError } = await supabase
@@ -265,7 +361,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               current_step_order: 0,
               status: 'active',
               network_distance: normalizedDistance,
-              // Store overrides in metadata if any
               ...(Object.keys(overrides).length > 0 ? { tracking_data: { message_overrides: overrides } } : {}),
             })
             .select()
@@ -324,6 +419,42 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     }
   };
 
+  // ── Shortlist without message ──
+  const handleShortlist = async () => {
+    if (!job?.id) {
+      toast.error("Aucun poste associé pour la shortlist");
+      return;
+    }
+    setIsEnrolling(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+      let count = 0;
+
+      for (const profile of activeProfiles) {
+        await supabase
+          .from('job_candidate_status')
+          .upsert({
+            job_id: job.id,
+            candidate_id: profile.id,
+            candidate_name: profile.name || null,
+            candidate_headline: profile.headline || null,
+            linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
+            status: 'shortlisted',
+            created_by: userId,
+          }, { onConflict: 'job_id,candidate_id,created_by' });
+        count++;
+      }
+
+      toast.success(`${count} candidat(s) ajouté(s) à la shortlist`);
+      onSuccess();
+    } catch {
+      toast.error("Erreur lors de l'ajout à la shortlist");
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
   const handleClose = () => {
     if (enrollResults?.success) onSuccess();
     else onClose();
@@ -346,7 +477,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               Inscription · {sequence.name}
             </h2>
             <p className="text-[11px] text-muted-foreground">
-              {profiles.length} candidat{profiles.length > 1 ? 's' : ''} · {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
+              {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''} · {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
             </p>
           </div>
         </div>
@@ -382,6 +513,18 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         </div>
       </div>
 
+      {/* Dynamic summary banner */}
+      {mode === 'preview' && !enrollResults && !isSingle && (
+        <DynamicSummaryBanner
+          profiles={profiles}
+          states={candidateStates}
+          generatedCount={generatedCount}
+          totalToGenerate={totalToGenerate}
+          estimatedCredits={estimatedCredits}
+          hasAiSteps={hasAiSteps}
+        />
+      )}
+
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
         <AnimatePresence initial={false}>
@@ -404,6 +547,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             >
               <SummaryMode
                 profiles={profiles}
+                activeProfiles={activeProfiles}
                 steps={steps}
                 candidateAnalysis={candidateAnalysis}
                 estimatedCredits={estimatedCredits}
@@ -413,6 +557,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 onSwitchToPreview={() => setMode('preview')}
                 isEnrolling={isEnrolling}
                 onEnroll={handleEnroll}
+                onShortlist={handleShortlist}
+                onClose={handleClose}
+                jobId={job?.id}
               />
             </motion.div>
           ) : (
@@ -423,9 +570,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               exit={{ opacity: 0, x: 10 }}
               className="flex-1 flex flex-col sm:flex-row overflow-hidden"
             >
-              {/* Candidate Sidebar (hidden for single) */}
+              {/* Candidate Sidebar */}
               {!isSingle && (
-                <div className="w-full sm:w-64 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0 max-h-[200px] sm:max-h-none">
+                <div className="w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0 max-h-[200px] sm:max-h-none">
                   <div className="p-2 border-b border-border">
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -441,35 +588,43 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   <ScrollArea className="flex-1">
                     <div className="p-1 space-y-0.5">
                       {pagedProfiles.map(p => {
-                        const isSelected = p.id === selectedCandidateId;
                         const allGenerated = messageSteps.every(s => getPreview(p.id, s.stepId)?.isGenerated);
                         const hasEdits = messageSteps.some(s => getPreview(p.id, s.stepId)?.isEdited);
+                        const state = getCandidateState(p.id);
+                        const cachedScore = scoreCache.get(p.id);
 
                         return (
-                          <button
-                            key={p.id}
-                            onClick={() => handleSelectCandidate(p.id)}
-                            className={cn(
-                              "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors",
-                              isSelected ? "bg-foreground/5 ring-1 ring-foreground/10" : "hover:bg-muted/50"
-                            )}
-                          >
-                            {p.profile_picture_url ? (
-                              <img src={p.profile_picture_url} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
-                            ) : (
-                              <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-                                <span className="text-[10px] font-medium">{p.name?.charAt(0) || '?'}</span>
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium truncate">{p.name}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{p.headline}</p>
-                            </div>
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              {allGenerated && <Check className="w-3 h-3 text-emerald-500" />}
-                              {hasEdits && <Pencil className="w-2.5 h-2.5 text-amber-500" />}
-                            </div>
-                          </button>
+                          <React.Fragment key={p.id}>
+                            <ScoringPopover
+                              candidateId={p.id}
+                              jobId={job?.id}
+                              isOpen={scoringPopoverId === p.id}
+                              onOpenChange={open => setScoringPopoverId(open ? p.id : null)}
+                            >
+                              <HistoryPopover
+                                candidateId={p.id}
+                                linkedinUrl={p.profile_url || p.public_profile_url || null}
+                                isOpen={historyPopoverId === p.id}
+                                onOpenChange={open => setHistoryPopoverId(open ? p.id : null)}
+                              >
+                                <div>
+                                  <CandidateSidebarCard
+                                    profile={p}
+                                    isSelected={p.id === selectedCandidateId}
+                                    allGenerated={allGenerated}
+                                    hasEdits={hasEdits}
+                                    state={state}
+                                    score={cachedScore?.score}
+                                    onSelect={() => handleSelectCandidate(p.id)}
+                                    onRemove={() => handleRemoveCandidate(p.id)}
+                                    onSkip={() => handleSkipCandidate(p.id)}
+                                    onViewScoring={() => setScoringPopoverId(p.id)}
+                                    onViewHistory={() => setHistoryPopoverId(p.id)}
+                                  />
+                                </div>
+                              </HistoryPopover>
+                            </ScoringPopover>
+                          </React.Fragment>
                         );
                       })}
                     </div>
@@ -536,25 +691,12 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 <ScrollArea className="flex-1 p-4 sm:p-6">
                   {selectedProfile ? (
                     <div className="max-w-2xl mx-auto space-y-4">
-                      {/* Candidate header */}
-                      <div className="flex items-center gap-3 pb-4 border-b border-border">
-                        {selectedProfile.profile_picture_url ? (
-                          <img src={selectedProfile.profile_picture_url} alt="" className="w-10 h-10 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                            <span className="text-sm font-medium">{selectedProfile.name?.charAt(0) || '?'}</span>
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <h3 className="text-sm font-semibold">{selectedProfile.name}</h3>
-                          <p className="text-xs text-muted-foreground truncate">{selectedProfile.headline}</p>
-                        </div>
-                        {selectedProfile.contact_info?.emails?.length ? (
-                          <Badge variant="outline" className="ml-auto text-[10px] gap-1">
-                            <Mail className="w-2.5 h-2.5" /> Email
-                          </Badge>
-                        ) : null}
-                      </div>
+                      {/* Enriched candidate context header */}
+                      <CandidateContextHeader
+                        profile={selectedProfile}
+                        score={scoreCache.get(selectedProfile.id)}
+                        linkedinUrl={selectedProfile.profile_url || selectedProfile.public_profile_url || null}
+                      />
 
                       {/* Steps */}
                       {steps.map((step, idx) => {
@@ -597,28 +739,41 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   )}
                 </ScrollArea>
 
-                {/* Bottom bar */}
-                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background flex items-center justify-between">
-                  <Button variant="ghost" onClick={handleClose} className="h-8 px-3 text-xs">
+                {/* Bottom bar — 3 buttons */}
+                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
+                  <Button variant="ghost" onClick={handleClose} className="h-8 px-3 text-xs text-muted-foreground">
                     Annuler
                   </Button>
-                  <Button
-                    onClick={handleEnroll}
-                    disabled={isEnrolling}
-                    className="h-8 px-4 text-xs gap-1.5 bg-foreground text-background hover:bg-foreground/90"
-                  >
-                    {isEnrolling ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Inscription…
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5" />
-                        Confirmer et enrôler {profiles.length} candidat{profiles.length > 1 ? 's' : ''}
-                      </>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    {job?.id && (
+                      <Button
+                        variant="outline"
+                        onClick={handleShortlist}
+                        disabled={isEnrolling || activeProfiles.length === 0}
+                        className="h-8 px-3 text-xs gap-1.5"
+                      >
+                        <ListChecks className="w-3.5 h-3.5" />
+                        Shortlister sans message
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      onClick={handleEnroll}
+                      disabled={isEnrolling || activeProfiles.length === 0}
+                      className="h-8 px-4 text-xs gap-1.5 bg-foreground text-background hover:bg-foreground/90"
+                    >
+                      {isEnrolling ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Inscription…
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          Enrôler {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -671,7 +826,6 @@ function MessageStepCard({
 
   return (
     <div className={cn("rounded-lg border overflow-hidden", colorClass)}>
-      {/* Step header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-current/10">
         <div className="flex items-center gap-1.5">
           <Icon className="w-3.5 h-3.5" />
@@ -691,19 +845,12 @@ function MessageStepCard({
         <div className="ml-auto flex items-center gap-1">
           {preview?.isGenerated && (
             <>
-              <button
-                onClick={onRegenerate}
-                className="p-1 rounded hover:bg-current/10 transition-colors"
-                title="Regénérer"
-              >
+              <button onClick={onRegenerate} className="p-1 rounded hover:bg-current/10 transition-colors" title="Regénérer">
                 <RefreshCw className="w-3 h-3" />
               </button>
               <button
                 onClick={onToggleEdit}
-                className={cn(
-                  "p-1 rounded transition-colors",
-                  isEditing ? "bg-current/15" : "hover:bg-current/10"
-                )}
+                className={cn("p-1 rounded transition-colors", isEditing ? "bg-current/15" : "hover:bg-current/10")}
                 title={isEditing ? "Voir" : "Modifier"}
               >
                 <Pencil className="w-3 h-3" />
@@ -713,7 +860,6 @@ function MessageStepCard({
         </div>
       </div>
 
-      {/* Content */}
       <div className="px-3 py-3 bg-background/80">
         {preview?.isGenerating ? (
           <div className="space-y-2">
@@ -789,10 +935,11 @@ function MessageStepCard({
 }
 
 function SummaryMode({
-  profiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, isBulk,
-  onSwitchToPreview, isEnrolling, onEnroll,
+  profiles, activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, isBulk,
+  onSwitchToPreview, isEnrolling, onEnroll, onShortlist, onClose, jobId,
 }: {
   profiles: LinkedInProfile[];
+  activeProfiles: LinkedInProfile[];
   steps: SequenceStepPreview[];
   candidateAnalysis: { total: number; withEmail: number; withoutEmail: number; withPhone: number; withoutPhone: number };
   estimatedCredits: number;
@@ -802,10 +949,12 @@ function SummaryMode({
   onSwitchToPreview: () => void;
   isEnrolling: boolean;
   onEnroll: () => void;
+  onShortlist: () => void;
+  onClose: () => void;
+  jobId?: string;
 }) {
   const emailSteps = steps.filter(s => s.actionType === 'email');
   const whatsappSteps = steps.filter(s => s.actionType === 'whatsapp_message');
-  const linkedinSteps = steps.filter(s => ['message', 'smart_message', 'inmail', 'connection_request'].includes(s.actionType));
 
   return (
     <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">
@@ -815,13 +964,12 @@ function SummaryMode({
         </div>
         <h3 className="text-lg font-semibold">Récapitulatif de l'enrollment</h3>
         <p className="text-sm text-muted-foreground">
-          {profiles.length} candidat{profiles.length > 1 ? 's' : ''} sélectionné{profiles.length > 1 ? 's' : ''}
+          {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''} sélectionné{activeProfiles.length > 1 ? 's' : ''}
         </p>
       </div>
 
-      {/* Analysis cards */}
       <div className="space-y-2">
-        <SummaryRow icon={CheckCircle} color="text-emerald-600" label="Candidats avec LinkedIn" count={profiles.length} />
+        <SummaryRow icon={CheckCircle} color="text-emerald-600" label="Candidats avec LinkedIn" count={activeProfiles.length} />
         {candidateAnalysis.withEmail > 0 && (
           <SummaryRow icon={Mail} color="text-blue-600" label="Avec email" count={candidateAnalysis.withEmail} />
         )}
@@ -833,7 +981,6 @@ function SummaryMode({
         )}
       </div>
 
-      {/* Steps overview */}
       <div className="border border-border rounded-lg overflow-hidden">
         <div className="px-3 py-2 bg-muted/30 border-b border-border">
           <span className="text-[11px] font-medium uppercase tracking-wider">Séquence — {steps.length} étapes</span>
@@ -863,7 +1010,6 @@ function SummaryMode({
         </div>
       </div>
 
-      {/* Credits estimation */}
       {hasAiSteps && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
           <Sparkles className="w-3.5 h-3.5 shrink-0" />
@@ -871,25 +1017,8 @@ function SummaryMode({
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* 3-button footer */}
       <div className="flex flex-col gap-2 pt-2">
-        <Button
-          onClick={onEnroll}
-          disabled={isEnrolling}
-          className="w-full h-10 gap-2 bg-foreground text-background hover:bg-foreground/90"
-        >
-          {isEnrolling ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Inscription en cours…
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              Enrôler directement ({profiles.length} candidat{profiles.length > 1 ? 's' : ''})
-            </>
-          )}
-        </Button>
         {hasMessageSteps && (
           <Button
             variant="outline"
@@ -897,9 +1026,42 @@ function SummaryMode({
             className="w-full h-9 gap-2 text-xs"
           >
             <Eye className="w-3.5 h-3.5" />
-            Voir les previews des messages
+            Ouvrir la préparation des previews
           </Button>
         )}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button variant="ghost" onClick={onClose} className="sm:flex-1 h-9 text-xs text-muted-foreground">
+            Annuler
+          </Button>
+          {jobId && (
+            <Button
+              variant="outline"
+              onClick={onShortlist}
+              disabled={isEnrolling || activeProfiles.length === 0}
+              className="sm:flex-1 h-9 gap-1.5 text-xs"
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              Shortlister sans message
+            </Button>
+          )}
+          <Button
+            onClick={onEnroll}
+            disabled={isEnrolling || activeProfiles.length === 0}
+            className="sm:flex-1 h-10 gap-2 bg-foreground text-background hover:bg-foreground/90"
+          >
+            {isEnrolling ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Inscription en cours…
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Enrôler {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
