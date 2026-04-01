@@ -784,10 +784,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onDeleteHistoryEntry={searchHistory.deleteEntry}
       scoringInstructions={scoringInstructions}
       onScoringInstructionsChange={setScoringInstructions}
+      onOpenFilterWizard={activeProject ? () => setWizardOpen(true) : undefined}
     />
   );
 
   return (
+    <>
+      {activeProject && (
+        <FilterWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          jobDetails={wizardJobDetails}
+          currentFilters={search.filters}
+          suggestions={wizardSuggestions}
+          onApply={handleWizardApply}
+        />
+      )}
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
       {/* Mobile: Filters button + Sheet */}
       <div className="lg:hidden">
