@@ -1,5 +1,6 @@
 // Deno.serve used directly
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth } from "../_shared/require-auth.ts";
 
 
@@ -104,6 +105,8 @@ interface ScoringResult {
   weightedCriteriaScore: number;
   semanticScore: number | null;
   llmScore: number | null;
+  pedigreeScore?: number | null;
+  notableCompanies?: string[] | null;
   finalScore: number;
   confidenceScore: number;
   dimensions: Record<string, DimensionScore>;
@@ -1562,7 +1565,7 @@ async function maybeEnrichProfile(
 
     if (!profile.summary && (data.about || data.summary)) {
       profile.summary = (data.about || data.summary).slice(0, 300);
-      console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary.slice(0, 80)}...`);
+      console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary!.slice(0, 80)}...`);
     }
     if ((!profile.skills || profile.skills.length === 0) && data.skills) {
       profile.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
@@ -1889,8 +1892,8 @@ Deno.serve(async (req) => {
     let resolvedUnipile: { apiKey: string; dsn: string } | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(userId, supabase);
-      resolvedUnipile = await resolveUnipileCredentials(orgId, supabase);
+      const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
+      resolvedUnipile = await resolveUnipileCredentials(orgId, supabase as any);
     } catch (e) {
       console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
       const envKey = Deno.env.get("UNIPILE_API_KEY");
@@ -1959,7 +1962,7 @@ Deno.serve(async (req) => {
       }
 
       // Layer 1: Hard filters
-      const hardFilterResult = applyHardFilters(p, job);
+      const hardFilterResult = await applyHardFilters(p, job);
       if (!hardFilterResult.passed) {
         const koResult: ScoringResult = {
           name: p.name,
@@ -2201,10 +2204,10 @@ Deno.serve(async (req) => {
     if (totalTokensInput + totalTokensOutput > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const orgId = await resolveOrgIdFromUser(userId, supabase);
-        if (orgId) {
+        const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
+        if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(supabase, {
+          settleCredits(supabase as any, {
             organizationId: orgId,
             userId,
             aiAction: aiParams.aiAction,

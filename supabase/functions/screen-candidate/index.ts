@@ -1,4 +1,5 @@
 // Deno.serve used directly
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
     let NOTION_API_KEY: string;
     try {
       const { resolveUnipileCredentials, resolveNotionCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(userId, svc);
+      const orgId = await resolveOrgIdFromUser(userId, svc as any);
       const uCreds = await resolveUnipileCredentials(orgId, svc);
       const nCreds = await resolveNotionCredentials(orgId, svc);
       UNIPILE_API_KEY = uCreds?.apiKey || Deno.env.get("UNIPILE_API_KEY") || '';
@@ -305,7 +306,7 @@ Retourne UNIQUEMENT le JSON, pas de texte autour.`;
   } catch (err) {
     console.error('[screen] Error:', err);
     return new Response(
-      JSON.stringify({ success: false, error: err.message }),
+      JSON.stringify({ success: false, error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

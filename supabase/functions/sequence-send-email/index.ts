@@ -366,7 +366,7 @@ Deno.serve(async (req) => {
     let aiSnippet: string | null = null;
     if (!pre_personalized_message && step.use_ai_personalization) {
       const orgId = sequence?.organization_id || enrollment.organization_id || null;
-      aiSnippet = await generateAiSnippet(supabase, enrollment, step, orgId);
+      aiSnippet = await generateAiSnippet(supabase as any, enrollment, step, orgId);
 
       if (aiSnippet) {
         // Insert at {ai_snippet} marker or prepend
