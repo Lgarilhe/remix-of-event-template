@@ -253,7 +253,8 @@ async function handleNewRelation(
 }
 
 async function handleMailReceived(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
 ) {
   const inReplyTo = payload.in_reply_to as string;
