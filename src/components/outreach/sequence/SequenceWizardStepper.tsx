@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { Check, Info, Users, Layers, Shield, Eye } from 'lucide-react';
+import { Check, AlertCircle, Info, Users, Layers, Shield, Eye } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export type WizardStep = 'info' | 'senders' | 'steps' | 'guardrails' | 'review';
 
@@ -9,7 +10,7 @@ const WIZARD_STEPS: { id: WizardStep; label: string; icon: typeof Info; descript
   { id: 'senders', label: 'Expéditeurs', icon: Users, description: 'Comptes & rotation' },
   { id: 'steps', label: 'Étapes', icon: Layers, description: 'Actions & messages' },
   { id: 'guardrails', label: 'Garde-fous', icon: Shield, description: 'Limites & sécurité' },
-  { id: 'review', label: 'Vérification', icon: Eye, description: 'Aperçu & activation' },
+  { id: 'review', label: 'Vérification', icon: Eye, description: 'Aperçu final' },
 ];
 
 interface SequenceWizardStepperProps {
@@ -25,11 +26,24 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
   completedSteps,
   validationErrors,
 }) => {
+  const currentIndex = WIZARD_STEPS.findIndex(s => s.id === currentStep);
+
   return (
-    <nav className="flex flex-col gap-1">
+    <nav className="relative flex flex-col" role="navigation" aria-label="Étapes du wizard">
+      {/* Vertical progress line */}
+      <div className="absolute left-[19px] top-5 bottom-5 w-px bg-border" />
+      <motion.div
+        className="absolute left-[19px] top-5 w-px bg-foreground"
+        initial={false}
+        animate={{ height: `${(currentIndex / Math.max(WIZARD_STEPS.length - 1, 1)) * 100}%` }}
+        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        style={{ maxHeight: 'calc(100% - 40px)' }}
+      />
+
       {WIZARD_STEPS.map((step, index) => {
         const isCurrent = currentStep === step.id;
         const isCompleted = completedSteps.has(step.id);
+        const isPast = index < currentIndex;
         const errors = validationErrors.get(step.id) || [];
         const hasErrors = errors.length > 0;
         const StepIcon = step.icon;
@@ -39,43 +53,52 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
             key={step.id}
             onClick={() => onStepChange(step.id)}
             className={cn(
-              "flex items-center gap-3 px-3 py-2.5 text-left transition-all border-l-2",
+              "relative flex items-start gap-3.5 px-2 py-3 text-left transition-colors group",
               isCurrent
-                ? "bg-foreground/5 border-l-foreground"
-                : isCompleted
-                  ? "border-l-green-500 hover:bg-muted/50"
-                  : "border-l-transparent hover:bg-muted/30"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground/80"
             )}
           >
-            <div className={cn(
-              "w-7 h-7 flex items-center justify-center shrink-0 text-xs font-bold",
-              isCurrent
-                ? "bg-foreground text-background"
-                : isCompleted
-                  ? "bg-green-100 text-green-700"
-                  : hasErrors
-                    ? "bg-destructive/10 text-destructive"
-                    : "bg-muted text-muted-foreground"
-            )}>
-              {isCompleted && !hasErrors ? (
-                <Check className="w-3.5 h-3.5" />
-              ) : (
-                <StepIcon className="w-3.5 h-3.5" />
-              )}
+            {/* Step indicator circle */}
+            <div className="relative z-10 shrink-0">
+              <motion.div
+                className={cn(
+                  "w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-semibold transition-colors border-2",
+                  isCurrent
+                    ? "bg-foreground text-background border-foreground"
+                    : isCompleted && !hasErrors
+                      ? "bg-emerald-500 text-white border-emerald-500"
+                      : hasErrors
+                        ? "bg-destructive/10 text-destructive border-destructive/40"
+                        : "bg-background text-muted-foreground border-border group-hover:border-foreground/30"
+                )}
+                initial={false}
+                animate={isCurrent ? { scale: [1, 1.1, 1] } : {}}
+                transition={{ duration: 0.3 }}
+              >
+                {isCompleted && !hasErrors ? (
+                  <Check className="w-3 h-3" />
+                ) : hasErrors ? (
+                  <AlertCircle className="w-3 h-3" />
+                ) : (
+                  <span>{index + 1}</span>
+                )}
+              </motion.div>
             </div>
-            <div className="flex-1 min-w-0">
+
+            {/* Label & description */}
+            <div className="flex-1 min-w-0 pt-0.5">
               <div className={cn(
-                "text-xs font-bold uppercase tracking-wider",
-                isCurrent ? "text-foreground" : "text-muted-foreground"
+                "text-[11px] font-semibold leading-tight transition-colors",
+                isCurrent ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"
               )}>
                 {step.label}
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">
-                {hasErrors ? (
-                  <span className="text-destructive">{errors.length} problème{errors.length > 1 ? 's' : ''}</span>
-                ) : (
-                  step.description
-                )}
+              <div className={cn(
+                "text-[10px] mt-0.5 leading-tight",
+                hasErrors ? "text-destructive" : "text-muted-foreground/70"
+              )}>
+                {hasErrors ? `${errors.length} problème${errors.length > 1 ? 's' : ''}` : step.description}
               </div>
             </div>
           </button>
