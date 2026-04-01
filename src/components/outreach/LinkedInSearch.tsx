@@ -4,6 +4,7 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
+import { FilterWizard } from '@/components/missions/FilterWizard';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
@@ -11,7 +12,7 @@ import { useFilteredResults, type ScoredSortBy } from '@/hooks/useFilteredResult
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { LinkedInProfile, INITIAL_FILTERS } from './types';
+import { LinkedInProfile, LinkedInFiltersState, INITIAL_FILTERS } from './types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { extractTraitsFromProfile, traitsToFilters } from '@/hooks/linkedin/extractSimilarFilters';
@@ -708,6 +709,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [search.results.length, search.hasSearched]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  // Get job details and suggestions from active project for the wizard
+  const wizardJobDetails = (activeProject?.job_details || {}) as import('@/types/jobDetails').JobDetails;
+  const wizardSuggestions = (activeProject?.filters_snapshot as any)?.suggestions || null;
+
+  const handleWizardApply = useCallback((patch: Partial<LinkedInFiltersState>) => {
+    search.setFilters(prev => ({ ...prev, ...patch }));
+    // Trigger search after applying
+    queueMicrotask(() => handleSearch(false));
+  }, [search.setFilters, handleSearch]);
 
   const filtersPanel = (
     <SearchFiltersPanel
@@ -772,10 +784,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onDeleteHistoryEntry={searchHistory.deleteEntry}
       scoringInstructions={scoringInstructions}
       onScoringInstructionsChange={setScoringInstructions}
+      onOpenFilterWizard={activeProject ? () => setWizardOpen(true) : undefined}
     />
   );
 
   return (
+    <>
+      {activeProject && (
+        <FilterWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          jobDetails={wizardJobDetails}
+          currentFilters={search.filters}
+          suggestions={wizardSuggestions}
+          onApply={handleWizardApply}
+        />
+      )}
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
       {/* Mobile: Filters button + Sheet */}
       <div className="lg:hidden">
@@ -884,5 +908,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         onApply={handleApplyRefinements}
       />
     </div>
+    </>
   );
 };

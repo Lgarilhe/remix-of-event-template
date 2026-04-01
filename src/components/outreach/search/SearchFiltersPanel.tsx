@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { Target } from '@phosphor-icons/react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
@@ -74,6 +75,7 @@ interface SearchFiltersPanelProps {
   // Scoring instructions
   scoringInstructions?: string;
   onScoringInstructionsChange?: (value: string) => void;
+  onOpenFilterWizard?: () => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -101,6 +103,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   onDeleteHistoryEntry,
   scoringInstructions = '',
   onScoringInstructionsChange,
+  onOpenFilterWizard,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -325,6 +328,15 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       <div className="space-y-3">
         {/* Filter actions */}
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenFilterWizard && (
+            <button
+              onClick={onOpenFilterWizard}
+              className="flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 transition-colors"
+            >
+              <Target className="w-3 h-3" weight="bold" />
+              Wizard filtres
+            </button>
+          )}
           <AutoFillFiltersButton
             selectedJob={selectedJob}
             accountId={selectedAccount}
