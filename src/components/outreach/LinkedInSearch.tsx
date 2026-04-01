@@ -71,14 +71,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Internal search source toggle (Apollo vs LinkedIn)
   const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
 
-  // Handler to toggle search source — preserves common filters, swaps api type, auto-relaunches search
+  // Handler to toggle search source — preserves common filters, swaps api type
   const handleSearchSourceChange = useCallback((source: 'linkedin' | 'database') => {
     setSearchSource(source);
-    // Auto-relaunch search after a tick so the api type effect fires first
-    setTimeout(() => {
-      handleSearch();
-    }, 50);
-  }, [handleSearch]);
+  }, []);
+
+  // Track previous search source to auto-relaunch search on toggle
+  const prevSearchSourceRef = useRef(searchSource);
 
   // Auto-generate scoring instructions from brief's evaluation criteria
   React.useEffect(() => {
