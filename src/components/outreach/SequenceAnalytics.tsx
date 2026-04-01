@@ -70,6 +70,14 @@ interface EnrollmentStats {
   avgResponseTimeHours: number | null;
 }
 
+interface VariantResult {
+  variant: string;
+  sent: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+}
+
 export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   isOpen,
   onClose,
