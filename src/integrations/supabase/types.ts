@@ -2495,6 +2495,50 @@ export type Database = {
           },
         ]
       }
+      member_email_accounts: {
+        Row: {
+          account_status: string | null
+          email_account_id: string
+          email_address: string | null
+          id: string
+          linked_at: string | null
+          linked_by: string
+          organization_id: string
+          provider: string | null
+          user_id: string
+        }
+        Insert: {
+          account_status?: string | null
+          email_account_id: string
+          email_address?: string | null
+          id?: string
+          linked_at?: string | null
+          linked_by: string
+          organization_id: string
+          provider?: string | null
+          user_id: string
+        }
+        Update: {
+          account_status?: string | null
+          email_account_id?: string
+          email_address?: string | null
+          id?: string
+          linked_at?: string | null
+          linked_by?: string
+          organization_id?: string
+          provider?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_email_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_linkedin_accounts: {
         Row: {
           id: string
