@@ -332,9 +332,9 @@ const generateRecommendedSequence = (): SequenceStep[] => {
 
 const isAction = (actionType: string) => ACTIONS.some(a => a.value === actionType);
 const isTrigger = (actionType: string) => TRIGGERS.some(t => t.value === actionType);
-const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message'].includes(type);
-const needsSubject = (type: string) => type === 'inmail';
-const canABTest = (type: string) => ['inmail', 'message', 'smart_message', 'connection_request'].includes(type);
+const needsMessage = (type: string) => ['inmail', 'email', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(type);
+const needsSubject = (type: string) => ['inmail', 'email'].includes(type);
+const canABTest = (type: string) => ['inmail', 'email', 'message', 'smart_message', 'connection_request', 'whatsapp_message'].includes(type);
 
 /** Group steps by variant_group (steps with same order but different variant) */
 const getVariantGroups = (steps: SequenceStep[]): Map<number, SequenceStep[]> => {
