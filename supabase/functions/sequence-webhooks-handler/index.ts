@@ -185,7 +185,8 @@ async function handleMessageReceived(
 }
 
 async function handleNewRelation(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
 ) {
   const userProviderId = payload.user_provider_id as string;
