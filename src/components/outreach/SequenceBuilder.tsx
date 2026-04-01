@@ -1357,22 +1357,36 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         </div>
 
         {/* Footer */}
-         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-foreground/10">
-           <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
-             Annuler
-           </Button>
-           <Button 
-             onClick={handleSave} 
-             disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-             className="bg-foreground text-background rounded-none"
-           >
-             {isSaving ? 'Enregistrement...' : (
-               <>
-                 <Save className="w-4 h-4 mr-2" />
-                 Enregistrer
-               </>
-             )}
-           </Button>
+        <div className="pt-4 border-t border-foreground/10 space-y-2">
+          {validationErrors.length > 0 && (
+            <div className="space-y-1">
+              {validationErrors.map((err, i) => (
+                <p key={i} className={cn(
+                  "text-xs",
+                  err.includes('inhabituelle') ? "text-amber-600" : "text-destructive"
+                )}>
+                  {err.includes('inhabituelle') ? '⚠️' : '❌'} {err}
+                </p>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+            <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
+              Annuler
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+              className="bg-foreground text-background rounded-none"
+            >
+              {isSaving ? 'Enregistrement...' : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Enregistrer
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
