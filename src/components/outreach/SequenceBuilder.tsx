@@ -446,6 +446,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 className="mt-1.5"
               />
             </div>
+
+            {/* Stop Conditions */}
+            <StopConditionsSettings
+              value={sequence.stopConditions || { on_reply: true, on_click: false, on_unsubscribe: true, on_meeting_booked: false }}
+              onChange={(stopConditions) => setSequence(prev => ({ ...prev, stopConditions }))}
+            />
+
+            {/* Multi-sender */}
+            <MultiSenderSettings
+              enabled={sequence.multiSenderEnabled || false}
+              onEnabledChange={(multiSenderEnabled) => setSequence(prev => ({ ...prev, multiSenderEnabled }))}
+              senderAccounts={sequence.senderAccounts || []}
+              onSenderAccountsChange={(senderAccounts) => setSequence(prev => ({ ...prev, senderAccounts }))}
+              rotationMode={sequence.rotationMode || 'round_robin'}
+              onRotationModeChange={(rotationMode) => setSequence(prev => ({ ...prev, rotationMode }))}
+            />
+
             {/* Template button - only show when creating new (no steps yet) */}
             {sequence.steps.length === 0 && !initialSequence && (
               <div className="p-4 border-2 border-dashed border-foreground/30 bg-muted/30">
