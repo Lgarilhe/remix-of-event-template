@@ -788,7 +788,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <div className="flex items-center justify-between">
                                 <Label>Message</Label>
                                 <div className="flex items-center gap-2">
-                                  <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => updateStep(step.id, { messageTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                                  <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => updateStep(step.id, { messageTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                                   {step.actionType === 'connection_request' && (
                                     <span className={cn("text-xs", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground")}>
                                       {step.messageTemplate?.length || 0}/300
