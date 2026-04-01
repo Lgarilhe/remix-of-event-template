@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
       }
 
       // Call retrieve_context_multi
-      const embeddingStr = `[${queryEmbedding.join(",")}]`;
+      const embeddingStr = `[${queryEmbedding!.join(",")}]`;
       const { data, error } = await svc.rpc("retrieve_context_multi", {
         p_org_id: organizationId,
         p_entity_ids: entityIds,
