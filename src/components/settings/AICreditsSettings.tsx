@@ -24,7 +24,7 @@ export const AICreditsSettings = () => {
   const { organizationId } = useOrganization();
   const { creditsRemaining, creditsTotal, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, periodEnd, refetch } = useAICredits();
   const { data: history = [], isLoading: isLoadingHistory } = useAICreditHistory();
-  const { modelId: defaultModel, setModelId: setDefaultModel } = useModelPreference();
+  const { modelId: defaultModel, setModelId: setDefaultModel } = useModelPreference(organizationId);
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
 
   // Handle Stripe checkout return
