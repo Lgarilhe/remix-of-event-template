@@ -3,7 +3,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   type Node,
@@ -39,63 +38,72 @@ interface WorkflowCanvasProps {
   onRemoveStep: (stepId: string) => void;
 }
 
-// ── Layout helpers ──
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 72;
-const V_GAP = 60;
-const H_GAP = 240;
-const ADD_NODE_SIZE = 36;
+// ── Layout constants ──
+const NODE_W = 210;
+const NODE_H = 72;
+const V_GAP = 52;
+const BRANCH_GAP = 280; // horizontal distance between branch centres
+const ADD_SIZE = 36;
+const STEP_GAP = NODE_H + V_GAP; // vertical distance per step
 
-const getBranchChain = (startStepId: string | undefined, allSteps: SequenceStep[]): SequenceStep[] => {
-  if (!startStepId) return [];
+// ── Helpers ──
+const getBranchChain = (startId: string | undefined, all: SequenceStep[]): SequenceStep[] => {
+  if (!startId) return [];
   const chain: SequenceStep[] = [];
-  let currentId: string | undefined = startStepId;
+  let cur: string | undefined = startId;
   const visited = new Set<string>();
-  while (currentId && currentId !== '__end__' && !visited.has(currentId)) {
-    visited.add(currentId);
-    const step = allSteps.find(s => s.id === currentId);
-    if (step) { chain.push(step); currentId = step.nextStepId; } else break;
+  while (cur && cur !== '__end__' && !visited.has(cur)) {
+    visited.add(cur);
+    const s = all.find(x => x.id === cur);
+    if (s) { chain.push(s); cur = s.nextStepId; } else break;
   }
   return chain;
 };
 
-const getAllBranchStepIds = (allSteps: SequenceStep[]): Set<string> => {
-  const branchIds = new Set<string>();
-  const collectChain = (stepId: string | undefined, visited: Set<string>) => {
-    if (!stepId || stepId === '__end__' || visited.has(stepId)) return;
-    visited.add(stepId); branchIds.add(stepId);
-    const step = allSteps.find(s => s.id === stepId);
-    if (step?.nextStepId) collectChain(step.nextStepId, visited);
-    if (step?.ifTrueGotoStep) collectChain(step.ifTrueGotoStep, visited);
-    if (step?.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
+const getAllBranchStepIds = (all: SequenceStep[]): Set<string> => {
+  const ids = new Set<string>();
+  const walk = (id: string | undefined, v: Set<string>) => {
+    if (!id || id === '__end__' || v.has(id)) return;
+    v.add(id); ids.add(id);
+    const s = all.find(x => x.id === id);
+    if (s?.nextStepId) walk(s.nextStepId, v);
+    if (s?.ifTrueGotoStep) walk(s.ifTrueGotoStep, v);
+    if (s?.ifFalseGotoStep) walk(s.ifFalseGotoStep, v);
   };
-  for (const step of allSteps) {
-    if (step.actionType === 'check_connection') {
-      const visited = new Set<string>();
-      if (step.ifTrueGotoStep) collectChain(step.ifTrueGotoStep, visited);
-      if (step.ifFalseGotoStep) collectChain(step.ifFalseGotoStep, visited);
+  for (const s of all) {
+    if (s.actionType === 'check_connection') {
+      const v = new Set<string>();
+      if (s.ifTrueGotoStep) walk(s.ifTrueGotoStep, v);
+      if (s.ifFalseGotoStep) walk(s.ifFalseGotoStep, v);
     }
   }
-  return branchIds;
+  return ids;
 };
 
-function buildLayout(steps: SequenceStep[], selectedStepId: string | null, onRemoveStep: (id: string) => void, onAddStep: WorkflowCanvasProps['onAddStep']) {
+// ── Colour palette ──
+const EDGE_DEFAULT = 'hsl(var(--border))';
+const EDGE_TRUE = 'hsl(152, 68%, 46%)';
+const EDGE_FALSE = 'hsl(25, 95%, 53%)';
+
+// ── Layout builder ──
+function buildLayout(
+  steps: SequenceStep[],
+  selectedStepId: string | null,
+  onRemoveStep: (id: string) => void,
+  onAddStep: WorkflowCanvasProps['onAddStep'],
+) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const branchStepIds = getAllBranchStepIds(steps);
+  const branchIds = getAllBranchStepIds(steps);
 
   if (steps.length === 0) {
-    nodes.push({
-      id: 'add-root',
-      type: 'addNode',
-      position: { x: 0, y: 0 },
-      data: { onClick: () => onAddStep() },
-    });
+    nodes.push({ id: 'add-root', type: 'addNode', position: { x: 0, y: 0 }, data: { onClick: () => onAddStep() } });
     return { nodes, edges };
   }
 
-  // Get main trunk steps (not in branches)
-  const mainSteps = steps.filter(s => !branchStepIds.has(s.id));
+  const mainSteps = steps.filter(s => !branchIds.has(s.id));
+  // Centre main trunk at x=0 (node placed at -NODE_W/2 so the centre is 0)
+  const mainX = -NODE_W / 2;
   let y = 0;
 
   mainSteps.forEach((step, idx) => {
@@ -104,11 +112,9 @@ function buildLayout(steps: SequenceStep[], selectedStepId: string | null, onRem
     nodes.push({
       id: step.id,
       type: 'stepNode',
-      position: { x: 0, y },
+      position: { x: mainX, y },
       data: {
-        step,
-        index: stepIndex,
-        allSteps: steps,
+        step, index: stepIndex, allSteps: steps,
         isSelected: selectedStepId === step.id,
         canRemove: steps.length > 1,
         onRemove: () => onRemoveStep(step.id),
@@ -121,75 +127,67 @@ function buildLayout(steps: SequenceStep[], selectedStepId: string | null, onRem
       if (prev.actionType !== 'check_connection') {
         edges.push({
           id: `e-${prev.id}-${step.id}`,
-          source: prev.id,
-          target: step.id,
+          source: prev.id, target: step.id,
           type: 'animated',
-          style: { stroke: 'hsl(var(--border))' },
-          markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: 'hsl(var(--border))' },
+          style: { stroke: EDGE_DEFAULT },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: EDGE_DEFAULT },
         });
       }
     }
 
-    // Handle check_connection branching
+    // ── Branch rendering ──
     if (step.actionType === 'check_connection') {
       const trueBranch = getBranchChain(step.ifTrueGotoStep, steps);
       const falseBranch = getBranchChain(step.ifFalseGotoStep, steps);
 
-      const branchY = y + NODE_HEIGHT + V_GAP;
+      const labelY = y + NODE_H + V_GAP * 0.6;
+      const branchStartY = labelY + 36;
 
-      // True branch label
+      // ── TRUE (left) ──
+      const trueX = -BRANCH_GAP / 2 - NODE_W / 2;
       const trueLabelId = `label-true-${step.id}`;
       nodes.push({
-        id: trueLabelId,
-        type: 'branchLabel',
-        position: { x: -(H_GAP / 2) - 40, y: branchY - 20 },
-        data: { label: '1er degré', variant: 'true' },
-        selectable: false,
-        draggable: false,
+        id: trueLabelId, type: 'branchLabel',
+        position: { x: -BRANCH_GAP / 2 - 36, y: labelY },
+        data: { label: '✓ Connecté', variant: 'true' },
+        selectable: false, draggable: false,
       });
-
       edges.push({
         id: `e-${step.id}-true-label`,
-        source: step.id,
-        target: trueLabelId,
+        source: step.id, target: trueLabelId,
         type: 'animated',
-        style: { stroke: 'hsl(142, 71%, 45%)' },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: 'hsl(142, 71%, 45%)' },
+        style: { stroke: EDGE_TRUE },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: EDGE_TRUE },
       });
 
-      // True branch steps
-      let trueY = branchY + 20;
-      trueBranch.forEach((bStep, bIdx) => {
-        const bStepIndex = steps.findIndex(s => s.id === bStep.id);
+      let tY = branchStartY;
+      trueBranch.forEach((bs, bi) => {
+        const bsi = steps.findIndex(s => s.id === bs.id);
         nodes.push({
-          id: bStep.id,
-          type: 'stepNode',
-          position: { x: -(H_GAP / 2) - NODE_WIDTH / 2 + 40, y: trueY },
+          id: bs.id, type: 'stepNode',
+          position: { x: trueX, y: tY },
           data: {
-            step: bStep, index: bStepIndex, allSteps: steps,
-            isSelected: selectedStepId === bStep.id, canRemove: true,
-            onRemove: () => onRemoveStep(bStep.id), compact: true,
+            step: bs, index: bsi, allSteps: steps,
+            isSelected: selectedStepId === bs.id, canRemove: true,
+            onRemove: () => onRemoveStep(bs.id), compact: true,
           },
         });
-        const prevId = bIdx === 0 ? trueLabelId : trueBranch[bIdx - 1].id;
+        const prevId = bi === 0 ? trueLabelId : trueBranch[bi - 1].id;
         edges.push({
-          id: `e-${prevId}-${bStep.id}`,
-          source: prevId, target: bStep.id, type: 'animated',
-          style: { stroke: 'hsl(142, 71%, 45%)' },
+          id: `e-${prevId}-${bs.id}`, source: prevId, target: bs.id,
+          type: 'animated', style: { stroke: EDGE_TRUE },
         });
-        trueY += 56;
+        tY += 64;
       });
 
-      // Add button for true branch
+      // Add button
       const trueAddId = `add-true-${step.id}`;
       nodes.push({
-        id: trueAddId,
-        type: 'addNode',
-        position: { x: -(H_GAP / 2) - ADD_NODE_SIZE / 2 + 40, y: trueY + 4 },
+        id: trueAddId, type: 'addNode',
+        position: { x: -BRANCH_GAP / 2 - ADD_SIZE / 2, y: tY + 4 },
         data: {
           onClick: () => onAddStep({
-            parentStepId: step.id,
-            branch: 'true',
+            parentStepId: step.id, branch: 'true',
             afterStepId: trueBranch.length > 0 ? trueBranch[trueBranch.length - 1].id : undefined,
           }),
           variant: 'true',
@@ -197,64 +195,54 @@ function buildLayout(steps: SequenceStep[], selectedStepId: string | null, onRem
       });
       const trueLastId = trueBranch.length > 0 ? trueBranch[trueBranch.length - 1].id : trueLabelId;
       edges.push({
-        id: `e-${trueLastId}-${trueAddId}`,
-        source: trueLastId, target: trueAddId, type: 'animated',
-        style: { stroke: 'hsl(142, 71%, 45%)', strokeDasharray: '4 4' },
+        id: `e-${trueLastId}-${trueAddId}`, source: trueLastId, target: trueAddId,
+        type: 'animated', style: { stroke: EDGE_TRUE, strokeDasharray: '5 5' },
       });
 
-      // False branch label
+      // ── FALSE (right) ──
+      const falseX = BRANCH_GAP / 2 - NODE_W / 2;
       const falseLabelId = `label-false-${step.id}`;
       nodes.push({
-        id: falseLabelId,
-        type: 'branchLabel',
-        position: { x: (H_GAP / 2) - 40, y: branchY - 20 },
-        data: { label: '2e/3e degré', variant: 'false' },
-        selectable: false,
-        draggable: false,
+        id: falseLabelId, type: 'branchLabel',
+        position: { x: BRANCH_GAP / 2 - 44, y: labelY },
+        data: { label: '✗ Non connecté', variant: 'false' },
+        selectable: false, draggable: false,
       });
-
       edges.push({
         id: `e-${step.id}-false-label`,
-        source: step.id,
-        target: falseLabelId,
+        source: step.id, target: falseLabelId,
         type: 'animated',
-        style: { stroke: 'hsl(25, 95%, 53%)' },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: 'hsl(25, 95%, 53%)' },
+        style: { stroke: EDGE_FALSE },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: EDGE_FALSE },
       });
 
-      // False branch steps
-      let falseY = branchY + 20;
-      falseBranch.forEach((bStep, bIdx) => {
-        const bStepIndex = steps.findIndex(s => s.id === bStep.id);
+      let fY = branchStartY;
+      falseBranch.forEach((bs, bi) => {
+        const bsi = steps.findIndex(s => s.id === bs.id);
         nodes.push({
-          id: bStep.id,
-          type: 'stepNode',
-          position: { x: (H_GAP / 2) - NODE_WIDTH / 2 + 40, y: falseY },
+          id: bs.id, type: 'stepNode',
+          position: { x: falseX, y: fY },
           data: {
-            step: bStep, index: bStepIndex, allSteps: steps,
-            isSelected: selectedStepId === bStep.id, canRemove: true,
-            onRemove: () => onRemoveStep(bStep.id), compact: true,
+            step: bs, index: bsi, allSteps: steps,
+            isSelected: selectedStepId === bs.id, canRemove: true,
+            onRemove: () => onRemoveStep(bs.id), compact: true,
           },
         });
-        const prevId = bIdx === 0 ? falseLabelId : falseBranch[bIdx - 1].id;
+        const prevId = bi === 0 ? falseLabelId : falseBranch[bi - 1].id;
         edges.push({
-          id: `e-${prevId}-${bStep.id}`,
-          source: prevId, target: bStep.id, type: 'animated',
-          style: { stroke: 'hsl(25, 95%, 53%)' },
+          id: `e-${prevId}-${bs.id}`, source: prevId, target: bs.id,
+          type: 'animated', style: { stroke: EDGE_FALSE },
         });
-        falseY += 56;
+        fY += 64;
       });
 
-      // Add button for false branch
       const falseAddId = `add-false-${step.id}`;
       nodes.push({
-        id: falseAddId,
-        type: 'addNode',
-        position: { x: (H_GAP / 2) - ADD_NODE_SIZE / 2 + 40, y: falseY + 4 },
+        id: falseAddId, type: 'addNode',
+        position: { x: BRANCH_GAP / 2 - ADD_SIZE / 2, y: fY + 4 },
         data: {
           onClick: () => onAddStep({
-            parentStepId: step.id,
-            branch: 'false',
+            parentStepId: step.id, branch: 'false',
             afterStepId: falseBranch.length > 0 ? falseBranch[falseBranch.length - 1].id : undefined,
           }),
           variant: 'false',
@@ -262,33 +250,28 @@ function buildLayout(steps: SequenceStep[], selectedStepId: string | null, onRem
       });
       const falseLastId = falseBranch.length > 0 ? falseBranch[falseBranch.length - 1].id : falseLabelId;
       edges.push({
-        id: `e-${falseLastId}-${falseAddId}`,
-        source: falseLastId, target: falseAddId, type: 'animated',
-        style: { stroke: 'hsl(25, 95%, 53%)', strokeDasharray: '4 4' },
+        id: `e-${falseLastId}-${falseAddId}`, source: falseLastId, target: falseAddId,
+        type: 'animated', style: { stroke: EDGE_FALSE, strokeDasharray: '5 5' },
       });
 
-      // Move y past the branches
-      const maxBranchY = Math.max(trueY, falseY) + 40;
-      y = maxBranchY;
+      y = Math.max(tY, fY) + 60;
     } else {
-      y += NODE_HEIGHT + V_GAP;
+      y += STEP_GAP;
     }
   });
 
-  // Add button at the end (if last step isn't a branch)
-  const lastMainStep = mainSteps[mainSteps.length - 1];
-  if (lastMainStep && lastMainStep.actionType !== 'check_connection') {
+  // Add button at end (not after branch)
+  const lastMain = mainSteps[mainSteps.length - 1];
+  if (lastMain && lastMain.actionType !== 'check_connection') {
     const addId = 'add-end';
     nodes.push({
-      id: addId,
-      type: 'addNode',
-      position: { x: NODE_WIDTH / 2 - ADD_NODE_SIZE / 2, y },
+      id: addId, type: 'addNode',
+      position: { x: -ADD_SIZE / 2, y },
       data: { onClick: () => onAddStep() },
     });
     edges.push({
-      id: `e-${lastMainStep.id}-${addId}`,
-      source: lastMainStep.id, target: addId, type: 'animated',
-      style: { stroke: 'hsl(var(--border))', strokeDasharray: '4 4' },
+      id: `e-${lastMain.id}-${addId}`, source: lastMain.id, target: addId,
+      type: 'animated', style: { stroke: EDGE_DEFAULT, strokeDasharray: '5 5' },
     });
   }
 
@@ -300,7 +283,7 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 }) => {
   const layout = useMemo(
     () => buildLayout(steps, selectedStepId, onRemoveStep, onAddStep),
-    [steps, selectedStepId, onRemoveStep, onAddStep]
+    [steps, selectedStepId, onRemoveStep, onAddStep],
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes);
@@ -329,30 +312,17 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         edgeTypes={edgeTypes}
         connectionLineType={ConnectionLineType.SmoothStep}
         fitView
-        fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
-        minZoom={0.3}
+        fitViewOptions={{ padding: 0.35, maxZoom: 1.1 }}
+        minZoom={0.25}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
         className="bg-muted/5"
-        defaultEdgeOptions={{
-          type: 'animated',
-          animated: true,
-        }}
+        defaultEdgeOptions={{ type: 'animated', animated: true }}
       >
-        <Background gap={20} size={1} color="hsl(var(--border) / 0.3)" />
+        <Background gap={24} size={1} color="hsl(var(--border) / 0.2)" />
         <Controls
           showInteractive={false}
-          className="!bg-background !border-border !shadow-sm [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted"
-        />
-        <MiniMap
-          nodeColor={(node) => {
-            if (node.type === 'addNode') return 'hsl(var(--muted))';
-            return 'hsl(var(--primary) / 0.6)';
-          }}
-          maskColor="hsl(var(--background) / 0.8)"
-          className="!bg-background !border-border"
-          pannable
-          zoomable
+          className="!bg-background !border-border !shadow-sm !rounded-lg [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted [&>button]:!rounded-md"
         />
       </ReactFlow>
     </div>
