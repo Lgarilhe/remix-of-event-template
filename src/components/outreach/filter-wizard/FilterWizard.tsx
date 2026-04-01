@@ -226,7 +226,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[520px] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden z-[1000] pointer-events-auto [&>*]:pointer-events-auto">
         {/* Header */}
         <DialogHeader className="px-5 py-4 border-b bg-gradient-to-r from-emerald-50 to-green-50 shrink-0">
           <DialogTitle className="flex items-center gap-3 text-base">
