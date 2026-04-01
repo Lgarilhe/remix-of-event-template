@@ -651,8 +651,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                 {/* Check connection */}
                 {step.actionType === 'check_connection' && (
-                  <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
-                    <div className="flex items-center gap-2"><GitBranch className="w-4 h-4" /><span className="font-medium text-sm uppercase tracking-wide">Vérification du degré</span></div>
+                  <div className="space-y-4 p-3 bg-muted/20 border border-border rounded-md">
+                    <div className="flex items-center gap-2"><GitBranch className="w-4 h-4 text-muted-foreground" /><span className="font-medium text-sm">Vérification du degré</span></div>
                     <div>
                       <Label>Si connecté (1er degré) → aller à</Label>
                       <Select value={step.ifTrueGotoStep || '__next__'} onValueChange={(value) => updateStep(step.id, { ifTrueGotoStep: value === '__next__' ? undefined : value })}>
