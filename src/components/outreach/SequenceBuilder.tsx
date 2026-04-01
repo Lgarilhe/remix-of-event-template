@@ -947,10 +947,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
       case 'steps':
         return (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Étapes de la séquence</h2>
+                <h2 className="text-xl font-semibold mb-1">Étapes de la séquence</h2>
                 <p className="text-sm text-muted-foreground">{sequence.steps.length} étape(s) configurée(s)</p>
               </div>
               {/* Template button */}
