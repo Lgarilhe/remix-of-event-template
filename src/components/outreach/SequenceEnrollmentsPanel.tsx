@@ -688,6 +688,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   const isPending = status === 'pending';
                                   const isFailed = status === 'failed';
                                   const isSkipped = status === 'skipped';
+                                  const isChannelSkip = isSkipped && exec?.skip_reason?.toLowerCase().includes('channel');
 
                                   return (
                                     <div 
@@ -695,7 +696,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       className={cn(
                                         "flex items-start gap-3 p-2.5 border transition-colors",
                                         isFailed && "bg-destructive/5 border-destructive/30",
-                                        isSkipped && "bg-muted border-foreground/10",
+                                        isChannelSkip && "bg-muted/50 border-foreground/5 opacity-60",
+                                        isSkipped && !isChannelSkip && "bg-muted border-foreground/10",
                                         !isFailed && !isSkipped && execStatus.className
                                       )}
                                     >
