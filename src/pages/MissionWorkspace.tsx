@@ -6,7 +6,6 @@ import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProject
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { BackgroundPaths } from '@/components/ui/background-paths';
 import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
-import { ArrowLeft, Play, Pause, CheckCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
