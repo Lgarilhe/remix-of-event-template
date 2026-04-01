@@ -140,6 +140,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResults, setEnrollResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
   const [page, setPage] = useState(0);
+  const [mobilePane, setMobilePane] = useState<'list' | 'preview'>('preview');
   const pageSize = 10;
 
   // ── Candidate states (remove/skip) ──
@@ -264,6 +265,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   const handleSelectCandidate = (id: string) => {
     setSelectedCandidateId(id);
+    setMobilePane('preview');
     const existing = messageSteps.every(s => getPreview(id, s.stepId)?.isGenerated);
     if (!existing) generateForCandidateById(id);
   };
@@ -580,9 +582,37 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               exit={{ opacity: 0, x: 10 }}
               className="flex-1 flex flex-col sm:flex-row overflow-hidden"
             >
-              {/* Candidate Sidebar */}
+              {/* Mobile pane toggle */}
               {!isSingle && (
-                <div className="w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0 max-h-[160px] sm:max-h-none">
+                <div className="sm:hidden flex items-center border-b border-border bg-muted/10">
+                  <button
+                    onClick={() => setMobilePane('list')}
+                    className={cn(
+                      "flex-1 py-2 text-[11px] font-medium text-center transition-colors",
+                      mobilePane === 'list' ? "text-foreground border-b-2 border-primary" : "text-muted-foreground"
+                    )}
+                  >
+                    Candidats ({activeProfiles.length})
+                  </button>
+                  <button
+                    onClick={() => setMobilePane('preview')}
+                    className={cn(
+                      "flex-1 py-2 text-[11px] font-medium text-center transition-colors",
+                      mobilePane === 'preview' ? "text-foreground border-b-2 border-primary" : "text-muted-foreground"
+                    )}
+                  >
+                    Aperçu
+                  </button>
+                </div>
+              )}
+
+              {/* Candidate Sidebar — hidden on mobile when viewing preview */}
+              {!isSingle && (
+                <div className={cn(
+                  "w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0",
+                  "sm:flex",
+                  mobilePane === 'list' ? "flex flex-1 sm:flex-none" : "hidden sm:flex"
+                )}>
                   <div className="p-2 border-b border-border">
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -663,8 +693,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 </div>
               )}
 
-              {/* Preview Panel */}
-              <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Preview Panel — hidden on mobile when viewing list */}
+              <div className={cn(
+                "flex-1 flex flex-col overflow-hidden",
+                !isSingle && mobilePane === 'list' ? "hidden sm:flex" : "flex"
+              )}>
                 {/* Bulk generation bar */}
                 {!isSingle && hasAiSteps && (
                   <div className="px-4 py-2 border-b border-border bg-muted/10 flex items-center gap-3">
