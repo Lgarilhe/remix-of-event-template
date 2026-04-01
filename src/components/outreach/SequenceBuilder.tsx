@@ -802,6 +802,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 ))}
                               </SelectContent>
                             </Select>
+                            {/* Cross-channel inline warning */}
+                            {isCrossChannelCondition(step.actionType, step.conditionType) && (
+                              <p className="text-xs text-amber-600 mt-1">⚠️ Cette condition ne fonctionne qu'avec des steps email</p>
+                            )}
                             {/* Score threshold for if_score_above */}
                             {step.conditionType === 'if_score_above' && (
                               <div className="mt-2">
@@ -813,12 +817,59 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                   value={step.conditionValue || '70'}
                                   onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
                                   placeholder="70"
-                                  className="mt-1 w-32"
+                                  className={cn("mt-1 w-32", !step.conditionValue?.trim() && "border-destructive")}
                                 />
+                                {!step.conditionValue?.trim() && (
+                                  <p className="text-xs text-destructive mt-1">Seuil requis</p>
+                                )}
                               </div>
                             )}
                           </div>
                         )}
+
+                        {/* Send hours */}
+                        <Collapsible>
+                          <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                            ▸ Créneau d'envoi
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="space-y-2 pt-2">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">Pas avant</Label>
+                                <Select
+                                  value={String(step.preferredHourStart ?? 9)}
+                                  onValueChange={(value) => updateStep(step.id, { preferredHourStart: parseInt(value) })}
+                                >
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({ length: 24 }, (_, i) => (
+                                      <SelectItem key={i} value={String(i)}>{i}h</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Pas après</Label>
+                                <Select
+                                  value={String(step.preferredHourEnd ?? 18)}
+                                  onValueChange={(value) => updateStep(step.id, { preferredHourEnd: parseInt(value) })}
+                                >
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({ length: 24 }, (_, i) => (
+                                      <SelectItem key={i} value={String(i)}>{i}h</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Le message sera envoyé uniquement dans ce créneau horaire (fuseau du candidat)</p>
+                          </CollapsibleContent>
+                        </Collapsible>
 
                         {/* Trigger configuration */}
                         {stepIsTrigger && step.actionType !== 'condition_branch' && (
