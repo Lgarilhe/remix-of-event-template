@@ -132,40 +132,36 @@ const MissionWorkspace = () => {
       <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
       <div className="py-6 pb-14 w-full max-w-full relative z-10">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={() => navigate('/missions')}
-                className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group shrink-0"
-              >
-                <ArrowLeft className="w-3 h-3 relative z-10" />
-                <span className="relative z-10">Missions</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-              </button>
-              <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase truncate">
-                  {project.name}
-                </h1>
-                {project.client_name && (
-                  <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
-                    {project.client_name}
-                    <span className="text-foreground/20">·</span>
-                    <TextRotate
-                      texts={['En cours', 'Mission active', statusConfig[project.status].label]}
-                      interval={4000}
-                      rotationType="blur"
-                      className="text-muted-foreground"
-                    />
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Badge className={statusConfig[project.status].color}>
-                <StatusIcon className="w-3 h-3 mr-1" />
+          {/* Header — compact single line */}
+          <div className="flex items-center gap-3 mb-3 min-w-0">
+            <button
+              onClick={() => navigate('/missions')}
+              className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium uppercase tracking-wider hidden sm:inline">Missions</span>
+            </button>
+            <span className="text-foreground/15 hidden sm:inline">|</span>
+            <h1 className="text-sm sm:text-base font-bold text-foreground tracking-tight uppercase truncate">
+              {project.name}
+            </h1>
+            {project.client_name && (
+              <>
+                <span className="text-foreground/15 hidden sm:inline">·</span>
+                <span className="text-xs text-muted-foreground truncate hidden sm:inline">{project.client_name}</span>
+              </>
+            )}
+            <div className="ml-auto shrink-0">
+              <span className={cn(
+                "inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 border",
+                project.status === 'active' && "border-green-500/30 text-green-600",
+                project.status === 'paused' && "border-yellow-500/30 text-yellow-600",
+                project.status === 'completed' && "border-blue-500/30 text-blue-600",
+                project.status === 'archived' && "border-foreground/20 text-muted-foreground",
+              )}>
+                <StatusIcon className="w-2.5 h-2.5" />
                 {statusConfig[project.status].label}
-              </Badge>
+              </span>
             </div>
           </div>
 
