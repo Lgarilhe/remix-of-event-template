@@ -908,5 +908,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         onApply={handleApplyRefinements}
       />
     </div>
+    </>
   );
 };
