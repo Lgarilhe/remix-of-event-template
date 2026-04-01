@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Check, X, AlertTriangle, Shield, Users, MessageSquare, Clock, Mail } from 'lucide-react';
+import { Check, X, AlertTriangle, Shield, Users, MessageSquare, Clock, Mail, CheckCircle2 } from 'lucide-react';
 import { Sequence } from '../SequenceBuilder';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ValidationItem {
   id: string;
@@ -24,126 +25,91 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
   const items = useMemo((): ValidationItem[] => {
     const result: ValidationItem[] = [];
 
-    // Required: Name
     result.push({
-      id: 'name',
-      label: 'Nom de la séquence',
+      id: 'name', label: 'Nom de la séquence',
       description: sequence.name.trim() ? sequence.name : 'Non défini',
-      status: sequence.name.trim() ? 'pass' : 'fail',
-      icon: Check,
-      category: 'required',
+      status: sequence.name.trim() ? 'pass' : 'fail', icon: Check, category: 'required',
     });
 
-    // Required: At least one step
     result.push({
-      id: 'steps',
-      label: 'Étapes définies',
+      id: 'steps', label: 'Étapes définies',
       description: `${sequence.steps.length} étape${sequence.steps.length !== 1 ? 's' : ''}`,
-      status: sequence.steps.length > 0 ? 'pass' : 'fail',
-      icon: MessageSquare,
-      category: 'required',
+      status: sequence.steps.length > 0 ? 'pass' : 'fail', icon: MessageSquare, category: 'required',
     });
 
-    // Required: Messages filled
     const messageSteps = sequence.steps.filter(s =>
       ['inmail', 'email', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(s.actionType)
     );
     const emptyMessages = messageSteps.filter(s => !s.useAiPersonalization && !s.messageTemplate?.trim());
     result.push({
-      id: 'messages',
-      label: 'Messages rédigés',
+      id: 'messages', label: 'Messages rédigés',
       description: emptyMessages.length > 0
         ? `${emptyMessages.length} message${emptyMessages.length > 1 ? 's' : ''} vide${emptyMessages.length > 1 ? 's' : ''}`
-        : 'Tous les messages sont remplis',
-      status: emptyMessages.length > 0 ? 'fail' : 'pass',
-      icon: MessageSquare,
-      category: 'required',
+        : 'Tous remplis',
+      status: emptyMessages.length > 0 ? 'fail' : 'pass', icon: MessageSquare, category: 'required',
     });
 
-    // Required: Email subjects
     const emailSteps = sequence.steps.filter(s => ['email', 'inmail'].includes(s.actionType));
     const emptySubjects = emailSteps.filter(s => !s.useAiPersonalization && !s.subjectTemplate?.trim());
     if (emailSteps.length > 0) {
       result.push({
-        id: 'subjects',
-        label: 'Objets email',
+        id: 'subjects', label: 'Objets email',
         description: emptySubjects.length > 0
-          ? `${emptySubjects.length} objet${emptySubjects.length > 1 ? 's' : ''} manquant${emptySubjects.length > 1 ? 's' : ''}`
-          : 'Tous les objets sont définis',
-        status: emptySubjects.length > 0 ? 'fail' : 'pass',
-        icon: Mail,
-        category: 'required',
+          ? `${emptySubjects.length} manquant${emptySubjects.length > 1 ? 's' : ''}`
+          : 'Tous définis',
+        status: emptySubjects.length > 0 ? 'fail' : 'pass', icon: Mail, category: 'required',
       });
     }
 
-    // Required: Connection request length
     const longInvites = sequence.steps.filter(
       s => s.actionType === 'connection_request' && (s.messageTemplate?.length || 0) > 300
     );
     if (longInvites.length > 0) {
       result.push({
-        id: 'invite_length',
-        label: 'Longueur invitation',
-        description: 'Invitation(s) > 300 caractères',
-        status: 'fail',
-        icon: AlertTriangle,
-        category: 'required',
+        id: 'invite_length', label: 'Longueur invitation',
+        description: '> 300 caractères',
+        status: 'fail', icon: AlertTriangle, category: 'required',
       });
     }
 
-    // Recommended: Senders configured
     result.push({
-      id: 'senders',
-      label: 'Expéditeurs',
+      id: 'senders', label: 'Expéditeurs',
       description: sequence.multiSenderEnabled
-        ? `${(sequence.senderAccounts || []).length} sender${(sequence.senderAccounts || []).length !== 1 ? 's' : ''} configuré${(sequence.senderAccounts || []).length !== 1 ? 's' : ''}`
-        : 'Mode mono-sender',
+        ? `${(sequence.senderAccounts || []).length} configuré${(sequence.senderAccounts || []).length !== 1 ? 's' : ''}`
+        : 'Mono-sender',
       status: sequence.multiSenderEnabled && (sequence.senderAccounts || []).length === 0 ? 'warning' : 'pass',
-      icon: Users,
-      category: 'recommended',
+      icon: Users, category: 'recommended',
     });
 
-    // Recommended: Daily limits
     if (sequence.multiSenderEnabled && sequence.senderAccounts) {
       const highLimits = sequence.senderAccounts.filter(s => s.daily_limit > 80);
       if (highLimits.length > 0) {
         result.push({
-          id: 'daily_limits',
-          label: 'Limites quotidiennes',
-          description: `${highLimits.length} sender${highLimits.length > 1 ? 's' : ''} avec limite > 80/jour`,
-          status: 'warning',
-          icon: Shield,
-          category: 'recommended',
+          id: 'daily_limits', label: 'Limites quotidiennes',
+          description: `${highLimits.length} sender${highLimits.length > 1 ? 's' : ''} > 80/jour`,
+          status: 'warning', icon: Shield, category: 'recommended',
         });
       }
     }
 
-    // Recommended: Delays between steps
     const noDelaySteps = sequence.steps.filter(
       (s, i) => i > 0 && s.delayDays === 0 && s.delayHours === 0 && (s.delayMinutes || 0) === 0
         && !['check_connection', 'wait_connection', 'wait_reply', 'wait_profile_visit'].includes(s.actionType)
     );
     if (noDelaySteps.length > 0) {
       result.push({
-        id: 'delays',
-        label: 'Délais entre étapes',
-        description: `${noDelaySteps.length} étape${noDelaySteps.length > 1 ? 's' : ''} sans délai`,
-        status: 'warning',
-        icon: Clock,
-        category: 'recommended',
+        id: 'delays', label: 'Délais entre étapes',
+        description: `${noDelaySteps.length} sans délai`,
+        status: 'warning', icon: Clock, category: 'recommended',
       });
     }
 
-    // Recommended: Stop conditions
     const hasStopConditions = sequence.stopConditions &&
       (sequence.stopConditions.on_reply || sequence.stopConditions.on_click || sequence.stopConditions.on_unsubscribe);
     result.push({
-      id: 'stop_conditions',
-      label: 'Conditions d\'arrêt',
-      description: hasStopConditions ? 'Configurées' : 'Aucune condition d\'arrêt',
-      status: hasStopConditions ? 'pass' : 'warning',
-      icon: Shield,
-      category: 'recommended',
+      id: 'stop_conditions', label: 'Conditions d\'arrêt',
+      description: hasStopConditions ? 'Configurées' : 'Aucune',
+      status: hasStopConditions ? 'pass' : 'warning', icon: Shield, category: 'recommended',
     });
 
     return result;
@@ -153,29 +119,34 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
   const recommendedItems = items.filter(i => i.category === 'recommended');
   const hasBlockers = requiredItems.some(i => i.status === 'fail');
   const warningCount = items.filter(i => i.status === 'warning').length;
+  const passCount = items.filter(i => i.status === 'pass').length;
 
   return (
     <div className={cn("space-y-4", className)}>
-      {/* Summary */}
+      {/* Progress summary */}
       <div className={cn(
-        "p-3 border text-xs",
+        "px-3 py-2.5 text-xs font-medium flex items-center gap-2 border-l-2",
         hasBlockers
-          ? "border-destructive/30 bg-destructive/5 text-destructive"
+          ? "border-l-destructive bg-destructive/5 text-destructive"
           : warningCount > 0
-            ? "border-amber-500/30 bg-amber-50 text-amber-700"
-            : "border-green-500/30 bg-green-50 text-green-700"
+            ? "border-l-amber-500 bg-amber-50/50 text-amber-700"
+            : "border-l-emerald-500 bg-emerald-50/50 text-emerald-700"
       )}>
-        {hasBlockers
-          ? `⛔ ${requiredItems.filter(i => i.status === 'fail').length} problème(s) bloquant(s)`
-          : warningCount > 0
-            ? `⚠️ ${warningCount} recommandation${warningCount > 1 ? 's' : ''}`
-            : '✅ Prêt à activer'}
+        {hasBlockers ? (
+          <><X className="w-3.5 h-3.5" />{requiredItems.filter(i => i.status === 'fail').length} bloquant(s)</>
+        ) : warningCount > 0 ? (
+          <><AlertTriangle className="w-3.5 h-3.5" />{warningCount} recommandation{warningCount > 1 ? 's' : ''}</>
+        ) : (
+          <><CheckCircle2 className="w-3.5 h-3.5" />Prêt — {passCount}/{items.length}</>
+        )}
       </div>
 
       {/* Required */}
       <div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Obligatoire</div>
-        <div className="space-y-1">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5 px-1">
+          Obligatoire
+        </div>
+        <div className="space-y-0.5">
           {requiredItems.map(item => (
             <ChecklistItem key={item.id} item={item} />
           ))}
@@ -185,8 +156,10 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
       {/* Recommended */}
       {recommendedItems.length > 0 && (
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommandé</div>
-          <div className="space-y-1">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5 px-1">
+            Recommandé
+          </div>
+          <div className="space-y-0.5">
             {recommendedItems.map(item => (
               <ChecklistItem key={item.id} item={item} />
             ))}
@@ -198,20 +171,20 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
 };
 
 const ChecklistItem: React.FC<{ item: ValidationItem }> = ({ item }) => (
-  <div className="flex items-center gap-2 py-1.5 px-2">
+  <div className="flex items-center gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/40 transition-colors">
     <div className={cn(
-      "w-4 h-4 flex items-center justify-center shrink-0",
-      item.status === 'pass' ? "text-green-600"
-        : item.status === 'warning' ? "text-amber-500"
-          : "text-destructive"
+      "w-4 h-4 rounded-full flex items-center justify-center shrink-0",
+      item.status === 'pass' ? "bg-emerald-100 text-emerald-600"
+        : item.status === 'warning' ? "bg-amber-100 text-amber-600"
+          : "bg-destructive/10 text-destructive"
     )}>
-      {item.status === 'pass' ? <Check className="w-3 h-3" /> :
-        item.status === 'warning' ? <AlertTriangle className="w-3 h-3" /> :
-          <X className="w-3 h-3" />}
+      {item.status === 'pass' ? <Check className="w-2.5 h-2.5" /> :
+        item.status === 'warning' ? <AlertTriangle className="w-2.5 h-2.5" /> :
+          <X className="w-2.5 h-2.5" />}
     </div>
     <div className="flex-1 min-w-0">
-      <div className="text-xs font-medium truncate">{item.label}</div>
-      <div className="text-[10px] text-muted-foreground truncate">{item.description}</div>
+      <div className="text-[11px] font-medium leading-tight truncate">{item.label}</div>
+      <div className="text-[10px] text-muted-foreground/70 leading-tight truncate">{item.description}</div>
     </div>
   </div>
 );
