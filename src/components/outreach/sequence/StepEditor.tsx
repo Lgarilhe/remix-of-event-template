@@ -457,8 +457,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           <div className="space-y-3">
             {/* WhatsApp indicator */}
             {isWhatsAppStep(step.actionType) && (
-              <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
-                📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement.
+              <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement. Les candidats sans numéro seront automatiquement passés au step suivant.
               </div>
             )}
 
