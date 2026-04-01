@@ -526,10 +526,10 @@ Propose des exemples concrets de messages.`;
               try {
                 const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
                 const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-                const orgId = await resolveOrgIdFromUser(user.id, adminClient);
+                const orgId = await resolveOrgIdFromUser(user.id, adminClient as any);
                 if (orgId) {
                   const { settleCredits } = await import("../_shared/settle-credits.ts");
-                  settleCredits(adminClient, {
+                  settleCredits(adminClient as any, {
                     organizationId: orgId, userId: user.id,
                     aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
                     tokensInput: _tokensIn, tokensOutput: _tokensOut,

@@ -2204,10 +2204,10 @@ Deno.serve(async (req) => {
     if (totalTokensInput + totalTokensOutput > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const orgId = await resolveOrgIdFromUser(userId, supabase);
-        if (orgId) {
+        const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
+        if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(supabase, {
+          settleCredits(supabase as any, {
             organizationId: orgId,
             userId,
             aiAction: aiParams.aiAction,
