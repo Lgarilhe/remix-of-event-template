@@ -246,6 +246,7 @@ const Settings = () => {
                 <MyLinkedInAccount />
                 <LinkedInQuotaSettings />
                 <MyEmailAccount />
+                <EmailSignatures />
                 <MyWhatsAppAccount />
               </div>
             )}

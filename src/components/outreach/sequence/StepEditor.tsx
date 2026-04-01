@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Sparkles,
   GitBranch,
@@ -14,6 +15,9 @@ import {
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
+import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep } from './conditionTypes';
+import { VariableInserter } from './VariableInserter';
+import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 
 interface StepEditorProps {
   step: SequenceStep;
@@ -22,13 +26,6 @@ interface StepEditorProps {
   onUpdate: (updates: Partial<SequenceStep>) => void;
   allStepTypes: Array<{ value: string; label: string; icon: React.ElementType; color: string }>;
 }
-
-const CONDITION_TYPES = [
-  { value: 'always', label: 'Toujours exécuter' },
-  { value: 'if_connected', label: 'Si connecté' },
-  { value: 'if_not_connected', label: 'Si non connecté' },
-  { value: 'if_no_response', label: 'Si pas de réponse' },
-];
 
 const TIMEOUT_ACTIONS = [
   { value: 'skip', label: 'Passer à l\'étape suivante' },
@@ -42,13 +39,13 @@ const AI_TONES = [
   { value: 'enthusiastic', label: 'Enthousiaste' },
 ];
 
-const ACTIONS = ['connection_request', 'inmail', 'profile_visit', 'message', 'smart_message', 'whatsapp_message'];
+const ACTIONS = ['connection_request', 'inmail', 'email', 'profile_visit', 'message', 'smart_message', 'whatsapp_message'];
 const TRIGGERS = ['check_connection', 'wait_connection', 'wait_reply', 'wait_profile_visit', 'condition_branch'];
 
 const isAction = (actionType: string) => ACTIONS.includes(actionType);
 const isTrigger = (actionType: string) => TRIGGERS.includes(actionType);
-const needsMessage = (type: string) => ['inmail', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(type);
-const needsSubject = (type: string) => type === 'inmail';
+const needsMessage = (type: string) => ['inmail', 'email', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(type);
+const needsSubject = (type: string) => ['inmail', 'email'].includes(type);
 
 export const StepEditor: React.FC<StepEditorProps> = ({
   step,
@@ -61,6 +58,9 @@ export const StepEditor: React.FC<StepEditorProps> = ({
   const StepIcon = stepConfig?.icon || Sparkles;
   const stepIsTrigger = isTrigger(step.actionType);
   const msgType = getStepMessageType(step, allSteps);
+  const { signatures } = useEmailSignatures();
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const subjectRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="h-full flex flex-col">
@@ -134,7 +134,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
         )}
 
-        {/* Condition for actions */}
+        {/* Condition for actions — filtered by channel */}
         {isAction(step.actionType) && (
           <div>
             <Label className="text-xs">Condition d'exécution</Label>
@@ -146,13 +146,28 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {CONDITION_TYPES.map(cond => (
+                {getConditionsForActionType(step.actionType).map(cond => (
                   <SelectItem key={cond.value} value={cond.value}>
                     {cond.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {/* Score threshold */}
+            {step.conditionType === 'if_score_above' && (
+              <div className="mt-2">
+                <Label className="text-xs">Seuil de score (0-100)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={step.conditionValue || '70'}
+                  onChange={(e) => onUpdate({ conditionValue: e.target.value })}
+                  placeholder="70"
+                  className="mt-1 w-32 h-8"
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -279,7 +294,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONDITION_TYPES.filter(c => c.value !== 'always').map(cond => (
+                  {ALL_CONDITION_TYPES.filter(c => c.value !== 'always').map(cond => (
                     <SelectItem key={cond.value} value={cond.value}>
                       {cond.label}
                     </SelectItem>
@@ -287,6 +302,22 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Score threshold for condition_branch */}
+            {step.conditionType === 'if_score_above' && (
+              <div>
+                <Label className="text-xs">Seuil de score (0-100)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={step.conditionValue || '70'}
+                  onChange={(e) => onUpdate({ conditionValue: e.target.value })}
+                  placeholder="70"
+                  className="mt-1 w-32 h-8"
+                />
+              </div>
+            )}
 
             <div>
               <Label className="text-xs">Si condition non remplie</Label>
@@ -345,6 +376,13 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         {/* Message fields */}
         {needsMessage(step.actionType) && (
           <div className="space-y-3">
+            {/* WhatsApp indicator */}
+            {isWhatsAppStep(step.actionType) && (
+              <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement.
+              </div>
+            )}
+
             {/* AI toggle */}
             <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-2">
@@ -381,13 +419,23 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               </div>
             ) : (
               <>
+                {/* Subject for email/inmail */}
                 {needsSubject(step.actionType) && (
                   <div>
-                    <Label className="text-xs">Objet</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Objet</Label>
+                      <VariableInserter
+                        targetRef={subjectRef}
+                        currentValue={step.subjectTemplate || ''}
+                        onInsert={(val) => onUpdate({ subjectTemplate: val })}
+                        showEmailVariables={isEmailStep(step.actionType)}
+                      />
+                    </div>
                     <Input
+                      ref={subjectRef}
                       value={step.subjectTemplate || ''}
                       onChange={(e) => onUpdate({ subjectTemplate: e.target.value })}
-                      placeholder="Objet de l'InMail"
+                      placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
                       className="mt-1 h-8"
                     />
                   </div>
@@ -395,36 +443,100 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 <div>
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Message</Label>
-                    {step.actionType === 'connection_request' && (
-                      <span className={cn(
-                        "text-xs",
-                        (step.messageTemplate?.length || 0) > 50 ? "text-red-500 font-medium" : "text-muted-foreground"
-                      )}>
-                        {step.messageTemplate?.length || 0}/50
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <VariableInserter
+                        targetRef={messageRef}
+                        currentValue={step.messageTemplate || ''}
+                        onInsert={(val) => onUpdate({ messageTemplate: val })}
+                        showEmailVariables={isEmailStep(step.actionType)}
+                      />
+                      {step.actionType === 'connection_request' && (
+                        <span className={cn(
+                          "text-xs",
+                          (step.messageTemplate?.length || 0) > 300 ? "text-red-500 font-medium" : "text-muted-foreground"
+                        )}>
+                          {step.messageTemplate?.length || 0}/300
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <Textarea
+                    ref={messageRef}
                     value={step.messageTemplate || ''}
                     onChange={(e) => onUpdate({ messageTemplate: e.target.value })}
-                    placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
+                    placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300 car.)" : "Bonjour {{first_name}}, ..."}
                     rows={step.actionType === 'connection_request' ? 2 : 3}
-                    maxLength={step.actionType === 'connection_request' ? 50 : undefined}
+                    maxLength={step.actionType === 'connection_request' ? 300 : undefined}
                     className={cn(
                       "mt-1 text-sm",
-                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-red-300 focus-visible:ring-red-300"
+                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-red-300 focus-visible:ring-red-300"
                     )}
                   />
-                  {step.actionType === 'connection_request' ? (
+                  {step.actionType === 'connection_request' && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      Limite LinkedIn : 50 caractères.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {'{{firstName}}, {{lastName}}, {{company}}'}
+                      LinkedIn limite les notes d'invitation à 300 caractères.
                     </p>
                   )}
                 </div>
+
+                {/* Email-specific fields */}
+                {isEmailStep(step.actionType) && (
+                  <div className="space-y-3 pt-2 border-t border-foreground/10">
+                    <Collapsible>
+                      <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        ▸ CC / BCC
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="space-y-2 pt-2">
+                        <div>
+                          <Label className="text-xs">CC</Label>
+                          <Input
+                            value={(step.ccEmails || []).join(', ')}
+                            onChange={(e) => onUpdate({ ccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                            placeholder="email1@ex.com, email2@ex.com"
+                            className="mt-1 h-8 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">BCC</Label>
+                          <Input
+                            value={(step.bccEmails || []).join(', ')}
+                            onChange={(e) => onUpdate({ bccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                            placeholder="email@ex.com"
+                            className="mt-1 h-8 text-xs"
+                          />
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Lien de désinscription</Label>
+                      <Switch
+                        checked={step.includeUnsubscribe ?? false}
+                        onCheckedChange={(checked) => onUpdate({ includeUnsubscribe: checked })}
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs">Signature</Label>
+                      <Select
+                        value={step.signatureId || '__none__'}
+                        onValueChange={(value) => onUpdate({ signatureId: value === '__none__' ? undefined : value })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 text-xs">
+                          <SelectValue placeholder="Aucune" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Aucune</SelectItem>
+                          {signatures.map(sig => (
+                            <SelectItem key={sig.id} value={sig.id}>
+                              {sig.name}{sig.is_default ? ' ⭐' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
