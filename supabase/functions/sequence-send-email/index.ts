@@ -158,7 +158,7 @@ async function generateAiSnippet(
       try {
         const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
         const { settleCredits: settle } = await import('../_shared/settle-credits.ts');
-        settle(adminClient, {
+        settle(adminClient as any, {
           organizationId: orgId,
           userId: '', // no user context in email send (service role call)
           aiAction: 'outreach_message',

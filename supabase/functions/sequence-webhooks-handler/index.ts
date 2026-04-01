@@ -323,7 +323,8 @@ async function handleMailReceived(
 }
 
 async function handleMailTracking(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
   eventType: 'open' | 'click',
 ) {

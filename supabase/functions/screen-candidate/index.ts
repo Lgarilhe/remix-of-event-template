@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     let NOTION_API_KEY: string;
     try {
       const { resolveUnipileCredentials, resolveNotionCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(userId, svc as any);
+      const orgId = await resolveOrgIdFromUser(userId!, svc as any);
       const uCreds = await resolveUnipileCredentials(orgId, svc);
       const nCreds = await resolveNotionCredentials(orgId, svc);
       UNIPILE_API_KEY = uCreds?.apiKey || Deno.env.get("UNIPILE_API_KEY") || '';
