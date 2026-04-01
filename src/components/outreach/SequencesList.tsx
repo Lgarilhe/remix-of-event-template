@@ -223,7 +223,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             name: sequence.name,
             description: sequence.description,
             is_active: sequence.isActive,
-          })
+            stop_conditions: sequence.stopConditions || null,
+            sender_accounts: sequence.senderAccounts || null,
+            rotation_mode: sequence.rotationMode || null,
+            multi_sender_enabled: sequence.multiSenderEnabled || false,
+          } as any)
           .eq('id', sequence.id);
 
         if (updateError) throw updateError;
