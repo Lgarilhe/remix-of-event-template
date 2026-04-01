@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { MissionContextBanner } from './MissionContextBanner';
+import React, { useState, useCallback } from 'react';
 import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
-import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
-import { ProspectSearch } from '@/components/prospection/ProspectSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { countBriefFields } from '@/lib/missionUtils';
