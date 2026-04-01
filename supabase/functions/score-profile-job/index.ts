@@ -1,5 +1,6 @@
 // Deno.serve used directly
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth } from "../_shared/require-auth.ts";
 
 
