@@ -103,6 +103,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   onDeleteHistoryEntry,
   scoringInstructions = '',
   onScoringInstructionsChange,
+  onOpenFilterWizard,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
