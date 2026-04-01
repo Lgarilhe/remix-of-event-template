@@ -1079,29 +1079,26 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   const content = (
     <div className="fixed inset-0 z-[4000] bg-background flex flex-col">
       {/* Top bar — clean, minimal */}
-      <div className="h-14 border-b border-border/60 flex items-center justify-between px-5 shrink-0 bg-background">
-        <div className="flex items-center gap-4">
+      <div className="h-12 sm:h-14 border-b border-border/60 flex items-center justify-between px-3 sm:px-5 shrink-0 bg-background">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Retour</span>
           </button>
-          <div className="w-px h-6 bg-border" />
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">
-              {isEditing ? 'Modifier la séquence' : 'Nouvelle séquence'}
+          <div className="w-px h-6 bg-border hidden sm:block" />
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs sm:text-sm font-semibold truncate">
+              {isEditing ? 'Modifier' : 'Nouvelle séquence'}
             </span>
             {sequence.name && (
-              <>
-                <span className="text-muted-foreground/40">—</span>
-                <span className="text-sm text-muted-foreground truncate max-w-[200px]">{sequence.name}</span>
-              </>
+              <span className="text-xs sm:text-sm text-muted-foreground truncate max-w-[100px] sm:max-w-[200px] hidden sm:inline">{sequence.name}</span>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Mode toggle — pill style */}
           <div className="flex items-center bg-muted rounded-full p-0.5">
             <button
