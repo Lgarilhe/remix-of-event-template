@@ -151,7 +151,8 @@ async function handleReply(
 // ============ WEBHOOK HANDLERS ============
 
 async function handleMessageReceived(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
 ) {
   // Ignore messages sent by us
