@@ -37,7 +37,8 @@ export interface SequenceStep {
   id: string;
   order: number;
   actionType: 'inmail' | 'connection_request' | 'profile_visit' | 'message' | 'smart_message' | 'whatsapp_message' | 'wait_connection' | 'wait_reply' | 'wait_profile_visit' | 'condition_branch' | 'check_connection';
-  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response';
+  conditionType: 'always' | 'if_connected' | 'if_not_connected' | 'if_no_response' | 'if_email_opened' | 'if_email_not_opened' | 'if_link_clicked' | 'if_link_not_clicked' | 'if_has_email' | 'if_no_email' | 'if_has_phone' | 'if_no_phone' | 'if_bounced' | 'if_unsubscribed' | 'if_score_above';
+  conditionValue?: string;
   delayDays: number;
   delayHours: number;
   delayMinutes: number;
@@ -58,6 +59,22 @@ export interface SequenceStep {
   nextStepId?: string;
   // Timeout branch (e.g. wait_connection timeout → InMail)
   timeoutBranchStepId?: string;
+  // A/B testing
+  variantGroup?: string | null;
+  variantWeight?: number;
+}
+
+export interface StopConditions {
+  on_reply: boolean;
+  on_click: boolean;
+  on_unsubscribe: boolean;
+  on_meeting_booked: boolean;
+}
+
+export interface SenderAccountConfig {
+  account_id: string;
+  email: string;
+  daily_limit: number;
 }
 
 export interface Sequence {
@@ -66,6 +83,10 @@ export interface Sequence {
   description?: string;
   steps: SequenceStep[];
   isActive: boolean;
+  stopConditions?: StopConditions;
+  senderAccounts?: SenderAccountConfig[];
+  rotationMode?: string;
+  multiSenderEnabled?: boolean;
 }
 
 interface SequenceBuilderProps {
