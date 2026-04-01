@@ -709,6 +709,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [search.results.length, search.hasSearched]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  // Get job details and suggestions from active project for the wizard
+  const wizardJobDetails = (activeProject?.job_details || {}) as import('@/types/jobDetails').JobDetails;
+  const wizardSuggestions = (activeProject?.filters_snapshot as any)?.suggestions || null;
+
+  const handleWizardApply = useCallback((patch: Partial<LinkedInFiltersState>) => {
+    search.setFilters(prev => ({ ...prev, ...patch }));
+    // Trigger search after applying
+    queueMicrotask(() => handleSearch(false));
+  }, [search.setFilters, handleSearch]);
 
   const filtersPanel = (
     <SearchFiltersPanel
