@@ -49,32 +49,30 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [selectedSequence, setSelectedSequence] = useState<SequenceOption | null>(null);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
 
-  const fetchSequences = async () => {
+  const fetchSequences = async (force = false) => {
+    if (hasFetched && !force) return; // Use cache unless forced
     setLoading(true);
     try {
+      // Single query: fetch sequences with step count only (not all step data)
       const { data: seqData, error: seqError } = await supabase
         .from('outreach_sequences')
-        .select('*')
+        .select('id, name, is_active, created_at')
         .eq('is_active', true)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(20);
 
       if (seqError) throw seqError;
 
-      // Fetch steps for each sequence
-      const sequenceIds = seqData?.map(s => s.id) || [];
-      const { data: stepsData } = await supabase
-        .from('sequence_steps')
-        .select('*')
-        .in('sequence_id', sequenceIds)
-        .order('step_order', { ascending: true });
-
+      // For the dropdown, we just need id + name + step count — steps are loaded when user picks one
       const enriched: SequenceOption[] = (seqData || []).map(seq => ({
         ...seq,
-        steps: stepsData?.filter(s => s.sequence_id === seq.id) || [],
+        steps: [], // Steps loaded lazily when sequence is selected
       }));
 
       setSequences(enriched);
+      setHasFetched(true);
     } catch (err) {
       console.error('Error fetching sequences:', err);
       toast.error('Erreur lors du chargement des séquences');
@@ -83,7 +81,21 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
     }
   };
 
-  const handleSelectSequence = (sequence: SequenceOption) => {
+  const handleSelectSequence = async (sequence: SequenceOption) => {
+    // Lazy-load steps only when the user actually picks a sequence
+    if (sequence.steps.length === 0) {
+      try {
+        const { data: stepsData } = await supabase
+          .from('sequence_steps')
+          .select('*')
+          .eq('sequence_id', sequence.id)
+          .order('step_order', { ascending: true });
+
+        sequence = { ...sequence, steps: stepsData || [] };
+      } catch (err) {
+        console.error('Error fetching steps:', err);
+      }
+    }
     setSelectedSequence(sequence);
     setShowEnrollModal(true);
   };
