@@ -224,26 +224,45 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
     return null;
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden z-[1000] pointer-events-auto [&>*]:pointer-events-auto">
+  if (!open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[6000] flex items-center justify-center pointer-events-auto">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60" 
+        onClick={() => onOpenChange(false)}
+      />
+      
+      {/* Content */}
+      <div className="relative z-10 w-full sm:max-w-[520px] max-h-[85vh] mx-4 flex flex-col rounded-lg border bg-background shadow-lg overflow-hidden pointer-events-auto">
         {/* Header */}
-        <DialogHeader className="px-5 py-4 border-b bg-gradient-to-r from-emerald-50 to-green-50 shrink-0">
-          <DialogTitle className="flex items-center gap-3 text-base">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-sm">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="font-semibold text-gray-900">Assistant de filtres</span>
-              <span className="text-xs font-normal text-gray-500 flex items-center gap-1.5">
-                <Briefcase className="w-3 h-3" />
-                <span className="truncate max-w-[280px]">
-                  {job.title}{job.client?.name && ` • ${job.client.name}`}
+        <div className="px-5 py-4 border-b bg-gradient-to-r from-emerald-50 to-green-50 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 text-base">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-sm">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="font-semibold text-foreground">Assistant de filtres</span>
+                <span className="text-xs font-normal text-muted-foreground flex items-center gap-1.5">
+                  <Briefcase className="w-3 h-3" />
+                  <span className="truncate max-w-[280px]">
+                    {job.title}{job.client?.name && ` • ${job.client.name}`}
+                  </span>
                 </span>
-              </span>
+              </div>
             </div>
-          </DialogTitle>
-        </DialogHeader>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="rounded-sm p-1 opacity-70 hover:opacity-100 transition-opacity"
+            >
+              <span className="sr-only">Fermer</span>
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.7816 4.03157C12.0062 3.80702 12.0062 3.44295 11.7816 3.2184C11.5571 2.99385 11.193 2.99385 10.9685 3.2184L7.50005 6.68682L4.03164 3.2184C3.80708 2.99385 3.44301 2.99385 3.21846 3.2184C2.99391 3.44295 2.99391 3.80702 3.21846 4.03157L6.68688 7.49999L3.21846 10.9684C2.99391 11.193 2.99391 11.557 3.21846 11.7816C3.44301 12.0061 3.80708 12.0061 4.03164 11.7816L7.50005 8.31316L10.9685 11.7816C11.193 12.0061 11.5571 12.0061 11.7816 11.7816C12.0062 11.557 12.0062 11.193 11.7816 10.9684L8.31322 7.49999L11.7816 4.03157Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path></svg>
+            </button>
+          </div>
+        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
@@ -253,8 +272,8 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                 <Loader2 className="w-7 h-7 text-emerald-600 animate-spin" />
               </div>
               <div className="text-center">
-                <p className="font-medium text-gray-900">Génération des filtres...</p>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="font-medium text-foreground">Génération des filtres...</p>
+                <p className="text-sm text-muted-foreground mt-1">
                   Application des paramètres optimisés
                 </p>
               </div>
@@ -285,14 +304,16 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
         {!isGenerating && currentStep > 0 && (
           <div className="px-5 pb-4 shrink-0">
             <button
+              type="button"
               onClick={handleReset}
-              className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
             >
               Recommencer depuis le début
             </button>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>,
+    document.body
   );
 };
