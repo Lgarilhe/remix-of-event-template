@@ -309,7 +309,7 @@ async function handleProcess(supabase: any, force = false) {
         }
 
         // === AUTO-SKIP: channel unavailable ===
-        const effectiveChannel = step.step_channel || (step.action_type === 'email' ? 'email' : 'linkedin');
+        const effectiveChannel = step.step_channel || (step.action_type === 'email' ? 'email' : step.action_type === 'whatsapp_message' ? 'whatsapp' : 'linkedin');
         if (effectiveChannel === 'email' && !enrollment.email_used) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'No email — channel skipped', executed_at: new Date().toISOString() }).eq('id', exec.id);
           await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
@@ -321,6 +321,13 @@ async function handleProcess(supabase: any, force = false) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'No LinkedIn account — channel skipped', executed_at: new Date().toISOString() }).eq('id', exec.id);
           await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
           console.log(`[process] ⏭️ ${enrollment.profile_name} — LinkedIn step skipped (no account), advancing to next`);
+          results.skipped++;
+          continue;
+        }
+        if ((effectiveChannel === 'whatsapp' || step.action_type === 'whatsapp_message') && !enrollment.phone_used) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'No phone number — WhatsApp skipped', executed_at: new Date().toISOString() }).eq('id', exec.id);
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          console.log(`[process] ⏭️ ${enrollment.profile_name} — WhatsApp step skipped (no phone), advancing to next`);
           results.skipped++;
           continue;
         }
@@ -383,7 +390,7 @@ async function handleProcess(supabase: any, force = false) {
             .select('id, status, step:sequence_steps!inner(action_type)')
             .eq('enrollment_id', enrollment.id)
             .lt('step_order', step.step_order)
-            .in('step.action_type', ['message', 'inmail', 'smart_message', 'email']);
+            .in('step.action_type', ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message']);
 
           // If no prior message-type steps exist at all, this IS the first message → allow it
           const hasPriorMessageSteps = priorMessageSteps && priorMessageSteps.length > 0;
@@ -492,7 +499,9 @@ async function handleProcess(supabase: any, force = false) {
         }
 
         // Determine effective action type: step_channel 'email' overrides action_type
-        const effectiveActionType = (step.step_channel === 'email' || step.action_type === 'email') ? 'email' : step.action_type;
+        const effectiveActionType = (step.step_channel === 'email' || step.action_type === 'email') ? 'email'
+          : (step.step_channel === 'whatsapp' || step.action_type === 'whatsapp_message') ? 'whatsapp_message'
+          : step.action_type;
 
         // Inter-visible-action spacing: 1-3s delay between visible actions to look human
         if (!INVISIBLE_ACTIONS.has(effectiveActionType) && visibleActionsExecuted > 0) {
@@ -661,7 +670,7 @@ async function handleCheckReplies(supabase: any) {
       .select('executed_at, step:sequence_steps!inner(action_type)')
       .eq('enrollment_id', enrollment.id)
       .eq('status', 'sent')
-      .in('step.action_type', ['message', 'inmail', 'smart_message', 'connection_request', 'email'])
+      .in('step.action_type', ['message', 'inmail', 'smart_message', 'connection_request', 'email', 'whatsapp_message'])
       .order('executed_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -908,7 +917,7 @@ async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ ac
   return available[0];
 }
 
-function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message', 'email'].includes(actionType); }
+function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message'].includes(actionType); }
 
 function isLikelyRealFirstName(name: string): boolean {
   if (!name || name.trim().length < 2) return false;
@@ -1802,6 +1811,49 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         return { success: true, message: msg, subject: needsInMail ? subj : undefined };
       }
+      case 'whatsapp_message': {
+        // Send WhatsApp message via Unipile — same API as LinkedIn (POST /api/v1/chats)
+        // Uses the WhatsApp account_id and the candidate's phone number as attendee
+        const whatsappAccountId = (step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string;
+        const phoneNumber = (enrollment as any).phone_used;
+
+        if (!phoneNumber) {
+          return { success: false, error: 'No phone number available for WhatsApp' };
+        }
+
+        // Try to find existing WhatsApp chat
+        let waExistingChatId: string | null = null;
+        try {
+          const waChatsRes = await fetchWithTimeout(
+            `${UNIPILE_DSN}/api/v1/chat_attendees/${phoneNumber}/chats?account_id=${whatsappAccountId}`,
+            { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+          );
+          if (waChatsRes.ok) {
+            const waChatsData = await waChatsRes.json();
+            if (waChatsData.items?.length > 0) {
+              waExistingChatId = waChatsData.items[0].id;
+              console.log(`[executeStepAction] Found existing WhatsApp chat ${waExistingChatId}`);
+            }
+          }
+        } catch { /* will create new */ }
+
+        let waR: Response;
+        if (waExistingChatId) {
+          const waFd = new FormData();
+          waFd.append('text', msg);
+          waR = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${waExistingChatId}/messages`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: waFd });
+        } else {
+          const waFd = new FormData();
+          waFd.append('account_id', whatsappAccountId);
+          waFd.append('attendees_ids', phoneNumber);
+          waFd.append('text', msg);
+          waR = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: waFd });
+        }
+        if (!waR.ok) { const e = await waR.text(); return { success: false, error: `Unipile WhatsApp ${waR.status}: ${e}` }; }
+        await waR.json();
+        await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        return { success: true, message: msg };
+      }
       case 'connection_request': {
         let providerId = profileId;
         if (!profileId.startsWith('ACo') && !profileId.startsWith('ADo')) {
@@ -2368,7 +2420,7 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     // deno-lint-ignore no-explicit-any
     const hadInvite = prevSteps?.some((ps: any) => ps.step?.action_type === 'connection_request');
     // deno-lint-ignore no-explicit-any
-    const prevMessages = prevSteps?.filter((ps: any) => ['message', 'inmail', 'smart_message', 'email'].includes(ps.step?.action_type)) || [];
+    const prevMessages = prevSteps?.filter((ps: any) => ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message'].includes(ps.step?.action_type)) || [];
     const hadMsg = prevMessages.length > 0;
     const isInvite = step.action_type === 'connection_request';
     const isInMail = step.action_type === 'inmail' || step.action_type === 'smart_message';
