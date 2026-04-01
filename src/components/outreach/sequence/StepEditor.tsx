@@ -493,7 +493,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Message généré par IA.
+                  L'IA générera un message personnalisé pour chaque candidat au moment de l'envoi, basé sur son profil LinkedIn, l'historique CRM et le brief du poste. Vous pouvez ajouter une instruction spécifique ci-dessous.
                 </p>
               </div>
             ) : (
