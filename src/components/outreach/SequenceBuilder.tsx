@@ -498,18 +498,40 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
   const handleSave = async () => {
     if (!sequence.name.trim() || sequence.steps.length === 0) return;
-    // Validate that message-requiring steps have content
-    const stepsNeedingMessage = sequence.steps.filter(s =>
-      needsMessage(s.actionType) && !s.useAiPersonalization && !s.messageTemplate?.trim()
-    );
-    if (stepsNeedingMessage.length > 0) {
-      const stepLabels = stepsNeedingMessage.map(s => {
-        const config = ALL_STEP_TYPES.find(a => a.value === s.actionType);
-        return `Étape ${s.order + 1} (${config?.label || s.actionType})${s.variantGroup ? ` — Variante ${s.variantGroup}` : ''}`;
-      }).join(', ');
-      alert(`Les étapes suivantes n'ont pas de message : ${stepLabels}. Ajoutez un message ou activez la personnalisation IA.`);
+    
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    sequence.steps.forEach(s => {
+      const stepLabel = `Étape ${s.order + 1}${s.variantGroup ? ` (${s.variantGroup})` : ''}`;
+      // Message required
+      if (needsMessage(s.actionType) && !s.useAiPersonalization && !s.messageTemplate?.trim()) {
+        errors.push(`${stepLabel}: message requis`);
+      }
+      // Email subject required
+      if (needsSubject(s.actionType) && !s.useAiPersonalization && !s.subjectTemplate?.trim()) {
+        errors.push(`${stepLabel}: un objet est requis pour les steps email`);
+      }
+      // Connection request > 300 chars
+      if (s.actionType === 'connection_request' && (s.messageTemplate?.length || 0) > 300) {
+        errors.push(`${stepLabel}: note d'invitation trop longue (max 300 caractères)`);
+      }
+      // Score threshold required
+      if (s.conditionType === 'if_score_above' && !s.conditionValue?.trim()) {
+        errors.push(`${stepLabel}: le seuil de score est requis`);
+      }
+      // Cross-channel condition warning
+      if (isCrossChannelCondition(s.actionType, s.conditionType)) {
+        warnings.push(`${stepLabel}: condition "${s.conditionType}" inhabituelle pour ce type de step`);
+      }
+    });
+    
+    if (errors.length > 0) {
+      setValidationErrors(errors);
       return;
     }
+    setValidationErrors([...warnings]); // show warnings but don't block
+    
     setIsSaving(true);
     try {
       await onSave(sequence);
