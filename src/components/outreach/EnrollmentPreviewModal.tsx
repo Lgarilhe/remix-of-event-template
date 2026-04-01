@@ -467,50 +467,60 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const content = (
     <div className="fixed inset-0 z-[4000] bg-background/95 backdrop-blur-sm flex flex-col">
       {/* Header */}
-      <div className="h-14 border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0 bg-background">
-        <div className="flex items-center gap-3 min-w-0">
-          <button onClick={handleClose} className="p-1.5 hover:bg-muted rounded-md transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold truncate">
-              Inscription · {sequence.name}
-            </h2>
-            <p className="text-[11px] text-muted-foreground">
-              {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''} · {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
-            </p>
+      <div className="border-b border-border shrink-0 bg-background">
+        <div className="flex items-center justify-between px-3 sm:px-6 h-12 sm:h-14">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <button onClick={handleClose} className="p-1.5 hover:bg-muted rounded-md transition-colors shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[13px] sm:text-sm font-semibold truncate">
+                Inscription · {sequence.name}
+              </h2>
+              <p className="text-[10px] sm:text-[11px] text-muted-foreground">
+                {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''} · {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {hasMessageSteps && mode !== 'summary' && (
+              <Badge variant="outline" className="text-[10px] gap-1 hidden sm:inline-flex">
+                <Eye className="w-3 h-3" />
+                Preview {generatedCount}/{totalToGenerate}
+              </Badge>
+            )}
+            {hasMessageSteps && !enrollResults && (
+              <div className="flex items-center border border-border rounded-md overflow-hidden">
+                <button
+                  onClick={() => setMode('summary')}
+                  className={cn(
+                    "px-2.5 sm:px-3 h-7 text-[11px] font-medium transition-colors",
+                    mode === 'summary' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Résumé
+                </button>
+                <button
+                  onClick={() => setMode('preview')}
+                  className={cn(
+                    "px-2.5 sm:px-3 h-7 text-[11px] font-medium transition-colors",
+                    mode === 'preview' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Previews
+                </button>
+              </div>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {hasMessageSteps && mode !== 'summary' && (
-            <Badge variant="outline" className="text-[10px] gap-1">
-              <Eye className="w-3 h-3" />
-              Preview {generatedCount}/{totalToGenerate}
-            </Badge>
-          )}
-          {hasMessageSteps && !enrollResults && (
-            <div className="flex items-center border border-border rounded-md overflow-hidden">
-              <button
-                onClick={() => setMode('summary')}
-                className={cn(
-                  "px-3 h-7 text-[11px] font-medium transition-colors",
-                  mode === 'summary' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Résumé
-              </button>
-              <button
-                onClick={() => setMode('preview')}
-                className={cn(
-                  "px-3 h-7 text-[11px] font-medium transition-colors",
-                  mode === 'preview' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Previews
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Mobile preview counter */}
+        {hasMessageSteps && mode !== 'summary' && (
+          <div className="sm:hidden px-3 pb-2 -mt-1">
+            <span className="text-[10px] text-muted-foreground">
+              ✨ Previews : {generatedCount}/{totalToGenerate} · ~{estimatedCredits} crédits
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Dynamic summary banner */}
