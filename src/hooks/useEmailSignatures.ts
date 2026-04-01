@@ -22,13 +22,14 @@ export function useEmailSignatures() {
     queryKey: ['email-signatures', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
-      const { data, error } = await supabase
-        .from('email_signatures')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data as EmailSignature[];
+      const { data, error } = await supabase.rpc('get_email_signatures' as any, { p_org_id: organizationId }) as any;
+      if (error) {
+        // Fallback to direct query with type cast
+        const res = await (supabase as any).from('email_signatures').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false });
+        if (res.error) throw res.error;
+        return (res.data || []) as EmailSignature[];
+      }
+      return (data || []) as EmailSignature[];
     },
     enabled: !!organizationId,
   });
@@ -38,15 +39,11 @@ export function useEmailSignatures() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !organizationId) throw new Error('Non authentifié');
 
-      // If setting as default, unset other defaults first
       if (input.is_default) {
-        await supabase
-          .from('email_signatures')
-          .update({ is_default: false } as any)
-          .eq('organization_id', organizationId);
+        await (supabase as any).from('email_signatures').update({ is_default: false }).eq('organization_id', organizationId);
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('email_signatures')
         .insert({
           organization_id: organizationId,
@@ -54,11 +51,11 @@ export function useEmailSignatures() {
           content: input.content,
           is_default: input.is_default || false,
           created_by: user.id,
-        } as any)
+        })
         .select()
         .single();
       if (error) throw error;
-      return data;
+      return data as EmailSignature;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['email-signatures'] });
@@ -72,16 +69,13 @@ export function useEmailSignatures() {
       if (!organizationId) throw new Error('No org');
 
       if (input.is_default) {
-        await supabase
-          .from('email_signatures')
-          .update({ is_default: false } as any)
-          .eq('organization_id', organizationId);
+        await (supabase as any).from('email_signatures').update({ is_default: false }).eq('organization_id', organizationId);
       }
 
       const { id, ...updates } = input;
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('email_signatures')
-        .update(updates as any)
+        .update(updates)
         .eq('id', id);
       if (error) throw error;
     },
@@ -94,7 +88,7 @@ export function useEmailSignatures() {
 
   const deleteSignature = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('email_signatures')
         .delete()
         .eq('id', id);
