@@ -950,86 +950,188 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                         {/* Message fields */}
                         {needsMessage(step.actionType) && (
                           <>
-                            {/* AI toggle */}
-                             <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
-                              <div className="flex items-center gap-2">
-                                <Sparkles className="w-4 h-4 text-foreground" />
-                                <span className="text-sm font-medium">Personnalisation IA</span>
-                              </div>
-                              <Switch
-                                checked={step.useAiPersonalization}
-                                onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })}
-                              />
-                            </div>
-
-                            {step.useAiPersonalization ? (
-                              <div>
-                                <Label>Ton du message</Label>
-                                <Select
-                                  value={step.aiTone || 'professional'}
-                                  onValueChange={(value) => updateStep(step.id, { aiTone: value as SequenceStep['aiTone'] })}
-                                >
-                                  <SelectTrigger className="mt-1.5">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {AI_TONES.map(tone => (
-                                      <SelectItem key={tone.value} value={tone.value}>
-                                        {tone.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  Le message sera généré automatiquement par l'IA.
-                                </p>
-                              </div>
-                            ) : (
-                              <>
-                                {needsSubject(step.actionType) && (
-                                  <div>
-                                    <Label>Objet</Label>
-                                    <Input
-                                      value={step.subjectTemplate || ''}
-                                      onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
-                                      placeholder="Objet de l'InMail"
-                                      className="mt-1.5"
-                                    />
+                            {/* A/B Test variant tabs */}
+                            {hasVariants && (
+                              <div className="border border-foreground/20 bg-muted/20">
+                                <div className="flex items-center justify-between px-3 py-2 border-b border-foreground/10">
+                                  <div className="flex items-center gap-2">
+                                    <FlaskConical className="w-3.5 h-3.5 text-foreground" />
+                                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">A/B Test</span>
                                   </div>
-                                )}
-                                <div>
-                                  <div className="flex items-center justify-between">
-                                    <Label>Message</Label>
-                                    {step.actionType === 'connection_request' && (
-                                      <span className={cn(
-                                        "text-xs",
-                                        (step.messageTemplate?.length || 0) > 50 ? "text-destructive font-medium" : "text-muted-foreground"
-                                      )}>
-                                        {step.messageTemplate?.length || 0}/50
-                                      </span>
+                                  <div className="flex items-center gap-1">
+                                    {variants.length < 3 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 text-xs"
+                                        onClick={() => addVariant(step)}
+                                      >
+                                        <Copy className="w-3 h-3 mr-1" />
+                                        + Variante
+                                      </Button>
                                     )}
                                   </div>
-                                  <Textarea
-                                    value={step.messageTemplate || ''}
-                                    onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
-                                    placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
-                                    rows={step.actionType === 'connection_request' ? 2 : 3}
-                                    maxLength={step.actionType === 'connection_request' ? 50 : undefined}
-                                    className={cn(
-                                      "mt-1.5",
-                                      step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-destructive focus-visible:ring-destructive"
-                                    )}
-                                  />
-                                  {step.actionType === 'connection_request' ? (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      LinkedIn limite les notes d'invitation à 50 caractères.
-                                    </p>
-                                  ) : (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{company}}'}, {'{{headline}}'}
-                                    </p>
-                                  )}
                                 </div>
+                                <Tabs defaultValue={step.id} className="w-full">
+                                  <TabsList className="w-full rounded-none h-8 bg-muted/50">
+                                    {variants.sort((a, b) => (a.variantGroup || '').localeCompare(b.variantGroup || '')).map(v => (
+                                      <TabsTrigger key={v.id} value={v.id} className="flex-1 h-6 text-xs rounded-none">
+                                        Variante {v.variantGroup}
+                                        <span className="ml-1 text-muted-foreground">({v.variantWeight || 0}%)</span>
+                                      </TabsTrigger>
+                                    ))}
+                                  </TabsList>
+                                  {variants.map(v => (
+                                    <TabsContent key={v.id} value={v.id} className="p-3 space-y-3 mt-0">
+                                      {/* Weight */}
+                                      <div className="flex items-center gap-3">
+                                        <Label className="text-xs whitespace-nowrap">Poids (%)</Label>
+                                        <Input
+                                          type="number"
+                                          min={1}
+                                          max={100}
+                                          value={v.variantWeight || 50}
+                                          onChange={(e) => updateStep(v.id, { variantWeight: parseInt(e.target.value) || 50 })}
+                                          className="w-20 h-7 text-xs"
+                                        />
+                                        {v.variantGroup !== 'A' && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 text-xs text-muted-foreground hover:text-destructive ml-auto"
+                                            onClick={() => removeVariant(v)}
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                      {/* AI toggle per variant */}
+                                      <div className="flex items-center justify-between p-2 bg-muted/50 border border-foreground/10">
+                                        <div className="flex items-center gap-2">
+                                          <Sparkles className="w-3.5 h-3.5 text-foreground" />
+                                          <span className="text-xs font-medium">IA</span>
+                                        </div>
+                                        <Switch
+                                          checked={v.useAiPersonalization}
+                                          onCheckedChange={(checked) => updateStep(v.id, { useAiPersonalization: checked })}
+                                        />
+                                      </div>
+                                      {!v.useAiPersonalization && (
+                                        <>
+                                          {needsSubject(v.actionType) && (
+                                            <div>
+                                              <Label className="text-xs">Objet</Label>
+                                              <Input
+                                                value={v.subjectTemplate || ''}
+                                                onChange={(e) => updateStep(v.id, { subjectTemplate: e.target.value })}
+                                                placeholder="Objet"
+                                                className="mt-1 h-8 text-xs"
+                                              />
+                                            </div>
+                                          )}
+                                          <div>
+                                            <Label className="text-xs">Message</Label>
+                                            <Textarea
+                                              value={v.messageTemplate || ''}
+                                              onChange={(e) => updateStep(v.id, { messageTemplate: e.target.value })}
+                                              placeholder="Bonjour {{firstName}}, ..."
+                                              rows={2}
+                                              className="mt-1 text-xs"
+                                            />
+                                          </div>
+                                        </>
+                                      )}
+                                    </TabsContent>
+                                  ))}
+                                </Tabs>
+                              </div>
+                            )}
+
+                            {/* Standard message fields (no A/B test) */}
+                            {!hasVariants && (
+                              <>
+                                {/* AI toggle */}
+                                <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
+                                  <div className="flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-foreground" />
+                                    <span className="text-sm font-medium">Personnalisation IA</span>
+                                  </div>
+                                  <Switch
+                                    checked={step.useAiPersonalization}
+                                    onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })}
+                                  />
+                                </div>
+
+                                {step.useAiPersonalization ? (
+                                  <div>
+                                    <Label>Ton du message</Label>
+                                    <Select
+                                      value={step.aiTone || 'professional'}
+                                      onValueChange={(value) => updateStep(step.id, { aiTone: value as SequenceStep['aiTone'] })}
+                                    >
+                                      <SelectTrigger className="mt-1.5">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {AI_TONES.map(tone => (
+                                          <SelectItem key={tone.value} value={tone.value}>
+                                            {tone.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                      Le message sera généré automatiquement par l'IA.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {needsSubject(step.actionType) && (
+                                      <div>
+                                        <Label>Objet</Label>
+                                        <Input
+                                          value={step.subjectTemplate || ''}
+                                          onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
+                                          placeholder="Objet de l'InMail"
+                                          className="mt-1.5"
+                                        />
+                                      </div>
+                                    )}
+                                    <div>
+                                      <div className="flex items-center justify-between">
+                                        <Label>Message</Label>
+                                        {step.actionType === 'connection_request' && (
+                                          <span className={cn(
+                                            "text-xs",
+                                            (step.messageTemplate?.length || 0) > 50 ? "text-destructive font-medium" : "text-muted-foreground"
+                                          )}>
+                                            {step.messageTemplate?.length || 0}/50
+                                          </span>
+                                        )}
+                                      </div>
+                                      <Textarea
+                                        value={step.messageTemplate || ''}
+                                        onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
+                                        placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
+                                        rows={step.actionType === 'connection_request' ? 2 : 3}
+                                        maxLength={step.actionType === 'connection_request' ? 50 : undefined}
+                                        className={cn(
+                                          "mt-1.5",
+                                          step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-destructive focus-visible:ring-destructive"
+                                        )}
+                                      />
+                                      {step.actionType === 'connection_request' ? (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          LinkedIn limite les notes d'invitation à 50 caractères.
+                                        </p>
+                                      ) : (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{company}}'}, {'{{headline}}'}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
                               </>
                             )}
                           </>
