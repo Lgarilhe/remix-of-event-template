@@ -61,7 +61,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onAccountChange,
   activeProject,
   onProjectChange,
-  searchSource: initialSearchSource = 'linkedin',
+  searchSource: initialSearchSource = 'database',
 }) => {
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);

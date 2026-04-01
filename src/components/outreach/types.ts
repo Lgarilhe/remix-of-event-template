@@ -180,7 +180,7 @@ export interface LinkedInFiltersState {
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
   keywords: '',
-  api: 'recruiter',
+  api: 'database',
   category: 'people',
   location: [],
   location_within_area: null,
