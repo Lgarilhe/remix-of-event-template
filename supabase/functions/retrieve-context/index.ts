@@ -196,8 +196,8 @@ Deno.serve(async (req) => {
       }
 
       const embeddingData = await embeddingRes.json();
-      queryEmbedding = embeddingData.data[0].embedding;
-      setCachedEmbedding(queryHash, queryEmbedding);
+      queryEmbedding = embeddingData.data[0].embedding as number[];
+      setCachedEmbedding(queryHash, queryEmbedding!);
     }
 
     // ── 4. Call the RPC ────────────────────────────────────────
