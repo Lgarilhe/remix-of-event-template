@@ -756,7 +756,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             📱 Message WhatsApp. Les candidats sans numéro seront skippés.
                           </div>
                         )}
-                        <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
+                        <div className="flex items-center justify-between p-3 bg-muted/30 border border-border rounded-md">
                           <div className="flex items-center gap-2"><Sparkles className="w-4 h-4" /><span className="text-sm font-medium">Personnalisation IA</span></div>
                           <Switch checked={step.useAiPersonalization} onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })} />
                         </div>
