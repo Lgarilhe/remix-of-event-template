@@ -17,7 +17,6 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
@@ -56,7 +55,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   job,
   onSuccess,
 }) => {
-  const [showPreview, setShowPreview] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [results, setResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
 
@@ -70,6 +68,20 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       return MESSAGE_ACTION_TYPES.includes(actionType) && template.trim();
     });
   }, [sequence.steps]);
+
+  if (hasMessageSteps) {
+    return (
+      <EnrollmentPreviewModal
+        isOpen={isOpen}
+        onClose={onClose}
+        sequence={sequence}
+        profiles={profiles}
+        accountId={accountId}
+        job={job}
+        onSuccess={onSuccess}
+      />
+    );
+  }
 
   const handleEnroll = async () => {
     setIsEnrolling(true);
@@ -206,24 +218,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     }
   };
 
-  // If preview modal is open, render it instead
-  if (showPreview) {
-    return (
-      <EnrollmentPreviewModal
-        isOpen={showPreview}
-        onClose={() => setShowPreview(false)}
-        sequence={sequence}
-        profiles={profiles}
-        accountId={accountId}
-        job={job}
-        onSuccess={() => {
-          setShowPreview(false);
-          onSuccess();
-        }}
-      />
-    );
-  }
-
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-foreground rounded-none">
@@ -320,16 +314,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           </Button>
           {!results && (
             <div className="flex items-center gap-2">
-              {hasMessageSteps && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowPreview(true)}
-                  className="rounded-none gap-1.5"
-                >
-                  <Eye className="w-4 h-4" />
-                  Preview
-                </Button>
-              )}
               <Button
                  onClick={handleEnroll}
                  disabled={isEnrolling}
