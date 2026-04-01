@@ -162,6 +162,32 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
             : null,
         });
       }
+
+      // Fetch A/B test results from executions with variant_assigned
+      const filterForAB = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
+      if (filterForAB) {
+        const { data: execData } = await supabase
+          .from('sequence_step_executions')
+          .select('variant_assigned, status')
+          .eq('sequence_id', filterForAB)
+          .not('variant_assigned', 'is', null);
+
+        if (execData && execData.length > 0) {
+          const variantMap = new Map<string, { sent: number; opened: number; clicked: number; replied: number }>();
+          for (const exec of execData) {
+            const v = exec.variant_assigned as string;
+            if (!v) continue;
+            const existing = variantMap.get(v) || { sent: 0, opened: 0, clicked: 0, replied: 0 };
+            if (['sent', 'executed'].includes(exec.status)) existing.sent++;
+            variantMap.set(v, existing);
+          }
+          setAbResults(Array.from(variantMap.entries()).map(([variant, stats]) => ({ variant, ...stats })));
+        } else {
+          setAbResults([]);
+        }
+      } else {
+        setAbResults([]);
+      }
     } catch (err) {
       console.error('Error fetching analytics:', err);
     } finally {
