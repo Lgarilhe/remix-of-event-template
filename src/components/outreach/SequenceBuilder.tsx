@@ -30,6 +30,8 @@ import {
   Zap,
   List,
   Workflow,
+  FlaskConical,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
