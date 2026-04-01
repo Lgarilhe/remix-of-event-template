@@ -212,7 +212,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           location: profile.location,
           summary: profile.summary,
           current_company: profile.work_experience?.[0]?.company,
-          current_title: profile.work_experience?.[0]?.title || profile.work_experience?.[0]?.role,
+          current_title: profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position,
           skills: profile.skills?.map(s => s.name) || [],
         };
 
