@@ -295,6 +295,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           </Alert>
         )}
       </div>
+      )}
 
       {/* Job Selector — hidden when in mission context (job auto-selected) */}
       {!activeProject && (
