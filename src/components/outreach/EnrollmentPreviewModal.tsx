@@ -140,6 +140,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResults, setEnrollResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
   const [page, setPage] = useState(0);
+  const [mobilePane, setMobilePane] = useState<'list' | 'preview'>('preview');
   const pageSize = 10;
 
   // ── Candidate states (remove/skip) ──
