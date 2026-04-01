@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
-import { InteractiveFlowDiagram } from './InteractiveFlowDiagram';
+import { WorkflowCanvas } from './WorkflowCanvas';
 import { StepEditor } from './StepEditor';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import { AnimatePresence, motion } from 'framer-motion';
