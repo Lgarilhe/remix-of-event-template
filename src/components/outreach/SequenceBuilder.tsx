@@ -1068,6 +1068,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                             {/* Standard message fields (no A/B test) */}
                             {!hasVariants && (
                               <>
+                                {/* WhatsApp indicator */}
+                                {isWhatsAppStep(step.actionType) && (
+                                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                                    📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement.
+                                  </div>
+                                )}
+
                                 {/* AI toggle */}
                                 <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
                                   <div className="flex items-center gap-2">
@@ -1104,13 +1111,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                   </div>
                                 ) : (
                                   <>
+                                    {/* Subject for email/inmail */}
                                     {needsSubject(step.actionType) && (
                                       <div>
-                                        <Label>Objet</Label>
+                                        <div className="flex items-center justify-between">
+                                          <Label>Objet</Label>
+                                          <VariableInserter
+                                            targetRef={subjectRef}
+                                            currentValue={step.subjectTemplate || ''}
+                                            onInsert={(val) => updateStep(step.id, { subjectTemplate: val })}
+                                            showEmailVariables={isEmailStep(step.actionType)}
+                                          />
+                                        </div>
                                         <Input
+                                          ref={subjectRef}
                                           value={step.subjectTemplate || ''}
                                           onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
-                                          placeholder="Objet de l'InMail"
+                                          placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
                                           className="mt-1.5"
                                         />
                                       </div>
@@ -1118,37 +1135,104 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     <div>
                                       <div className="flex items-center justify-between">
                                         <Label>Message</Label>
-                                        {step.actionType === 'connection_request' && (
-                                          <span className={cn(
-                                            "text-xs",
-                                            (step.messageTemplate?.length || 0) > 50 ? "text-destructive font-medium" : "text-muted-foreground"
-                                          )}>
-                                            {step.messageTemplate?.length || 0}/50
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                          <VariableInserter
+                                            targetRef={messageRef}
+                                            currentValue={step.messageTemplate || ''}
+                                            onInsert={(val) => updateStep(step.id, { messageTemplate: val })}
+                                            showEmailVariables={isEmailStep(step.actionType)}
+                                          />
+                                          {step.actionType === 'connection_request' && (
+                                            <span className={cn(
+                                              "text-xs",
+                                              (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground"
+                                            )}>
+                                              {step.messageTemplate?.length || 0}/300
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                       <Textarea
+                                        ref={messageRef}
                                         value={step.messageTemplate || ''}
                                         onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
-                                        placeholder={step.actionType === 'connection_request' ? "Note courte (max 50 car.)" : "Bonjour {{firstName}}, ..."}
+                                        placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300 car.)" : "Bonjour {{first_name}}, ..."}
                                         rows={step.actionType === 'connection_request' ? 2 : 3}
-                                        maxLength={step.actionType === 'connection_request' ? 50 : undefined}
+                                        maxLength={step.actionType === 'connection_request' ? 300 : undefined}
                                         className={cn(
                                           "mt-1.5",
-                                          step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 50 && "border-destructive focus-visible:ring-destructive"
+                                          step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-destructive focus-visible:ring-destructive"
                                         )}
                                       />
-                                      {step.actionType === 'connection_request' ? (
+                                      {step.actionType === 'connection_request' && (
                                         <p className="text-xs text-muted-foreground mt-1">
-                                          LinkedIn limite les notes d'invitation à 50 caractères.
-                                        </p>
-                                      ) : (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Variables: {'{{firstName}}'}, {'{{lastName}}'}, {'{{company}}'}, {'{{headline}}'}
+                                          LinkedIn limite les notes d'invitation à 300 caractères.
                                         </p>
                                       )}
                                     </div>
                                   </>
+                                )}
+
+                                {/* Email-specific fields */}
+                                {isEmailStep(step.actionType) && !step.useAiPersonalization && (
+                                  <div className="space-y-3 pt-2 border-t border-foreground/10">
+                                    {/* CC / BCC collapsible */}
+                                    <Collapsible>
+                                      <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                                        ▸ CC / BCC
+                                      </CollapsibleTrigger>
+                                      <CollapsibleContent className="space-y-2 pt-2">
+                                        <div>
+                                          <Label className="text-xs">CC</Label>
+                                          <Input
+                                            value={(step.ccEmails || []).join(', ')}
+                                            onChange={(e) => updateStep(step.id, { ccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                                            placeholder="email1@ex.com, email2@ex.com"
+                                            className="mt-1 h-8 text-xs"
+                                          />
+                                        </div>
+                                        <div>
+                                          <Label className="text-xs">BCC</Label>
+                                          <Input
+                                            value={(step.bccEmails || []).join(', ')}
+                                            onChange={(e) => updateStep(step.id, { bccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                                            placeholder="email@ex.com"
+                                            className="mt-1 h-8 text-xs"
+                                          />
+                                        </div>
+                                      </CollapsibleContent>
+                                    </Collapsible>
+
+                                    {/* Unsubscribe toggle */}
+                                    <div className="flex items-center justify-between">
+                                      <Label className="text-xs">Lien de désinscription</Label>
+                                      <Switch
+                                        checked={step.includeUnsubscribe ?? false}
+                                        onCheckedChange={(checked) => updateStep(step.id, { includeUnsubscribe: checked })}
+                                      />
+                                    </div>
+
+                                    {/* Signature */}
+                                    <div>
+                                      <Label className="text-xs">Signature</Label>
+                                      <Select
+                                        value={step.signatureId || '__none__'}
+                                        onValueChange={(value) => updateStep(step.id, { signatureId: value === '__none__' ? undefined : value })}
+                                      >
+                                        <SelectTrigger className="mt-1 h-8 text-xs">
+                                          <SelectValue placeholder="Aucune" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__none__">Aucune</SelectItem>
+                                          {signatures.map(sig => (
+                                            <SelectItem key={sig.id} value={sig.id}>
+                                              {sig.name}{sig.is_default ? ' ⭐' : ''}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
                                 )}
                               </>
                             )}
