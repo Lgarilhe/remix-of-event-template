@@ -28,6 +28,8 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
     !!filters.db_company_domain,
     !!filters.db_org_job_titles,
     !!filters.db_org_num_jobs_min || !!filters.db_org_num_jobs_max,
+    filters.exclude_consulting,
+    !!filters.company_category,
   ].filter(Boolean).length;
 
   const preview: string[] = [];
