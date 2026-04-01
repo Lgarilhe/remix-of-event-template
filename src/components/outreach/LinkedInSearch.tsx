@@ -61,7 +61,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onAccountChange,
   activeProject,
   onProjectChange,
-  searchSource: initialSearchSource = 'linkedin',
+  searchSource: initialSearchSource = 'database',
 }) => {
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -75,6 +75,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const handleSearchSourceChange = useCallback((source: 'linkedin' | 'database') => {
     setSearchSource(source);
   }, []);
+
+  // Track previous search source to auto-relaunch search on toggle
+  const prevSearchSourceRef = useRef(searchSource);
 
   // Auto-generate scoring instructions from brief's evaluation criteria
   React.useEffect(() => {
@@ -141,6 +144,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setHasSearched: search.setHasSearched,
     }
   );
+
+  // Auto-relaunch search when source toggle changes
+  useEffect(() => {
+    if (prevSearchSourceRef.current !== searchSource) {
+      prevSearchSourceRef.current = searchSource;
+      // Small delay to let the api type effect fire first
+      const timer = setTimeout(() => {
+        handleSearch();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [searchSource, handleSearch]);
 
   // Ref for merged results (includes pool profiles) - used by scoring hook
   const allAvailableProfilesRef = useRef<LinkedInProfile[]>([]);

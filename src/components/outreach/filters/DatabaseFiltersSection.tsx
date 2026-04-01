@@ -28,6 +28,8 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
     !!filters.db_company_domain,
     !!filters.db_org_job_titles,
     !!filters.db_org_num_jobs_min || !!filters.db_org_num_jobs_max,
+    filters.exclude_consulting,
+    !!filters.company_category,
   ].filter(Boolean).length;
 
   const preview: string[] = [];
@@ -192,6 +194,45 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
             />
           </div>
         </div>
+      </FilterGroup>
+
+      {/* Exclure consulting */}
+      <FilterGroup title="Exclure consulting / ESN">
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={filters.exclude_consulting}
+            onCheckedChange={(checked) =>
+              onChange({ ...filters, exclude_consulting: checked })
+            }
+          />
+          <Label className="text-xs text-muted-foreground">
+            {filters.exclude_consulting ? 'ESN / IT Services / Staffing exclus' : 'Tous les types d\'entreprise'}
+          </Label>
+        </div>
+      </FilterGroup>
+
+      {/* Catégorie entreprise */}
+      <FilterGroup title="Catégorie entreprise">
+        <div className="flex flex-wrap gap-1.5">
+          {([
+            { value: '' as const, label: 'Tous' },
+            { value: 'startup' as const, label: 'Startup' },
+            { value: 'scaleup' as const, label: 'Scale-up' },
+            { value: 'enterprise' as const, label: 'Enterprise' },
+          ] as const).map(opt => (
+            <Badge
+              key={opt.value}
+              variant={filters.company_category === opt.value ? 'default' : 'outline'}
+              className="cursor-pointer text-xs"
+              onClick={() => onChange({ ...filters, company_category: opt.value })}
+            >
+              {opt.label}
+            </Badge>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Startup (&lt;50), Scale-up (50-500), Enterprise (500+)
+        </p>
       </FilterGroup>
     </FilterSection>
   );
