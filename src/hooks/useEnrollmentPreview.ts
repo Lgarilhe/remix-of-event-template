@@ -64,7 +64,7 @@ function resolveVariables(template: string, profile: LinkedInProfile): string {
     .replace(/\{\{company\}\}/gi, profile.work_experience?.[0]?.company || '')
     .replace(/\{\{headline\}\}/gi, profile.headline || '')
     .replace(/\{\{location\}\}/gi, profile.location || '')
-    .replace(/\{\{job_title\}\}/gi, profile.work_experience?.[0]?.title || profile.work_experience?.[0]?.role || '');
+    .replace(/\{\{job_title\}\}/gi, profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position || '');
 }
 
 export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnrollmentPreviewOptions) {
