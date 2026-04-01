@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
             {
               method: "POST",
               headers: {
-                "X-API-KEY": unipileApiKey,
+                "X-API-KEY": unipileApiKey!,
                 "accept": "application/json",
               },
               body: formData,

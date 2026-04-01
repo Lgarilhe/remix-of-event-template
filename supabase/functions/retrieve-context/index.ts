@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
       chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
     } else {
       // Call retrieve_context (single entity)
-      const embeddingStr = `[${queryEmbedding.join(",")}]`;
+      const embeddingStr = `[${queryEmbedding!.join(",")}]`;
       const { data, error } = await svc.rpc("retrieve_context", {
         p_org_id: organizationId,
         p_entity_type: entity_type,

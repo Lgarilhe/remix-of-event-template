@@ -2289,8 +2289,8 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     const orgId = enrollment.organization_id as string || '';
     const ragJobTitle = jobNotionData?.['Poste'] || jobNotionData?.['Titre'] || enrollment.job_title as string || '';
     const ragJobSkills = jobNotionData?.['Compétences'] || jobNotionData?.['Skills'] || '';
-    const ragPromise = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`) : Promise.resolve(null);
-    }
+    const ragPromise: Promise<any> = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`) : Promise.resolve(null);
+    } // end Notion block
 
     // Fetch candidate history from Airtable cache
     const historyPromise = (async () => {

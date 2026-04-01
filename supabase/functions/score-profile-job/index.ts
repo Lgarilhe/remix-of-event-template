@@ -917,12 +917,15 @@ interface LLMResult {
   overallScore: number;
   techFitScore: number;
   softSkillsScore: number;
+  pedigreeScore: number | null;
   matchedSkills: string[];
   missingCriticalSkills: string[];
   summary: string;
   strengths: string[];
   concerns: string[];
+  notableCompanies: string[] | null;
   mustHavePassed: boolean;
+  mustHaveUncertain: boolean;
   mustHaveDetails: string | null;
   tokensUsed: { input: number; output: number };
 }

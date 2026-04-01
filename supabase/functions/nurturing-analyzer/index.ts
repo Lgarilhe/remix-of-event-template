@@ -471,10 +471,10 @@ Deno.serve(async (req) => {
         try {
           const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
           const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-          const orgId = await resolveOrgIdFromUser(authUserId, adminClient);
-          if (orgId) {
+          const orgId = authUserId ? await resolveOrgIdFromUser(authUserId, adminClient as any) : null;
+          if (orgId && authUserId) {
             const { settleCredits } = await import("../_shared/settle-credits.ts");
-            settleCredits(adminClient, {
+            settleCredits(adminClient as any, {
               organizationId: orgId, userId: authUserId,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
               tokensInput: message._tokensIn, tokensOutput: message._tokensOut,
