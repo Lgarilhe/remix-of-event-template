@@ -381,7 +381,7 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
       ) : (
         <>
           {renderFlow()}
-          {!lastStepIsBranch && (
+          {(!lastStepIsBranch) && (
             <>
               <Connector />
               <button
