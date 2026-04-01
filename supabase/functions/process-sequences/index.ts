@@ -191,6 +191,21 @@ async function handleProcess(supabase: any, force = false) {
     if (stuckExecs?.length) {
       console.warn(`[process] Recovering ${stuckExecs.length} stuck 'sending' execution(s)`);
       for (const stuck of stuckExecs) {
+        // Check if this email was actually sent (tracking record exists = email went out)
+        const { data: trackingRecord } = await supabase.from('sequence_email_tracking')
+          .select('id').eq('execution_id', stuck.id).limit(1);
+        if (trackingRecord?.length) {
+          // Email was sent but status not updated — mark as sent, don't retry
+          await supabase.from('sequence_step_executions').update({
+            status: 'sent',
+            executed_at: new Date().toISOString(),
+            error_message: 'Recovered: email was sent but status update failed',
+            channel: 'email',
+          }).eq('id', stuck.id);
+          console.log(`[process] Recovered stuck email ${stuck.id} — already sent (tracking exists)`);
+          continue;
+        }
+
         const retryCount = stuck.retry_count || 0;
         if (retryCount < 3) {
           // Reschedule for retry
@@ -397,7 +412,7 @@ async function handleProcess(supabase: any, force = false) {
           // First: check if there are ANY earlier message-type steps in this enrollment's execution history
           const { data: priorMessageSteps } = await supabase
             .from('sequence_step_executions')
-            .select('id, status, step:sequence_steps!inner(action_type)')
+            .select('id, status, executed_at, step:sequence_steps!inner(action_type)')
             .eq('enrollment_id', enrollment.id)
             .lt('step_order', step.step_order)
             .in('step.action_type', ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message']);
@@ -427,14 +442,15 @@ async function handleProcess(supabase: any, force = false) {
             // Before sending a follow-up, check in real-time if the candidate has already replied
             // This catches replies missed by webhook or not yet picked up by the 4h polling
             try {
-              const lastSentDate = priorMessageSteps
-                .filter((s: any) => s.status === 'sent')
-                .reduce((latest: string | null, s: any) => {
-                  // We don't have executed_at here, use a safe window: 7 days ago
-                  return latest;
-                }, null);
-              
-              const replyCheckDate = new Date(Date.now() - 7 * 24 * 3600000).toISOString();
+              // Find the most recent sent message date for reply check window
+              const sentSteps = priorMessageSteps.filter((s: any) => sentStatuses.has(s.status) && s.executed_at);
+              const lastSentDate = sentSteps.reduce((latest: string | null, s: any) => {
+                if (!latest) return s.executed_at;
+                return new Date(s.executed_at) > new Date(latest) ? s.executed_at : latest;
+              }, null);
+
+              // Use last sent date if available, otherwise fall back to 7 days ago
+              const replyCheckDate = lastSentDate || new Date(Date.now() - 7 * 24 * 3600000).toISOString();
               const hasReplied = await checkForReplyAfterDate(
                 enrollment.account_id, 
                 enrollment.resolved_profile_id || enrollment.profile_id, 
@@ -500,11 +516,12 @@ async function handleProcess(supabase: any, force = false) {
         if (lockError || !lockResult) { results.skipped++; continue; }
 
         let finalMessage = (exec.final_message || step.message_template || '') as string;
-        let finalSubject = (step.subject_template || '') as string;
+        let finalSubject = (exec.final_subject || step.subject_template || '') as string;
 
         // AI personalization: use the rich pipeline for ALL message types including email
-        // For email steps, the personalized message is passed to sequence-send-email
-        if (step.use_ai_personalization && needsMessage(step.action_type)) {
+        // SKIP if already generated on a previous attempt (retry) — avoids double billing
+        const alreadyPersonalized = !!(exec.final_message && (exec.retry_count || 0) > 0);
+        if (step.use_ai_personalization && needsMessage(step.action_type) && !alreadyPersonalized) {
           const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
@@ -1363,9 +1380,14 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
     }
     case 'if_email_not_opened': {
       if (!supabaseClient || !enrollmentId) return true;
-      const { data: sentEmails } = await supabaseClient.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollmentId).eq('channel', 'email').in('status', ['sent', 'opened', 'clicked', 'replied']);
-      if (!sentEmails || sentEmails.length === 0) return true; // no emails sent yet → condition is vacuously true
-      const anyOpened = sentEmails.some((e: { status: string }) => e.status !== 'sent');
+      // Find email executions: check both execution.channel AND step.step_channel (channel may be null on older executions)
+      const { data: sentEmails } = await supabaseClient.from('sequence_step_executions')
+        .select('id, status, channel, step:sequence_steps!inner(step_channel, action_type)')
+        .eq('enrollment_id', enrollmentId)
+        .in('status', ['sent', 'opened', 'clicked', 'replied']);
+      const emailExecs = (sentEmails || []).filter((e: any) => e.channel === 'email' || e.step?.step_channel === 'email' || e.step?.action_type === 'email');
+      if (emailExecs.length === 0) return true; // no emails sent yet → condition is vacuously true
+      const anyOpened = emailExecs.some((e: { status: string }) => e.status !== 'sent');
       return !anyOpened;
     }
     case 'if_link_clicked': {
@@ -2846,11 +2868,11 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     
     console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}, Sender: ${senderName}, Model: ${resolvedModelId}, Tokens: ${totalTokensIn}in+${totalTokensOut}out`);
 
-    // Settle AI credits (fire-and-forget — never blocks the message)
+    // Settle AI credits — AWAIT to ensure credits are deducted before returning
     if (seqOrgId && (totalTokensIn + totalTokensOut) > 0) {
       try {
         const { settleCredits: settle } = await import('../_shared/settle-credits.ts');
-        settle(supabase, {
+        const settleResult = await settle(supabase, {
           organizationId: seqOrgId,
           userId: (enrollment.created_by || '') as string,
           aiAction: 'outreach_message',
@@ -2858,8 +2880,13 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
           tokensInput: totalTokensIn,
           tokensOutput: totalTokensOut,
           description: `Sequence AI (${msgType} — ${step.action_type})`,
-        }).catch(e => console.warn('[generatePersonalizedMessage] settle error:', e));
-      } catch { /* settle-credits import failed — non-blocking */ }
+        });
+        if (!settleResult?.success) {
+          console.error(`[generatePersonalizedMessage] ⚠️ CREDIT SETTLEMENT FAILED for org ${seqOrgId}: ${totalTokensIn}in+${totalTokensOut}out tokens NOT deducted`);
+        }
+      } catch (settleErr) {
+        console.error(`[generatePersonalizedMessage] ⚠️ CREDIT SETTLEMENT ERROR for org ${seqOrgId}:`, settleErr);
+      }
     }
 
     return { message: parsed.message, subject: parsed.subject };
