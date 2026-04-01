@@ -13,11 +13,13 @@ import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
 import { Job } from '@/types/jobs';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Search, Loader2, AlertTriangle, Lock, Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface SearchFiltersPanelProps {
   // Account
