@@ -909,18 +909,20 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     switch (wizardStep) {
       case 'info':
         return (
-          <div className="space-y-6 max-w-lg">
+          <div className="space-y-8 max-w-lg">
             <div>
-              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Informations</h2>
+              <h2 className="text-xl font-semibold mb-1">Informations</h2>
               <p className="text-sm text-muted-foreground">Nommez votre séquence et décrivez son objectif.</p>
             </div>
-            <div>
-              <Label htmlFor="wiz-name">Nom de la séquence *</Label>
-              <Input id="wiz-name" value={sequence.name} onChange={(e) => setSequence(prev => ({ ...prev, name: e.target.value }))} placeholder="Ex: Prospection développeurs React" className="mt-1.5" />
-            </div>
-            <div>
-              <Label htmlFor="wiz-desc">Description (optionnel)</Label>
-              <Input id="wiz-desc" value={sequence.description || ''} onChange={(e) => setSequence(prev => ({ ...prev, description: e.target.value }))} placeholder="Décrivez l'objectif de cette séquence" className="mt-1.5" />
+            <div className="space-y-5">
+              <div>
+                <Label htmlFor="wiz-name">Nom de la séquence *</Label>
+                <Input id="wiz-name" value={sequence.name} onChange={(e) => setSequence(prev => ({ ...prev, name: e.target.value }))} placeholder="Ex: Prospection développeurs React" className="mt-1.5" />
+              </div>
+              <div>
+                <Label htmlFor="wiz-desc">Description (optionnel)</Label>
+                <Input id="wiz-desc" value={sequence.description || ''} onChange={(e) => setSequence(prev => ({ ...prev, description: e.target.value }))} placeholder="Décrivez l'objectif de cette séquence" className="mt-1.5" />
+              </div>
             </div>
           </div>
         );
