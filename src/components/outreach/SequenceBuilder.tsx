@@ -687,18 +687,41 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeStep(step.id);
-                        }}
-                        disabled={sequence.steps.length <= 1}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        {/* A/B Test button */}
+                        {canABTest(step.actionType) && !hasVariants && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addVariant(step);
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
+                            title="Créer un A/B test"
+                          >
+                            <FlaskConical className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {hasVariants && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 rounded-none border-foreground/30">
+                            <FlaskConical className="w-3 h-3 mr-0.5" />
+                            A/B
+                          </Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeStep(step.id);
+                          }}
+                          disabled={sequence.steps.length <= 1}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Step details (expanded) */}
