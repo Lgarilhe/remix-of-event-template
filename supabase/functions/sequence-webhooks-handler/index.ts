@@ -83,7 +83,8 @@ async function stopCompanyEnrollments(
  * Handle a reply event (LinkedIn or email) for an enrollment.
  */
 async function handleReply(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   enrollmentId: string,
   timestamp: string,
 ) {
