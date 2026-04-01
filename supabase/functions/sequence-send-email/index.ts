@@ -128,29 +128,49 @@ async function generateAiSnippet(
   const userPrompt = `Candidate context:\n${context}\n\n${customPrompt ? `Special instruction: ${customPrompt}\n\n` : ''}Generate a brief personalized snippet for the email.`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 150,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
+    // Resolve model from org settings (same pattern as process-sequences)
+    let modelId = 'claude-sonnet-4-6';
+    let anthropicModel = 'claude-sonnet-4-6';
+    try {
+      const { getModel: gm, getAnthropicModelId: gam } = await import('../_shared/ai-config.ts');
+      let orgModelDefault: string | null = null;
+      if (orgId) {
+        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { data: orgRow } = await adminClient.from('organizations').select('ai_model_default').eq('id', orgId).maybeSingle();
+        orgModelDefault = orgRow?.ai_model_default || null;
+      }
+      modelId = gm('default', null, orgModelDefault);
+      anthropicModel = gam(modelId);
+    } catch { /* use defaults */ }
+
+    const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
+    const result = await callWithRetry(ANTHROPIC_API_KEY!, {
+      model: anthropicModel,
+      max_tokens: 150,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
-    if (!response.ok) {
-      console.warn('[sequence-send-email] Anthropic API error:', response.status);
-      return null;
+    const text = result?.content?.[0]?.text;
+
+    // Settle credits (fire-and-forget)
+    if (orgId && result?.usage) {
+      try {
+        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { settleCredits: settle } = await import('../_shared/settle-credits.ts');
+        settle(adminClient, {
+          organizationId: orgId,
+          userId: '', // no user context in email send (service role call)
+          aiAction: 'outreach_message',
+          modelId,
+          tokensInput: result.usage.input_tokens || 0,
+          tokensOutput: result.usage.output_tokens || 0,
+          description: 'Sequence email AI snippet (fallback)',
+        }).catch(e => console.warn('[sequence-send-email] settle error:', e));
+      } catch { /* non-blocking */ }
     }
 
-    const data = await response.json();
-    const text = data?.content?.[0]?.text;
-    return text || null;
+    return (text as string) || null;
   } catch (err) {
     console.warn('[sequence-send-email] AI personalization error:', err);
     return null;

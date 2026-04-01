@@ -2690,22 +2690,46 @@ RÈGLES D'UTILISATION:
 
 Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
+    // Resolve AI model from org settings (respects user's model choice in Settings)
+    const seqOrgId = (enrollment.organization_id || '') as string;
+    let resolvedModelId = 'claude-sonnet-4-6'; // fallback
+    let resolvedAnthropicModel = 'claude-sonnet-4-6';
+    try {
+      const { getModel: getModelFn, getAnthropicModelId: getAnthropicModelIdFn } = await import('../_shared/ai-config.ts');
+      let orgModelDefault: string | null = null;
+      if (seqOrgId) {
+        const { data: orgRow } = await supabase.from('organizations').select('ai_model_default').eq('id', seqOrgId).maybeSingle();
+        orgModelDefault = orgRow?.ai_model_default || null;
+      }
+      resolvedModelId = getModelFn('default', null, orgModelDefault);
+      resolvedAnthropicModel = getAnthropicModelIdFn(resolvedModelId);
+    } catch (modelErr) {
+      console.warn('[generatePersonalizedMessage] Model resolution failed, using default:', modelErr);
+    }
+
+    // Token tracking for credit settlement
+    let totalTokensIn = 0;
+    let totalTokensOut = 0;
+
     const callAI = async (userPrompt: string) => {
-      const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31' },
-        body: JSON.stringify({ 
-          model: 'claude-sonnet-4-6', 
-          max_tokens: 500, 
+      try {
+        const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
+        const result = await callWithRetry(ANTHROPIC_API_KEY!, {
+          model: resolvedAnthropicModel,
+          max_tokens: 500,
           system: [{ type: 'text', text: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.', cache_control: { type: 'ephemeral' } }],
-          messages: [{ role: 'user', content: userPrompt }] 
-        }),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      // deno-lint-ignore no-explicit-any
-      const textContent = data.content?.find((c: any) => c.type === 'text')?.text || '';
-      return textContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          messages: [{ role: 'user', content: userPrompt }],
+        });
+        // Track tokens
+        totalTokensIn += result.usage?.input_tokens || 0;
+        totalTokensOut += result.usage?.output_tokens || 0;
+        // deno-lint-ignore no-explicit-any
+        const textContent = result.content?.find((c: any) => c.type === 'text')?.text || '';
+        return textContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      } catch (aiErr) {
+        console.error('[generatePersonalizedMessage] AI call failed:', aiErr);
+        return null;
+      }
     };
 
     const firstContent = await callAI(prompt);
@@ -2743,7 +2767,24 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
       parsed.message = parsed.message.trim() + '\n\n' + senderName;
     }
     
-    console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}, Sender: ${senderName}`);
+    console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}, Sender: ${senderName}, Model: ${resolvedModelId}, Tokens: ${totalTokensIn}in+${totalTokensOut}out`);
+
+    // Settle AI credits (fire-and-forget — never blocks the message)
+    if (seqOrgId && (totalTokensIn + totalTokensOut) > 0) {
+      try {
+        const { settleCredits: settle } = await import('../_shared/settle-credits.ts');
+        settle(supabase, {
+          organizationId: seqOrgId,
+          userId: (enrollment.created_by || '') as string,
+          aiAction: 'outreach_message',
+          modelId: resolvedModelId,
+          tokensInput: totalTokensIn,
+          tokensOutput: totalTokensOut,
+          description: `Sequence AI (${msgType} — ${step.action_type})`,
+        }).catch(e => console.warn('[generatePersonalizedMessage] settle error:', e));
+      } catch { /* settle-credits import failed — non-blocking */ }
+    }
+
     return { message: parsed.message, subject: parsed.subject };
   } catch (e) { console.error('AI personalization error:', e); return null; }
 }
