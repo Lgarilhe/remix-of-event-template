@@ -212,8 +212,37 @@ Deno.serve(async (req) => {
         );
       }
 
+      case 'list_email': {
+        // List all connected email accounts (Gmail, Outlook, IMAP)
+        const emailResponse = await fetchWithTimeout(`${baseUrl}/accounts`, {
+          headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+        });
+
+        const emailData = await emailResponse.json();
+        const EMAIL_TYPES = new Set(['GOOGLE', 'OUTLOOK', 'IMAP', 'MAIL', 'GMAIL']);
+        const emailAccounts = (emailData.items || [])
+          .filter((acc: { type: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()))
+          .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }> }) => {
+            const sources = acc.sources || [];
+            const okSource = sources.find((s: { status: string }) => s.status === 'OK');
+            const mainStatus = okSource?.status || sources[0]?.status || 'UNKNOWN';
+            return {
+              id: acc.id,
+              name: acc.name,
+              identifier: acc.name,
+              type: acc.type,
+              status: mainStatus,
+            };
+          });
+
+        return new Response(
+          JSON.stringify({ success: true, accounts: emailAccounts }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'hosted_auth_link': {
-        // Generate a hosted auth link for white-label account connection (LinkedIn or WhatsApp)
+        // Generate a hosted auth link for white-label account connection (LinkedIn, WhatsApp, or Email)
         const { success_redirect_url, failure_redirect_url, notify_url, org_name, providers: requestedProviders } = params;
 
         // Allow caller to specify provider(s), default to LinkedIn
