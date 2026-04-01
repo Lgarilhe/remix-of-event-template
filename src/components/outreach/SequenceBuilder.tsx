@@ -1243,7 +1243,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
       {/* Bottom bar for wizard navigation — refined */}
       {mode === 'wizard' && (
-        <div className="h-14 sm:h-16 border-t border-border/60 flex items-center justify-between px-4 sm:px-8 shrink-0 bg-background">
+        <div className="h-14 sm:h-16 border-t border-border/60 flex items-center justify-between px-4 sm:px-8 shrink-0 bg-background relative z-10">
           <Button
             variant="ghost"
             onClick={goPrevWizardStep}
