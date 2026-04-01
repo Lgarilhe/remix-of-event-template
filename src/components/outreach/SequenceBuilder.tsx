@@ -1076,39 +1076,51 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   // ── Full-screen portal ──
   const content = (
     <div className="fixed inset-0 z-[4000] bg-background flex flex-col">
-      {/* Top bar */}
-      <div className="h-12 border-b border-foreground flex items-center justify-between px-4 shrink-0 bg-background">
-        <div className="flex items-center gap-3">
+      {/* Top bar — clean, minimal */}
+      <div className="h-14 border-b border-border/60 flex items-center justify-between px-5 shrink-0 bg-background">
+        <div className="flex items-center gap-4">
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Retour
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Retour</span>
           </button>
-          <div className="w-px h-5 bg-foreground/20" />
-          <span className="text-sm font-bold uppercase tracking-wider truncate">
-            {isEditing ? 'Modifier la séquence' : 'Nouvelle séquence'}
-          </span>
-          {sequence.name && (
-            <>
-              <div className="w-px h-5 bg-foreground/20" />
-              <span className="text-sm text-muted-foreground truncate max-w-[200px]">{sequence.name}</span>
-            </>
-          )}
+          <div className="w-px h-6 bg-border" />
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold">
+              {isEditing ? 'Modifier la séquence' : 'Nouvelle séquence'}
+            </span>
+            {sequence.name && (
+              <>
+                <span className="text-muted-foreground/40">—</span>
+                <span className="text-sm text-muted-foreground truncate max-w-[200px]">{sequence.name}</span>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Mode toggle */}
-          <div className="flex items-center border border-foreground/20 h-7">
+        <div className="flex items-center gap-3">
+          {/* Mode toggle — pill style */}
+          <div className="flex items-center bg-muted rounded-full p-0.5">
             <button
               onClick={() => setMode('wizard')}
-              className={cn("px-2.5 h-full text-[10px] font-bold uppercase tracking-wider transition-colors", mode === 'wizard' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+              className={cn(
+                "px-3 py-1 text-[11px] font-medium rounded-full transition-all",
+                mode === 'wizard'
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
               Guidé
             </button>
             <button
               onClick={() => setMode('expert')}
-              className={cn("px-2.5 h-full text-[10px] font-bold uppercase tracking-wider transition-colors", mode === 'expert' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+              className={cn(
+                "px-3 py-1 text-[11px] font-medium rounded-full transition-all",
+                mode === 'expert'
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
               Expert
             </button>
@@ -1116,52 +1128,55 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
           <Button
             onClick={handleSave}
             disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-            className="bg-foreground text-background rounded-none h-8 px-4 text-xs"
+            size="sm"
+            className="h-8 px-4 text-xs gap-1.5"
           >
-            {isSaving ? 'Enregistrement...' : <><Save className="w-3.5 h-3.5 mr-1.5" />Enregistrer</>}
+            {isSaving ? 'Enregistrement...' : <><Save className="w-3.5 h-3.5" />Enregistrer</>}
           </Button>
         </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left sidebar - wizard stepper or validation */}
-        <div className="w-52 border-r border-foreground/10 bg-muted/10 shrink-0 flex flex-col overflow-y-auto hidden lg:flex">
-          {mode === 'wizard' ? (
-            <div className="p-3">
+        {/* Left sidebar */}
+        <div className="w-56 border-r border-border/40 bg-muted/20 shrink-0 flex-col overflow-y-auto hidden lg:flex">
+          <div className="p-4">
+            {mode === 'wizard' ? (
               <SequenceWizardStepper
                 currentStep={wizardStep}
                 onStepChange={setWizardStep}
                 completedSteps={completedSteps}
                 validationErrors={wizardValidationErrors}
               />
-            </div>
-          ) : (
-            <div className="p-3">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Validation</div>
-              <SequenceValidationChecklist sequence={sequence} />
-            </div>
-          )}
+            ) : (
+              <>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-3">
+                  Validation
+                </div>
+                <SequenceValidationChecklist sequence={sequence} />
+              </>
+            )}
+          </div>
         </div>
 
         {/* Main content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-6 max-w-4xl mx-auto">
+        <div className="flex-1 overflow-y-auto bg-background">
+          <div className="p-8 max-w-3xl mx-auto">
             {mode === 'wizard' ? (
               <AnimatePresence mode="wait">
                 <motion.div
                   key={wizardStep}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.15 }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                 >
                   {renderWizardContent()}
                 </motion.div>
               </AnimatePresence>
             ) : (
               /* Expert mode: everything in one scrollable view */
-              <div className="space-y-8">
+              <div className="space-y-10">
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="name">Nom de la séquence *</Label>
@@ -1189,28 +1204,30 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
                 {/* Template */}
                 {sequence.steps.length === 0 && !initialSequence && (
-                  <div className="p-4 border-2 border-dashed border-foreground/30 bg-muted/30">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center"><Sparkles className="w-5 h-5" /></div>
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">Séquence recommandée</p>
-                        <p className="text-xs text-muted-foreground">Visite → Vérification → Messages + relances</p>
-                      </div>
-                      <Button size="sm" onClick={() => { const steps = generateRecommendedSequence(); setSequence(prev => ({ ...prev, steps })); setShowStepPicker(false); setExpandedStepId(steps[0]?.id || null); }}>Charger</Button>
+                  <div className="p-5 border border-dashed border-border bg-muted/20 flex items-center gap-4">
+                    <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center rounded-lg shrink-0">
+                      <Sparkles className="w-5 h-5" />
                     </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">Séquence recommandée</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Visite → Vérification → Messages + relances</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => { const steps = generateRecommendedSequence(); setSequence(prev => ({ ...prev, steps })); setShowStepPicker(false); setExpandedStepId(steps[0]?.id || null); }}>
+                      Charger
+                    </Button>
                   </div>
                 )}
 
                 <Tabs defaultValue="list" className="w-full">
-                  <div className="flex items-center justify-between mb-3">
-                    <Label className="text-base font-medium">Étapes de la séquence</Label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">{sequence.steps.length} étape(s)</span>
-                      <TabsList className="h-8">
-                        <TabsTrigger value="list" className="h-6 px-2 text-xs"><List className="w-3 h-3 mr-1" />Liste</TabsTrigger>
-                        <TabsTrigger value="visual" className="h-6 px-2 text-xs"><Workflow className="w-3 h-3 mr-1" />Visuel</TabsTrigger>
-                      </TabsList>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <Label className="text-base font-semibold">Étapes</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">{sequence.steps.length} étape(s) configurée(s)</p>
                     </div>
+                    <TabsList className="h-8">
+                      <TabsTrigger value="list" className="h-6 px-2 text-xs gap-1"><List className="w-3 h-3" />Liste</TabsTrigger>
+                      <TabsTrigger value="visual" className="h-6 px-2 text-xs gap-1"><Workflow className="w-3 h-3" />Visuel</TabsTrigger>
+                    </TabsList>
                   </div>
                   <TabsContent value="visual" className="mt-0">
                     <VisualSequenceEditor steps={sequence.steps} onStepsChange={(newSteps) => setSequence(prev => ({ ...prev, steps: newSteps }))} />
@@ -1225,44 +1242,64 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         </div>
       </div>
 
-      {/* Bottom bar for wizard navigation */}
+      {/* Bottom bar for wizard navigation — refined */}
       {mode === 'wizard' && (
-        <div className="h-14 border-t border-foreground/10 flex items-center justify-between px-6 shrink-0 bg-background">
+        <div className="h-16 border-t border-border/60 flex items-center justify-between px-8 shrink-0 bg-background">
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={goPrevWizardStep}
             disabled={wizardStep === 'info'}
-            className="rounded-none border-foreground/30 h-8 text-xs"
+            size="sm"
+            className="h-8 text-xs gap-1.5 text-muted-foreground"
           >
-            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             Précédent
           </Button>
-          <div className="flex items-center gap-1.5">
-            {WIZARD_ORDER.map(step => (
-              <div
+
+          {/* Step dots */}
+          <div className="flex items-center gap-2">
+            {WIZARD_ORDER.map((step, i) => (
+              <button
                 key={step}
-                className={cn(
-                  "w-2 h-2 transition-colors",
-                  step === wizardStep ? "bg-foreground" : completedSteps.has(step) ? "bg-foreground/40" : "bg-foreground/15"
-                )}
-              />
+                onClick={() => setWizardStep(step)}
+                className="p-1"
+              >
+                <motion.div
+                  className={cn(
+                    "rounded-full transition-colors",
+                    step === wizardStep
+                      ? "bg-foreground"
+                      : completedSteps.has(step)
+                        ? "bg-foreground/30"
+                        : "bg-border"
+                  )}
+                  animate={{
+                    width: step === wizardStep ? 20 : 6,
+                    height: 6,
+                  }}
+                  transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                />
+              </button>
             ))}
           </div>
+
           {wizardStep === 'review' ? (
             <Button
               onClick={handleSave}
               disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-              className="bg-foreground text-background rounded-none h-8 px-6 text-xs"
+              size="sm"
+              className="h-8 px-5 text-xs gap-1.5"
             >
-              {isSaving ? 'Enregistrement...' : <><CheckCircle className="w-3.5 h-3.5 mr-1.5" />Activer la séquence</>}
+              {isSaving ? 'Enregistrement...' : <><CheckCircle className="w-3.5 h-3.5" />Activer</>}
             </Button>
           ) : (
             <Button
               onClick={goNextWizardStep}
-              className="bg-foreground text-background rounded-none h-8 text-xs"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
             >
               Suivant
-              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>
