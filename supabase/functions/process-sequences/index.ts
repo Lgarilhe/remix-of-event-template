@@ -2217,161 +2217,111 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     const profilePromise = fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
     const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string);
 
-    // Fetch Notion job context (full page + body content)
+    // Fetch job context from sourcing_projects.job_details (universal, not tied to any specific ATS)
+    // Falls back to Notion API if job_details is empty and NOTION_API_KEY is configured (legacy)
     let jobNotionData: Record<string, string> = {};
     let jobBodyContent = '';
     let jobAccompagnement: string[] = [];
     let calendlyLink = '';
 
-    // Fetch calendly_link from sourcing_projects linked to this job
     if (enrollment.job_id) {
       try {
-        const { data: projects } = await supabase
+        // Primary: load from sourcing_projects (works with any ATS integration)
+        const { data: project } = await supabase
           .from('sourcing_projects')
-          .select('calendly_link')
-          .eq('job_id', enrollment.job_id as string)
-          .not('calendly_link', 'is', null)
-          .limit(1);
-        if (projects?.length && projects[0].calendly_link) {
-          const baseCalendly = projects[0].calendly_link;
+          .select('job_details, calendly_link, name')
+          .or(`id.eq.${enrollment.job_id},job_id.eq.${enrollment.job_id}`)
+          .limit(1)
+          .maybeSingle();
+
+        const jd = project?.job_details as Record<string, unknown> | null;
+
+        if (jd) {
+          // Map JobDetails fields to the format used by the prompt builder
+          const client = jd.client as Record<string, unknown> | undefined;
+          jobNotionData = {
+            'Poste': (jd.title as string) || project?.name || '',
+            'Client': client?.name as string || '',
+            'Entreprise': client?.name as string || '',
+            'Secteur': client?.sector as string || '',
+            'Compétences': [...(jd.skills_must_have as string[] || []), ...(jd.skills_should_have as string[] || [])].join(', '),
+            'Must-have': (jd.skills_must_have as string[] || []).join(', '),
+            'Should-have': (jd.skills_should_have as string[] || []).join(', '),
+            'Séniorité': jd.seniority as string || '',
+            'XP Min': jd.experience_min != null ? String(jd.experience_min) : '',
+            'XP Max': jd.experience_max != null ? String(jd.experience_max) : '',
+            'Localisation': jd.location as string || '',
+            'Remote': jd.remote_policy as string || '',
+            'Type de contrat': jd.contract_type as string || '',
+            'Description': jd.mission_description as string || '',
+          };
+          jobBodyContent = (jd.context as string || '').slice(0, 800);
+          // Culture notes as additional context
+          if (client?.culture_notes) jobBodyContent += '\n' + (client.culture_notes as string).slice(0, 400);
+
+          console.log(`[generatePersonalizedMessage] Job context from sourcing_projects.job_details: "${jobNotionData['Poste']}" @ "${jobNotionData['Client']}"`);
+        }
+
+        // Calendly link
+        if (project?.calendly_link) {
+          const baseCalendly = project.calendly_link;
           const profileUrl = enrollment.profile_url as string | undefined;
           const profileName = enrollment.profile_name as string | undefined;
-          // Pre-fill LinkedIn URL + name in Calendly
           const params = new URLSearchParams();
           if (profileUrl) params.set('a1', profileUrl);
           if (profileName) {
             const parts = profileName.trim().split(/\s+/);
-            if (parts.length >= 2) {
-              params.set('first_name', parts[0]);
-              params.set('last_name', parts.slice(1).join(' '));
-            } else if (parts.length === 1) {
-              params.set('first_name', parts[0]);
-            }
+            if (parts.length >= 2) { params.set('first_name', parts[0]); params.set('last_name', parts.slice(1).join(' ')); }
+            else if (parts.length === 1) params.set('first_name', parts[0]);
           }
           calendlyLink = params.toString()
             ? `${baseCalendly}${baseCalendly.includes('?') ? '&' : '?'}${params.toString()}`
             : baseCalendly;
-          console.log(`[generatePersonalizedMessage] Calendly link found: ${calendlyLink}`);
+        }
+
+        // Legacy fallback: if job_details is empty, try Notion API (for existing users with Notion integration)
+        if (!jd && NOTION_API_KEY) {
+          try {
+            const [pageRes, blocksRes] = await Promise.all([
+              fetchWithTimeout(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
+              fetchWithTimeout(`https://api.notion.com/v1/blocks/${enrollment.job_id}/children?page_size=50`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
+            ]);
+            if (pageRes.ok) {
+              jobNotionData = extractNotionJob(await pageRes.json());
+              await resolveNotionRelations(jobNotionData, ['Client', 'Entreprise', 'Company', 'Société']);
+            }
+            if (blocksRes.ok) {
+              const blocks = ((await blocksRes.json()).results || []) as any[];
+              // deno-lint-ignore no-explicit-any
+              jobBodyContent = blocks.map((b: any) => { const rt = b[b.type]?.rich_text || b[b.type]?.text; return Array.isArray(rt) ? rt.map((t: any) => t.plain_text || '').join('') : ''; }).filter(Boolean).join('\n').slice(0, 800);
+            }
+            const accomp = jobNotionData['Accompagnement'] || jobNotionData['Type accompagnement'] || '';
+            if (accomp) jobAccompagnement = accomp.split(',').map(s => s.trim()).filter(Boolean);
+            console.log(`[generatePersonalizedMessage] Legacy fallback: Notion job data loaded`);
+          } catch { /* Notion unavailable, continue without */ }
         }
       } catch { /* ignore */ }
     }
 
-    if (enrollment.job_id && NOTION_API_KEY) {
-      try {
-        const [pageRes, blocksRes] = await Promise.all([
-          fetchWithTimeout(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
-          fetchWithTimeout(`https://api.notion.com/v1/blocks/${enrollment.job_id}/children?page_size=50`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
-        ]);
-        if (pageRes.ok) {
-          const pageData = await pageRes.json();
-          jobNotionData = extractNotionJob(pageData);
-          // Resolve relation properties (Client, Entreprise) to their actual page titles
-          await resolveNotionRelations(jobNotionData, ['Client', 'Entreprise', 'Company', 'Société']);
-          console.log(`[generatePersonalizedMessage] Notion job data keys: ${Object.keys(jobNotionData).join(', ')}; Client="${jobNotionData['Client'] || ''}", Entreprise="${jobNotionData['Entreprise'] || ''}"`);
-        }
-        if (blocksRes.ok) {
-          const blocksData = await blocksRes.json();
-          // deno-lint-ignore no-explicit-any
-          const blocks = (blocksData.results || []) as any[];
-          const textParts: string[] = [];
-          for (const block of blocks) {
-            const richText = block[block.type]?.rich_text || block[block.type]?.text;
-            if (Array.isArray(richText)) {
-              // deno-lint-ignore no-explicit-any
-              const text = richText.map((t: any) => t.plain_text || '').join('');
-              if (text.trim()) textParts.push(text.trim());
-            }
-          }
-          jobBodyContent = textParts.join('\n').slice(0, 800);
-        }
-        // Extract accompagnement
-        const accomp = jobNotionData['Accompagnement'] || jobNotionData['Type accompagnement'] || '';
-        if (accomp) jobAccompagnement = accomp.split(',').map(s => s.trim()).filter(Boolean);
-    } catch { /* ignore */ }
-    }
-
-    // RAG context (after Notion data is loaded so jobTitle is available)
+    // RAG context — the Knowledge Lake abstracts all data sources (ATS, CRM, notes, etc.)
+    // This replaces the need for hardcoded Airtable queries — any ingested data is available via RAG
     const orgId = enrollment.organization_id as string || '';
     const ragJobTitle = jobNotionData?.['Poste'] || jobNotionData?.['Titre'] || enrollment.job_title as string || '';
     const ragJobSkills = jobNotionData?.['Compétences'] || jobNotionData?.['Skills'] || '';
-    const ragPromise: Promise<any> = orgId ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`) : Promise.resolve(null);
+    // deno-lint-ignore no-explicit-any
+    const ragPromise: Promise<any> = orgId
+      ? fetchRAGContext(orgId, enrollment.profile_id as string, `${ragJobTitle} ${ragJobSkills}`)
+      : Promise.resolve(null);
 
-    // Fetch candidate history from Airtable cache
-    const historyPromise = (async () => {
-      try {
-        const profileUrl = enrollment.profile_url as string || '';
-        const slugMatch = profileUrl.match(/linkedin\.com\/in\/([^/?#]+)/i);
-        const slug = slugMatch ? slugMatch[1].toLowerCase() : null;
-        if (!slug) return null;
+    // Candidate history: use RAG Knowledge Lake (universal) instead of hardcoded Airtable tables
+    // The Knowledge Lake ingests data from any connected source (Airtable, ATS, CRM, etc.)
+    // via auto-ingest-context, so all candidate history is available through retrieve-context
+    // deno-lint-ignore no-explicit-any
+    const historyPromise: Promise<any> = orgId
+      ? fetchRAGContext(orgId, enrollment.profile_id as string, `historique interactions recrutement shortlist placement notes ${enrollment.profile_name || ''}`)
+      : Promise.resolve(null);
 
-        const { data: candidates } = await supabase
-          .from('airtable_candidates')
-          .select('airtable_id, full_name, status, email, phone, source_base, skills')
-          .ilike('linkedin_url', `%${slug}%`)
-          .limit(1);
-
-        if (!candidates?.length) return null;
-        const candidateAirtableId = candidates[0].airtable_id;
-
-        const [shortlistsRes, placementsRes, notesRes, appointmentsRes] = await Promise.all([
-          supabase.from('airtable_shortlists').select('airtable_id, status, date_added, salary_proposed, job_airtable_id, company_airtable_id, raw_data').eq('candidate_airtable_id', candidateAirtableId),
-          supabase.from('airtable_placements').select('airtable_id, name, status, start_date, salary, contract_type, company_airtable_id, raw_data').eq('candidate_airtable_id', candidateAirtableId),
-          supabase.from('airtable_notes').select('airtable_id, title, detail, note_type, note_date, author, raw_data').eq('candidate_airtable_id', candidateAirtableId).order('note_date', { ascending: false }).limit(5),
-          supabase.from('airtable_appointments').select('airtable_id, title, appointment_date, appointment_type, status, raw_data').eq('candidate_airtable_id', candidateAirtableId).order('appointment_date', { ascending: false }).limit(3),
-        ]);
-
-        // Resolve company & job names
-        const companyIds = new Set<string>();
-        const jobIds = new Set<string>();
-        // deno-lint-ignore no-explicit-any
-        shortlistsRes.data?.forEach((s: any) => { if (s.company_airtable_id) companyIds.add(s.company_airtable_id); if (s.job_airtable_id) jobIds.add(s.job_airtable_id); });
-        // deno-lint-ignore no-explicit-any
-        placementsRes.data?.forEach((p: any) => { if (p.company_airtable_id) companyIds.add(p.company_airtable_id); });
-
-        const [companiesRes, jobsRes] = await Promise.all([
-          companyIds.size > 0 ? supabase.from('airtable_companies').select('airtable_id, name').in('airtable_id', [...companyIds]) : { data: [] },
-          jobIds.size > 0 ? supabase.from('airtable_jobs').select('airtable_id, title').in('airtable_id', [...jobIds]) : { data: [] },
-        ]);
-        // deno-lint-ignore no-explicit-any
-        const companyMap = new Map((companiesRes.data || []).map((c: any) => [c.airtable_id, c.name]));
-        // deno-lint-ignore no-explicit-any
-        const jobMap = new Map((jobsRes.data || []).map((j: any) => [j.airtable_id, j.title]));
-
-        // deno-lint-ignore no-explicit-any
-        const extractConsultant = (rawData: any): string | null => {
-          if (!rawData || typeof rawData !== 'object') return null;
-          for (const key of ['Ajouté par', 'Assignee', 'Created By', 'Identité auteur', 'Créée par', 'Auteur']) {
-            const v = rawData[key];
-            if (typeof v === 'string' && v.trim()) return v.trim();
-            if (v && typeof v === 'object' && typeof v.name === 'string') return v.name;
-          }
-          return null;
-        };
-
-        return {
-          // deno-lint-ignore no-explicit-any
-          shortlists: (shortlistsRes.data || []).map((s: any) => ({
-            job_title: s.job_airtable_id ? jobMap.get(s.job_airtable_id) || null : null,
-            company_name: s.company_airtable_id ? companyMap.get(s.company_airtable_id) || null : null,
-            status: s.status, date_added: s.date_added, consultant: extractConsultant(s.raw_data),
-          })),
-          // deno-lint-ignore no-explicit-any
-          placements: (placementsRes.data || []).map((p: any) => ({
-            company_name: p.company_airtable_id ? companyMap.get(p.company_airtable_id) || null : null,
-            contract_type: p.contract_type, start_date: p.start_date, status: p.status, consultant: extractConsultant(p.raw_data),
-          })),
-          // deno-lint-ignore no-explicit-any
-          notes: (notesRes.data || []).map((n: any) => ({
-            title: n.title, detail: n.detail, note_date: n.note_date, consultant: extractConsultant(n.raw_data) || n.author,
-          })),
-          // deno-lint-ignore no-explicit-any
-          appointments: (appointmentsRes.data || []).map((a: any) => ({
-            title: a.title, appointment_date: a.appointment_date, appointment_type: a.appointment_type, status: a.status,
-          })),
-        };
-      } catch { return null; }
-    })();
-
+    // deno-lint-ignore no-explicit-any
     let [profile, recentPosts, candidateHistory, ragContext] = await Promise.all([profilePromise, postsPromise, historyPromise, ragPromise]);
 
     // Fallback: if Unipile didn't return experiences, try to get them from the DB snapshot
@@ -2593,71 +2543,17 @@ ${jobBodyContent ? `- Détails poste:\n${jobBodyContent.slice(0, 400)}` : ''}`;
       return earliest < 9999 ? new Date().getFullYear() - earliest : 0;
     })();
 
-    // Build candidate history section
+    // Build candidate history section from RAG Knowledge Lake (universal — works with any ATS/CRM)
     const historySection = (() => {
-      if (!candidateHistory) return '';
-      const parts: string[] = [];
-      const senderLower = (senderName || '').toLowerCase().trim();
-      const isSenderConsultant = (name: string | null): boolean => {
-        if (!name || !senderLower) return false;
-        const cLower = name.toLowerCase().trim();
-        return cLower === senderLower || cLower.startsWith(senderLower.split(' ')[0]) || senderLower.startsWith(cLower.split(' ')[0]);
-      };
-      const allConsultants = [
-        ...candidateHistory.shortlists.map((s: { consultant: string | null }) => s.consultant),
-        ...candidateHistory.placements.map((p: { consultant: string | null }) => p.consultant),
-        ...candidateHistory.notes.map((n: { consultant: string | null }) => n.consultant),
-      ].filter(Boolean);
-      const senderIsInHistory = allConsultants.some((c: string | null) => isSenderConsultant(c));
-
-      // deno-lint-ignore no-explicit-any
-      const shortlists = candidateHistory.shortlists.filter((s: any) => s.job_title || s.company_name);
-      if (shortlists.length > 0) {
-        parts.push('SHORTLISTS:');
-        // deno-lint-ignore no-explicit-any
-        shortlists.forEach((s: any) => {
-          const isMine = isSenderConsultant(s.consultant);
-          parts.push(`  - ${[s.job_title, s.company_name, s.status, s.date_added, s.consultant ? `par ${s.consultant}${isMine ? ' (= TOI)' : ''}` : ''].filter(Boolean).join(' | ')}`);
-        });
-      }
-      // deno-lint-ignore no-explicit-any
-      const placements = candidateHistory.placements.filter((p: any) => p.company_name);
-      if (placements.length > 0) {
-        parts.push('PLACEMENTS:');
-        // deno-lint-ignore no-explicit-any
-        placements.forEach((p: any) => {
-          const isMine = isSenderConsultant(p.consultant);
-          parts.push(`  - ${[p.company_name, p.contract_type, p.start_date, p.status, p.consultant ? `par ${p.consultant}${isMine ? ' (= TOI)' : ''}` : ''].filter(Boolean).join(' | ')}`);
-        });
-      }
-      // deno-lint-ignore no-explicit-any
-      const notes = candidateHistory.notes.filter((n: any) => n.detail || n.title);
-      if (notes.length > 0) {
-        parts.push('NOTES INTERNES:');
-        // deno-lint-ignore no-explicit-any
-        notes.slice(0, 3).forEach((n: any) => {
-          const isMine = isSenderConsultant(n.consultant);
-          parts.push(`  - ${[n.note_date, n.consultant ? `par ${n.consultant}${isMine ? ' (= TOI)' : ''}` : '', n.title, n.detail?.slice(0, 150)].filter(Boolean).join(' | ')}`);
-        });
-      }
-      // deno-lint-ignore no-explicit-any
-      const appts = candidateHistory.appointments.filter((a: any) => a.title);
-      if (appts.length > 0) {
-        parts.push('RENDEZ-VOUS:');
-        // deno-lint-ignore no-explicit-any
-        appts.forEach((a: any) => { parts.push(`  - ${[a.appointment_date, a.appointment_type, a.title, a.status].filter(Boolean).join(' | ')}`); });
-      }
-      if (parts.length === 0) return '';
-
+      if (!candidateHistory || typeof candidateHistory !== 'string' || !candidateHistory.trim()) return '';
       return `
-=== HISTORIQUE INTERNE AVEC CE CANDIDAT ===
-${senderIsInHistory ? `⚠️ TU (${senderName}) as personnellement interagi avec ce candidat. Parle à la PREMIÈRE PERSONNE.` : ''}
-${parts.join('\n')}
+=== HISTORIQUE INTERNE AVEC CE CANDIDAT (via Knowledge Lake) ===
+${candidateHistory.slice(0, 2000)}
 
 UTILISATION DE L'HISTORIQUE:
 - Ce candidat est DÉJÀ CONNU du cabinet.
-${senderIsInHistory ? `- TU ES le consultant → première personne: "on avait échangé", "je t'avais contacté"` : `- Un COLLÈGUE a interagi → CITE SON PRÉNOM: "mon collègue [Prénom] m'avait parlé de toi"`}
 - Mentionne l'historique QUE si pertinent et naturel. Ne cite JAMAIS les notes internes verbatim.
+- Si l'historique mentionne un consultant qui est le sender actuel (${senderName}), utilise la première personne.
 === FIN HISTORIQUE ===`;
     })();
 
