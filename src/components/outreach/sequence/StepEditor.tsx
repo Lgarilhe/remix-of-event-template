@@ -15,7 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
-import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep } from './conditionTypes';
+import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep, isCrossChannelCondition } from './conditionTypes';
 import { VariableInserter } from './VariableInserter';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 
