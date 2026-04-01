@@ -61,12 +61,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onAccountChange,
   activeProject,
   onProjectChange,
-  searchSource = 'linkedin',
+  searchSource: initialSearchSource = 'linkedin',
 }) => {
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [scoringInstructions, setScoringInstructions] = useLocalState('');
+
+  // Internal search source toggle (Apollo vs LinkedIn)
+  const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
+
+  // Handler to toggle search source — preserves common filters, swaps api type
+  const handleSearchSourceChange = useCallback((source: 'linkedin' | 'database') => {
+    setSearchSource(source);
+  }, []);
 
   // Auto-generate scoring instructions from brief's evaluation criteria
   React.useEffect(() => {
