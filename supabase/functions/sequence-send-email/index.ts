@@ -423,6 +423,27 @@ Deno.serve(async (req) => {
       ? messageBody // Already HTML
       : textToHtml(messageBody);
 
+    // 6b. Add email signature if configured
+    if (step.signature_id) {
+      try {
+        const { data: sig } = await supabase.from('email_signatures').select('content').eq('id', step.signature_id).single();
+        if (sig?.content) {
+          htmlBody += `<br/><br/>${sig.content}`;
+        }
+      } catch { /* signature not found — skip silently */ }
+    }
+    // Also handle {{signature}} variable in the body (for manual insertion)
+    if (htmlBody.includes('{{signature}}') && step.signature_id) {
+      try {
+        const { data: sig } = await supabase.from('email_signatures').select('content').eq('id', step.signature_id).single();
+        if (sig?.content) {
+          htmlBody = htmlBody.replace(/\{\{signature\}\}/g, sig.content);
+        }
+      } catch { /* skip */ }
+    }
+    // Clean up any remaining {{signature}} if no signature configured
+    htmlBody = htmlBody.replace(/\{\{signature\}\}/g, '');
+
     // 7. Add unsubscribe footer if enabled
     if (step.include_unsubscribe) {
       const unsubLink = `${SUPABASE_URL}/functions/v1/handle-email-unsubscribe?email=${encodeURIComponent(recipientEmail)}`;
