@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -17,9 +17,11 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
+import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -34,9 +36,16 @@ interface SequenceEnrollModalProps {
   job?: {
     id: string;
     title: string;
+    client?: any;
+    skills?: string[];
+    description?: string;
+    location?: string;
+    accompagnement?: string[];
   } | null;
   onSuccess: () => void;
 }
+
+const MESSAGE_ACTION_TYPES = ['send_message', 'send_inmail', 'send_email', 'send_connection'];
 
 export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   isOpen,
@@ -47,10 +56,20 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   job,
   onSuccess,
 }) => {
+  const [showPreview, setShowPreview] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [results, setResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Check if sequence has message steps (to show preview option)
+  const hasMessageSteps = useMemo(() => {
+    return sequence.steps.some((s: any) => {
+      const actionType = s.action_type || s.actionType || '';
+      const template = s.message_template || s.messageTemplate || '';
+      return MESSAGE_ACTION_TYPES.includes(actionType) && template.trim();
+    });
+  }, [sequence.steps]);
 
   const handleEnroll = async () => {
     setIsEnrolling(true);
@@ -66,12 +85,10 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || '00000000-0000-0000-0000-000000000000';
 
-      // Get first step for initial scheduling
       const firstStep = sequence.steps.find((s: any) => s.step_order === 0) || sequence.steps[0];
       
       for (const profile of profiles) {
         try {
-          // Check if already enrolled (only block if active/completed/replied)
           const { data: existing } = await supabase
             .from('sequence_enrollments')
             .select('id, status')
@@ -85,7 +102,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             continue;
           }
 
-          // Create enrollment with network_distance from search results
           const networkDist = profile.network_distance;
           const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
             ? 'FIRST_DEGREE'
@@ -118,7 +134,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           if (enrollError) throw enrollError;
           if (!enrollment) throw new Error('Enrollment non créé');
 
-          // Schedule first step execution
           if (firstStep) {
             const scheduledAt = calculateScheduledTime(
               new Date(),
@@ -143,7 +158,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
           enrollmentResults.success++;
 
-          // Mark candidate as 'messaged' in job_candidate_status so they appear as treated in search
           if (job?.id) {
             await supabase
               .from('job_candidate_status')
@@ -191,6 +205,24 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       onClose();
     }
   };
+
+  // If preview modal is open, render it instead
+  if (showPreview) {
+    return (
+      <EnrollmentPreviewModal
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        sequence={sequence}
+        profiles={profiles}
+        accountId={accountId}
+        job={job}
+        onSuccess={() => {
+          setShowPreview(false);
+          onSuccess();
+        }}
+      />
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -282,28 +314,40 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button variant="outline" onClick={handleClose} className="border-foreground rounded-none">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
           {!results && (
-            <Button
-               onClick={handleEnroll}
-               disabled={isEnrolling}
-               className="bg-foreground text-background rounded-none"
-            >
-              {isEnrolling ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Inscription...
-                </>
-              ) : (
-                <>
-                  <GitBranch className="w-4 h-4 mr-2" />
-                  Inscrire {profiles.length} candidat(s)
-                </>
+            <div className="flex items-center gap-2">
+              {hasMessageSteps && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPreview(true)}
+                  className="rounded-none gap-1.5"
+                >
+                  <Eye className="w-4 h-4" />
+                  Preview
+                </Button>
               )}
-            </Button>
+              <Button
+                 onClick={handleEnroll}
+                 disabled={isEnrolling}
+                 className="bg-foreground text-background rounded-none"
+              >
+                {isEnrolling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Inscription...
+                  </>
+                ) : (
+                  <>
+                    <GitBranch className="w-4 h-4 mr-2" />
+                    Inscrire {profiles.length} candidat(s)
+                  </>
+                )}
+              </Button>
+            </div>
           )}
         </DialogFooter>
       </DialogContent>
@@ -339,14 +383,12 @@ function calculateScheduledTime(
 ): Date {
   const scheduled = new Date(fromDate);
   
-  // Use time-based arithmetic to avoid setHours/setDate timezone pitfalls
   scheduled.setTime(scheduled.getTime()
     + delayDays * 86400000
     + delayHours * 3600000
     + delayMinutes * 60000
   );
   
-  // Get hour in user's timezone
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     hour: 'numeric',
@@ -354,7 +396,6 @@ function calculateScheduledTime(
   });
   const localHour = parseInt(formatter.format(scheduled));
   
-  // Adjust to preferred window using timezone-aware setter
   if (localHour < preferredHourStart) {
     setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15));
   } else if (localHour >= preferredHourEnd) {
@@ -362,17 +403,14 @@ function calculateScheduledTime(
     setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15));
   }
   
-  // Skip weekends
   const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short' });
   const day = dayFormatter.format(scheduled);
   if (day === 'Sun') { scheduled.setDate(scheduled.getDate() + 1); setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15)); }
   if (day === 'Sat') { scheduled.setDate(scheduled.getDate() + 2); setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 15)); }
   
-  // Add small jitter (±5 minutes) for natural timing
   const jitterMinutes = Math.floor(Math.random() * 11) - 5;
   scheduled.setTime(scheduled.getTime() + jitterMinutes * 60000);
 
-  // Final boundary check after jitter
   const finalHour = parseInt(formatter.format(scheduled));
   if (finalHour < preferredHourStart) {
     setLocalHour(scheduled, timezone, preferredHourStart, Math.floor(Math.random() * 6));
