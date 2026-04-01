@@ -105,6 +105,8 @@ interface ScoringResult {
   weightedCriteriaScore: number;
   semanticScore: number | null;
   llmScore: number | null;
+  pedigreeScore?: number | null;
+  notableCompanies?: string[] | null;
   finalScore: number;
   confidenceScore: number;
   dimensions: Record<string, DimensionScore>;
