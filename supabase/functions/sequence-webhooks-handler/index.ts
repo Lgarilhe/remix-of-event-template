@@ -22,7 +22,8 @@ const WEBHOOK_SECRET = Deno.env.get('SEQUENCE_WEBHOOK_SECRET') || Deno.env.get('
  * Cancel all scheduled/waiting executions for an enrollment.
  */
 async function cancelRemainingExecutions(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   enrollmentId: string,
   reason: string,
 ) {
