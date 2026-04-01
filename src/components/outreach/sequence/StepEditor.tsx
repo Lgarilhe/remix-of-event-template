@@ -354,8 +354,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 />
               </div>
 
-              {/* Email extras */}
-              {isEmailStep(step.actionType) && (
+              {/* Email extras — only for real email, not InMail */}
+              {step.actionType === 'email' && (
                 <div className="space-y-3 pt-3 border-t border-border/30">
                   <Collapsible>
                     <CollapsibleTrigger className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">

@@ -43,7 +43,8 @@ const WHATSAPP_CONDITIONS = [
  * Determine the "channel" of a step based on actionType.
  */
 export function getStepChannel(actionType: string): 'email' | 'linkedin' | 'whatsapp' | 'branch' {
-  if (['inmail', 'email'].includes(actionType)) return 'email';
+  if (actionType === 'email') return 'email';
+  if (actionType === 'inmail') return 'linkedin';
   if (actionType === 'whatsapp_message') return 'whatsapp';
   if (['condition_branch', 'check_connection'].includes(actionType)) return 'branch';
   return 'linkedin';

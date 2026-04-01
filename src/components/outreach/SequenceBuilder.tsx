@@ -801,7 +801,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                           </>
                         )}
 
-                        {isEmailStep(step.actionType) && !step.useAiPersonalization && (
+                        {step.actionType === 'email' && !step.useAiPersonalization && (
                           <div className="space-y-3 pt-2 border-t border-foreground/10">
                             <Collapsible>
                               <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">▸ CC / BCC</CollapsibleTrigger>
