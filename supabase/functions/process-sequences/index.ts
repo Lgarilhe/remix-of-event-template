@@ -2506,7 +2506,7 @@ Tu parles EN TANT QUE recruteur externe indépendant.
 
     // Build posts section
     const postsSection = recentPosts.length > 0
-      ? `\nPUBLICATIONS LINKEDIN RÉCENTES:\n${recentPosts.map((p, i) => `POST ${i + 1} (${p.date}): "${p.text}"`).join('\n')}\n→ Utilise un post comme accroche SI pertinent par rapport au poste.`
+      ? `\nPUBLICATIONS LINKEDIN RÉCENTES:\n${recentPosts.map((p: any, i: number) => `POST ${i + 1} (${p.date}): "${p.text}"`).join('\n')}\n→ Utilise un post comme accroche SI pertinent par rapport au poste.`
       : '';
 
     // Build rich job context
