@@ -1565,7 +1565,7 @@ async function maybeEnrichProfile(
 
     if (!profile.summary && (data.about || data.summary)) {
       profile.summary = (data.about || data.summary).slice(0, 300);
-      console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary.slice(0, 80)}...`);
+      console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary!.slice(0, 80)}...`);
     }
     if ((!profile.skills || profile.skills.length === 0) && data.skills) {
       profile.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
