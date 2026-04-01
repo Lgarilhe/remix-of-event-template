@@ -15,7 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
-import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep } from './conditionTypes';
+import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep, isCrossChannelCondition } from './conditionTypes';
 import { VariableInserter } from './VariableInserter';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 
@@ -32,6 +32,8 @@ const TIMEOUT_ACTIONS = [
   { value: 'alternative_step', label: 'Exécuter étape alternative' },
   { value: 'end_sequence', label: 'Terminer la séquence' },
 ];
+
+const HOURS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${i}h` }));
 
 const AI_TONES = [
   { value: 'professional', label: 'Professionnel' },
@@ -134,6 +136,50 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
         )}
 
+        {/* Send hours */}
+        <Collapsible>
+          <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+            ▸ Créneau d'envoi
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-2 pt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Pas avant</Label>
+                <Select
+                  value={String(step.preferredHourStart ?? 9)}
+                  onValueChange={(value) => onUpdate({ preferredHourStart: parseInt(value) })}
+                >
+                  <SelectTrigger className="mt-1 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HOURS.map(h => (
+                      <SelectItem key={h.value} value={String(h.value)}>{h.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Pas après</Label>
+                <Select
+                  value={String(step.preferredHourEnd ?? 18)}
+                  onValueChange={(value) => onUpdate({ preferredHourEnd: parseInt(value) })}
+                >
+                  <SelectTrigger className="mt-1 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HOURS.map(h => (
+                      <SelectItem key={h.value} value={String(h.value)}>{h.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Le message sera envoyé uniquement dans ce créneau horaire (fuseau du candidat)</p>
+          </CollapsibleContent>
+        </Collapsible>
+
         {/* Condition for actions — filtered by channel */}
         {isAction(step.actionType) && (
           <div>
@@ -153,6 +199,10 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 ))}
               </SelectContent>
             </Select>
+            {/* Cross-channel inline warning */}
+            {isCrossChannelCondition(step.actionType, step.conditionType) && (
+              <p className="text-xs text-amber-600 mt-1">⚠️ Cette condition ne fonctionne qu'avec des steps email</p>
+            )}
             {/* Score threshold */}
             {step.conditionType === 'if_score_above' && (
               <div className="mt-2">
@@ -164,8 +214,11 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   value={step.conditionValue || '70'}
                   onChange={(e) => onUpdate({ conditionValue: e.target.value })}
                   placeholder="70"
-                  className="mt-1 w-32 h-8"
+                  className={cn("mt-1 w-32 h-8", !step.conditionValue?.trim() && "border-destructive")}
                 />
+                {!step.conditionValue?.trim() && (
+                  <p className="text-xs text-destructive mt-1">Seuil requis</p>
+                )}
               </div>
             )}
           </div>
@@ -209,6 +262,32 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 </Select>
               </div>
             </div>
+
+            {/* Alternative step selector */}
+            {step.timeoutAction === 'alternative_step' && (
+              <div>
+                <Label className="text-xs">Step alternatif</Label>
+                <Select
+                  value={step.timeoutBranchStepId || '__none__'}
+                  onValueChange={(value) => onUpdate({ timeoutBranchStepId: value === '__none__' ? undefined : value })}
+                >
+                  <SelectTrigger className="mt-1 h-8">
+                    <SelectValue placeholder="Sélectionner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sélectionner...</SelectItem>
+                    {allSteps.filter(s => s.id !== step.id).map(s => {
+                      const config = allStepTypes.find(a => a.value === s.actionType);
+                      return (
+                        <SelectItem key={s.id} value={s.id}>
+                          Step {s.order + 1} — {config?.label || s.actionType}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         )}
 
@@ -378,8 +457,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           <div className="space-y-3">
             {/* WhatsApp indicator */}
             {isWhatsAppStep(step.actionType) && (
-              <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
-                📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement.
+              <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement. Les candidats sans numéro seront automatiquement passés au step suivant.
               </div>
             )}
 
@@ -414,7 +493,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Message généré par IA.
+                  L'IA générera un message personnalisé pour chaque candidat au moment de l'envoi, basé sur son profil LinkedIn, l'historique CRM et le brief du poste. Vous pouvez ajouter une instruction spécifique ci-dessous.
                 </p>
               </div>
             ) : (
@@ -436,8 +515,11 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                       value={step.subjectTemplate || ''}
                       onChange={(e) => onUpdate({ subjectTemplate: e.target.value })}
                       placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
-                      className="mt-1 h-8"
+                      className={cn("mt-1 h-8", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")}
                     />
+                    {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && (
+                      <p className="text-xs text-destructive mt-0.5">Objet requis</p>
+                    )}
                   </div>
                 )}
                 <div>
@@ -522,7 +604,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                         value={step.signatureId || '__none__'}
                         onValueChange={(value) => onUpdate({ signatureId: value === '__none__' ? undefined : value })}
                       >
-                        <SelectTrigger className="mt-1 h-8 text-xs">
+                        <SelectTrigger className="mt-1">
                           <SelectValue placeholder="Aucune" />
                         </SelectTrigger>
                         <SelectContent>

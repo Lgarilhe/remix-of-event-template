@@ -35,6 +35,7 @@ interface PendingBranch {
 const ACTIONS = [
   { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-100 text-emerald-600', description: 'Envoyer une demande de connexion' },
   { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-100 text-blue-600', description: 'Envoyer un InMail (payant)' },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-violet-100 text-violet-600', description: 'Envoyer un email' },
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-100 text-sky-600', description: 'Visiter le profil du prospect' },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-100 text-orange-600', description: 'Envoyer un message (si connecté)' },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-purple-100 text-purple-600', description: 'Message personnalisé par IA' },

@@ -109,6 +109,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       order: idx,
       actionType: s.action_type || s.actionType || 'message',
       conditionType: s.condition_type || s.conditionType || 'always',
+      conditionValue: s.condition_value || s.conditionValue,
       delayDays: s.delay_days ?? s.delayDays ?? (idx === 0 ? 0 : 2),
       delayHours: s.delay_hours ?? s.delayHours ?? 0,
       delayMinutes: s.delay_minutes ?? s.delayMinutes ?? 0,
@@ -121,6 +122,16 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       timeoutDays: s.timeout_days ?? s.timeoutDays ?? 3,
       waitForEvent: s.wait_for_event || s.waitForEvent,
       timeoutAction: s.timeout_action || s.timeoutAction || 'skip',
+      ifTrueGotoStep: s.if_true_goto_step || s.ifTrueGotoStep,
+      ifFalseGotoStep: s.if_false_goto_step || s.ifFalseGotoStep,
+      nextStepId: s.next_step_id || s.nextStepId,
+      timeoutBranchStepId: s.timeout_branch_step_id || s.timeoutBranchStepId,
+      variantGroup: s.variant_group || s.variantGroup,
+      variantWeight: s.variant_weight ?? s.variantWeight,
+      ccEmails: s.cc_emails || s.ccEmails,
+      bccEmails: s.bcc_emails || s.bccEmails,
+      includeUnsubscribe: s.include_unsubscribe ?? s.includeUnsubscribe,
+      signatureId: s.signature_id || s.signatureId,
     }));
 
     const sequence: Sequence = {

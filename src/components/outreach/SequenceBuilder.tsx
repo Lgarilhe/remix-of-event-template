@@ -802,6 +802,10 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 ))}
                               </SelectContent>
                             </Select>
+                            {/* Cross-channel inline warning */}
+                            {isCrossChannelCondition(step.actionType, step.conditionType) && (
+                              <p className="text-xs text-amber-600 mt-1">⚠️ Cette condition ne fonctionne qu'avec des steps email</p>
+                            )}
                             {/* Score threshold for if_score_above */}
                             {step.conditionType === 'if_score_above' && (
                               <div className="mt-2">
@@ -813,12 +817,59 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                   value={step.conditionValue || '70'}
                                   onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
                                   placeholder="70"
-                                  className="mt-1 w-32"
+                                  className={cn("mt-1 w-32", !step.conditionValue?.trim() && "border-destructive")}
                                 />
+                                {!step.conditionValue?.trim() && (
+                                  <p className="text-xs text-destructive mt-1">Seuil requis</p>
+                                )}
                               </div>
                             )}
                           </div>
                         )}
+
+                        {/* Send hours */}
+                        <Collapsible>
+                          <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                            ▸ Créneau d'envoi
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="space-y-2 pt-2">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">Pas avant</Label>
+                                <Select
+                                  value={String(step.preferredHourStart ?? 9)}
+                                  onValueChange={(value) => updateStep(step.id, { preferredHourStart: parseInt(value) })}
+                                >
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({ length: 24 }, (_, i) => (
+                                      <SelectItem key={i} value={String(i)}>{i}h</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Pas après</Label>
+                                <Select
+                                  value={String(step.preferredHourEnd ?? 18)}
+                                  onValueChange={(value) => updateStep(step.id, { preferredHourEnd: parseInt(value) })}
+                                >
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({ length: 24 }, (_, i) => (
+                                      <SelectItem key={i} value={String(i)}>{i}h</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Le message sera envoyé uniquement dans ce créneau horaire (fuseau du candidat)</p>
+                          </CollapsibleContent>
+                        </Collapsible>
 
                         {/* Trigger configuration */}
                         {stepIsTrigger && step.actionType !== 'condition_branch' && (
@@ -858,6 +909,32 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 </Select>
                               </div>
                             </div>
+
+                            {/* Alternative step selector */}
+                            {step.timeoutAction === 'alternative_step' && (
+                              <div>
+                                <Label>Step alternatif</Label>
+                                <Select
+                                  value={step.timeoutBranchStepId || '__none__'}
+                                  onValueChange={(value) => updateStep(step.id, { timeoutBranchStepId: value === '__none__' ? undefined : value })}
+                                >
+                                  <SelectTrigger className="mt-1.5">
+                                    <SelectValue placeholder="Sélectionner..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Sélectionner...</SelectItem>
+                                    {sequence.steps.filter(s => s.id !== step.id).map(s => {
+                                      const sc = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                                      return (
+                                        <SelectItem key={s.id} value={s.id}>
+                                          Step {s.order + 1} — {sc?.label || s.actionType}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -1062,6 +1139,15 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                     </TabsContent>
                                   ))}
                                 </Tabs>
+                                {/* A/B weight total */}
+                                {(() => {
+                                  const totalWeight = variants.reduce((sum, v) => sum + (v.variantWeight || 0), 0);
+                                  return (
+                                    <div className={cn("text-xs font-medium px-3 py-1.5 border-t border-foreground/10", totalWeight === 100 ? "text-emerald-600" : "text-destructive")}>
+                                      Total : {totalWeight}%{totalWeight !== 100 && " — doit être 100%"}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             )}
 
@@ -1070,8 +1156,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                               <>
                                 {/* WhatsApp indicator */}
                                 {isWhatsAppStep(step.actionType) && (
-                                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
-                                    📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement.
+                                  <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                                    📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement. Les candidats sans numéro seront automatiquement passés au step suivant.
                                   </div>
                                 )}
 
@@ -1106,7 +1192,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                       </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground mt-2">
-                                      Le message sera généré automatiquement par l'IA.
+                                      L'IA générera un message personnalisé pour chaque candidat au moment de l'envoi, basé sur son profil LinkedIn, l'historique CRM et le brief du poste. Vous pouvez ajouter une instruction spécifique ci-dessous.
                                     </p>
                                   </div>
                                 ) : (
@@ -1128,8 +1214,11 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                           value={step.subjectTemplate || ''}
                                           onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
                                           placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
-                                          className="mt-1.5"
+                                          className={cn("mt-1.5", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")}
                                         />
+                                        {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && (
+                                          <p className="text-xs text-destructive mt-0.5">Objet requis</p>
+                                        )}
                                       </div>
                                     )}
                                     <div>
@@ -1219,7 +1308,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                         value={step.signatureId || '__none__'}
                                         onValueChange={(value) => updateStep(step.id, { signatureId: value === '__none__' ? undefined : value })}
                                       >
-                                        <SelectTrigger className="mt-1 h-8 text-xs">
+                                        <SelectTrigger className="mt-1">
                                           <SelectValue placeholder="Aucune" />
                                         </SelectTrigger>
                                         <SelectContent>
