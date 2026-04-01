@@ -202,7 +202,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
 
       {/* Right: Step Editor / Step Picker */}
       <div className="w-full sm:w-[300px] flex flex-col bg-background min-h-0 flex-shrink-0 max-h-[200px] sm:max-h-none">
-        <div className="px-4 py-2.5 border-b border-border/40 flex items-center justify-between">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-border/40 flex items-center justify-between">
           <span className="text-[11px] font-medium text-muted-foreground">
             {showStepPicker 
               ? pendingBranch 
