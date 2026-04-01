@@ -604,7 +604,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                         value={step.signatureId || '__none__'}
                         onValueChange={(value) => onUpdate({ signatureId: value === '__none__' ? undefined : value })}
                       >
-                        <SelectTrigger className="mt-1 h-8 text-xs">
+                        <SelectTrigger className="mt-1">
                           <SelectValue placeholder="Aucune" />
                         </SelectTrigger>
                         <SelectContent>
