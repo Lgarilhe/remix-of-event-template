@@ -858,6 +858,32 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 </Select>
                               </div>
                             </div>
+
+                            {/* Alternative step selector */}
+                            {step.timeoutAction === 'alternative_step' && (
+                              <div>
+                                <Label>Step alternatif</Label>
+                                <Select
+                                  value={step.timeoutBranchStepId || '__none__'}
+                                  onValueChange={(value) => updateStep(step.id, { timeoutBranchStepId: value === '__none__' ? undefined : value })}
+                                >
+                                  <SelectTrigger className="mt-1.5">
+                                    <SelectValue placeholder="Sélectionner..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Sélectionner...</SelectItem>
+                                    {sequence.steps.filter(s => s.id !== step.id).map(s => {
+                                      const sc = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                                      return (
+                                        <SelectItem key={s.id} value={s.id}>
+                                          Step {s.order + 1} — {sc?.label || s.actionType}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                           </div>
                         )}
 
