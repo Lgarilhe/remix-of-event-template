@@ -10,7 +10,6 @@ import {
   type NodeTypes,
   type EdgeTypes,
   MarkerType,
-  Position,
   ConnectionLineType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -85,13 +84,63 @@ const EDGE_DEFAULT = 'hsl(var(--border))';
 const EDGE_TRUE = 'hsl(152, 68%, 46%)';
 const EDGE_FALSE = 'hsl(25, 95%, 53%)';
 
+type WorkflowGraph = {
+  nodes: Node[];
+  edges: Edge[];
+};
+
+const isValidNode = (node: Node | null | undefined): node is Node => {
+  return Boolean(
+    node &&
+    typeof node.id === 'string' &&
+    node.id &&
+    typeof node.position?.x === 'number' &&
+    typeof node.position?.y === 'number'
+  );
+};
+
+const isValidEdge = (edge: Edge | null | undefined): edge is Edge => {
+  return Boolean(
+    edge &&
+    typeof edge.id === 'string' &&
+    edge.id &&
+    typeof edge.source === 'string' &&
+    edge.source &&
+    typeof edge.target === 'string' &&
+    edge.target
+  );
+};
+
+const sanitizeGraph = ({ nodes, edges }: WorkflowGraph): WorkflowGraph => {
+  const uniqueNodes = new Map<string, Node>();
+
+  for (const node of nodes) {
+    if (!isValidNode(node) || uniqueNodes.has(node.id)) continue;
+    uniqueNodes.set(node.id, node);
+  }
+
+  const nodeIds = new Set(uniqueNodes.keys());
+  const uniqueEdges = new Map<string, Edge>();
+
+  for (const edge of edges) {
+    if (!isValidEdge(edge) || uniqueEdges.has(edge.id)) continue;
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+    uniqueEdges.set(edge.id, edge);
+  }
+
+  return {
+    nodes: [...uniqueNodes.values()],
+    edges: [...uniqueEdges.values()],
+  };
+};
+
 // ── Layout builder ──
 function buildLayout(
   steps: SequenceStep[],
   selectedStepId: string | null,
   onRemoveStep: (id: string) => void,
   onAddStep: WorkflowCanvasProps['onAddStep'],
-) {
+): WorkflowGraph {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const branchIds = getAllBranchStepIds(steps);
@@ -281,10 +330,14 @@ function buildLayout(
 export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   steps, selectedStepId, onStepClick, onAddStep, onRemoveStep,
 }) => {
-  const layout = useMemo(
-    () => buildLayout(steps, selectedStepId, onRemoveStep, onAddStep),
-    [steps, selectedStepId, onRemoveStep, onAddStep],
-  );
+  const layout = useMemo(() => {
+    try {
+      return sanitizeGraph(buildLayout(steps, selectedStepId, onRemoveStep, onAddStep));
+    } catch (error) {
+      console.error('[WorkflowCanvas] Failed to build layout', error);
+      return { nodes: [], edges: [] };
+    }
+  }, [steps, selectedStepId, onRemoveStep, onAddStep]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges);
