@@ -211,6 +211,32 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 </Select>
               </div>
             </div>
+
+            {/* Alternative step selector */}
+            {step.timeoutAction === 'alternative_step' && (
+              <div>
+                <Label className="text-xs">Step alternatif</Label>
+                <Select
+                  value={step.timeoutBranchStepId || '__none__'}
+                  onValueChange={(value) => onUpdate({ timeoutBranchStepId: value === '__none__' ? undefined : value })}
+                >
+                  <SelectTrigger className="mt-1 h-8">
+                    <SelectValue placeholder="Sélectionner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sélectionner...</SelectItem>
+                    {allSteps.filter(s => s.id !== step.id).map(s => {
+                      const config = allStepTypes.find(a => a.value === s.actionType);
+                      return (
+                        <SelectItem key={s.id} value={s.id}>
+                          Step {s.order + 1} — {config?.label || s.actionType}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         )}
 
