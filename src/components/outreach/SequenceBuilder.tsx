@@ -630,11 +630,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
               <TabsContent value="list" className="mt-0">
               <div className="space-y-3">
-              {sequence.steps.map((step, index) => {
+              {primarySteps.map((step, index) => {
                 const isExpanded = expandedStepId === step.id;
                 const stepConfig = ALL_STEP_TYPES.find(a => a.value === step.actionType);
                 const StepIcon = stepConfig?.icon || Mail;
                 const stepIsTrigger = isTrigger(step.actionType);
+                const variants = variantGroups.get(step.order) || [];
+                const hasVariants = variants.length > 1;
 
                 return (
                   <div
