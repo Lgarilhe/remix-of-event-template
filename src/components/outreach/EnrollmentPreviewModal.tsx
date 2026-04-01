@@ -39,37 +39,49 @@ interface EnrollmentPreviewModalProps {
 // ── Helpers ──
 
 const ACTION_ICONS: Record<string, typeof Mail> = {
-  send_email: Mail,
-  send_message: MessageSquare,
-  send_inmail: Linkedin,
-  send_connection: Linkedin,
+  email: Mail,
+  message: MessageSquare,
+  smart_message: MessageSquare,
+  inmail: Linkedin,
+  connection_request: Linkedin,
+  whatsapp_message: MessageSquare,
   profile_visit: Eye,
-  wait: Clock,
-  condition: GitBranch,
+  wait_connection: Clock,
+  wait_reply: Clock,
+  wait_profile_visit: Clock,
+  check_connection: GitBranch,
+  condition_branch: GitBranch,
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  send_email: 'Email',
-  send_message: 'Message LinkedIn',
-  send_inmail: 'InMail',
-  send_connection: 'Invitation LinkedIn',
+  email: 'Email',
+  message: 'Message LinkedIn',
+  smart_message: 'Smart Message',
+  inmail: 'InMail',
+  connection_request: 'Invitation LinkedIn',
+  whatsapp_message: 'WhatsApp',
   profile_visit: 'Visite de profil',
-  wait: 'Attente',
-  condition: 'Condition',
+  wait_connection: 'Attendre connexion',
+  wait_reply: 'Attendre réponse',
+  wait_profile_visit: 'Attendre visite',
+  check_connection: 'Vérifier connexion',
+  condition_branch: 'Condition',
 };
 
 const CHANNEL_COLORS: Record<string, string> = {
-  send_email: 'bg-blue-50 text-blue-700 border-blue-200',
-  send_message: 'bg-sky-50 text-sky-700 border-sky-200',
-  send_inmail: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  send_connection: 'bg-violet-50 text-violet-700 border-violet-200',
+  email: 'bg-blue-50 text-blue-700 border-blue-200',
+  message: 'bg-sky-50 text-sky-700 border-sky-200',
+  smart_message: 'bg-sky-50 text-sky-700 border-sky-200',
+  inmail: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  connection_request: 'bg-violet-50 text-violet-700 border-violet-200',
+  whatsapp_message: 'bg-green-50 text-green-700 border-green-200',
 };
 
 function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
   return rawSteps.map(s => ({
     stepId: s.id,
     stepOrder: s.step_order ?? s.stepOrder ?? 0,
-    actionType: s.action_type || s.actionType || 'send_message',
+    actionType: s.action_type || s.actionType || 'message',
     channel: s.step_channel || s.channel,
     messageTemplate: s.message_template || s.messageTemplate || '',
     subjectTemplate: s.subject_template || s.subjectTemplate || '',
@@ -86,7 +98,7 @@ function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
   })).sort((a, b) => a.stepOrder - b.stepOrder);
 }
 
-const MESSAGE_ACTIONS = ['send_message', 'send_inmail', 'send_email', 'send_connection'];
+const MESSAGE_ACTIONS = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
 // ── Component ──
 
@@ -718,7 +730,7 @@ function MessageStepCard({
                 {preview.error}
               </div>
             )}
-            {step.actionType === 'send_email' && (
+            {step.actionType === 'email' && (
               <div>
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Objet</label>
                 {isEditing ? (
@@ -733,7 +745,7 @@ function MessageStepCard({
               </div>
             )}
             <div>
-              {step.actionType === 'send_email' && (
+              {step.actionType === 'email' && (
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Message</label>
               )}
               {isEditing ? (
@@ -791,9 +803,9 @@ function SummaryMode({
   isEnrolling: boolean;
   onEnroll: () => void;
 }) {
-  const emailSteps = steps.filter(s => s.actionType === 'send_email');
-  const whatsappSteps = steps.filter(s => s.actionType === 'send_whatsapp');
-  const linkedinSteps = steps.filter(s => ['send_message', 'send_inmail', 'send_connection'].includes(s.actionType));
+  const emailSteps = steps.filter(s => s.actionType === 'email');
+  const whatsappSteps = steps.filter(s => s.actionType === 'whatsapp_message');
+  const linkedinSteps = steps.filter(s => ['message', 'smart_message', 'inmail', 'connection_request'].includes(s.actionType));
 
   return (
     <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">

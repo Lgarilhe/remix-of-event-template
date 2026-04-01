@@ -49,7 +49,7 @@ interface UseEnrollmentPreviewOptions {
 }
 
 // Steps that have sendable messages
-const MESSAGE_ACTION_TYPES = ['send_message', 'send_inmail', 'send_email', 'send_connection'];
+const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
 function hasMessage(step: SequenceStepPreview): boolean {
   return MESSAGE_ACTION_TYPES.includes(step.actionType) && !!step.messageTemplate?.trim();
