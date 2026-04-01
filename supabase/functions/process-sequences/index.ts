@@ -396,8 +396,9 @@ async function handleProcess(supabase: any, force = false) {
           const hasPriorMessageSteps = priorMessageSteps && priorMessageSteps.length > 0;
           
           if (hasPriorMessageSteps) {
-            // There ARE prior message steps — check if at least one was actually sent
-            const anyPriorSent = priorMessageSteps.some((s: any) => s.status === 'sent');
+            // There ARE prior message steps — check if at least one was actually sent (or progressed beyond sent)
+            const sentStatuses = new Set(['sent', 'opened', 'clicked', 'replied']);
+            const anyPriorSent = priorMessageSteps.some((s: any) => sentStatuses.has(s.status));
             
             if (!anyPriorSent) {
               console.warn(`[process] ⛔ GUARD: Skipping ${step.action_type} step ${step.step_order} for ${enrollment.profile_name} — ${priorMessageSteps.length} prior message step(s) exist but none were sent. Completing sequence.`);
