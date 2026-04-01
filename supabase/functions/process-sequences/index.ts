@@ -269,9 +269,9 @@ async function handleProcess(supabase: any, force = false) {
 
     let visibleActionsExecuted = 0;
     for (const exec of batchedExecutions) {
+      const enrollment = exec.enrollment;
+      const step = exec.step;
       try {
-        const enrollment = exec.enrollment;
-        const step = exec.step;
         
         if (!enrollment || enrollment.status !== 'active') {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'Enrollment inactive' }).eq('id', exec.id);
