@@ -202,7 +202,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
 
           {/* Team member picker modal */}
           <Dialog open={showPickerModal} onOpenChange={setShowPickerModal}>
-            <DialogContent className="max-w-md bg-background border-foreground rounded-none z-[4100]">
+            <DialogContent className="max-w-md bg-background border-foreground rounded-none">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Users className="w-4 h-4" />
