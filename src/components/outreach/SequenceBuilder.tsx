@@ -1,10 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,13 +31,20 @@ import {
   Workflow,
   FlaskConical,
   Copy,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
 import { StopConditionsSettings } from './sequence/StopConditionsSettings';
 import { MultiSenderSettings } from './sequence/MultiSenderSettings';
+import { SequenceWizardStepper, WizardStep, WIZARD_STEPS } from './sequence/SequenceWizardStepper';
+import { SequenceValidationChecklist } from './sequence/SequenceValidationChecklist';
 import type { StopConditions as StopConditionsType } from './sequence/StopConditionsSettings';
 import type { SenderAccount } from './sequence/MultiSenderSettings';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface SequenceStep {
   id: string;
@@ -63,17 +65,12 @@ export interface SequenceStep {
   waitForEvent?: 'connection_accepted' | 'reply_received' | 'profile_visited';
   timeoutAction?: 'skip' | 'alternative_step' | 'end_sequence';
   alternativeStepIndex?: number;
-  // Branching for check_connection
   ifTrueGotoStep?: string;
   ifFalseGotoStep?: string;
-  // Generic next step for graph-based sequencing
   nextStepId?: string;
-  // Timeout branch (e.g. wait_connection timeout → InMail)
   timeoutBranchStepId?: string;
-  // A/B testing
   variantGroup?: string | null;
   variantWeight?: number;
-  // Email-specific fields
   ccEmails?: string[];
   bccEmails?: string[];
   includeUnsubscribe?: boolean;
@@ -133,40 +130,23 @@ const TRIGGERS = [
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
 
-// CONDITION_TYPES now imported from conditionTypes.ts — use getConditionsForActionType()
-
 const TIMEOUT_ACTIONS = [
   { value: 'skip', label: 'Passer à l\'étape suivante' },
   { value: 'alternative_step', label: 'Exécuter étape alternative' },
   { value: 'end_sequence', label: 'Terminer la séquence' },
 ];
 
-// Helper to get available actions/triggers based on previous steps
 const getAvailableStepTypes = (previousSteps: SequenceStep[]) => {
   const previousTypes = previousSteps.map(s => s.actionType);
-  const hasConnectionRequest = previousTypes.includes('connection_request');
-  const hasWaitConnection = previousTypes.includes('wait_connection');
-  const hasMessage = previousTypes.some(t => ['inmail', 'message', 'smart_message'].includes(t));
-  const hasProfileVisit = previousTypes.includes('profile_visit');
 
   const availableActions = ACTIONS.filter(action => {
-    // Check if excluded by previous steps
-    if (action.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) {
-      return false;
-    }
-    // Check if requires connection but no wait_connection happened
-    if (action.requiresConnection && !hasWaitConnection) {
-      return false;
-    }
+    if (action.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) return false;
+    if (action.requiresConnection && !previousTypes.includes('wait_connection')) return false;
     return true;
   });
 
   const availableTriggers = TRIGGERS.filter(trigger => {
-    // Check if excluded by previous steps
-    if (trigger.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) {
-      return false;
-    }
-    // Check if requires specific previous action
+    if (trigger.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) return false;
     if (trigger.requiresPrevious.length > 0) {
       const hasRequired = trigger.requiresPrevious.some(req => previousTypes.includes(req as SequenceStep['actionType']));
       if (!hasRequired) return false;
@@ -203,21 +183,6 @@ const createEmptyStep = (order: number, actionType: string = 'connection_request
   };
 };
 
-/**
- * Generates the recommended outreach sequence with full follow-up chains.
- * 
- * Flow:
- * 1. Profile visit
- * 2. Check connection (2min delay)
- * 
- * Branch TRUE (connected/1st degree):
- *   → Smart Message → Wait Reply 3d → Relance 1 → Wait Reply 4d → Relance 2
- * 
- * Branch FALSE (not connected):
- *   → Connection Request → Wait Connection 3d
- *     If accepted: → Message → Wait Reply 3d → Relance 1 → Wait Reply 4d → Relance 2
- *     If timeout:  → InMail → Wait Reply 5d → InMail Relance
- */
 const generateRecommendedSequence = (): SequenceStep[] => {
   const mkStep = (
     order: number,
@@ -240,92 +205,49 @@ const generateRecommendedSequence = (): SequenceStep[] => {
     ...overrides,
   });
 
-  // === Main trunk ===
   const profileVisit = mkStep(0, 'profile_visit');
   const checkConnection = mkStep(1, 'check_connection', { delayMinutes: 2 });
-
-  // === Branch TRUE: Connected (1st degree) ===
   const t1_message = mkStep(2, 'smart_message');
-  const t2_waitReply = mkStep(3, 'wait_connection', {
-    actionType: 'wait_reply' as SequenceStep['actionType'],
-    waitForEvent: 'reply_received',
-    timeoutDays: 3,
-    timeoutAction: 'skip',
-  });
+  const t2_waitReply = mkStep(3, 'wait_connection', { actionType: 'wait_reply', waitForEvent: 'reply_received', timeoutDays: 3, timeoutAction: 'skip' });
   const t3_relance1 = mkStep(4, 'smart_message');
-  const t4_waitReply2 = mkStep(5, 'wait_reply' as SequenceStep['actionType'], {
-    waitForEvent: 'reply_received',
-    timeoutDays: 4,
-    timeoutAction: 'skip',
-  });
+  const t4_waitReply2 = mkStep(5, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 4, timeoutAction: 'skip' });
   const t5_relance2 = mkStep(6, 'smart_message');
 
-  // Chain: t1 → t2 → t3 → t4 → t5
   t1_message.nextStepId = t2_waitReply.id;
   t2_waitReply.nextStepId = t3_relance1.id;
   t3_relance1.nextStepId = t4_waitReply2.id;
   t4_waitReply2.nextStepId = t5_relance2.id;
 
-  // === Branch FALSE: Not connected (2nd/3rd degree) ===
   const f1_invite = mkStep(7, 'connection_request');
-  const f2_waitConnection = mkStep(8, 'wait_connection', {
-    waitForEvent: 'connection_accepted',
-    timeoutDays: 3,
-    timeoutAction: 'skip',
-  });
-
-  // Sub-branch: connection accepted → message + 2 relances
+  const f2_waitConnection = mkStep(8, 'wait_connection', { waitForEvent: 'connection_accepted', timeoutDays: 3, timeoutAction: 'skip' });
   const f3_message = mkStep(9, 'smart_message');
-  const f4_waitReply = mkStep(10, 'wait_reply' as SequenceStep['actionType'], {
-    waitForEvent: 'reply_received',
-    timeoutDays: 3,
-    timeoutAction: 'skip',
-  });
+  const f4_waitReply = mkStep(10, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 3, timeoutAction: 'skip' });
   const f5_relance1 = mkStep(11, 'smart_message');
-  const f6_waitReply2 = mkStep(12, 'wait_reply' as SequenceStep['actionType'], {
-    waitForEvent: 'reply_received',
-    timeoutDays: 4,
-    timeoutAction: 'skip',
-  });
+  const f6_waitReply2 = mkStep(12, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 4, timeoutAction: 'skip' });
   const f7_relance2 = mkStep(13, 'smart_message');
-
-  // Sub-branch: timeout → InMail + 1 relance
   const f8_inmail = mkStep(14, 'inmail', { useAiPersonalization: true });
-  const f9_waitReply = mkStep(15, 'wait_reply' as SequenceStep['actionType'], {
-    waitForEvent: 'reply_received',
-    timeoutDays: 5,
-    timeoutAction: 'skip',
-  });
+  const f9_waitReply = mkStep(15, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 5, timeoutAction: 'skip' });
   const f10_inmailRelance = mkStep(16, 'inmail', { useAiPersonalization: true });
 
-  // Chain FALSE branch: f1 → f2
   f1_invite.nextStepId = f2_waitConnection.id;
-  // f2 accepted → f3 message chain
   f2_waitConnection.nextStepId = f3_message.id;
   f3_message.nextStepId = f4_waitReply.id;
   f4_waitReply.nextStepId = f5_relance1.id;
   f5_relance1.nextStepId = f6_waitReply2.id;
   f6_waitReply2.nextStepId = f7_relance2.id;
-  // f2 timeout → f8 InMail chain
   f2_waitConnection.timeoutAction = 'alternative_step';
   f2_waitConnection.timeoutBranchStepId = f8_inmail.id;
   f8_inmail.nextStepId = f9_waitReply.id;
   f9_waitReply.nextStepId = f10_inmailRelance.id;
 
-  // === Wire the check_connection branches ===
   checkConnection.ifTrueGotoStep = t1_message.id;
   checkConnection.ifFalseGotoStep = f1_invite.id;
 
   return [
-    profileVisit,
-    checkConnection,
-    // TRUE branch
+    profileVisit, checkConnection,
     t1_message, t2_waitReply, t3_relance1, t4_waitReply2, t5_relance2,
-    // FALSE branch  
     f1_invite, f2_waitConnection,
-    // FALSE → accepted sub-branch
     f3_message, f4_waitReply, f5_relance1, f6_waitReply2, f7_relance2,
-    // FALSE → timeout sub-branch (InMail)
     f8_inmail, f9_waitReply, f10_inmailRelance,
   ];
 };
@@ -336,7 +258,6 @@ const needsMessage = (type: string) => ['inmail', 'email', 'connection_request',
 const needsSubject = (type: string) => ['inmail', 'email'].includes(type);
 const canABTest = (type: string) => ['inmail', 'email', 'message', 'smart_message', 'connection_request', 'whatsapp_message'].includes(type);
 
-/** Group steps by variant_group (steps with same order but different variant) */
 const getVariantGroups = (steps: SequenceStep[]): Map<number, SequenceStep[]> => {
   const groups = new Map<number, SequenceStep[]>();
   for (const step of steps) {
@@ -349,7 +270,6 @@ const getVariantGroups = (steps: SequenceStep[]): Map<number, SequenceStep[]> =>
   return groups;
 };
 
-/** Get the "primary" steps (variant A or non-variant steps) for display */
 const getPrimarySteps = (steps: SequenceStep[]): SequenceStep[] => {
   const seen = new Set<number>();
   const result: SequenceStep[] = [];
@@ -359,7 +279,6 @@ const getPrimarySteps = (steps: SequenceStep[]): SequenceStep[] => {
     seen.add(step.order);
     result.push(step);
   }
-  // Add non-variant steps that weren't added
   for (const step of steps) {
     if (!step.variantGroup && !result.includes(step)) {
       result.push(step);
@@ -368,12 +287,16 @@ const getPrimarySteps = (steps: SequenceStep[]): SequenceStep[] => {
   return result.sort((a, b) => a.order - b.order);
 };
 
+// ── Wizard step order ──
+const WIZARD_ORDER: WizardStep[] = ['info', 'senders', 'steps', 'guardrails', 'review'];
+
 export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   isOpen,
   onClose,
   onSave,
   initialSequence,
 }) => {
+  const isEditing = !!initialSequence;
   const [sequence, setSequence] = useState<Sequence>(
     initialSequence || {
       name: '',
@@ -386,23 +309,54 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   const [expandedStepId, setExpandedStepId] = useState<string | null>(
     initialSequence?.steps[0]?.id || null
   );
-  // Show step picker immediately if no steps yet
   const [showStepPicker, setShowStepPicker] = useState(!initialSequence || initialSequence.steps.length === 0);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const { signatures } = useEmailSignatures();
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
 
-  const updateStep = (stepId: string, updates: Partial<SequenceStep>) => {
+  // Wizard vs expert mode
+  const [mode, setMode] = useState<'wizard' | 'expert'>(isEditing ? 'expert' : 'wizard');
+  const [wizardStep, setWizardStep] = useState<WizardStep>('info');
+
+  // Compute completed wizard steps
+  const completedSteps = useMemo(() => {
+    const completed = new Set<WizardStep>();
+    if (sequence.name.trim()) completed.add('info');
+    if (sequence.steps.length > 0) completed.add('steps');
+    // Senders is "complete" even if not using multi-sender
+    completed.add('senders');
+    // Guardrails always pass if stop conditions exist
+    if (sequence.stopConditions?.on_reply || sequence.stopConditions?.on_unsubscribe) completed.add('guardrails');
+    return completed;
+  }, [sequence]);
+
+  // Compute wizard validation errors per step
+  const wizardValidationErrors = useMemo(() => {
+    const errors = new Map<WizardStep, string[]>();
+    if (!sequence.name.trim()) errors.set('info', ['Nom requis']);
+    if (sequence.steps.length === 0) errors.set('steps', ['Au moins une étape requise']);
+    
+    const messageSteps = sequence.steps.filter(s => needsMessage(s.actionType));
+    const emptyMessages = messageSteps.filter(s => !s.useAiPersonalization && !s.messageTemplate?.trim());
+    if (emptyMessages.length > 0) {
+      const existing = errors.get('steps') || [];
+      existing.push(`${emptyMessages.length} message(s) vide(s)`);
+      errors.set('steps', existing);
+    }
+    return errors;
+  }, [sequence]);
+
+  const updateStep = useCallback((stepId: string, updates: Partial<SequenceStep>) => {
     setSequence(prev => ({
       ...prev,
       steps: prev.steps.map(step =>
         step.id === stepId ? { ...step, ...updates } : step
       ),
     }));
-  };
+  }, []);
 
-  const addStep = (actionType: string) => {
+  const addStep = useCallback((actionType: string) => {
     const newStep = createEmptyStep(sequence.steps.length, actionType);
     setSequence(prev => ({
       ...prev,
@@ -410,9 +364,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     }));
     setExpandedStepId(newStep.id);
     setShowStepPicker(false);
-  };
+  }, [sequence.steps.length]);
 
-  const removeStep = (stepId: string) => {
+  const removeStep = useCallback((stepId: string) => {
     if (sequence.steps.length <= 1) return;
     const newSteps = sequence.steps
       .filter(s => s.id !== stepId)
@@ -421,24 +375,16 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     if (expandedStepId === stepId) {
       setExpandedStepId(newSteps[0]?.id || null);
     }
-  };
+  }, [sequence.steps, expandedStepId]);
 
-  const addVariant = (sourceStep: SequenceStep) => {
-    // Find existing variants at this order
+  const addVariant = useCallback((sourceStep: SequenceStep) => {
     const existingVariants = sequence.steps.filter(
       s => s.order === sourceStep.order && s.variantGroup
     );
-    
-    // If source has no variant yet, mark it as A
     if (!sourceStep.variantGroup) {
       updateStep(sourceStep.id, { variantGroup: 'A', variantWeight: 50 });
     }
-    
-    const nextLetter = existingVariants.length === 0 ? 'B' 
-      : existingVariants.length === 1 ? 'B'
-      : 'C';
-    
-    // Don't allow more than 3 variants
+    const nextLetter = existingVariants.length <= 1 ? 'B' : 'C';
     if (existingVariants.length >= 3) return;
     
     const newStep: SequenceStep = {
@@ -449,9 +395,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
       messageTemplate: '',
       subjectTemplate: '',
     };
-    
-    // Rebalance weights
-    const totalVariants = existingVariants.length + 2; // existing + source(A) + new
+    const totalVariants = existingVariants.length + 2;
     const equalWeight = Math.floor(100 / totalVariants);
     
     setSequence(prev => ({
@@ -466,15 +410,13 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         { ...newStep, variantWeight: equalWeight },
       ],
     }));
-  };
+  }, [sequence.steps, updateStep]);
 
-  const removeVariant = (variantStep: SequenceStep) => {
+  const removeVariant = useCallback((variantStep: SequenceStep) => {
     const remainingVariants = sequence.steps.filter(
       s => s.order === variantStep.order && s.variantGroup && s.id !== variantStep.id
     );
-    
     if (remainingVariants.length <= 1) {
-      // Only one left, remove variant grouping entirely
       setSequence(prev => ({
         ...prev,
         steps: prev.steps
@@ -482,7 +424,6 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
           .map(s => s.order === variantStep.order ? { ...s, variantGroup: undefined, variantWeight: undefined } : s),
       }));
     } else {
-      // Rebalance remaining
       const equalWeight = Math.floor(100 / remainingVariants.length);
       setSequence(prev => ({
         ...prev,
@@ -491,7 +432,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
           .map(s => s.order === variantStep.order && s.variantGroup ? { ...s, variantWeight: equalWeight } : s),
       }));
     }
-  };
+  }, [sequence.steps]);
 
   const variantGroups = useMemo(() => getVariantGroups(sequence.steps), [sequence.steps]);
   const primarySteps = useMemo(() => getPrimarySteps(sequence.steps), [sequence.steps]);
@@ -500,37 +441,27 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     if (!sequence.name.trim() || sequence.steps.length === 0) return;
     
     const errors: string[] = [];
-    const warnings: string[] = [];
-    
     sequence.steps.forEach(s => {
       const stepLabel = `Étape ${s.order + 1}${s.variantGroup ? ` (${s.variantGroup})` : ''}`;
-      // Message required
       if (needsMessage(s.actionType) && !s.useAiPersonalization && !s.messageTemplate?.trim()) {
         errors.push(`${stepLabel}: message requis`);
       }
-      // Email subject required
       if (needsSubject(s.actionType) && !s.useAiPersonalization && !s.subjectTemplate?.trim()) {
         errors.push(`${stepLabel}: un objet est requis pour les steps email`);
       }
-      // Connection request > 300 chars
       if (s.actionType === 'connection_request' && (s.messageTemplate?.length || 0) > 300) {
         errors.push(`${stepLabel}: note d'invitation trop longue (max 300 caractères)`);
       }
-      // Score threshold required
       if (s.conditionType === 'if_score_above' && !s.conditionValue?.trim()) {
         errors.push(`${stepLabel}: le seuil de score est requis`);
-      }
-      // Cross-channel condition warning
-      if (isCrossChannelCondition(s.actionType, s.conditionType)) {
-        warnings.push(`${stepLabel}: condition "${s.conditionType}" inhabituelle pour ce type de step`);
       }
     });
     
     if (errors.length > 0) {
       setValidationErrors(errors);
+      if (mode === 'wizard') setWizardStep('review');
       return;
     }
-    setValidationErrors([...warnings]); // show warnings but don't block
     
     setIsSaving(true);
     try {
@@ -541,46 +472,466 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     }
   };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col bg-background border-foreground rounded-none w-[calc(100%-1rem)] sm:w-full">
-        <DialogHeader>
-          <DialogTitle>
-            {initialSequence ? 'Modifier la séquence' : 'Nouvelle séquence'}
-          </DialogTitle>
-        </DialogHeader>
+  const goNextWizardStep = () => {
+    const idx = WIZARD_ORDER.indexOf(wizardStep);
+    if (idx < WIZARD_ORDER.length - 1) setWizardStep(WIZARD_ORDER[idx + 1]);
+  };
+  const goPrevWizardStep = () => {
+    const idx = WIZARD_ORDER.indexOf(wizardStep);
+    if (idx > 0) setWizardStep(WIZARD_ORDER[idx - 1]);
+  };
 
-        <div className="flex-1 overflow-y-auto space-y-6 py-4">
-          {/* Sequence info */}
-          <div className="space-y-4">
+  if (!isOpen) return null;
+
+  // ── Step list renderer (shared between wizard steps view and expert mode) ──
+  const renderStepsList = () => (
+    <div className="space-y-3">
+      {primarySteps.map((step, index) => {
+        const isExpanded = expandedStepId === step.id;
+        const stepConfig = ALL_STEP_TYPES.find(a => a.value === step.actionType);
+        const StepIcon = stepConfig?.icon || Mail;
+        const stepIsTrigger = isTrigger(step.actionType);
+        const variants = variantGroups.get(step.order) || [];
+        const hasVariants = variants.length > 1;
+
+        return (
+          <div
+            key={step.id}
+            className={cn(
+              "border border-foreground transition-all",
+              isExpanded && "bg-muted/30",
+              stepIsTrigger && "border-l-4 border-l-foreground/40"
+            )}
+          >
+            {/* Step header */}
+            <div
+              className="flex items-center gap-3 p-3 cursor-pointer"
+              onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
+            >
+              <GripVertical className="w-4 h-4 text-muted-foreground" />
+              <div className={cn("w-8 h-8 flex items-center justify-center", stepConfig?.color || "bg-muted")}>
+                <StepIcon className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
+                    {stepIsTrigger ? 'TRIGGER' : 'ACTION'}
+                  </span>
+                  <span className="font-medium text-sm">{stepConfig?.label}</span>
+                </div>
+                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                  {step.delayDays > 0 && (
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Après {step.delayDays}j</span>
+                  )}
+                  {step.useAiPersonalization && (
+                    <span className="flex items-center gap-1 text-foreground"><Sparkles className="w-3 h-3" />IA</span>
+                  )}
+                  {stepIsTrigger && step.timeoutDays && (
+                    <span className="flex items-center gap-1"><Timer className="w-3 h-3" />Timeout {step.timeoutDays}j</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {canABTest(step.actionType) && !hasVariants && (
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); addVariant(step); }} className="text-muted-foreground hover:text-foreground" title="Créer un A/B test">
+                    <FlaskConical className="w-4 h-4" />
+                  </Button>
+                )}
+                {hasVariants && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 rounded-none border-foreground/30">
+                    <FlaskConical className="w-3 h-3 mr-0.5" />A/B
+                  </Badge>
+                )}
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); removeStep(step.id); }} disabled={sequence.steps.length <= 1} className="text-muted-foreground hover:text-destructive">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Step details (expanded) */}
+            {isExpanded && (
+              <div className="px-4 pb-4 pt-2 border-t space-y-4">
+                {/* Delay */}
+                {index > 0 && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label>Jours</Label>
+                      <Input type="number" min={0} value={step.delayDays} onChange={(e) => updateStep(step.id, { delayDays: parseInt(e.target.value) || 0 })} className="mt-1.5" />
+                    </div>
+                    <div>
+                      <Label>Heures</Label>
+                      <Input type="number" min={0} max={23} value={step.delayHours} onChange={(e) => updateStep(step.id, { delayHours: parseInt(e.target.value) || 0 })} className="mt-1.5" />
+                    </div>
+                    <div>
+                      <Label>Minutes</Label>
+                      <Input type="number" min={0} max={59} value={step.delayMinutes || 0} onChange={(e) => updateStep(step.id, { delayMinutes: parseInt(e.target.value) || 0 })} className="mt-1.5" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Condition */}
+                {isAction(step.actionType) && (
+                  <div>
+                    <Label>Condition d'exécution</Label>
+                    <Select value={step.conditionType} onValueChange={(value) => updateStep(step.id, { conditionType: value as SequenceStep['conditionType'] })}>
+                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {getConditionsForActionType(step.actionType).map(cond => (
+                          <SelectItem key={cond.value} value={cond.value}>{cond.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {isCrossChannelCondition(step.actionType, step.conditionType) && (
+                      <p className="text-xs text-amber-600 mt-1">⚠️ Cette condition ne fonctionne qu'avec des steps email</p>
+                    )}
+                    {step.conditionType === 'if_score_above' && (
+                      <div className="mt-2">
+                        <Label>Seuil de score (0-100)</Label>
+                        <Input type="number" min={0} max={100} value={step.conditionValue || '70'} onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })} placeholder="70" className={cn("mt-1 w-32", !step.conditionValue?.trim() && "border-destructive")} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Send hours */}
+                <Collapsible>
+                  <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
+                    ▸ Fenêtre d'envoi
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Heure début</Label>
+                      <Input type="number" min={0} max={23} value={step.preferredHourStart} onChange={(e) => updateStep(step.id, { preferredHourStart: parseInt(e.target.value) || 9 })} className="mt-1 h-8 text-xs" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Heure fin</Label>
+                      <Input type="number" min={0} max={23} value={step.preferredHourEnd} onChange={(e) => updateStep(step.id, { preferredHourEnd: parseInt(e.target.value) || 18 })} className="mt-1 h-8 text-xs" />
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Trigger config */}
+                {isTrigger(step.actionType) && step.actionType !== 'check_connection' && (
+                  <div className="space-y-3 p-3 bg-muted/30 border border-foreground/20">
+                    <div className="flex items-center gap-2"><Timer className="w-4 h-4" /><span className="font-medium text-sm uppercase tracking-wide">Configuration du trigger</span></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Timeout (jours)</Label>
+                        <Input type="number" min={1} value={step.timeoutDays || 3} onChange={(e) => updateStep(step.id, { timeoutDays: parseInt(e.target.value) || 3 })} className="mt-1.5" />
+                      </div>
+                      <div>
+                        <Label>Si timeout</Label>
+                        <Select value={step.timeoutAction || 'skip'} onValueChange={(value) => updateStep(step.id, { timeoutAction: value as SequenceStep['timeoutAction'] })}>
+                          <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {TIMEOUT_ACTIONS.map(action => (
+                              <SelectItem key={action.value} value={action.value}>{action.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    {step.timeoutAction === 'alternative_step' && (
+                      <div>
+                        <Label>Step alternatif</Label>
+                        <Select value={step.timeoutBranchStepId || '__none__'} onValueChange={(value) => updateStep(step.id, { timeoutBranchStepId: value === '__none__' ? undefined : value })}>
+                          <SelectTrigger className="mt-1.5"><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sélectionner...</SelectItem>
+                            {sequence.steps.filter(s => s.id !== step.id).map(s => {
+                              const sc = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                              return <SelectItem key={s.id} value={s.id}>Step {s.order + 1} — {sc?.label || s.actionType}</SelectItem>;
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Check connection */}
+                {step.actionType === 'check_connection' && (
+                  <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
+                    <div className="flex items-center gap-2"><GitBranch className="w-4 h-4" /><span className="font-medium text-sm uppercase tracking-wide">Vérification du degré</span></div>
+                    <div>
+                      <Label>Si connecté (1er degré) → aller à</Label>
+                      <Select value={step.ifTrueGotoStep || '__next__'} onValueChange={(value) => updateStep(step.id, { ifTrueGotoStep: value === '__next__' ? undefined : value })}>
+                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__next__">Étape suivante</SelectItem>
+                          {sequence.steps.filter(s => s.order > step.order).map(s => {
+                            const sc = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                            return <SelectItem key={s.id} value={s.id}>Étape {s.order + 1}: {sc?.label}</SelectItem>;
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Si non connecté → aller à</Label>
+                      <Select value={step.ifFalseGotoStep || '__next__'} onValueChange={(value) => updateStep(step.id, { ifFalseGotoStep: value === '__next__' ? undefined : value })}>
+                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__next__">Étape suivante</SelectItem>
+                          {sequence.steps.filter(s => s.order > step.order).map(s => {
+                            const sc = ALL_STEP_TYPES.find(a => a.value === s.actionType);
+                            return <SelectItem key={s.id} value={s.id}>Étape {s.order + 1}: {sc?.label}</SelectItem>;
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Message fields */}
+                {needsMessage(step.actionType) && (
+                  <>
+                    {hasVariants && (
+                      <div className="border border-foreground/20 bg-muted/20">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-foreground/10">
+                          <div className="flex items-center gap-2">
+                            <FlaskConical className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold uppercase tracking-wider">A/B Test</span>
+                          </div>
+                          {variants.length < 3 && (
+                            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => addVariant(step)}>
+                              <Copy className="w-3 h-3 mr-1" />+ Variante
+                            </Button>
+                          )}
+                        </div>
+                        <Tabs defaultValue={step.id} className="w-full">
+                          <TabsList className="w-full rounded-none h-8 bg-muted/50">
+                            {variants.sort((a, b) => (a.variantGroup || '').localeCompare(b.variantGroup || '')).map(v => (
+                              <TabsTrigger key={v.id} value={v.id} className="flex-1 h-6 text-xs rounded-none">
+                                Variante {v.variantGroup}<span className="ml-1 text-muted-foreground">({v.variantWeight || 0}%)</span>
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                          {variants.map(v => (
+                            <TabsContent key={v.id} value={v.id} className="p-3 space-y-3 mt-0">
+                              <div className="flex items-center gap-3">
+                                <Label className="text-xs whitespace-nowrap">Poids (%)</Label>
+                                <Input type="number" min={1} max={100} value={v.variantWeight || 50} onChange={(e) => updateStep(v.id, { variantWeight: parseInt(e.target.value) || 50 })} className="w-20 h-7 text-xs" />
+                                {v.variantGroup !== 'A' && (
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground hover:text-destructive ml-auto" onClick={() => removeVariant(v)}>
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-between p-2 bg-muted/50 border border-foreground/10">
+                                <div className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" /><span className="text-xs font-medium">IA</span></div>
+                                <Switch checked={v.useAiPersonalization} onCheckedChange={(checked) => updateStep(v.id, { useAiPersonalization: checked })} />
+                              </div>
+                              {!v.useAiPersonalization && (
+                                <>
+                                  {needsSubject(v.actionType) && (
+                                    <div>
+                                      <Label className="text-xs">Objet</Label>
+                                      <Input value={v.subjectTemplate || ''} onChange={(e) => updateStep(v.id, { subjectTemplate: e.target.value })} placeholder="Objet" className="mt-1 h-8 text-xs" />
+                                    </div>
+                                  )}
+                                  <div>
+                                    <Label className="text-xs">Message</Label>
+                                    <Textarea value={v.messageTemplate || ''} onChange={(e) => updateStep(v.id, { messageTemplate: e.target.value })} placeholder="Bonjour {{firstName}}, ..." rows={2} className="mt-1 text-xs" />
+                                  </div>
+                                </>
+                              )}
+                            </TabsContent>
+                          ))}
+                          {(() => {
+                            const totalWeight = variants.reduce((sum, v) => sum + (v.variantWeight || 0), 0);
+                            return (
+                              <div className={cn("text-xs font-medium px-3 py-1.5 border-t border-foreground/10", totalWeight === 100 ? "text-green-600" : "text-destructive")}>
+                                Total : {totalWeight}%{totalWeight !== 100 && " — doit être 100%"}
+                              </div>
+                            );
+                          })()}
+                        </Tabs>
+                      </div>
+                    )}
+
+                    {!hasVariants && (
+                      <>
+                        {isWhatsAppStep(step.actionType) && (
+                          <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                            📱 Message WhatsApp. Les candidats sans numéro seront skippés.
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
+                          <div className="flex items-center gap-2"><Sparkles className="w-4 h-4" /><span className="text-sm font-medium">Personnalisation IA</span></div>
+                          <Switch checked={step.useAiPersonalization} onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })} />
+                        </div>
+
+                        {step.useAiPersonalization ? (
+                          <div>
+                            <Label>Ton du message</Label>
+                            <Select value={step.aiTone || 'professional'} onValueChange={(value) => updateStep(step.id, { aiTone: value as SequenceStep['aiTone'] })}>
+                              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {AI_TONES.map(tone => <SelectItem key={tone.value} value={tone.value}>{tone.label}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground mt-2">L'IA générera un message personnalisé basé sur le profil LinkedIn et le brief.</p>
+                          </div>
+                        ) : (
+                          <>
+                            {needsSubject(step.actionType) && (
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <Label>Objet</Label>
+                                  <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => updateStep(step.id, { subjectTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                                </div>
+                                <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })} placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"} className={cn("mt-1.5", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
+                                {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-xs text-destructive mt-0.5">Objet requis</p>}
+                              </div>
+                            )}
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <Label>Message</Label>
+                                <div className="flex items-center gap-2">
+                                  <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => updateStep(step.id, { messageTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                                  {step.actionType === 'connection_request' && (
+                                    <span className={cn("text-xs", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground")}>
+                                      {step.messageTemplate?.length || 0}/300
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <Textarea ref={messageRef} value={step.messageTemplate || ''} onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })} placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300 car.)" : "Bonjour {{first_name}}, ..."} rows={step.actionType === 'connection_request' ? 2 : 3} maxLength={step.actionType === 'connection_request' ? 300 : undefined} className={cn("mt-1.5", step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-destructive")} />
+                            </div>
+                          </>
+                        )}
+
+                        {isEmailStep(step.actionType) && !step.useAiPersonalization && (
+                          <div className="space-y-3 pt-2 border-t border-foreground/10">
+                            <Collapsible>
+                              <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">▸ CC / BCC</CollapsibleTrigger>
+                              <CollapsibleContent className="space-y-2 pt-2">
+                                <div>
+                                  <Label className="text-xs">CC</Label>
+                                  <Input value={(step.ccEmails || []).join(', ')} onChange={(e) => updateStep(step.id, { ccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="email1@ex.com" className="mt-1 h-8 text-xs" />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">BCC</Label>
+                                  <Input value={(step.bccEmails || []).join(', ')} onChange={(e) => updateStep(step.id, { bccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="email@ex.com" className="mt-1 h-8 text-xs" />
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs">Lien de désinscription</Label>
+                              <Switch checked={step.includeUnsubscribe ?? false} onCheckedChange={(checked) => updateStep(step.id, { includeUnsubscribe: checked })} />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Signature</Label>
+                              <Select value={step.signatureId || '__none__'} onValueChange={(value) => updateStep(step.id, { signatureId: value === '__none__' ? undefined : value })}>
+                                <SelectTrigger className="mt-1"><SelectValue placeholder="Aucune" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">Aucune</SelectItem>
+                                  {signatures.map(sig => <SelectItem key={sig.id} value={sig.id}>{sig.name}{sig.is_default ? ' ⭐' : ''}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Step picker */}
+      {(showStepPicker || sequence.steps.length === 0) && (() => {
+        const { availableActions, availableTriggers } = getAvailableStepTypes(sequence.steps);
+        const hasNoOptions = availableActions.length === 0 && availableTriggers.length === 0;
+        return (
+          <div className={cn("mt-4 p-4 border-2 border-dashed", sequence.steps.length === 0 ? "border-foreground bg-muted/30" : "border-foreground/30 bg-muted/20")}>
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-medium text-sm">{sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}</span>
+              {sequence.steps.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={() => setShowStepPicker(false)}><X className="w-4 h-4" /></Button>
+              )}
+            </div>
+            {hasNoOptions ? (
+              <div className="text-center py-4 text-muted-foreground text-sm">Séquence complète !</div>
+            ) : (
+              <>
+                {availableActions.length > 0 && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2"><Zap className="w-4 h-4" /><span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span></div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {availableActions.map(action => (
+                        <button key={action.value} onClick={() => addStep(action.value)} className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left">
+                          <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", action.color)}><action.icon className="w-4 h-4" /></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{action.label}</div>
+                            <div className="text-xs text-muted-foreground truncate">{action.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {availableTriggers.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2"><Timer className="w-4 h-4" /><span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span></div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {availableTriggers.map(trigger => (
+                        <button key={trigger.value} onClick={() => addStep(trigger.value)} className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left">
+                          <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}><trigger.icon className="w-4 h-4" /></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{trigger.label}</div>
+                            <div className="text-xs text-muted-foreground truncate">{trigger.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {sequence.steps.length > 0 && !showStepPicker && (
+        <Button variant="outline" onClick={() => setShowStepPicker(true)} className="w-full mt-3 border-dashed">
+          <Plus className="w-4 h-4 mr-2" />Ajouter une étape
+        </Button>
+      )}
+    </div>
+  );
+
+  // ── Wizard content per step ──
+  const renderWizardContent = () => {
+    switch (wizardStep) {
+      case 'info':
+        return (
+          <div className="space-y-6 max-w-lg">
             <div>
-              <Label htmlFor="name">Nom de la séquence *</Label>
-              <Input
-                id="name"
-                value={sequence.name}
-                onChange={(e) => setSequence(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Ex: Prospection développeurs React"
-                className="mt-1.5"
-              />
+              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Informations</h2>
+              <p className="text-sm text-muted-foreground">Nommez votre séquence et décrivez son objectif.</p>
             </div>
             <div>
-              <Label htmlFor="description">Description (optionnel)</Label>
-              <Input
-                id="description"
-                value={sequence.description || ''}
-                onChange={(e) => setSequence(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Décrivez l'objectif de cette séquence"
-                className="mt-1.5"
-              />
+              <Label htmlFor="wiz-name">Nom de la séquence *</Label>
+              <Input id="wiz-name" value={sequence.name} onChange={(e) => setSequence(prev => ({ ...prev, name: e.target.value }))} placeholder="Ex: Prospection développeurs React" className="mt-1.5" />
             </div>
+            <div>
+              <Label htmlFor="wiz-desc">Description (optionnel)</Label>
+              <Input id="wiz-desc" value={sequence.description || ''} onChange={(e) => setSequence(prev => ({ ...prev, description: e.target.value }))} placeholder="Décrivez l'objectif de cette séquence" className="mt-1.5" />
+            </div>
+          </div>
+        );
 
-            {/* Stop Conditions */}
-            <StopConditionsSettings
-              value={sequence.stopConditions || { on_reply: true, on_click: false, on_unsubscribe: true, on_meeting_booked: false }}
-              onChange={(stopConditions) => setSequence(prev => ({ ...prev, stopConditions }))}
-            />
-
-            {/* Multi-sender */}
+      case 'senders':
+        return (
+          <div className="space-y-6 max-w-2xl">
+            <div>
+              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Expéditeurs</h2>
+              <p className="text-sm text-muted-foreground">Configurez qui envoie les messages. Activez le multi-sender pour répartir la charge.</p>
+            </div>
             <MultiSenderSettings
               enabled={sequence.multiSenderEnabled || false}
               onEnabledChange={(multiSenderEnabled) => setSequence(prev => ({ ...prev, multiSenderEnabled }))}
@@ -589,895 +940,335 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
               rotationMode={sequence.rotationMode || 'round_robin'}
               onRotationModeChange={(rotationMode) => setSequence(prev => ({ ...prev, rotationMode }))}
             />
-
-            {/* Template button - only show when creating new (no steps yet) */}
-            {sequence.steps.length === 0 && !initialSequence && (
-              <div className="p-4 border-2 border-dashed border-foreground/30 bg-muted/30">
-                <div className="flex items-center gap-3">
-                   <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center">
-                     <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">Séquence recommandée</p>
-                    <p className="text-xs text-muted-foreground">
-                      Visite → Vérification → Messages + 2 relances (connecté) / Invitation + InMail (non connecté)
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      const steps = generateRecommendedSequence();
-                      setSequence(prev => ({ ...prev, steps }));
-                      setShowStepPicker(false);
-                      setExpandedStepId(steps[0]?.id || null);
-                    }}
-                  >
-                    Charger
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
+        );
 
-          {/* Steps with tabs for list/visual view */}
-          <div>
-            <Tabs defaultValue="list" className="w-full">
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-base font-medium">Étapes de la séquence</Label>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{sequence.steps.length} étape(s)</span>
-                  <TabsList className="h-8">
-                    <TabsTrigger value="list" className="h-6 px-2 text-xs">
-                      <List className="w-3 h-3 mr-1" />
-                      Liste
-                    </TabsTrigger>
-                    <TabsTrigger value="visual" className="h-6 px-2 text-xs">
-                      <Workflow className="w-3 h-3 mr-1" />
-                      Visuel
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
+      case 'steps':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Étapes de la séquence</h2>
+                <p className="text-sm text-muted-foreground">{sequence.steps.length} étape(s) configurée(s)</p>
               </div>
-
-              <TabsContent value="visual" className="mt-0">
-                <VisualSequenceEditor
-                  steps={sequence.steps}
-                  onStepsChange={(newSteps) => setSequence(prev => ({ ...prev, steps: newSteps }))}
-                />
-              </TabsContent>
-
-              <TabsContent value="list" className="mt-0">
-              <div className="space-y-3">
-              {primarySteps.map((step, index) => {
-                const isExpanded = expandedStepId === step.id;
-                const stepConfig = ALL_STEP_TYPES.find(a => a.value === step.actionType);
-                const StepIcon = stepConfig?.icon || Mail;
-                const stepIsTrigger = isTrigger(step.actionType);
-                const variants = variantGroups.get(step.order) || [];
-                const hasVariants = variants.length > 1;
-
-                return (
-                  <div
-                    key={step.id}
-                     className={cn(
-                       "border border-foreground transition-all",
-                       isExpanded && "bg-muted/30",
-                       stepIsTrigger && "border-l-4 border-l-foreground/40"
-                     )}
-                   >
-                    {/* Step header */}
-                    <div
-                      className="flex items-center gap-3 p-3 cursor-pointer"
-                      onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
-                    >
-                      <GripVertical className="w-4 h-4 text-muted-foreground" />
-                       <div className={cn(
-                         "w-8 h-8 flex items-center justify-center",
-                         stepConfig?.color || "bg-muted"
-                       )}>
-                         <StepIcon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
-                            {stepIsTrigger ? 'TRIGGER' : 'ACTION'}
-                          </span>
-                          <span className="font-medium text-sm">{stepConfig?.label}</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                          {step.delayDays > 0 && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              Après {step.delayDays}j
-                            </span>
-                          )}
-                          {step.useAiPersonalization && (
-                            <span className="flex items-center gap-1 text-foreground">
-                              <Sparkles className="w-3 h-3" />
-                              IA
-                            </span>
-                          )}
-                          {stepIsTrigger && step.timeoutDays && (
-                            <span className="flex items-center gap-1 text-muted-foreground">
-                              <Timer className="w-3 h-3" />
-                              Timeout {step.timeoutDays}j
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {/* A/B Test button */}
-                        {canABTest(step.actionType) && !hasVariants && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addVariant(step);
-                            }}
-                            className="text-muted-foreground hover:text-foreground"
-                            title="Créer un A/B test"
-                          >
-                            <FlaskConical className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {hasVariants && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 rounded-none border-foreground/30">
-                            <FlaskConical className="w-3 h-3 mr-0.5" />
-                            A/B
-                          </Badge>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeStep(step.id);
-                          }}
-                          disabled={sequence.steps.length <= 1}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Step details (expanded) */}
-                    {isExpanded && (
-                      <div className="px-4 pb-4 pt-2 border-t space-y-4">
-                        {/* Delay (not for first step) */}
-                        {index > 0 && (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                              <Label>Jours</Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                value={step.delayDays}
-                                onChange={(e) => updateStep(step.id, { delayDays: parseInt(e.target.value) || 0 })}
-                                className="mt-1.5"
-                              />
-                            </div>
-                            <div>
-                              <Label>Heures</Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={23}
-                                value={step.delayHours}
-                                onChange={(e) => updateStep(step.id, { delayHours: parseInt(e.target.value) || 0 })}
-                                className="mt-1.5"
-                              />
-                            </div>
-                            <div>
-                              <Label>Minutes</Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={59}
-                                value={step.delayMinutes || 0}
-                                onChange={(e) => updateStep(step.id, { delayMinutes: parseInt(e.target.value) || 0 })}
-                                className="mt-1.5"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Condition for actions */}
-                        {isAction(step.actionType) && (
-                          <div>
-                            <Label>Condition d'exécution</Label>
-                            <Select
-                              value={step.conditionType}
-                              onValueChange={(value) => updateStep(step.id, { conditionType: value as SequenceStep['conditionType'] })}
-                            >
-                              <SelectTrigger className="mt-1.5">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {getConditionsForActionType(step.actionType).map(cond => (
-                                  <SelectItem key={cond.value} value={cond.value}>
-                                    {cond.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            {/* Cross-channel inline warning */}
-                            {isCrossChannelCondition(step.actionType, step.conditionType) && (
-                              <p className="text-xs text-amber-600 mt-1">⚠️ Cette condition ne fonctionne qu'avec des steps email</p>
-                            )}
-                            {/* Score threshold for if_score_above */}
-                            {step.conditionType === 'if_score_above' && (
-                              <div className="mt-2">
-                                <Label>Seuil de score (0-100)</Label>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  max={100}
-                                  value={step.conditionValue || '70'}
-                                  onChange={(e) => updateStep(step.id, { conditionValue: e.target.value })}
-                                  placeholder="70"
-                                  className={cn("mt-1 w-32", !step.conditionValue?.trim() && "border-destructive")}
-                                />
-                                {!step.conditionValue?.trim() && (
-                                  <p className="text-xs text-destructive mt-1">Seuil requis</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Send hours */}
-                        <Collapsible>
-                          <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
-                            ▸ Créneau d'envoi
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="space-y-2 pt-2">
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <Label className="text-xs">Pas avant</Label>
-                                <Select
-                                  value={String(step.preferredHourStart ?? 9)}
-                                  onValueChange={(value) => updateStep(step.id, { preferredHourStart: parseInt(value) })}
-                                >
-                                  <SelectTrigger className="mt-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {Array.from({ length: 24 }, (_, i) => (
-                                      <SelectItem key={i} value={String(i)}>{i}h</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label className="text-xs">Pas après</Label>
-                                <Select
-                                  value={String(step.preferredHourEnd ?? 18)}
-                                  onValueChange={(value) => updateStep(step.id, { preferredHourEnd: parseInt(value) })}
-                                >
-                                  <SelectTrigger className="mt-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {Array.from({ length: 24 }, (_, i) => (
-                                      <SelectItem key={i} value={String(i)}>{i}h</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground">Le message sera envoyé uniquement dans ce créneau horaire (fuseau du candidat)</p>
-                          </CollapsibleContent>
-                        </Collapsible>
-
-                        {/* Trigger configuration */}
-                        {stepIsTrigger && step.actionType !== 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
-                            <div className="flex items-center gap-2 text-foreground">
-                              <Zap className="w-4 h-4" />
-                              <span className="font-medium text-sm uppercase tracking-wide">Configuration du trigger</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div>
-                                <Label>Timeout (jours max)</Label>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  value={step.timeoutDays || 3}
-                                  onChange={(e) => updateStep(step.id, { timeoutDays: parseInt(e.target.value) || 3 })}
-                                  className="mt-1.5"
-                                />
-                              </div>
-                              <div>
-                                <Label>Si timeout dépassé</Label>
-                                <Select
-                                  value={step.timeoutAction || 'skip'}
-                                  onValueChange={(value) => updateStep(step.id, { timeoutAction: value as SequenceStep['timeoutAction'] })}
-                                >
-                                  <SelectTrigger className="mt-1.5">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {TIMEOUT_ACTIONS.map(action => (
-                                      <SelectItem key={action.value} value={action.value}>
-                                        {action.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-
-                            {/* Alternative step selector */}
-                            {step.timeoutAction === 'alternative_step' && (
-                              <div>
-                                <Label>Step alternatif</Label>
-                                <Select
-                                  value={step.timeoutBranchStepId || '__none__'}
-                                  onValueChange={(value) => updateStep(step.id, { timeoutBranchStepId: value === '__none__' ? undefined : value })}
-                                >
-                                  <SelectTrigger className="mt-1.5">
-                                    <SelectValue placeholder="Sélectionner..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="__none__">Sélectionner...</SelectItem>
-                                    {sequence.steps.filter(s => s.id !== step.id).map(s => {
-                                      const sc = ALL_STEP_TYPES.find(a => a.value === s.actionType);
-                                      return (
-                                        <SelectItem key={s.id} value={s.id}>
-                                          Step {s.order + 1} — {sc?.label || s.actionType}
-                                        </SelectItem>
-                                      );
-                                    })}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Condition branch configuration */}
-                        {step.actionType === 'condition_branch' && (
-                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
-                            <div className="flex items-center gap-2 text-foreground">
-                              <GitBranch className="w-4 h-4" />
-                              <span className="font-medium text-sm uppercase tracking-wide">Configuration du branchement</span>
-                            </div>
-                            
-                            <div>
-                              <Label>Condition à vérifier</Label>
-                              <Select
-                                value={step.conditionType}
-                                onValueChange={(value) => updateStep(step.id, { conditionType: value as SequenceStep['conditionType'] })}
-                              >
-                                <SelectTrigger className="mt-1.5">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {ALL_CONDITION_TYPES.filter(c => c.value !== 'always').map(cond => (
-                                    <SelectItem key={cond.value} value={cond.value}>
-                                      {cond.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div>
-                              <Label>Si condition non remplie</Label>
-                              <Select
-                                value={step.timeoutAction || 'skip'}
-                                onValueChange={(value) => updateStep(step.id, { timeoutAction: value as SequenceStep['timeoutAction'] })}
-                              >
-                                <SelectTrigger className="mt-1.5">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {TIMEOUT_ACTIONS.map(action => (
-                                    <SelectItem key={action.value} value={action.value}>
-                                      {action.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Check connection configuration */}
-                        {step.actionType === 'check_connection' && (
-                          <div className="space-y-4 p-3 bg-muted/30 border border-foreground/20">
-                            <div className="flex items-center gap-2 text-foreground">
-                              <GitBranch className="w-4 h-4" />
-                              <span className="font-medium text-sm uppercase tracking-wide">Vérification du degré de connexion</span>
-                            </div>
-                            
-                            <div>
-                              <Label>Si connecté (1er degré) → aller à</Label>
-                              <Select
-                                value={step.ifTrueGotoStep || '__next__'}
-                                onValueChange={(value) => updateStep(step.id, { ifTrueGotoStep: value === '__next__' ? undefined : value })}
-                              >
-                                <SelectTrigger className="mt-1.5">
-                                  <SelectValue placeholder="Sélectionner une étape..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="__next__">Étape suivante</SelectItem>
-                                  {sequence.steps.filter(s => s.order > step.order && s.id).map(s => {
-                                    const stepConfig = ALL_STEP_TYPES.find(a => a.value === s.actionType);
-                                    return (
-                                      <SelectItem key={s.id} value={s.id}>
-                                        Étape {s.order + 1}: {stepConfig?.label || s.actionType}
-                                      </SelectItem>
-                                    );
-                                  })}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div>
-                              <Label>Si non connecté (2e/3e degré) → aller à</Label>
-                              <Select
-                                value={step.ifFalseGotoStep || '__next__'}
-                                onValueChange={(value) => updateStep(step.id, { ifFalseGotoStep: value === '__next__' ? undefined : value })}
-                              >
-                                <SelectTrigger className="mt-1.5">
-                                  <SelectValue placeholder="Sélectionner une étape..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="__next__">Étape suivante</SelectItem>
-                                  {sequence.steps.filter(s => s.order > step.order && s.id).map(s => {
-                                    const stepConfig = ALL_STEP_TYPES.find(a => a.value === s.actionType);
-                                    return (
-                                      <SelectItem key={s.id} value={s.id}>
-                                        Étape {s.order + 1}: {stepConfig?.label || s.actionType}
-                                      </SelectItem>
-                                    );
-                                  })}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Message fields */}
-                        {needsMessage(step.actionType) && (
-                          <>
-                            {/* A/B Test variant tabs */}
-                            {hasVariants && (
-                              <div className="border border-foreground/20 bg-muted/20">
-                                <div className="flex items-center justify-between px-3 py-2 border-b border-foreground/10">
-                                  <div className="flex items-center gap-2">
-                                    <FlaskConical className="w-3.5 h-3.5 text-foreground" />
-                                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">A/B Test</span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    {variants.length < 3 && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 text-xs"
-                                        onClick={() => addVariant(step)}
-                                      >
-                                        <Copy className="w-3 h-3 mr-1" />
-                                        + Variante
-                                      </Button>
-                                    )}
-                                  </div>
-                                </div>
-                                <Tabs defaultValue={step.id} className="w-full">
-                                  <TabsList className="w-full rounded-none h-8 bg-muted/50">
-                                    {variants.sort((a, b) => (a.variantGroup || '').localeCompare(b.variantGroup || '')).map(v => (
-                                      <TabsTrigger key={v.id} value={v.id} className="flex-1 h-6 text-xs rounded-none">
-                                        Variante {v.variantGroup}
-                                        <span className="ml-1 text-muted-foreground">({v.variantWeight || 0}%)</span>
-                                      </TabsTrigger>
-                                    ))}
-                                  </TabsList>
-                                  {variants.map(v => (
-                                    <TabsContent key={v.id} value={v.id} className="p-3 space-y-3 mt-0">
-                                      {/* Weight */}
-                                      <div className="flex items-center gap-3">
-                                        <Label className="text-xs whitespace-nowrap">Poids (%)</Label>
-                                        <Input
-                                          type="number"
-                                          min={1}
-                                          max={100}
-                                          value={v.variantWeight || 50}
-                                          onChange={(e) => updateStep(v.id, { variantWeight: parseInt(e.target.value) || 50 })}
-                                          className="w-20 h-7 text-xs"
-                                        />
-                                        {v.variantGroup !== 'A' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 text-xs text-muted-foreground hover:text-destructive ml-auto"
-                                            onClick={() => removeVariant(v)}
-                                          >
-                                            <Trash2 className="w-3 h-3" />
-                                          </Button>
-                                        )}
-                                      </div>
-                                      {/* AI toggle per variant */}
-                                      <div className="flex items-center justify-between p-2 bg-muted/50 border border-foreground/10">
-                                        <div className="flex items-center gap-2">
-                                          <Sparkles className="w-3.5 h-3.5 text-foreground" />
-                                          <span className="text-xs font-medium">IA</span>
-                                        </div>
-                                        <Switch
-                                          checked={v.useAiPersonalization}
-                                          onCheckedChange={(checked) => updateStep(v.id, { useAiPersonalization: checked })}
-                                        />
-                                      </div>
-                                      {!v.useAiPersonalization && (
-                                        <>
-                                          {needsSubject(v.actionType) && (
-                                            <div>
-                                              <Label className="text-xs">Objet</Label>
-                                              <Input
-                                                value={v.subjectTemplate || ''}
-                                                onChange={(e) => updateStep(v.id, { subjectTemplate: e.target.value })}
-                                                placeholder="Objet"
-                                                className="mt-1 h-8 text-xs"
-                                              />
-                                            </div>
-                                          )}
-                                          <div>
-                                            <Label className="text-xs">Message</Label>
-                                            <Textarea
-                                              value={v.messageTemplate || ''}
-                                              onChange={(e) => updateStep(v.id, { messageTemplate: e.target.value })}
-                                              placeholder="Bonjour {{firstName}}, ..."
-                                              rows={2}
-                                              className="mt-1 text-xs"
-                                            />
-                                          </div>
-                                        </>
-                                      )}
-                                    </TabsContent>
-                                  ))}
-                                </Tabs>
-                                {/* A/B weight total */}
-                                {(() => {
-                                  const totalWeight = variants.reduce((sum, v) => sum + (v.variantWeight || 0), 0);
-                                  return (
-                                    <div className={cn("text-xs font-medium px-3 py-1.5 border-t border-foreground/10", totalWeight === 100 ? "text-emerald-600" : "text-destructive")}>
-                                      Total : {totalWeight}%{totalWeight !== 100 && " — doit être 100%"}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            )}
-
-                            {/* Standard message fields (no A/B test) */}
-                            {!hasVariants && (
-                              <>
-                                {/* WhatsApp indicator */}
-                                {isWhatsAppStep(step.actionType) && (
-                                  <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
-                                    📱 Message envoyé via WhatsApp au numéro du candidat. Texte brut uniquement. Les candidats sans numéro seront automatiquement passés au step suivant.
-                                  </div>
-                                )}
-
-                                {/* AI toggle */}
-                                <div className="flex items-center justify-between p-3 bg-muted/50 border border-foreground/20">
-                                  <div className="flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-foreground" />
-                                    <span className="text-sm font-medium">Personnalisation IA</span>
-                                  </div>
-                                  <Switch
-                                    checked={step.useAiPersonalization}
-                                    onCheckedChange={(checked) => updateStep(step.id, { useAiPersonalization: checked })}
-                                  />
-                                </div>
-
-                                {step.useAiPersonalization ? (
-                                  <div>
-                                    <Label>Ton du message</Label>
-                                    <Select
-                                      value={step.aiTone || 'professional'}
-                                      onValueChange={(value) => updateStep(step.id, { aiTone: value as SequenceStep['aiTone'] })}
-                                    >
-                                      <SelectTrigger className="mt-1.5">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {AI_TONES.map(tone => (
-                                          <SelectItem key={tone.value} value={tone.value}>
-                                            {tone.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground mt-2">
-                                      L'IA générera un message personnalisé pour chaque candidat au moment de l'envoi, basé sur son profil LinkedIn, l'historique CRM et le brief du poste. Vous pouvez ajouter une instruction spécifique ci-dessous.
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <>
-                                    {/* Subject for email/inmail */}
-                                    {needsSubject(step.actionType) && (
-                                      <div>
-                                        <div className="flex items-center justify-between">
-                                          <Label>Objet</Label>
-                                          <VariableInserter
-                                            targetRef={subjectRef}
-                                            currentValue={step.subjectTemplate || ''}
-                                            onInsert={(val) => updateStep(step.id, { subjectTemplate: val })}
-                                            showEmailVariables={isEmailStep(step.actionType)}
-                                          />
-                                        </div>
-                                        <Input
-                                          ref={subjectRef}
-                                          value={step.subjectTemplate || ''}
-                                          onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
-                                          placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
-                                          className={cn("mt-1.5", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")}
-                                        />
-                                        {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && (
-                                          <p className="text-xs text-destructive mt-0.5">Objet requis</p>
-                                        )}
-                                      </div>
-                                    )}
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <Label>Message</Label>
-                                        <div className="flex items-center gap-2">
-                                          <VariableInserter
-                                            targetRef={messageRef}
-                                            currentValue={step.messageTemplate || ''}
-                                            onInsert={(val) => updateStep(step.id, { messageTemplate: val })}
-                                            showEmailVariables={isEmailStep(step.actionType)}
-                                          />
-                                          {step.actionType === 'connection_request' && (
-                                            <span className={cn(
-                                              "text-xs",
-                                              (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground"
-                                            )}>
-                                              {step.messageTemplate?.length || 0}/300
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <Textarea
-                                        ref={messageRef}
-                                        value={step.messageTemplate || ''}
-                                        onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })}
-                                        placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300 car.)" : "Bonjour {{first_name}}, ..."}
-                                        rows={step.actionType === 'connection_request' ? 2 : 3}
-                                        maxLength={step.actionType === 'connection_request' ? 300 : undefined}
-                                        className={cn(
-                                          "mt-1.5",
-                                          step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-destructive focus-visible:ring-destructive"
-                                        )}
-                                      />
-                                      {step.actionType === 'connection_request' && (
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          LinkedIn limite les notes d'invitation à 300 caractères.
-                                        </p>
-                                      )}
-                                    </div>
-                                  </>
-                                )}
-
-                                {/* Email-specific fields */}
-                                {isEmailStep(step.actionType) && !step.useAiPersonalization && (
-                                  <div className="space-y-3 pt-2 border-t border-foreground/10">
-                                    {/* CC / BCC collapsible */}
-                                    <Collapsible>
-                                      <CollapsibleTrigger className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1">
-                                        ▸ CC / BCC
-                                      </CollapsibleTrigger>
-                                      <CollapsibleContent className="space-y-2 pt-2">
-                                        <div>
-                                          <Label className="text-xs">CC</Label>
-                                          <Input
-                                            value={(step.ccEmails || []).join(', ')}
-                                            onChange={(e) => updateStep(step.id, { ccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                                            placeholder="email1@ex.com, email2@ex.com"
-                                            className="mt-1 h-8 text-xs"
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label className="text-xs">BCC</Label>
-                                          <Input
-                                            value={(step.bccEmails || []).join(', ')}
-                                            onChange={(e) => updateStep(step.id, { bccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                                            placeholder="email@ex.com"
-                                            className="mt-1 h-8 text-xs"
-                                          />
-                                        </div>
-                                      </CollapsibleContent>
-                                    </Collapsible>
-
-                                    {/* Unsubscribe toggle */}
-                                    <div className="flex items-center justify-between">
-                                      <Label className="text-xs">Lien de désinscription</Label>
-                                      <Switch
-                                        checked={step.includeUnsubscribe ?? false}
-                                        onCheckedChange={(checked) => updateStep(step.id, { includeUnsubscribe: checked })}
-                                      />
-                                    </div>
-
-                                    {/* Signature */}
-                                    <div>
-                                      <Label className="text-xs">Signature</Label>
-                                      <Select
-                                        value={step.signatureId || '__none__'}
-                                        onValueChange={(value) => updateStep(step.id, { signatureId: value === '__none__' ? undefined : value })}
-                                      >
-                                        <SelectTrigger className="mt-1">
-                                          <SelectValue placeholder="Aucune" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="__none__">Aucune</SelectItem>
-                                          {signatures.map(sig => (
-                                            <SelectItem key={sig.id} value={sig.id}>
-                                              {sig.name}{sig.is_default ? ' ⭐' : ''}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-            {/* Step picker - shows when no steps or user clicked add */}
-            {(showStepPicker || sequence.steps.length === 0) && (() => {
-              const { availableActions, availableTriggers } = getAvailableStepTypes(sequence.steps);
-              const hasNoOptions = availableActions.length === 0 && availableTriggers.length === 0;
-
-              return (
-                 <div className={cn(
-                   "mt-4 p-4 border-2 border-dashed",
-                   sequence.steps.length === 0 
-                     ? "border-foreground bg-muted/30" 
-                     : "border-foreground/30 bg-muted/20"
-                 )}>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="font-medium text-sm">
-                      {sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}
-                    </span>
-                    {sequence.steps.length > 0 && (
-                      <Button variant="ghost" size="sm" onClick={() => setShowStepPicker(false)}>
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-
-                  {hasNoOptions ? (
-                    <div className="text-center py-4 text-muted-foreground text-sm">
-                      Séquence complète ! Aucune action supplémentaire disponible.
-                    </div>
-                  ) : (
-                    <>
-                      {/* Actions section */}
-                      {availableActions.length > 0 && (
-                        <div className="mb-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Zap className="w-4 h-4 text-foreground" />
-                            <span className="text-xs font-semibold uppercase text-muted-foreground">Actions</span>
-                          </div>
-                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {availableActions.map(action => (
-                              <button
-                                key={action.value}
-                                onClick={() => addStep(action.value)}
-                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left"
-                              >
-                                <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", action.color)}>
-                                  <action.icon className="w-4 h-4" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-sm truncate">{action.label}</div>
-                                  <div className="text-xs text-muted-foreground truncate">{action.description}</div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Triggers section */}
-                      {availableTriggers.length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Timer className="w-4 h-4 text-foreground" />
-                            <span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {availableTriggers.map(trigger => (
-                              <button
-                                key={trigger.value}
-                                onClick={() => addStep(trigger.value)}
-                                className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left"
-                              >
-                                <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}>
-                                  <trigger.icon className="w-4 h-4" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-sm truncate">{trigger.label}</div>
-                                  <div className="text-xs text-muted-foreground truncate">{trigger.description}</div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Show hint when some options are hidden */}
-                      {(availableActions.length < ACTIONS.length || availableTriggers.length < TRIGGERS.length) && (
-                        <p className="text-xs text-muted-foreground mt-3 text-center italic">
-                          Certaines options sont masquées car non pertinentes à cette étape
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Add step button - only show when steps exist and picker is hidden */}
-            {sequence.steps.length > 0 && !showStepPicker && (
-              <Button
-                variant="outline"
-                onClick={() => setShowStepPicker(true)}
-                className="w-full mt-3 border-dashed"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Ajouter une étape
-              </Button>
-            )}
+              {/* Template button */}
+              {sequence.steps.length === 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const steps = generateRecommendedSequence();
+                    setSequence(prev => ({ ...prev, steps }));
+                    setShowStepPicker(false);
+                    setExpandedStepId(steps[0]?.id || null);
+                  }}
+                  className="border-foreground"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Charger séquence recommandée
+                </Button>
+              )}
             </div>
+
+            <Tabs defaultValue="list" className="w-full">
+              <div className="flex justify-end mb-3">
+                <TabsList className="h-8">
+                  <TabsTrigger value="list" className="h-6 px-2 text-xs"><List className="w-3 h-3 mr-1" />Liste</TabsTrigger>
+                  <TabsTrigger value="visual" className="h-6 px-2 text-xs"><Workflow className="w-3 h-3 mr-1" />Visuel</TabsTrigger>
+                </TabsList>
+              </div>
+              <TabsContent value="visual" className="mt-0">
+                <VisualSequenceEditor steps={sequence.steps} onStepsChange={(newSteps) => setSequence(prev => ({ ...prev, steps: newSteps }))} />
+              </TabsContent>
+              <TabsContent value="list" className="mt-0">
+                {renderStepsList()}
               </TabsContent>
             </Tabs>
           </div>
-        </div>
+        );
 
-        {/* Footer */}
-        <div className="pt-4 border-t border-foreground/10 space-y-2">
-          {validationErrors.length > 0 && (
-            <div className="space-y-1">
-              {validationErrors.map((err, i) => (
-                <p key={i} className={cn(
-                  "text-xs",
-                  err.includes('inhabituelle') ? "text-amber-600" : "text-destructive"
-                )}>
-                  {err.includes('inhabituelle') ? '⚠️' : '❌'} {err}
-                </p>
-              ))}
+      case 'guardrails':
+        return (
+          <div className="space-y-6 max-w-2xl">
+            <div>
+              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Garde-fous</h2>
+              <p className="text-sm text-muted-foreground">Définissez quand arrêter la séquence et protégez vos comptes.</p>
+            </div>
+            <StopConditionsSettings
+              value={sequence.stopConditions || { on_reply: true, on_click: false, on_unsubscribe: true, on_meeting_booked: false }}
+              onChange={(stopConditions) => setSequence(prev => ({ ...prev, stopConditions }))}
+            />
+            {/* Daily limit warnings */}
+            {sequence.multiSenderEnabled && sequence.senderAccounts && sequence.senderAccounts.some(s => s.daily_limit > 80) && (
+              <div className="p-3 border border-amber-500/30 bg-amber-50 text-amber-800 text-xs">
+                <div className="flex items-center gap-2 font-medium mb-1"><Shield className="w-3.5 h-3.5" />Limites élevées détectées</div>
+                <p>Un ou plusieurs senders ont une limite quotidienne &gt; 80. Cela peut compromettre la sécurité de vos comptes LinkedIn. Nous recommandons 30-50 actions/jour pour les comptes récents, 50-80 pour les comptes établis.</p>
+              </div>
+            )}
+            {/* Channel alerts */}
+            {(() => {
+              const hasEmail = sequence.steps.some(s => s.actionType === 'email');
+              const hasWhatsapp = sequence.steps.some(s => s.actionType === 'whatsapp_message');
+              if (!hasEmail && !hasWhatsapp) return null;
+              return (
+                <div className="p-3 border border-foreground/20 bg-muted/30 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-medium"><Mail className="w-3.5 h-3.5" />Alertes canal</div>
+                  {hasEmail && <p>📧 Cette séquence utilise des étapes <strong>Email</strong>. Les candidats sans adresse email seront automatiquement skippés.</p>}
+                  {hasWhatsapp && <p>📱 Cette séquence utilise des étapes <strong>WhatsApp</strong>. Les candidats sans numéro de téléphone seront automatiquement skippés.</p>}
+                </div>
+              );
+            })()}
+          </div>
+        );
+
+      case 'review':
+        return (
+          <div className="space-y-6 max-w-2xl">
+            <div>
+              <h2 className="text-lg font-bold uppercase tracking-wider mb-1">Vérification</h2>
+              <p className="text-sm text-muted-foreground">Vérifiez que tout est prêt avant d'activer la séquence.</p>
+            </div>
+
+            {/* Summary card */}
+            <div className="border border-foreground p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold uppercase">{sequence.name || '(Sans nom)'}</span>
+                <Badge variant="outline" className="rounded-none">{sequence.steps.length} étapes</Badge>
+              </div>
+              {sequence.description && <p className="text-xs text-muted-foreground">{sequence.description}</p>}
+
+              {/* Visual flow preview */}
+              <div className="border border-foreground/10 p-3 bg-muted/20">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Aperçu du flux</div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {sequence.steps.slice(0, 20).map((step, i) => {
+                    const sc = ALL_STEP_TYPES.find(a => a.value === step.actionType);
+                    const Icon = sc?.icon || Mail;
+                    return (
+                      <React.Fragment key={step.id}>
+                        {i > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground/50" />}
+                        <div className={cn("w-6 h-6 flex items-center justify-center shrink-0", sc?.color || "bg-muted")} title={sc?.label}>
+                          <Icon className="w-3 h-3" />
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                  {sequence.steps.length > 20 && <span className="text-xs text-muted-foreground">+{sequence.steps.length - 20}</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Validation checklist */}
+            <SequenceValidationChecklist sequence={sequence} />
+
+            {/* Validation errors */}
+            {validationErrors.length > 0 && (
+              <div className="space-y-1 p-3 border border-destructive/30 bg-destructive/5">
+                {validationErrors.map((err, i) => (
+                  <p key={i} className="text-xs text-destructive">❌ {err}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+    }
+  };
+
+  // ── Full-screen portal ──
+  const content = (
+    <div className="fixed inset-0 z-[4000] bg-background flex flex-col">
+      {/* Top bar */}
+      <div className="h-12 border-b border-foreground flex items-center justify-between px-4 shrink-0 bg-background">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Retour
+          </button>
+          <div className="w-px h-5 bg-foreground/20" />
+          <span className="text-sm font-bold uppercase tracking-wider truncate">
+            {isEditing ? 'Modifier la séquence' : 'Nouvelle séquence'}
+          </span>
+          {sequence.name && (
+            <>
+              <div className="w-px h-5 bg-foreground/20" />
+              <span className="text-sm text-muted-foreground truncate max-w-[200px]">{sequence.name}</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Mode toggle */}
+          <div className="flex items-center border border-foreground/20 h-7">
+            <button
+              onClick={() => setMode('wizard')}
+              className={cn("px-2.5 h-full text-[10px] font-bold uppercase tracking-wider transition-colors", mode === 'wizard' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+            >
+              Guidé
+            </button>
+            <button
+              onClick={() => setMode('expert')}
+              className={cn("px-2.5 h-full text-[10px] font-bold uppercase tracking-wider transition-colors", mode === 'expert' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+            >
+              Expert
+            </button>
+          </div>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+            className="bg-foreground text-background rounded-none h-8 px-4 text-xs"
+          >
+            {isSaving ? 'Enregistrement...' : <><Save className="w-3.5 h-3.5 mr-1.5" />Enregistrer</>}
+          </Button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left sidebar - wizard stepper or validation */}
+        <div className="w-52 border-r border-foreground/10 bg-muted/10 shrink-0 flex flex-col overflow-y-auto hidden lg:flex">
+          {mode === 'wizard' ? (
+            <div className="p-3">
+              <SequenceWizardStepper
+                currentStep={wizardStep}
+                onStepChange={setWizardStep}
+                completedSteps={completedSteps}
+                validationErrors={wizardValidationErrors}
+              />
+            </div>
+          ) : (
+            <div className="p-3">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Validation</div>
+              <SequenceValidationChecklist sequence={sequence} />
             </div>
           )}
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-            <Button variant="outline" onClick={onClose} className="border-foreground rounded-none">
-              Annuler
-            </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
-              className="bg-foreground text-background rounded-none"
-            >
-              {isSaving ? 'Enregistrement...' : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Enregistrer
-                </>
-              )}
-            </Button>
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6 max-w-4xl mx-auto">
+            {mode === 'wizard' ? (
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={wizardStep}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {renderWizardContent()}
+                </motion.div>
+              </AnimatePresence>
+            ) : (
+              /* Expert mode: everything in one scrollable view */
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="name">Nom de la séquence *</Label>
+                    <Input id="name" value={sequence.name} onChange={(e) => setSequence(prev => ({ ...prev, name: e.target.value }))} placeholder="Ex: Prospection développeurs React" className="mt-1.5" />
+                  </div>
+                  <div>
+                    <Label htmlFor="description">Description (optionnel)</Label>
+                    <Input id="description" value={sequence.description || ''} onChange={(e) => setSequence(prev => ({ ...prev, description: e.target.value }))} placeholder="Décrivez l'objectif" className="mt-1.5" />
+                  </div>
+                </div>
+
+                <StopConditionsSettings
+                  value={sequence.stopConditions || { on_reply: true, on_click: false, on_unsubscribe: true, on_meeting_booked: false }}
+                  onChange={(stopConditions) => setSequence(prev => ({ ...prev, stopConditions }))}
+                />
+
+                <MultiSenderSettings
+                  enabled={sequence.multiSenderEnabled || false}
+                  onEnabledChange={(multiSenderEnabled) => setSequence(prev => ({ ...prev, multiSenderEnabled }))}
+                  senderAccounts={sequence.senderAccounts || []}
+                  onSenderAccountsChange={(senderAccounts) => setSequence(prev => ({ ...prev, senderAccounts }))}
+                  rotationMode={sequence.rotationMode || 'round_robin'}
+                  onRotationModeChange={(rotationMode) => setSequence(prev => ({ ...prev, rotationMode }))}
+                />
+
+                {/* Template */}
+                {sequence.steps.length === 0 && !initialSequence && (
+                  <div className="p-4 border-2 border-dashed border-foreground/30 bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-foreground text-background flex items-center justify-center"><Sparkles className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">Séquence recommandée</p>
+                        <p className="text-xs text-muted-foreground">Visite → Vérification → Messages + relances</p>
+                      </div>
+                      <Button size="sm" onClick={() => { const steps = generateRecommendedSequence(); setSequence(prev => ({ ...prev, steps })); setShowStepPicker(false); setExpandedStepId(steps[0]?.id || null); }}>Charger</Button>
+                    </div>
+                  </div>
+                )}
+
+                <Tabs defaultValue="list" className="w-full">
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-base font-medium">Étapes de la séquence</Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">{sequence.steps.length} étape(s)</span>
+                      <TabsList className="h-8">
+                        <TabsTrigger value="list" className="h-6 px-2 text-xs"><List className="w-3 h-3 mr-1" />Liste</TabsTrigger>
+                        <TabsTrigger value="visual" className="h-6 px-2 text-xs"><Workflow className="w-3 h-3 mr-1" />Visuel</TabsTrigger>
+                      </TabsList>
+                    </div>
+                  </div>
+                  <TabsContent value="visual" className="mt-0">
+                    <VisualSequenceEditor steps={sequence.steps} onStepsChange={(newSteps) => setSequence(prev => ({ ...prev, steps: newSteps }))} />
+                  </TabsContent>
+                  <TabsContent value="list" className="mt-0">
+                    {renderStepsList()}
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+
+      {/* Bottom bar for wizard navigation */}
+      {mode === 'wizard' && (
+        <div className="h-14 border-t border-foreground/10 flex items-center justify-between px-6 shrink-0 bg-background">
+          <Button
+            variant="outline"
+            onClick={goPrevWizardStep}
+            disabled={wizardStep === 'info'}
+            className="rounded-none border-foreground/30 h-8 text-xs"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+            Précédent
+          </Button>
+          <div className="flex items-center gap-1.5">
+            {WIZARD_ORDER.map(step => (
+              <div
+                key={step}
+                className={cn(
+                  "w-2 h-2 transition-colors",
+                  step === wizardStep ? "bg-foreground" : completedSteps.has(step) ? "bg-foreground/40" : "bg-foreground/15"
+                )}
+              />
+            ))}
+          </div>
+          {wizardStep === 'review' ? (
+            <Button
+              onClick={handleSave}
+              disabled={isSaving || !sequence.name.trim() || sequence.steps.length === 0}
+              className="bg-foreground text-background rounded-none h-8 px-6 text-xs"
+            >
+              {isSaving ? 'Enregistrement...' : <><CheckCircle className="w-3.5 h-3.5 mr-1.5" />Activer la séquence</>}
+            </Button>
+          ) : (
+            <Button
+              onClick={goNextWizardStep}
+              className="bg-foreground text-background rounded-none h-8 text-xs"
+            >
+              Suivant
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
+
+  return createPortal(content, document.body);
 });
