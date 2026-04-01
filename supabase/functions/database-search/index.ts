@@ -91,7 +91,10 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
         titles.push(...keywords);
       }
     }
-    if (titles.length) payload.person_titles = titles;
+    if (titles.length) {
+      payload.person_titles = titles;
+      payload.include_similar_titles = true; // Apollo default, explicit for clarity
+    }
     if (excludeTitles.length) payload.person_not_titles = excludeTitles;
   }
 
@@ -299,8 +302,9 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   // Company domain
   const dbCompanyDomain = params.db_company_domain as string | undefined;
   if (dbCompanyDomain) {
-    // Apollo expects the _list suffix for domain search
-    payload.q_organization_domains_list = dbCompanyDomain;
+    // Apollo expects the _list suffix for domain search, as an ARRAY (not string)
+    const domains = dbCompanyDomain.split(',').map(d => d.trim()).filter(Boolean);
+    payload['q_organization_domains_list'] = domains;
   }
 
   // Email verified
@@ -362,6 +366,13 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
       it: "information_technology",
     };
     payload.person_departments = func.map((f) => deptMap[f.toLowerCase()] || f);
+  }
+
+  // Log non-spec params (these may be silently ignored by Apollo api_search endpoint)
+  const nonSpecParams = ['person_departments', 'q_organization_keyword_tags', 'q_organization_name', 'person_not_titles', 'organization_latest_funding_stage_cd'];
+  const usedNonSpec = nonSpecParams.filter(p => payload[p] !== undefined);
+  if (usedNonSpec.length) {
+    console.warn(`[database-search] Non-spec params sent (may be ignored by api_search): ${usedNonSpec.join(', ')}`);
   }
 
   return payload;
