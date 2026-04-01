@@ -2724,7 +2724,7 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
         totalTokensIn += result.usage?.input_tokens || 0;
         totalTokensOut += result.usage?.output_tokens || 0;
         // deno-lint-ignore no-explicit-any
-        const textContent = result.content?.find((c: any) => c.type === 'text')?.text || '';
+        const textContent = (result as any).content?.find((c: any) => c.type === 'text')?.text || '';
         return textContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       } catch (aiErr) {
         console.error('[generatePersonalizedMessage] AI call failed:', aiErr);

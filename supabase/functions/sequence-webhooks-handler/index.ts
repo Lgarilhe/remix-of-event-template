@@ -22,7 +22,8 @@ const WEBHOOK_SECRET = Deno.env.get('SEQUENCE_WEBHOOK_SECRET') || Deno.env.get('
  * Cancel all scheduled/waiting executions for an enrollment.
  */
 async function cancelRemainingExecutions(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   enrollmentId: string,
   reason: string,
 ) {
@@ -41,7 +42,8 @@ async function cancelRemainingExecutions(
  * Stop all active enrollments for the same company in the same sequence.
  */
 async function stopCompanyEnrollments(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   sequenceId: string,
   companyName: string,
   triggerEnrollmentId: string,
@@ -81,7 +83,8 @@ async function stopCompanyEnrollments(
  * Handle a reply event (LinkedIn or email) for an enrollment.
  */
 async function handleReply(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   enrollmentId: string,
   timestamp: string,
 ) {
@@ -148,7 +151,8 @@ async function handleReply(
 // ============ WEBHOOK HANDLERS ============
 
 async function handleMessageReceived(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
 ) {
   // Ignore messages sent by us
@@ -181,7 +185,8 @@ async function handleMessageReceived(
 }
 
 async function handleNewRelation(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
 ) {
   const userProviderId = payload.user_provider_id as string;
@@ -248,7 +253,8 @@ async function handleNewRelation(
 }
 
 async function handleMailReceived(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
 ) {
   const inReplyTo = payload.in_reply_to as string;
@@ -317,7 +323,8 @@ async function handleMailReceived(
 }
 
 async function handleMailTracking(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   payload: Record<string, unknown>,
   eventType: 'open' | 'click',
 ) {
