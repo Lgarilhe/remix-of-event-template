@@ -42,7 +42,8 @@ async function cancelRemainingExecutions(
  * Stop all active enrollments for the same company in the same sequence.
  */
 async function stopCompanyEnrollments(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   sequenceId: string,
   companyName: string,
   triggerEnrollmentId: string,
