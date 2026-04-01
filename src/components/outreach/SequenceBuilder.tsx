@@ -133,26 +133,7 @@ const TRIGGERS = [
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
 
-const CONDITION_TYPES = [
-  { value: 'always', label: 'Toujours exécuter' },
-  { value: 'if_connected', label: 'Si connecté' },
-  { value: 'if_not_connected', label: 'Si non connecté' },
-  { value: 'if_no_response', label: 'Si pas de réponse' },
-  // Engagement email
-  { value: 'if_email_opened', label: '📧 Si email ouvert' },
-  { value: 'if_email_not_opened', label: '📧 Si email PAS ouvert' },
-  { value: 'if_link_clicked', label: '🔗 Si lien cliqué' },
-  { value: 'if_link_not_clicked', label: '🔗 Si lien PAS cliqué' },
-  // Données candidat
-  { value: 'if_has_email', label: '📬 Si a un email' },
-  { value: 'if_no_email', label: '📬 Si pas d\'email' },
-  { value: 'if_has_phone', label: '📞 Si a un téléphone' },
-  { value: 'if_no_phone', label: '📞 Si pas de téléphone' },
-  // Statut
-  { value: 'if_bounced', label: '⚠️ Si email bouncé' },
-  { value: 'if_unsubscribed', label: '🚫 Si désinscrit' },
-  { value: 'if_score_above', label: '⭐ Si score au-dessus de...' },
-];
+// CONDITION_TYPES now imported from conditionTypes.ts — use getConditionsForActionType()
 
 const TIMEOUT_ACTIONS = [
   { value: 'skip', label: 'Passer à l\'étape suivante' },
