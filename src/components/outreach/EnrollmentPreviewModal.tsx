@@ -265,6 +265,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   const handleSelectCandidate = (id: string) => {
     setSelectedCandidateId(id);
+    setMobilePane('preview');
     const existing = messageSteps.every(s => getPreview(id, s.stepId)?.isGenerated);
     if (!existing) generateForCandidateById(id);
   };
