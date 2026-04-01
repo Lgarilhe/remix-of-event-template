@@ -16,7 +16,9 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
-const MCP_ENDPOINT = Deno.env.get('OUTLOOK_MCP_ENDPOINT') || 'https://srv883112.hstgr.cloud/mcp/claude';
+const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
+const UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const UNIPILE_DSN = `https://${UNIPILE_DSN_RAW}`;
 
 // ============ HELPERS ============
 
@@ -179,6 +181,66 @@ async function generateAiSnippet(
 
 // ============ EMAIL SENDING ============
 
+/**
+ * Send email via Unipile API (primary method).
+ * Uses the same Unipile infrastructure as LinkedIn messaging.
+ * Requires an email account connected in Unipile (Gmail, Outlook, IMAP).
+ */
+async function sendViaUnipile(
+  accountId: string,
+  senderName: string,
+  to: string,
+  subject: string,
+  htmlBody: string,
+  cc?: string[],
+  bcc?: string[],
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (!UNIPILE_API_KEY || !UNIPILE_DSN) {
+    return { success: false, error: 'Unipile not configured (missing UNIPILE_API_KEY or UNIPILE_DSN)' };
+  }
+
+  try {
+    const toRecipients = [{ display_name: '', identifier: to }];
+    const ccRecipients = (cc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
+    const bccRecipients = (bcc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
+
+    const payload: Record<string, unknown> = {
+      account_id: accountId,
+      subject,
+      body: htmlBody,
+      to: toRecipients,
+      ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
+      ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
+      ...(senderName ? { from: { display_name: senderName } } : {}),
+    };
+
+    const res = await fetch(`${UNIPILE_DSN}/api/v1/emails`, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': UNIPILE_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const messageId = data.email_id || data.id || data.message_id || `unipile-${crypto.randomUUID().slice(0, 8)}`;
+      console.log(`[sequence-send-email] Unipile email sent: ${messageId}`);
+      return { success: true, messageId };
+    }
+
+    const errorBody = await res.text();
+    return { success: false, error: `Unipile ${res.status}: ${errorBody}` };
+  } catch (err) {
+    return { success: false, error: `Unipile error: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * Fallback: Send email via Microsoft Graph API (if Unipile email account not available).
+ */
 async function sendViaGraphApi(
   accessToken: string,
   from: string,
@@ -188,22 +250,6 @@ async function sendViaGraphApi(
   cc?: string[],
   bcc?: string[],
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const toRecipients = [{ emailAddress: { address: to } }];
-  const ccRecipients = (cc || []).map(e => ({ emailAddress: { address: e } }));
-  const bccRecipients = (bcc || []).map(e => ({ emailAddress: { address: e } }));
-
-  const payload = {
-    message: {
-      subject,
-      body: { contentType: 'HTML', content: htmlBody },
-      toRecipients,
-      ...(ccRecipients.length > 0 ? { ccRecipients } : {}),
-      ...(bccRecipients.length > 0 ? { bccRecipients } : {}),
-      from: { emailAddress: { address: from } },
-    },
-    saveToSentItems: true,
-  };
-
   try {
     const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
       method: 'POST',
@@ -211,12 +257,20 @@ async function sendViaGraphApi(
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: [{ emailAddress: { address: to } }],
+          ...(cc?.length ? { ccRecipients: cc.map(e => ({ emailAddress: { address: e } })) } : {}),
+          ...(bcc?.length ? { bccRecipients: bcc.map(e => ({ emailAddress: { address: e } })) } : {}),
+          from: { emailAddress: { address: from } },
+        },
+        saveToSentItems: true,
+      }),
     });
 
     if (res.status === 202 || res.ok) {
-      // Microsoft Graph returns 202 Accepted for sendMail
-      // Message-ID is not directly available from sendMail, check sent items
       return { success: true, messageId: `graph-${crypto.randomUUID().slice(0, 8)}` };
     }
 
@@ -224,40 +278,6 @@ async function sendViaGraphApi(
     return { success: false, error: `Graph API ${res.status}: ${errorBody}` };
   } catch (err) {
     return { success: false, error: `Graph API error: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
-
-async function sendViaMcp(
-  to: string,
-  subject: string,
-  htmlBody: string,
-  cc?: string[],
-  bcc?: string[],
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    const res = await fetch(MCP_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'send_email',
-        to,
-        subject,
-        body: htmlBody,
-        content_type: 'html',
-        ...(cc?.length ? { cc } : {}),
-        ...(bcc?.length ? { bcc } : {}),
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      return { success: true, messageId: data.message_id || `mcp-${crypto.randomUUID().slice(0, 8)}` };
-    }
-
-    const errorBody = await res.text();
-    return { success: false, error: `MCP ${res.status}: ${errorBody}` };
-  } catch (err) {
-    return { success: false, error: `MCP error: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 
@@ -424,19 +444,27 @@ Deno.serve(async (req) => {
     // Add tracking pixel
     htmlBody = addTrackingPixel(htmlBody, trackingId, SUPABASE_URL);
 
-    // 9. Send email
+    // 9. Send email — priority: Unipile (uses connected email account) > Microsoft Graph (fallback)
     const cc = step.cc_emails as string[] || [];
     const bcc = step.bcc_emails as string[] || [];
 
     let sendResult: { success: boolean; messageId?: string; error?: string };
 
-    // Try Microsoft Graph API first if OAuth token is available
-    const graphToken = Deno.env.get('MICROSOFT_GRAPH_TOKEN');
-    if (graphToken) {
-      sendResult = await sendViaGraphApi(graphToken, senderEmail, recipientEmail, subject, htmlBody, cc, bcc);
+    // Determine which email account to use for sending
+    // Priority: step.sender_id > enrollment.assigned_sender_id > enrollment.account_id
+    const emailAccountId = (step.sender_id || enrollment.assigned_sender_id || enrollment.account_id || '') as string;
+
+    if (emailAccountId && UNIPILE_API_KEY) {
+      // Primary: send via Unipile (same infra as LinkedIn — supports Gmail, Outlook, IMAP)
+      sendResult = await sendViaUnipile(emailAccountId, senderName, recipientEmail, subject, htmlBody, cc, bcc);
     } else {
-      // Fallback to VPS MCP endpoint
-      sendResult = await sendViaMcp(recipientEmail, subject, htmlBody, cc, bcc);
+      // Fallback: Microsoft Graph API (if configured)
+      const graphToken = Deno.env.get('MICROSOFT_GRAPH_TOKEN');
+      if (graphToken) {
+        sendResult = await sendViaGraphApi(graphToken, senderEmail, recipientEmail, subject, htmlBody, cc, bcc);
+      } else {
+        sendResult = { success: false, error: 'No email sending method available. Connect an email account in Unipile or configure MICROSOFT_GRAPH_TOKEN.' };
+      }
     }
 
     // 10. Update execution status
