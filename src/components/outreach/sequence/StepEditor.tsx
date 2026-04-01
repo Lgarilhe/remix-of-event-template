@@ -515,8 +515,11 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                       value={step.subjectTemplate || ''}
                       onChange={(e) => onUpdate({ subjectTemplate: e.target.value })}
                       placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
-                      className="mt-1 h-8"
+                      className={cn("mt-1 h-8", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")}
                     />
+                    {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && (
+                      <p className="text-xs text-destructive mt-0.5">Objet requis</p>
+                    )}
                   </div>
                 )}
                 <div>
