@@ -13,6 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { getConditionsForActionType, isEmailStep, isWhatsAppStep, isLinkedInStep, isCrossChannelCondition, ALL_CONDITION_TYPES } from './sequence/conditionTypes';
+import { VariableInserter } from './sequence/VariableInserter';
+import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 import { 
   Plus, 
   Trash2, 
