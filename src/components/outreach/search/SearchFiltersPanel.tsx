@@ -75,6 +75,7 @@ interface SearchFiltersPanelProps {
   // Scoring instructions
   scoringInstructions?: string;
   onScoringInstructionsChange?: (value: string) => void;
+  onOpenFilterWizard?: () => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
