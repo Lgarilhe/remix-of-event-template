@@ -1962,7 +1962,7 @@ Deno.serve(async (req) => {
       }
 
       // Layer 1: Hard filters
-      const hardFilterResult = applyHardFilters(p, job);
+      const hardFilterResult = await applyHardFilters(p, job);
       if (!hardFilterResult.passed) {
         const koResult: ScoringResult = {
           name: p.name,
