@@ -38,24 +38,38 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     page: params.page ? Number(params.page) : 1,
   };
 
-  // Keywords → extract simple terms from LinkedIn Boolean query
-  // Apollo does NOT support Boolean syntax (AND, OR, NOT, parentheses, quotes).
-  // We extract the meaningful terms and send them as simple keywords.
+  // Keywords → convert LinkedIn Boolean query to Apollo-compatible format.
+  // Apollo supports basic keyword search but NOT Boolean syntax (AND/OR/NOT/parentheses).
+  // Strategy: extract positive terms, drop NOT clauses, treat OR as alternatives.
   if (params.keywords) {
     const raw = String(params.keywords);
-    // Strip Boolean operators and special chars, extract clean terms
-    const cleaned = raw
-      .replace(/\bAND\b/gi, " ")
-      .replace(/\bOR\b/gi, " ")
-      .replace(/\bNOT\b/gi, " ")
-      .replace(/[()]/g, " ")
-      .replace(/"/g, "")
-      .replace(/\s+/g, " ")
+
+    // 1. Remove NOT clauses entirely (NOT "junior" → skip "junior")
+    const withoutNot = raw.replace(/\bNOT\s+(?:"[^"]+"|[\w]+)/gi, '');
+
+    // 2. Extract quoted phrases as-is (they're exact terms)
+    const quotedPhrases: string[] = [];
+    const withoutQuotes = withoutNot.replace(/"([^"]+)"/g, (_match, phrase) => {
+      quotedPhrases.push(phrase.trim());
+      return '';
+    });
+
+    // 3. Strip remaining Boolean operators and parentheses
+    const cleaned = withoutQuotes
+      .replace(/\bAND\b/gi, ' ')
+      .replace(/\bOR\b/gi, ' ')
+      .replace(/[()]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
-    // Take the first few meaningful terms (skip very short ones)
-    const terms = cleaned.split(" ").filter(t => t.length >= 3).slice(0, 8);
+
+    // 4. Combine: quoted phrases + individual terms (skip short ones)
+    const terms = [
+      ...quotedPhrases,
+      ...cleaned.split(' ').filter(t => t.length >= 3),
+    ].slice(0, 10);
+
     if (terms.length > 0) {
-      payload.q_keywords = terms.join(" ");
+      payload.q_keywords = terms.join(' ');
     }
   }
 
@@ -269,15 +283,11 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
 
   // ─── Database-specific filters (Base Konekt exclusive) ─────────────────
 
-  // Revenue range
+  // Revenue range — Apollo expects bracket notation: revenue_range[min], revenue_range[max]
   const dbRevenueMin = params.db_revenue_min as number | undefined;
   const dbRevenueMax = params.db_revenue_max as number | undefined;
-  if (dbRevenueMin !== undefined || dbRevenueMax !== undefined) {
-    const revenueRange: Record<string, number> = {};
-    if (dbRevenueMin !== undefined) revenueRange.min = dbRevenueMin;
-    if (dbRevenueMax !== undefined) revenueRange.max = dbRevenueMax;
-    payload.revenue_range = revenueRange;
-  }
+  if (dbRevenueMin !== undefined) payload['revenue_range[min]'] = dbRevenueMin;
+  if (dbRevenueMax !== undefined) payload['revenue_range[max]'] = dbRevenueMax;
 
   // Funding stage
   const dbFundingStage = params.db_funding_stage as string | string[] | undefined;
@@ -289,7 +299,8 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   // Company domain
   const dbCompanyDomain = params.db_company_domain as string | undefined;
   if (dbCompanyDomain) {
-    payload.q_organization_domains = dbCompanyDomain;
+    // Apollo expects the _list suffix for domain search
+    payload.q_organization_domains_list = dbCompanyDomain;
   }
 
   // Email verified
