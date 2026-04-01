@@ -1373,16 +1373,10 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
     case 'if_has_email': return !!(enrollment?.email_used);
     case 'if_no_email': return !(enrollment?.email_used);
     case 'if_has_phone': {
-      if (!supabaseClient || !profileId) return false;
-      // Check enriched contact data for phone number
-      const { data } = await supabaseClient.from('job_candidate_status').select('id').eq('candidate_id', profileId).not('candidate_headline', 'is', null).limit(1);
-      // Fallback: check if phone exists in any enrichment source
-      // For now, check a generic approach — phone data varies by integration
-      return false; // Conservative: if no phone table, return false
+      return !!(enrollment?.phone_used);
     }
     case 'if_no_phone': {
-      // Inverse of if_has_phone — conservative: return true (no phone data available)
-      return true;
+      return !(enrollment?.phone_used);
     }
 
     // --- NEW: Status-based conditions ---
