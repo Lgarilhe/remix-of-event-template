@@ -879,7 +879,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     <div className="flex items-center gap-2 mb-2"><Timer className="w-4 h-4" /><span className="text-xs font-semibold uppercase text-muted-foreground">Triggers</span></div>
                     <div className="grid grid-cols-2 gap-2">
                       {availableTriggers.map(trigger => (
-                        <button key={trigger.value} onClick={() => addStep(trigger.value)} className="flex items-center gap-2 p-2.5 border border-foreground/30 hover:border-foreground hover:bg-muted/30 transition-colors text-left">
+                        <button key={trigger.value} onClick={() => addStep(trigger.value)} className="flex items-center gap-2 p-3 border border-border rounded-lg hover:border-foreground/30 hover:bg-muted/30 transition-all text-left group">
                           <div className={cn("w-8 h-8 flex items-center justify-center shrink-0", trigger.color)}><trigger.icon className="w-4 h-4" /></div>
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate">{trigger.label}</div>
