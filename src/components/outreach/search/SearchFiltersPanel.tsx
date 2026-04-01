@@ -91,6 +91,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   subscriptions,
   activeProject,
   searchSource,
+  onSearchSourceChange,
   quota,
   onSearch,
   onClearFilters,
