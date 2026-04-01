@@ -1205,8 +1205,11 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                           value={step.subjectTemplate || ''}
                                           onChange={(e) => updateStep(step.id, { subjectTemplate: e.target.value })}
                                           placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet de l'InMail"}
-                                          className="mt-1.5"
+                                          className={cn("mt-1.5", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")}
                                         />
+                                        {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && (
+                                          <p className="text-xs text-destructive mt-0.5">Objet requis</p>
+                                        )}
                                       </div>
                                     )}
                                     <div>
