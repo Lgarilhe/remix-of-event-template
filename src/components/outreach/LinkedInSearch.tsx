@@ -710,6 +710,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       subscriptions={subscriptions}
       activeProject={activeProject || null}
       searchSource={searchSource}
+      onSearchSourceChange={handleSearchSourceChange}
       quota={{
         quotas: search.quota.quotas,
         apiMode: search.quota.apiMode,

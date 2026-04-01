@@ -26,6 +26,8 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
     !!filters.db_revenue_min || !!filters.db_revenue_max,
     !!filters.db_funding_stage,
     !!filters.db_company_domain,
+    !!filters.db_org_job_titles,
+    !!filters.db_org_num_jobs_min || !!filters.db_org_num_jobs_max,
   ].filter(Boolean).length;
 
   const preview: string[] = [];
@@ -33,6 +35,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
   if (filters.db_email_verified !== null) preview.push(filters.db_email_verified ? 'Email ✓' : 'Email ✗');
   if (filters.db_funding_stage) preview.push(filters.db_funding_stage);
   if (filters.db_company_domain) preview.push(filters.db_company_domain);
+  if (filters.db_org_job_titles) preview.push('Postes ouverts');
 
   const addTech = (value: string) => {
     const trimmed = value.trim();
@@ -55,7 +58,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
   return (
     <FilterSection
       id="database"
-      title="Filtres Base Konekt"
+      title="Filtres avancés Base Konekt"
       icon={<Database className="w-4 h-4 text-primary" />}
       badge={countActive}
       isOpen={isOpen}
@@ -143,11 +146,52 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
       {/* Domaine entreprise */}
       <FilterGroup title="Domaine entreprise">
         <Input
-          placeholder="ex: fintech, healthtech, SaaS..."
+          placeholder="ex: apollo.io, microsoft.com..."
           value={filters.db_company_domain}
           onChange={e => onChange({ ...filters, db_company_domain: e.target.value })}
           className="h-8 text-xs"
         />
+      </FilterGroup>
+
+      {/* Postes ouverts chez l'employeur (NEW) */}
+      <FilterGroup title="Postes ouverts chez l'employeur">
+        <Input
+          placeholder="ex: Software Engineer, Sales..."
+          value={filters.db_org_job_titles}
+          onChange={e => onChange({ ...filters, db_org_job_titles: e.target.value })}
+          className="h-8 text-xs"
+        />
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Filtrer les profils dont l'entreprise recrute pour ces postes
+        </p>
+      </FilterGroup>
+
+      {/* Nombre de postes ouverts (NEW) */}
+      <FilterGroup title="Nb postes ouverts">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs text-muted-foreground">Min</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="0"
+              value={filters.db_org_num_jobs_min}
+              onChange={e => onChange({ ...filters, db_org_num_jobs_min: e.target.value })}
+              className="h-8 text-xs"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Max</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="∞"
+              value={filters.db_org_num_jobs_max}
+              onChange={e => onChange({ ...filters, db_org_num_jobs_max: e.target.value })}
+              className="h-8 text-xs"
+            />
+          </div>
+        </div>
       </FilterGroup>
     </FilterSection>
   );
