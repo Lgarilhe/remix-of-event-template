@@ -325,17 +325,17 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 <div>
                   <div className="flex items-center justify-between">
                     <Label className="text-[10px] text-muted-foreground">Objet</Label>
-                    <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => onUpdate({ subjectTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                    <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => onUpdate({ subjectTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                   </div>
-                  <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => onUpdate({ subjectTemplate: e.target.value })} placeholder={isEmailStep(step.actionType) ? "Objet de l'email" : "Objet"} className={cn("mt-0.5 h-7 text-xs", isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
-                  {isEmailStep(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-[10px] text-destructive mt-0.5">Objet requis</p>}
+                  <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => onUpdate({ subjectTemplate: e.target.value })} placeholder={step.actionType === 'email' ? "Objet de l'email" : "Objet de l'InMail"} className={cn("mt-0.5 h-7 text-xs", needsSubject(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
+                  {needsSubject(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-[10px] text-destructive mt-0.5">Objet requis</p>}
                 </div>
               )}
               <div>
                 <div className="flex items-center justify-between">
                   <Label className="text-[10px] text-muted-foreground">Message</Label>
                   <div className="flex items-center gap-1.5">
-                    <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} showEmailVariables={isEmailStep(step.actionType)} />
+                    <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                     {step.actionType === 'connection_request' && (
                       <span className={cn("text-[10px]", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground/50")}>
                         {step.messageTemplate?.length || 0}/300
@@ -354,8 +354,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                 />
               </div>
 
-              {/* Email extras */}
-              {isEmailStep(step.actionType) && (
+              {/* Email extras — only for real email, not InMail */}
+              {step.actionType === 'email' && (
                 <div className="space-y-3 pt-3 border-t border-border/30">
                   <Collapsible>
                     <CollapsibleTrigger className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
