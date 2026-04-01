@@ -427,6 +427,79 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     }
   };
 
+  const addVariant = (sourceStep: SequenceStep) => {
+    // Find existing variants at this order
+    const existingVariants = sequence.steps.filter(
+      s => s.order === sourceStep.order && s.variantGroup
+    );
+    
+    // If source has no variant yet, mark it as A
+    if (!sourceStep.variantGroup) {
+      updateStep(sourceStep.id, { variantGroup: 'A', variantWeight: 50 });
+    }
+    
+    const nextLetter = existingVariants.length === 0 ? 'B' 
+      : existingVariants.length === 1 ? 'B'
+      : 'C';
+    
+    // Don't allow more than 3 variants
+    if (existingVariants.length >= 3) return;
+    
+    const newStep: SequenceStep = {
+      ...sourceStep,
+      id: crypto.randomUUID(),
+      variantGroup: nextLetter,
+      variantWeight: Math.floor(100 / (existingVariants.length + 2)),
+      messageTemplate: '',
+      subjectTemplate: '',
+    };
+    
+    // Rebalance weights
+    const totalVariants = existingVariants.length + 2; // existing + source(A) + new
+    const equalWeight = Math.floor(100 / totalVariants);
+    
+    setSequence(prev => ({
+      ...prev,
+      steps: [
+        ...prev.steps.map(s => {
+          if (s.order === sourceStep.order && (s.variantGroup || s.id === sourceStep.id)) {
+            return { ...s, variantGroup: s.variantGroup || 'A', variantWeight: equalWeight };
+          }
+          return s;
+        }),
+        { ...newStep, variantWeight: equalWeight },
+      ],
+    }));
+  };
+
+  const removeVariant = (variantStep: SequenceStep) => {
+    const remainingVariants = sequence.steps.filter(
+      s => s.order === variantStep.order && s.variantGroup && s.id !== variantStep.id
+    );
+    
+    if (remainingVariants.length <= 1) {
+      // Only one left, remove variant grouping entirely
+      setSequence(prev => ({
+        ...prev,
+        steps: prev.steps
+          .filter(s => s.id !== variantStep.id)
+          .map(s => s.order === variantStep.order ? { ...s, variantGroup: undefined, variantWeight: undefined } : s),
+      }));
+    } else {
+      // Rebalance remaining
+      const equalWeight = Math.floor(100 / remainingVariants.length);
+      setSequence(prev => ({
+        ...prev,
+        steps: prev.steps
+          .filter(s => s.id !== variantStep.id)
+          .map(s => s.order === variantStep.order && s.variantGroup ? { ...s, variantWeight: equalWeight } : s),
+      }));
+    }
+  };
+
+  const variantGroups = useMemo(() => getVariantGroups(sequence.steps), [sequence.steps]);
+  const primarySteps = useMemo(() => getPrimarySteps(sequence.steps), [sequence.steps]);
+
   const handleSave = async () => {
     if (!sequence.name.trim() || sequence.steps.length === 0) return;
     // Validate that message-requiring steps have content
@@ -436,7 +509,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     if (stepsNeedingMessage.length > 0) {
       const stepLabels = stepsNeedingMessage.map(s => {
         const config = ALL_STEP_TYPES.find(a => a.value === s.actionType);
-        return `Étape ${s.order + 1} (${config?.label || s.actionType})`;
+        return `Étape ${s.order + 1} (${config?.label || s.actionType})${s.variantGroup ? ` — Variante ${s.variantGroup}` : ''}`;
       }).join(', ');
       alert(`Les étapes suivantes n'ont pas de message : ${stepLabels}. Ajoutez un message ou activez la personnalisation IA.`);
       return;
