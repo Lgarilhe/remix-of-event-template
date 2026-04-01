@@ -693,8 +693,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 </div>
               )}
 
-              {/* Preview Panel */}
-              <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Preview Panel — hidden on mobile when viewing list */}
+              <div className={cn(
+                "flex-1 flex flex-col overflow-hidden",
+                !isSingle && mobilePane === 'list' ? "hidden sm:flex" : "flex"
+              )}>
                 {/* Bulk generation bar */}
                 {!isSingle && hasAiSteps && (
                   <div className="px-4 py-2 border-b border-border bg-muted/10 flex items-center gap-3">
