@@ -185,8 +185,8 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
             {steps.length} étape{steps.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <ScrollArea className="flex-1">
-          <InteractiveFlowDiagram
+        <div className="flex-1 min-h-0">
+          <WorkflowCanvas
             steps={steps}
             onStepClick={(stepId) => {
               setSelectedStepId(stepId);
@@ -197,7 +197,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
             onRemoveStep={handleRemoveStep}
             selectedStepId={selectedStepId}
           />
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Right: Step Editor / Step Picker */}
