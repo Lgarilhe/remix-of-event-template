@@ -536,7 +536,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
               {/* Message body */}
               <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Message
                 </label>
                 <InMailTextEditor
