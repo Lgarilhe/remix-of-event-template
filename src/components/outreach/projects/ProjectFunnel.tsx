@@ -27,7 +27,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       label: 'Profils trouvés',
       value: totalFound,
       icon: Users,
-      color: '#3B82F6', // blue-500
+      color: 'hsl(var(--status-info))',
       bgLight: 'bg-info/10',
     },
     {
@@ -35,7 +35,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       value: scored,
       pct: scoredPct,
       icon: Target,
-      color: '#F59E0B', // amber-500
+      color: 'hsl(var(--status-warning))',
       bgLight: 'bg-warning/10',
     },
     {
@@ -43,7 +43,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       value: messaged,
       pct: contactedPct,
       icon: MessageSquare,
-      color: '#10B981', // emerald-500
+      color: 'hsl(var(--status-success))',
       bgLight: 'bg-success/10',
     },
     {
@@ -51,7 +51,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       value: shortlisted,
       pct: shortlistedPct,
       icon: UserCheck,
-      color: '#8B5CF6', // violet-500
+      color: 'hsl(var(--skalr-purple))',
       bgLight: 'bg-brand-purple/10',
     },
   ];

@@ -121,6 +121,13 @@ export default {
   				blue: 'hsl(var(--skalr-blue))',
   				cyan: 'hsl(var(--skalr-cyan))',
   				green: 'hsl(var(--skalr-green))',
+  			},
+  			linkedin: {
+  				DEFAULT: 'hsl(var(--brand-linkedin))',
+  				hover: 'hsl(var(--brand-linkedin-hover))',
+  			},
+  			whatsapp: {
+  				DEFAULT: 'hsl(var(--brand-whatsapp))',
   			}
   		},
   		borderRadius: {

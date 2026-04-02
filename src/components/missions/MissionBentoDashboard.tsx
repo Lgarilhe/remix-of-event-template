@@ -65,11 +65,11 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           </div>
           <div className={cn(
             'flex items-baseline gap-0.5 font-semibold',
-            briefPct >= 70 ? 'text-primary' : briefPct >= 30 ? 'text-amber-500' : 'text-destructive'
+            briefPct >= 70 ? 'text-primary' : briefPct >= 30 ? 'text-warning' : 'text-destructive'
           )}>
             <NumberTicker value={briefPct} className={cn(
               'text-2xl font-semibold',
-              briefPct >= 70 ? 'text-primary' : briefPct >= 30 ? 'text-amber-500' : 'text-destructive'
+              briefPct >= 70 ? 'text-primary' : briefPct >= 30 ? 'text-warning' : 'text-destructive'
             )} />
             <span className="text-sm">%</span>
           </div>
@@ -87,7 +87,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           <motion.div
             className={cn(
               'h-full rounded-full',
-              briefPct >= 70 ? 'bg-primary' : briefPct >= 30 ? 'bg-amber-500' : 'bg-destructive'
+              briefPct >= 70 ? 'bg-primary' : briefPct >= 30 ? 'bg-warning' : 'bg-destructive'
             )}
             initial={{ width: 0 }}
             animate={{ width: `${briefPct}%` }}

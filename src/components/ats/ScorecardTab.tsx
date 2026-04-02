@@ -542,10 +542,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               {(() => {
                 const cats = ['technical', 'soft_skill', 'culture_fit', 'motivation'] as const;
                 const catConf = {
-                  technical: { label: 'Tech', color: '#378ADD' },
-                  soft_skill: { label: 'Soft', color: '#EF9F27' },
-                  culture_fit: { label: 'Culture', color: '#7F77DD' },
-                  motivation: { label: 'Motiv.', color: '#639922' },
+                  technical: { label: 'Tech', color: 'hsl(var(--status-info))' },
+                  soft_skill: { label: 'Soft', color: 'hsl(var(--status-warning))' },
+                  culture_fit: { label: 'Culture', color: 'hsl(var(--skalr-purple))' },
+                  motivation: { label: 'Motiv.', color: 'hsl(var(--status-success))' },
                 };
                 return (
                   <div className="flex gap-4 mt-2">

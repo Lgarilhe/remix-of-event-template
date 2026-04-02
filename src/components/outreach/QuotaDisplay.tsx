@@ -65,7 +65,7 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
             "h-1.5 mt-1",
             isCritical ? "[&>div]:bg-red-500" :
             isWarning ? "[&>div]:bg-amber-500" :
-            "[&>div]:bg-[#0077B5]"
+            "[&>div]:bg-linkedin"
           )}
         />
       </div>

@@ -480,7 +480,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                     ? 'Les invitations sélectionnées seront acceptées.'
                     : 'Les invitations sélectionnées seront refusées. Cette action est irréversible.'}
                 </p>
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 space-y-1.5">
                   <p className="font-semibold text-foreground text-xs uppercase tracking-wider flex items-center gap-1.5">
                     ⏱ Pourquoi c'est lent ?
                   </p>

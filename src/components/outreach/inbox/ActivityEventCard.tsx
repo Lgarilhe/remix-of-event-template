@@ -63,9 +63,9 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
         className={cn(
           "inline-flex items-center gap-2 px-3 py-1.5 border border-dashed rounded-sm max-w-[85%]",
           isBooking
-            ? "bg-emerald-500/10 border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 transition-colors"
+            ? "bg-success/10 border-success/30 cursor-pointer hover:bg-success/20 transition-colors"
             : isAircall
-              ? "bg-green-500/10 border-green-500/30"
+              ? "bg-whatsapp/10 border-whatsapp/30"
               : "bg-muted/50 border-border"
         )}
         onClick={isBooking && event.qualificationSessionId ? () => navigate(`/qualification/${event.qualificationSessionId}`) : undefined}

@@ -19,7 +19,7 @@ export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspac
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.4 }}
-          style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
+          style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
         >
           <Building2 className="w-7 h-7" />
         </motion.div>
@@ -60,7 +60,7 @@ export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspac
           <Button
             onClick={onCreateWorkspace}
             className="flex-1 gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
+            style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
           >
             Créer mon espace <ArrowRight className="w-4 h-4" />
           </Button>

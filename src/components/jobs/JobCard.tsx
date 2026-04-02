@@ -252,7 +252,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             </span>
           )}
           {job.remote && (
-            <span className="px-2 py-1 bg-[#FA76FF]/10 text-[#FA76FF] text-xs font-medium">
+            <span className="px-2 py-1 bg-brand-pink/10 text-brand-pink text-xs font-medium">
               {job.remote}
             </span>
           )}
@@ -277,7 +277,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="border-t border-border p-6 bg-[#FAFAFA]">
+        <div className="border-t border-border p-6 bg-muted">
           {/* Key info bar */}
           <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-border">
             {job.xpMin !== null && job.xpMin !== undefined && (
@@ -412,17 +412,17 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                         href={job.client.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-[#FA76FF] hover:underline"
+                        className="inline-flex items-center gap-1 text-sm text-brand-pink hover:underline"
                       >
                         Site web <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
                     {job.client.linkedin && (
-                      <a 
+                      <a
                         href={job.client.linkedin}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-[#FA76FF] hover:underline"
+                        className="inline-flex items-center gap-1 text-sm text-brand-pink hover:underline"
                       >
                         LinkedIn <ExternalLink className="w-3 h-3" />
                       </a>
@@ -456,7 +456,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                 href={job.jobUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-[#FA76FF] hover:underline"
+                className="inline-flex items-center gap-1 text-sm text-brand-pink hover:underline"
               >
                 Voir l'offre complète <ExternalLink className="w-3 h-3" />
               </a>

@@ -314,7 +314,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
+                      <p className="text-xs font-semibold text-foreground truncate leading-tight">
                         {exp.title || 'Poste non renseigné'}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">

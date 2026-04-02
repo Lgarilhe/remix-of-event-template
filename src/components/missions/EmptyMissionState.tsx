@@ -237,9 +237,9 @@ const StatsBar: React.FC = () => (
 
 /* ─── Main bullets with staggered icon animations ─── */
 const aiBullets = [
-  { icon: Sparkles, text: 'Brief vocal ou écrit → structuré par l\'IA', color: 'text-amber-500', bg: 'bg-amber-500/10 border-amber-500/20' },
-  { icon: Clock, text: 'Filtres de recherche générés automatiquement', color: 'text-blue-500', bg: 'bg-blue-500/10 border-blue-500/20' },
-  { icon: MessageSquare, text: 'Messages personnalisés en 1 clic', color: 'text-emerald-500', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+  { icon: Sparkles, text: 'Brief vocal ou écrit → structuré par l\'IA', color: 'text-warning', bg: 'bg-warning/10 border-warning/20' },
+  { icon: Clock, text: 'Filtres de recherche générés automatiquement', color: 'text-info', bg: 'bg-info/10 border-info/20' },
+  { icon: MessageSquare, text: 'Messages personnalisés en 1 clic', color: 'text-success', bg: 'bg-success/10 border-success/20' },
 ];
 
 const manualBullets = [

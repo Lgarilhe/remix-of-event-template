@@ -13,9 +13,9 @@ interface MissionHuntModeProps {
 const HUNT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   draft: { label: 'Brouillon', color: 'bg-muted text-muted-foreground' },
   published: { label: 'Publié', color: 'bg-accent text-background' },
-  in_progress: { label: 'En cours', color: 'bg-blue-600 text-white' },
-  filled: { label: 'Pourvu', color: 'bg-green-600 text-white' },
-  cancelled: { label: 'Annulé', color: 'bg-red-600 text-white' },
+  in_progress: { label: 'En cours', color: 'bg-info text-info-foreground' },
+  filled: { label: 'Pourvu', color: 'bg-success text-success-foreground' },
+  cancelled: { label: 'Annulé', color: 'bg-destructive text-destructive-foreground' },
 };
 
 export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => {

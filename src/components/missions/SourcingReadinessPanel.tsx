@@ -189,7 +189,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             selected={searchSource === 'linkedin'}
             onClick={() => onSourceChange?.('linkedin')}
             delay={0.1}
-            icon={<Linkedin className="w-5 h-5 text-[#0A66C2]" />}
+            icon={<Linkedin className="w-5 h-5 text-linkedin" />}
             title="LinkedIn"
             description="Recherche directe via votre compte"
             badge={

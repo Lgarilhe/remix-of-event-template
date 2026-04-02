@@ -476,7 +476,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               <X className="w-4 h-4" />
             </button>
             <div className="min-w-0 flex-1">
-              <h2 className="text-[13px] sm:text-sm font-semibold truncate">
+              <h2 className="text-xs sm:text-sm font-semibold truncate">
                 Inscription · {sequence.name}
               </h2>
               <p className="text-[10px] sm:text-[11px] text-muted-foreground">

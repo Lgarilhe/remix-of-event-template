@@ -347,7 +347,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </span>
                 )}
                 {enrichedProfile?.yearsOfExperience && (
-                  <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                  <span className="flex items-center gap-1 text-success font-medium">
                     <TrendingUp className="w-3 h-3" />
                     ~{enrichedProfile.yearsOfExperience} ans d'exp.
                   </span>
@@ -386,7 +386,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               )}
               <button
                 onClick={handleCreatePortalLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-emerald-600 bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-success bg-success text-success-foreground text-xs font-bold uppercase tracking-wider hover:bg-success/90 transition-colors"
               >
                 <Link2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Portail</span>
               </button>
@@ -620,28 +620,28 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => (
   <div className="flex items-center gap-4 p-4 border border-border bg-foreground/[0.03]">
     <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
-      (candidate.score ?? 0) >= 70 ? 'border-emerald-400 bg-success/10 text-emerald-700' :
-      (candidate.score ?? 0) >= 40 ? 'border-amber-400 bg-warning/10 text-amber-700' :
+      (candidate.score ?? 0) >= 70 ? 'border-success/40 bg-success/10 text-success' :
+      (candidate.score ?? 0) >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
       'border-destructive/40 bg-destructive/5 text-destructive'
     )}>{candidate.score}</div>
     <div className="flex-1 min-w-0">
       <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
       {candidate.recommendation && (
         <span className={cn("text-xs px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
-          candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-success/10' :
+          candidate.recommendation === 'shortlist' ? 'border-success/40 text-success bg-success/10' :
           candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-          'border-amber-300 text-amber-700 bg-warning/10'
+          'border-warning/40 text-warning bg-warning/10'
         )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
       )}
       {candidate.scoringDetails && (
         <div className="flex flex-wrap gap-3 mt-2">
           {candidate.scoringDetails.matching_skills?.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
+            <span className="flex items-center gap-1 text-xs text-success font-medium">
               <CheckCircle2 className="w-3 h-3" /> {candidate.scoringDetails.matching_skills.length} matchées
             </span>
           )}
           {candidate.scoringDetails.missing_skills?.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-amber-700 font-medium">
+            <span className="flex items-center gap-1 text-xs text-warning font-medium">
               <AlertTriangle className="w-3 h-3" /> {candidate.scoringDetails.missing_skills.length} manquantes
             </span>
           )}
@@ -674,7 +674,7 @@ const CandidateProfileSidebarContent = React.memo<{
     )}
     <button
       onClick={onCreatePortalLink}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success text-success-foreground text-xs font-semibold hover:bg-success/90 transition-colors"
     >
       <Link2 className="w-3.5 h-3.5" /> Portail candidat
     </button>
@@ -683,8 +683,8 @@ const CandidateProfileSidebarContent = React.memo<{
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
           <span className={cn("text-sm font-bold",
-            candidate.score >= 75 ? "text-emerald-600" :
-            candidate.score >= 50 ? "text-amber-600" : "text-red-600"
+            candidate.score >= 75 ? "text-success" :
+            candidate.score >= 50 ? "text-warning" : "text-destructive"
           )}>{candidate.score}/100</span>
         </div>
       </div>

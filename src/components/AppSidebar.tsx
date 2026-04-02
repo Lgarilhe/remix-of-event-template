@@ -73,7 +73,7 @@ export function AppSidebar() {
             <span className="text-sidebar-foreground font-semibold text-sm">{orgInitial}</span>
           </div>
           {!collapsed && (
-            <span className="text-[15px] font-semibold tracking-tight text-sidebar-foreground truncate">
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground truncate">
               {orgName}
             </span>
           )}
@@ -84,7 +84,7 @@ export function AppSidebar() {
         {/* Search bar (cosmetic) */}
         {!collapsed ? (
           <div className="mb-4 px-1">
-            <div className="flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-[13px] cursor-default select-none">
+            <div className="flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-xs cursor-default select-none">
               <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} />
               <span className="flex-1">Rechercher</span>
               <kbd className="text-[10px] font-mono bg-sidebar-background px-1.5 py-0.5 rounded border border-border">
@@ -118,7 +118,7 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={item.label}
                       className={cn(
-                        "h-9 rounded-lg text-[13px] font-medium transition-colors",
+                        "h-9 rounded-lg text-xs font-medium transition-colors",
                         collapsed ? "w-9 px-0 justify-center" : "px-3",
                         active
                           ? "bg-sidebar-accent text-sidebar-foreground"
@@ -168,7 +168,7 @@ export function AppSidebar() {
                     isActive={isActive('/marketplace')}
                     tooltip="Marketplace"
                     className={cn(
-                      "h-9 rounded-lg text-[13px] font-medium transition-colors",
+                      "h-9 rounded-lg text-xs font-medium transition-colors",
                       collapsed ? "w-9 px-0 justify-center" : "px-3",
                       isActive('/marketplace')
                         ? "bg-sidebar-accent text-sidebar-foreground"

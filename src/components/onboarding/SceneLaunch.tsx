@@ -127,7 +127,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
         transition={{ delay: 0.5 }}
         className="w-full border-2 border-border bg-card p-5"
         style={{
-          boxShadow: '4px 4px 0px 0px hsl(var(--skalr-purple) / 0.3), 0 0 30px hsl(var(--skalr-purple) / 0.08)',
+          boxShadow: '0 4px 20px hsl(var(--skalr-purple) / 0.2), 0 0 40px hsl(var(--skalr-purple) / 0.05)',
         }}
       >
         <p
@@ -179,7 +179,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
           fontFamily: "'Space Mono', monospace",
           background: 'hsl(var(--landing-accent-yellow))',
           color: 'hsl(var(--foreground))',
-          boxShadow: '3px 3px 0px 0px hsl(var(--foreground))',
+          boxShadow: '0 4px 16px hsl(var(--foreground) / 0.1)',
         }}
       >
         <Rocket className="w-4 h-4" />

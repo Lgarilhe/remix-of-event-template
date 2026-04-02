@@ -17,18 +17,18 @@ const STEP_ICONS: Record<string, React.ElementType | null> = {
 };
 
 const STEP_STYLES: Record<string, { bg: string; iconBg: string; border: string; accent: string }> = {
-  inmail:             { bg: 'bg-info/10',            iconBg: 'bg-blue-500 text-white',    border: 'border-info/30',            accent: 'shadow-info/20' },
-  connection_request: { bg: 'bg-success/10',         iconBg: 'bg-emerald-500 text-white', border: 'border-success/30',         accent: 'shadow-success/20' },
-  profile_visit:      { bg: 'bg-info/10',            iconBg: 'bg-sky-500 text-white',     border: 'border-info/30',            accent: 'shadow-info/20' },
-  message:            { bg: 'bg-warning/10',         iconBg: 'bg-orange-500 text-white',  border: 'border-warning/30',         accent: 'shadow-warning/20' },
-  smart_message:      { bg: 'bg-brand-purple/10',    iconBg: 'bg-purple-500 text-white',  border: 'border-brand-purple/30',    accent: 'shadow-brand-purple/20' },
-  whatsapp_message:   { bg: 'bg-green-500/10',       iconBg: 'bg-green-500 text-white',   border: 'border-green-500/30',       accent: 'shadow-green-500/20' },
-  email:              { bg: 'bg-brand-purple/10',     iconBg: 'bg-violet-500 text-white',  border: 'border-brand-purple/30',    accent: 'shadow-brand-purple/20' },
-  wait_connection:    { bg: 'bg-warning/10',         iconBg: 'bg-amber-500 text-white',   border: 'border-warning/30',         accent: 'shadow-warning/20' },
-  wait_reply:         { bg: 'bg-warning/10',         iconBg: 'bg-amber-500 text-white',   border: 'border-warning/30',         accent: 'shadow-warning/20' },
-  wait_profile_visit: { bg: 'bg-warning/10',         iconBg: 'bg-amber-500 text-white',   border: 'border-warning/30',         accent: 'shadow-warning/20' },
-  condition_branch:   { bg: 'bg-destructive/10',     iconBg: 'bg-rose-500 text-white',    border: 'border-destructive/30',     accent: 'shadow-destructive/20' },
-  check_connection:   { bg: 'bg-info/10',            iconBg: 'bg-indigo-500 text-white',  border: 'border-info/30',            accent: 'shadow-info/20' },
+  inmail:             { bg: 'bg-info/10',            iconBg: 'bg-info text-info-foreground',            border: 'border-info/30',            accent: 'shadow-info/20' },
+  connection_request: { bg: 'bg-success/10',         iconBg: 'bg-success text-success-foreground',     border: 'border-success/30',         accent: 'shadow-success/20' },
+  profile_visit:      { bg: 'bg-info/10',            iconBg: 'bg-info text-info-foreground',            border: 'border-info/30',            accent: 'shadow-info/20' },
+  message:            { bg: 'bg-warning/10',         iconBg: 'bg-warning text-warning-foreground',     border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  smart_message:      { bg: 'bg-brand-purple/10',    iconBg: 'bg-brand-purple text-white',              border: 'border-brand-purple/30',    accent: 'shadow-brand-purple/20' },
+  whatsapp_message:   { bg: 'bg-whatsapp/10',        iconBg: 'bg-whatsapp text-white',                  border: 'border-whatsapp/30',        accent: 'shadow-whatsapp/20' },
+  email:              { bg: 'bg-brand-purple/10',     iconBg: 'bg-brand-purple text-white',              border: 'border-brand-purple/30',    accent: 'shadow-brand-purple/20' },
+  wait_connection:    { bg: 'bg-warning/10',         iconBg: 'bg-warning text-warning-foreground',     border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  wait_reply:         { bg: 'bg-warning/10',         iconBg: 'bg-warning text-warning-foreground',     border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  wait_profile_visit: { bg: 'bg-warning/10',         iconBg: 'bg-warning text-warning-foreground',     border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  condition_branch:   { bg: 'bg-destructive/10',     iconBg: 'bg-destructive text-destructive-foreground', border: 'border-destructive/30', accent: 'shadow-destructive/20' },
+  check_connection:   { bg: 'bg-info/10',            iconBg: 'bg-info text-info-foreground',            border: 'border-info/30',            accent: 'shadow-info/20' },
 };
 
 const STEP_LABELS: Record<string, string> = {
@@ -99,7 +99,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
             )}
             <div className={cn(
               "font-semibold truncate leading-tight",
-              compact ? "text-[12px]" : "text-[13px]"
+              compact ? "text-xs" : "text-xs"
             )}>
               {STEP_LABELS[step.actionType] || step.actionType}
             </div>

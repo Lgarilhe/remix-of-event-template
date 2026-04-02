@@ -208,15 +208,15 @@ const Pricing = () => {
                     }}
                     onMouseEnter={(e) => {
                       if (isPopular) {
-                        e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                        e.currentTarget.style.boxShadow = '6px 6px 0 0 hsl(var(--skalr-purple))';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 4px 20px hsl(var(--skalr-purple) / 0.15)';
                       } else {
-                        e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                        e.currentTarget.style.boxShadow = '6px 6px 0 0 hsl(var(--foreground))';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 4px 20px hsl(var(--foreground) / 0.1)';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = mounted ? 'translate(0, 0)' : '';
+                      e.currentTarget.style.transform = mounted ? 'translateY(0)' : '';
                       e.currentTarget.style.boxShadow = 'none';
                     }}
                   >

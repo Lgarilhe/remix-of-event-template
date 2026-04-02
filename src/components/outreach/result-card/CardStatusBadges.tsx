@@ -34,31 +34,31 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       {candidateStatus && (
         <>
           {candidateStatus.status === 'messaged' && (
-            <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+            <Badge className="bg-info text-info-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <MessageSquare className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">Contacté</span>
             </Badge>
           )}
           {candidateStatus.status === 'replied' && (
-            <Badge className="bg-emerald-500 text-white text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+            <Badge className="bg-success text-success-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <CheckCircle2 className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">Répondu</span>
             </Badge>
           )}
           {candidateStatus.status === 'shortlisted' && (
-            <Badge className="bg-amber-500 text-white text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+            <Badge className="bg-warning text-warning-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
               <Star className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">Shortlist</span>
             </Badge>
           )}
           {candidateStatus.status === 'scored' && !jobScore && (
-            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-purple-600 border-purple-300 bg-brand-purple/10">
+            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-brand-purple border-brand-purple/30 bg-brand-purple/10">
               <Target className="w-2.5 h-2.5" />
               {candidateStatus.score && <span>{candidateStatus.score}%</span>}
             </Badge>
           )}
           {candidateStatus.status === 'dismissed' && (
-            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-orange-500 border-orange-300 bg-warning/10">
+            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-warning border-warning/30 bg-warning/10">
               <Archive className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">Archivé</span>
             </Badge>
@@ -66,20 +66,20 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
         </>
       )}
       {profile.premium && (
-        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-amber-600 border-amber-300 bg-warning/10 shrink-0">
-          <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 fill-amber-400" />
+        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-warning border-warning/30 bg-warning/10 shrink-0">
+          <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 fill-warning" />
           <span className="hidden sm:inline">Premium</span>
         </Badge>
       )}
       {profile.open_to_work && (
-        <Badge className="bg-green-500 text-white text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
+        <Badge className="bg-success text-success-foreground text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
           <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
           <span className="hidden sm:inline">Open to Work</span>
           <span className="sm:hidden">OTW</span>
         </Badge>
       )}
       {isLikelyToRespond && (
-        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-purple-600 border-purple-300 bg-brand-purple/10 shrink-0 hidden sm:flex">
+        <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-brand-purple border-brand-purple/30 bg-brand-purple/10 shrink-0 hidden sm:flex">
           <Sparkles className="w-3 h-3 mr-0.5" />
           Réactif
         </Badge>
@@ -87,8 +87,8 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       {airtableMatch && (
         <Badge className={`text-xs px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 cursor-default max-w-full min-w-0 ${
           airtableMatch.match_type === 'fuzzy'
-            ? 'bg-success/10 text-teal-700 border border-dashed border-teal-400'
-            : 'bg-teal-500 text-white'
+            ? 'bg-success/10 text-success border border-dashed border-success/40'
+            : 'bg-success text-success-foreground'
         }`}>
           <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain shrink-0" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
           <span className="hidden sm:inline shrink-0">

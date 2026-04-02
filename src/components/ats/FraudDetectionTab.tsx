@@ -23,15 +23,15 @@ interface FraudResult {
 }
 
 const CATEGORY_CONFIG = {
-  TIMELINE: { icon: Clock, label: 'Timeline', color: 'text-blue-600' },
-  INFLATION: { icon: TrendingUp, label: 'Inflation', color: 'text-orange-600' },
-  EDUCATION: { icon: GraduationCap, label: 'Éducation', color: 'text-purple-600' },
-  COHERENCE: { icon: Shuffle, label: 'Cohérence', color: 'text-cyan-600' },
+  TIMELINE: { icon: Clock, label: 'Timeline', color: 'text-info' },
+  INFLATION: { icon: TrendingUp, label: 'Inflation', color: 'text-warning' },
+  EDUCATION: { icon: GraduationCap, label: 'Éducation', color: 'text-brand-purple' },
+  COHERENCE: { icon: Shuffle, label: 'Cohérence', color: 'text-info' },
 };
 
 const SEVERITY_CONFIG = {
-  low: { label: 'Faible', bg: 'bg-warning/10 text-yellow-300', dot: 'bg-yellow-500' },
-  medium: { label: 'Moyen', bg: 'bg-warning/10 text-orange-300', dot: 'bg-orange-500' },
+  low: { label: 'Faible', bg: 'bg-warning/10 text-warning', dot: 'bg-warning' },
+  medium: { label: 'Moyen', bg: 'bg-warning/10 text-warning', dot: 'bg-warning' },
   high: { label: 'Élevé', bg: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
 };
 

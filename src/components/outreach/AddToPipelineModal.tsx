@@ -321,7 +321,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           <Button 
             onClick={handleSubmit} 
             disabled={!selectedJob || submitting}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-info hover:bg-info/90"
           >
             {submitting ? (
               <>

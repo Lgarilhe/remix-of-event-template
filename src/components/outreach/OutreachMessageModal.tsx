@@ -576,7 +576,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     size="lg"
                     className={`flex-1 h-11 font-bold rounded-lg border transition-all text-sm ${
                       messageSent
-                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        ? 'bg-success text-success-foreground border-success'
                         : 'bg-foreground text-background border-border shadow-sm hover:bg-foreground/90'
                     }`}
                   >

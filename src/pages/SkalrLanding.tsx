@@ -70,7 +70,7 @@ const BrutalButton = ({
   <button
     onClick={onClick}
     className={`
-      relative group inline-flex items-center gap-2 h-12 px-7 text-[13px] font-semibold uppercase tracking-wider
+      relative group inline-flex items-center gap-2 h-12 px-7 text-xs font-semibold uppercase tracking-wider
       border-2 border-border transition-all duration-200
       ${variant === 'primary'
         ? 'bg-foreground text-background hover:shadow-md'

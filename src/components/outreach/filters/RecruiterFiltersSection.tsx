@@ -52,7 +52,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
         unsupportedTooltip={getFilterTooltip(filters.api, 'open_to_work')}
       >
         <div className={`flex items-center justify-between p-2 bg-success/10 rounded-lg ${!isFilterSupported(filters.api, 'open_to_work') ? 'opacity-50' : ''}`}>
-          <span className="text-sm text-green-400">Profils Open to Work uniquement</span>
+          <span className="text-sm text-success">Profils Open to Work uniquement</span>
           <Switch
             checked={filters.open_to_work === true}
             onCheckedChange={(checked) =>
@@ -173,7 +173,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
               })}
               disabled={!isFilterSupported(filters.api, 'activity')}
             >
-              <SelectTrigger className="text-sm h-8 bg-brand-purple/10 border-purple-800">
+              <SelectTrigger className="text-sm h-8 bg-brand-purple/10 border-brand-purple/30">
                 <SelectValue placeholder="Période..." />
               </SelectTrigger>
               <SelectContent>
@@ -225,7 +225,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
               })}
               disabled={!isFilterSupported(filters.api, 'activity')}
             >
-              <SelectTrigger className="text-sm h-8 bg-brand-purple/10 border-purple-800">
+              <SelectTrigger className="text-sm h-8 bg-brand-purple/10 border-brand-purple/30">
                 <SelectValue placeholder="Période..." />
               </SelectTrigger>
               <SelectContent>
@@ -254,13 +254,13 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
                 <Badge
                   key={index}
                   variant="secondary"
-                  className="gap-1 pr-1 bg-purple-100 text-purple-700 hover:bg-purple-200 text-xs"
+                  className="gap-1 pr-1 bg-brand-purple/10 text-brand-purple hover:bg-brand-purple/20 text-xs"
                 >
                   <span className="max-w-[150px] truncate">{tag}</span>
                   <button
                     type="button"
                     onClick={() => onChange({ ...filters, tags: filters.tags.filter((_, i) => i !== index) })}
-                    className="ml-0.5 hover:bg-purple-300 rounded-full p-0.5"
+                    className="ml-0.5 hover:bg-brand-purple/30 rounded-full p-0.5"
                   >
                     <X className="w-3 h-3" />
                   </button>

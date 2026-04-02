@@ -554,7 +554,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       href={enrollment.profile_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-muted-foreground hover:text-[#0077B5] shrink-0"
+                                      className="text-muted-foreground hover:text-linkedin shrink-0"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />

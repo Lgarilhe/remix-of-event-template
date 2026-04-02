@@ -486,7 +486,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         <div className="px-6 py-4 border-b bg-background shrink-0">
           <DialogHeader className="space-y-1">
             <DialogTitle className="flex items-center gap-2 text-lg">
-              <div className="w-8 h-8 rounded-lg bg-[#0077B5] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-linkedin flex items-center justify-center">
                 <Mail className="w-4 h-4 text-white" />
               </div>
               InMails personnalisés
@@ -607,7 +607,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                           onClick={() => setTone(t.value as Tone)}
                           className={cn(
                             "flex-1 h-9 text-xs",
-                            tone === t.value ? 'bg-[#0077B5] hover:bg-[#005E93]' : ''
+                            tone === t.value ? 'bg-linkedin hover:bg-linkedin-hover' : ''
                           )}
                         >
                           {t.emoji} {t.label}
@@ -625,7 +625,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     "w-full h-11",
                     !hasEnoughCredits 
                       ? "bg-muted cursor-not-allowed"
-                      : "bg-[#0077B5] hover:bg-[#005E93]"
+                      : "bg-linkedin hover:bg-linkedin-hover"
                   )}
                 >
                   {isGenerating ? (
@@ -647,7 +647,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 {isGenerating && (
                   <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                     <div 
-                      className="bg-[#0077B5] h-full transition-all duration-300"
+                      className="bg-linkedin h-full transition-all duration-300"
                       style={{ width: `${((generatingIndex + 1) / recipients.length) * 100}%` }}
                     />
                   </div>
@@ -791,7 +791,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       className={cn(
                         "w-2 h-2 rounded-full transition-all",
                         i === currentRecipientIndex 
-                          ? "bg-[#0077B5] scale-125" 
+                          ? "bg-linkedin scale-125" 
                           : generatedMessages[r.id] 
                             ? "bg-success"
                             : "bg-muted"
@@ -888,7 +888,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             <Button 
               onClick={handleQueueAll} 
               disabled={isQueueing || readyCount === 0}
-              className="bg-[#0077B5] hover:bg-[#005E93]"
+              className="bg-linkedin hover:bg-linkedin-hover"
             >
               {isQueueing ? (
                 <>

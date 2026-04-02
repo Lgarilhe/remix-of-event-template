@@ -223,7 +223,7 @@ function StepCard({ current, total, title, question }: {
   return (
     <div className="border border-border p-4 mb-2">
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-7 h-7 flex items-center justify-center text-xs font-semibold text-white shrink-0 skalr-gradient-bg">
+        <div className="w-7 h-7 flex items-center justify-center text-xs font-semibold text-primary-foreground shrink-0 skalr-gradient-bg">
           {current}
         </div>
         <div>
@@ -455,10 +455,10 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
             <span className={cn(
               "px-2 py-0.5 text-xs font-bold uppercase tracking-[0.1em] border-2 tabular-nums",
               estimatedCount > 100
-                ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5"
+                ? "border-success/30 text-success bg-success/5"
                 : estimatedCount > 20
                   ? "border-border text-foreground/70"
-                  : "border-amber-500/30 text-amber-600 bg-amber-500/5"
+                  : "border-warning/30 text-warning bg-warning/5"
             )}>
               {estimatedCount.toLocaleString('fr-FR')} profils LinkedIn
             </span>
@@ -507,8 +507,8 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
 
 // ── Candidate Mini Card ──
 const scoreStyles: Record<string, string> = {
-  Go: 'bg-green-500/20 text-green-700',
-  Maybe: 'bg-amber-500/20 text-amber-700',
+  Go: 'bg-success/20 text-success',
+  Maybe: 'bg-warning/20 text-warning',
   No: 'bg-red-500/20 text-red-700',
 };
 

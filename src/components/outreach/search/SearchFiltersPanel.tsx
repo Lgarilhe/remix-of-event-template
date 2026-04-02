@@ -144,8 +144,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               <span className={cn(
                 "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border",
                 searchSource === 'database'
-                  ? "border-emerald-500/30 text-emerald-600 bg-success/10"
-                  : "border-blue-500/30 text-blue-600 bg-info/10"
+                  ? "border-success/30 text-success bg-success/10"
+                  : "border-info/30 text-info bg-info/10"
               )}>
                 {searchSource === 'database' ? '🟢 Base Konekt · 232M+' : '🔵 LinkedIn'}
               </span>
@@ -157,7 +157,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               <Switch
                 checked={searchSource === 'linkedin'}
                 onCheckedChange={(checked) => onSearchSourceChange(checked ? 'linkedin' : 'database')}
-                className="data-[state=checked]:bg-blue-500"
+                className="data-[state=checked]:bg-info"
               />
               <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors", searchSource === 'linkedin' ? 'text-foreground' : 'text-muted-foreground/50')}>
                 LinkedIn

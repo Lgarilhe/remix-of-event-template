@@ -134,7 +134,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-2 h-2 rounded-full ${
-                    b.severity === 'critical' ? 'bg-destructive' : 'bg-yellow-500'
+                    b.severity === 'critical' ? 'bg-destructive' : 'bg-warning'
                   }`} />
                   <div>
                     <span className="text-sm font-semibold text-foreground">{b.stage}</span>
@@ -145,7 +145,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                 </div>
                 <div className="text-right">
                   <span className={`text-sm font-bold tabular-nums ${
-                    b.severity === 'critical' ? 'text-destructive' : 'text-yellow-400'
+                    b.severity === 'critical' ? 'text-destructive' : 'text-warning'
                   }`}>
                     ~{b.avgDays}j
                   </span>
@@ -225,7 +225,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
               <div className="flex-1 h-5 bg-muted/30 border border-border relative overflow-hidden">
                 <div
                   className={`h-full transition-all duration-500 ${
-                    step.rate >= 50 ? 'bg-emerald-500/40' :
+                    step.rate >= 50 ? 'bg-success/40' :
                     step.rate >= 20 ? 'bg-foreground/20' :
                     'bg-destructive/30'
                   }`}

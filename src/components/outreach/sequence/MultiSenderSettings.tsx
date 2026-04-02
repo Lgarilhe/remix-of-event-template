@@ -258,7 +258,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                           {member.hasLinkedIn && (
-                            <span className="inline-flex items-center gap-1 h-6 px-1.5 border border-[#0A66C2]/20 bg-[#0A66C2]/5 text-[10px] font-medium text-[#0A66C2]">
+                            <span className="inline-flex items-center gap-1 h-6 px-1.5 border border-linkedin/20 bg-linkedin/5 text-[10px] font-medium text-linkedin">
                               <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3" />
                               ✓
                             </span>

@@ -1348,7 +1348,7 @@ function CompanyCard({ company, index, onClick }: { company: VivierCompany; inde
           {/* Name & meta */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm sm:text-[15px] font-semibold text-foreground leading-tight break-words">
+              <h3 className="text-sm sm:text-sm font-semibold text-foreground leading-tight break-words">
                 {company.company_name || 'Sans nom'}
               </h3>
               {timeAgo && (
@@ -1423,7 +1423,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm sm:text-[15px] font-semibold text-foreground leading-tight break-words">
+              <h3 className="text-sm sm:text-sm font-semibold text-foreground leading-tight break-words">
                 {contact.full_name || 'Sans nom'}
               </h3>
               {timeAgo && (

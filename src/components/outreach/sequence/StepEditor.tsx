@@ -83,7 +83,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
             )}>
               {stepIsTrigger ? 'trigger' : 'action'}
             </span>
-            <span className="text-[13px] font-semibold">{stepConfig?.label}</span>
+            <span className="text-xs font-semibold">{stepConfig?.label}</span>
           </div>
           <div className="text-[10px] text-muted-foreground/60 mt-0.5">
             Étape {stepIndex + 1}
@@ -152,7 +152,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
             </SelectContent>
           </Select>
           {isCrossChannelCondition(step.actionType, step.conditionType) && (
-            <p className="text-[10px] text-amber-600 mt-1">⚠️ Condition email uniquement</p>
+            <p className="text-[10px] text-warning mt-1">⚠️ Condition email uniquement</p>
           )}
           {step.conditionType === 'if_score_above' && (
             <div className="mt-2">
@@ -228,7 +228,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
           <div>
             <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Si connecté
+              <span className="w-1.5 h-1.5 rounded-full bg-success" />Si connecté
             </Label>
             <Select value={step.ifTrueGotoStep || '__next__'} onValueChange={(value) => onUpdate({ ifTrueGotoStep: value === '__next__' ? undefined : value })}>
               <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
@@ -243,7 +243,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
           <div>
             <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />Si non connecté
+              <span className="w-1.5 h-1.5 rounded-full bg-warning" />Si non connecté
             </Label>
             <Select value={step.ifFalseGotoStep || '__next__'} onValueChange={(value) => onUpdate({ ifFalseGotoStep: value === '__next__' ? undefined : value })}>
               <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>

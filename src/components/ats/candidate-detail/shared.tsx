@@ -129,7 +129,7 @@ export function ExperienceItem({ exp }: { exp: { title: string; company: string;
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
-        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-border")} />
+        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-success border-success" : "bg-background border-border")} />
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
