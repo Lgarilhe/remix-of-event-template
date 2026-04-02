@@ -475,7 +475,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
           {/* Custom instructions (optional) */}
           <div>
-            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
               Instructions supplémentaires <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea
