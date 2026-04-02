@@ -4736,6 +4736,15 @@ export type Database = {
         Returns: boolean
       }
       archive_old_agent_conversations: { Args: never; Returns: number }
+      atomic_tracking_append: {
+        Args: {
+          p_execution_id: string
+          p_field: string
+          p_new_status: string
+          p_value: string
+        }
+        Returns: undefined
+      }
       check_rate_limit: {
         Args: {
           p_action: string
