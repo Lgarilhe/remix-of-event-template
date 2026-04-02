@@ -196,9 +196,6 @@ export default function ATS() {
           {/* Header — compact single row */}
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-8 w-8 flex items-center justify-center shrink-0">
-                <img src={iconAts3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
-              </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
               {isFetching && !loading && (
                 <span className="text-xs text-blue-600 border border-blue-300 px-1.5 py-0.5 uppercase tracking-wider font-medium animate-pulse hidden sm:inline">
