@@ -550,9 +550,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
               {/* Personalization points */}
               {personalizationPoints.length > 0 && (
-                <div className="bg-muted/20 p-3 border border-border">
-                  <div className="flex items-center gap-2 text-muted-foreground font-bold text-xs mb-2 uppercase tracking-wider">
-                    <Lightbulb className="w-3.5 h-3.5" />
+                <div className="bg-muted/30 p-3 rounded-lg border border-border">
+                  <div className="flex items-center gap-2 text-muted-foreground font-medium text-xs mb-2">
+                    <Lightbulb className="w-3.5 h-3.5 text-primary" />
                     Points de personnalisation
                   </div>
                   <ul className="space-y-1">
