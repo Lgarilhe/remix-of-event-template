@@ -258,7 +258,19 @@ export function useLinkedInSearch({
 
   // Load filters from active project's filters_snapshot
   const filtersSnapshotRef = useRef<string | null>(null);
+  // Track whether cache was hydrated so we skip snapshot reload on remount
+  const cacheHydratedRef = useRef(false);
   useEffect(() => {
+    // If cache was just hydrated, the in-memory filters are more recent than DB — skip
+    if (cacheHydratedRef.current) {
+      cacheHydratedRef.current = false;
+      // Still set the ref so future snapshot changes are detected
+      const savedFilters = activeProject?.filters_snapshot;
+      if (savedFilters) {
+        filtersSnapshotRef.current = savedFilters.last_manual_edit || savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
+      }
+      return;
+    }
     if (!activeProject) return;
     const savedFilters = activeProject.filters_snapshot;
     if (!savedFilters || Object.keys(savedFilters).length === 0) return;
