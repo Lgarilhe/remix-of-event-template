@@ -63,9 +63,9 @@ function computeSuggestion(project: SourcingProject, activeTab: string): Copilot
       }
       if (project.stats_total_found > 0 && project.stats_messaged === 0) {
         return {
-          icon: '💡',
-          message: `${project.stats_total_found} profils sourcés mais aucun contacté.`,
-          action: { label: 'Créer une séquence', tab: 'outreach' },
+          icon: '🟢',
+          message: `${project.stats_total_found} profils sourcés — inscrivez les meilleurs dans une séquence d'outreach.`,
+          action: { label: 'Contacter les candidats', tab: 'outreach' },
         };
       }
       if (daysSinceLastSearch !== null && daysSinceLastSearch > 5) {

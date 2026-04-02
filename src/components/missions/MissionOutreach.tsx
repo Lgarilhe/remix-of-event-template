@@ -10,6 +10,7 @@ import { OutreachEmptyState } from './OutreachEmptyState';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { CheckCircle2, ArrowRight } from 'lucide-react';
 
 interface MissionOutreachProps {
   project: SourcingProject;
@@ -113,8 +114,32 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   return (
     <div className="border border-border bg-background">
+      {/* Go candidates CTA — prominent when candidates exist but not enrolled */}
+      {goCount > 0 && enrollmentStats.total === 0 && (
+        <div className="border-b border-border bg-success/5 p-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-4 h-4 text-success" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              {goCount} candidat{goCount > 1 ? 's' : ''} Go prêt{goCount > 1 ? 's' : ''} à être contacté{goCount > 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Créez une séquence pour les inscrire automatiquement.
+            </p>
+          </div>
+          <button
+            onClick={() => { setShowEmptyState(false); setOutreachTab('sequences'); }}
+            className="shrink-0 flex items-center gap-2 h-9 px-4 text-xs font-bold uppercase tracking-wider bg-foreground text-background hover:bg-foreground/90 transition-colors rounded-lg"
+          >
+            Créer une séquence
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Contextual banner */}
-      {enrollmentStats.total === 0 && (
+      {enrollmentStats.total === 0 && goCount === 0 && (
         <MissionContextBanner
           icon="✉️"
           title="Contactez vos candidats"
