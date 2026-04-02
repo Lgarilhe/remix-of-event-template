@@ -550,7 +550,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           )}
           {isRecording && (
             <button onClick={stopRecording}
-              className="h-[28px] px-3 flex items-center gap-1.5 bg-red-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-red-700 transition-colors animate-pulse">
+              className="h-[28px] px-3 flex items-center gap-1.5 bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider hover:bg-destructive/80 transition-colors animate-pulse">
               <Square className="w-3 h-3" /> Arrêter
             </button>
           )}
@@ -597,20 +597,20 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
           {/* Next Topic / Intro — compact bullet-point format */}
           {nextTopic && isRecording && (
-            <div className="border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-300">
+            <div className="border border-info/30 bg-info/10 dark:bg-info/5 dark:border-info/20 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-300">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
-                  <ArrowRight className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                  <p className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">{nextTopic.topic}</p>
+                  <ArrowRight className="w-3 h-3 text-info dark:text-info" />
+                  <p className="text-xs font-bold uppercase tracking-wider text-info dark:text-info">{nextTopic.topic}</p>
                 </div>
                 <button
                   onClick={() => { navigator.clipboard.writeText(nextTopic.transition); toast.success('Copié !'); }}
-                  className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                  className="text-xs text-info/70 hover:text-info flex items-center gap-0.5"
                 >
                   <Copy className="w-2.5 h-2.5" />
                 </button>
               </div>
-              <p className="text-xs text-blue-900 dark:text-blue-100 whitespace-pre-line leading-relaxed">
+              <p className="text-xs text-info-foreground dark:text-info-foreground whitespace-pre-line leading-relaxed">
                 {nextTopic.transition}
               </p>
             </div>
