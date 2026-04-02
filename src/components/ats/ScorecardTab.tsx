@@ -611,9 +611,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 navigate(`/ats/scorecard/${candidate.candidateId}?coaching=1`);
               }}
               className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-destructive text-destructive text-xs font-medium uppercase tracking-wider group -ml-px">
-              <Mic className="w-3 h-3 relative z-10" />
-              <span className="relative z-10 hidden sm:inline">Coaching Live</span>
-              <span className="absolute inset-0 bg-destructive/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <Mic className="w-3 h-3" />
+              <span className="hidden sm:inline">Coaching Live</span>
             </button>
             <button onClick={handleGenerate} disabled={generating}
               className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">

@@ -39,11 +39,11 @@ function BrutalSpinner({ size = 40 }: { size?: number }) {
     <div className="relative" style={{ width: s, height: s }}>
       {/* Outer — slow CCW */}
       <div
-        className="absolute inset-0 border-2 border-foreground/20 animate-[spin_4s_linear_infinite_reverse]"
+        className="absolute inset-0 border-2 border-border animate-[spin_4s_linear_infinite_reverse]"
       />
       {/* Mid — medium CW with accent */}
       <div
-        className="absolute border-2 border-brutal-accent/50 animate-[spin_2.5s_linear_infinite]"
+        className="absolute border-2 border-primary/50 animate-[spin_2.5s_linear_infinite]"
         style={{
           width: mid, height: mid,
           top: (s - mid) / 2, left: (s - mid) / 2,
@@ -140,7 +140,7 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
               style={{
                 animationDelay: `${i * 250}ms`,
                 background:
-                  'linear-gradient(90deg, transparent 0%, hsl(var(--brutal-accent) / 0.04) 40%, hsl(var(--brutal-accent) / 0.08) 50%, hsl(var(--brutal-accent) / 0.04) 60%, transparent 100%)',
+                  'linear-gradient(90deg, transparent 0%, hsl(var(--primary) / 0.04) 40%, hsl(var(--primary) / 0.08) 50%, hsl(var(--primary) / 0.04) 60%, transparent 100%)',
               }}
             />
             <div className="flex items-center gap-3 px-4 h-full">

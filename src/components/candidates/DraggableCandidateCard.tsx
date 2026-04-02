@@ -55,7 +55,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
       style={style}
       {...attributes}
       {...listeners}
-      className={`bg-card rounded-lg border border-[#1A1A1A]/10 p-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing touch-none ${
+      className={`bg-card rounded-lg border border-border p-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing touch-none ${
         isDragging ? 'shadow-lg z-50' : ''
       }`}
     >
@@ -64,7 +64,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <h4 className="font-medium text-[#1A1A1A] truncate">
+              <h4 className="font-medium text-foreground truncate">
                 {candidate?.name || entry.name}
               </h4>
               {/* Position name */}
@@ -75,7 +75,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
                 </p>
               )}
               {candidate?.expertise && candidate.expertise.length > 0 && (
-                <p className="text-xs text-[#1A1A1A]/60 truncate mt-0.5">
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
                   {candidate.expertise.slice(0, 2).join(', ')}
                 </p>
               )}
@@ -91,7 +91,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
               <button
                 onClick={handleExpandClick}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="p-1 text-[#1A1A1A]/40 hover:text-[#1A1A1A] hover:bg-[#1A1A1A]/5 rounded"
+                className="p-1 text-muted-foreground/60 hover:text-foreground hover:bg-muted rounded"
               >
                 {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
@@ -99,11 +99,11 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
           </div>
 
           {isExpanded && (
-            <div className="mt-3 pt-3 border-t border-[#1A1A1A]/10 space-y-2">
+            <div className="mt-3 pt-3 border-t border-border space-y-2">
               {candidate?.email && (
                 <a
                   href={`mailto:${candidate.email}`}
-                  className="flex items-center gap-2 text-xs text-[#1A1A1A]/70 hover:text-[#1A1A1A]"
+                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
                   onClick={e => e.stopPropagation()}
                   onPointerDown={e => e.stopPropagation()}
                 >
@@ -114,7 +114,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
               {candidate?.phone && (
                 <a
                   href={`tel:${candidate.phone}`}
-                  className="flex items-center gap-2 text-xs text-[#1A1A1A]/70 hover:text-[#1A1A1A]"
+                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
                   onClick={e => e.stopPropagation()}
                   onPointerDown={e => e.stopPropagation()}
                 >
@@ -137,12 +137,12 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
                 </a>
               )}
               {entry.presentiComments && (
-                <p className="text-xs text-[#1A1A1A]/60 italic mt-2">
+                <p className="text-xs text-muted-foreground italic mt-2">
                   "{entry.presentiComments}"
                 </p>
               )}
               {entry.cvPresentationDate && (
-                <p className="text-xs text-[#1A1A1A]/50 flex items-center gap-1">
+                <p className="text-xs text-muted-foreground/60 flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
                   CV présenté: {formatDate(entry.cvPresentationDate)}
                 </p>

@@ -294,7 +294,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
         </div>
         <div className="p-4">
           {accounts.length === 0 ? (
-            <div className="text-center py-8 text-[#1A1A1A]/50">
+            <div className="text-center py-8 text-muted-foreground">
               Aucun compte connecté
             </div>
           ) : (

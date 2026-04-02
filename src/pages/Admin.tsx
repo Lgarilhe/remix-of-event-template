@@ -259,7 +259,7 @@ const Admin = () => {
       />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-normal text-[#1A1A1A] tracking-[-0.02em]">
+          <h1 className="text-4xl font-normal text-foreground tracking-[-0.02em]">
             Event CMS
           </h1>
           <Button onClick={handleSignOut} variant="outline">
@@ -270,7 +270,7 @@ const Admin = () => {
         {selectedEvent && (
           <form onSubmit={handleSave} className="space-y-6">
             <div>
-              <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+              <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                 Event Title
               </label>
               <Input
@@ -278,12 +278,12 @@ const Admin = () => {
                 onChange={(e) =>
                   setSelectedEvent({ ...selectedEvent, title: e.target.value })
                 }
-                className="border-[#1A1A1A]"
+                className="border-border"
               />
             </div>
 
             <div>
-              <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+              <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                 Creator
               </label>
               <Input
@@ -291,12 +291,12 @@ const Admin = () => {
                 onChange={(e) =>
                   setSelectedEvent({ ...selectedEvent, creator: e.target.value })
                 }
-                className="border-[#1A1A1A]"
+                className="border-border"
               />
             </div>
 
             <div>
-              <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+              <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                 Description
               </label>
               <Textarea
@@ -304,13 +304,13 @@ const Admin = () => {
                 onChange={(e) =>
                   setSelectedEvent({ ...selectedEvent, description: e.target.value })
                 }
-                className="border-[#1A1A1A] min-h-[120px]"
+                className="border-border min-h-[120px]"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+                <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                   Date
                 </label>
                 <Input
@@ -318,12 +318,12 @@ const Admin = () => {
                   onChange={(e) =>
                     setSelectedEvent({ ...selectedEvent, date: e.target.value })
                   }
-                  className="border-[#1A1A1A]"
+                  className="border-border"
                 />
               </div>
 
               <div>
-                <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+                <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                   Time
                 </label>
                 <Input
@@ -331,13 +331,13 @@ const Admin = () => {
                   onChange={(e) =>
                     setSelectedEvent({ ...selectedEvent, time: e.target.value })
                   }
-                  className="border-[#1A1A1A]"
+                  className="border-border"
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+              <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                 Address
               </label>
               <Input
@@ -345,12 +345,12 @@ const Admin = () => {
                 onChange={(e) =>
                   setSelectedEvent({ ...selectedEvent, address: e.target.value })
                 }
-                className="border-[#1A1A1A]"
+                className="border-border"
               />
             </div>
 
             <div>
-              <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+              <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                 Background Image
               </label>
               {selectedEvent.background_image_url && (
@@ -365,13 +365,13 @@ const Admin = () => {
                 accept="image/*"
                 onChange={handleImageUpload}
                 disabled={uploading}
-                className="border-[#1A1A1A]"
+                className="border-border"
               />
-              {uploading && <p className="text-sm text-[#1A1A1A] mt-1">Uploading...</p>}
+              {uploading && <p className="text-sm text-muted-foreground mt-1">Uploading...</p>}
             </div>
 
             <div>
-              <label className="text-[#1A1A1A] text-sm font-normal uppercase mb-2 block">
+              <label className="text-foreground text-sm font-normal uppercase mb-2 block">
                 Target Date (YYYY-MM-DD HH:MM:SS)
               </label>
               <Input
@@ -380,11 +380,11 @@ const Admin = () => {
                 onChange={(e) =>
                   setSelectedEvent({ ...selectedEvent, target_date: e.target.value })
                 }
-                className="border-[#1A1A1A]"
+                className="border-border"
               />
             </div>
 
-            <Button type="submit" className="w-full bg-[#1A1A1A] text-white hover:bg-opacity-90">
+            <Button type="submit" className="w-full bg-primary text-white hover:bg-primary/90">
               Save Changes
             </Button>
           </form>

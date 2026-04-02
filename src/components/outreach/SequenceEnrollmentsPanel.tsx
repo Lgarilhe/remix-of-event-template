@@ -484,9 +484,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               onClick={bulkStopActive}
               className="w-full relative overflow-hidden h-[34px] px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
             >
-              <StopCircle className="w-3.5 h-3.5 relative z-10" />
-              <span className="relative z-10">Arrêter toutes les séquences actives ({activeCount})</span>
-              <span className="absolute inset-0 bg-destructive/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <StopCircle className="w-3.5 h-3.5" />
+              <span>Arrêter toutes les séquences actives ({activeCount})</span>
             </button>
           )}
 

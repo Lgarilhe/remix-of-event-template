@@ -33,17 +33,17 @@ export const EmptyState = ({
 
   return (
     <div className={cn(
-      "border border-foreground bg-background text-center",
+      "rounded-xl border border-border bg-card text-center",
       compact ? "p-6 sm:p-8" : "p-8 sm:p-12",
       className,
     )}>
       <div className={cn(
-        "bg-foreground text-background flex items-center justify-center mx-auto mb-4",
+        "bg-accent text-foreground rounded-xl flex items-center justify-center mx-auto mb-4",
         compact ? "h-10 w-10" : "h-14 w-14",
       )}>
         {icon}
       </div>
-      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 uppercase tracking-wide">
+      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">
         {title}
       </h2>
       <p className="text-muted-foreground text-xs sm:text-sm mb-6 max-w-md mx-auto leading-relaxed">
@@ -52,13 +52,10 @@ export const EmptyState = ({
       {actionLabel && (
         <button
           onClick={handleClick}
-          className="relative overflow-hidden inline-flex items-center gap-2 h-[34px] px-6 bg-background text-foreground border border-foreground text-xs font-medium uppercase tracking-wider group"
+          className="inline-flex items-center gap-2 h-9 px-5 rounded-full bg-transparent text-foreground border border-border text-xs font-medium hover:bg-accent transition-colors"
         >
-          <span className="relative z-10 flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            {actionLabel}
-          </span>
-          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          <Settings className="w-4 h-4" />
+          {actionLabel}
         </button>
       )}
     </div>
