@@ -1885,10 +1885,17 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           return { success: false, error: 'No phone number available for WhatsApp' };
         }
 
-        // Normalize phone number: strip spaces, dashes, parentheses → E.164-ish format
+        // Normalize phone number: strip non-digit chars (except leading +), validate E.164-ish format
+        const rawPhone = phoneNumber;
         phoneNumber = phoneNumber.replace(/[\s\-().]/g, '');
-        if (!phoneNumber.startsWith('+') && phoneNumber.length >= 10) {
-          phoneNumber = '+' + phoneNumber; // Assume missing + prefix
+        if (!phoneNumber.startsWith('+')) {
+          // Strip any non-digit chars remaining, then add +
+          phoneNumber = '+' + phoneNumber.replace(/\D/g, '');
+        }
+        // Validate: must be at least 8 digits after + (shortest international numbers)
+        const digitsOnly = phoneNumber.replace(/\D/g, '');
+        if (digitsOnly.length < 8 || digitsOnly.length > 15) {
+          return { success: false, error: `Invalid phone number format: "${rawPhone}" (${digitsOnly.length} digits, need 8-15)` };
         }
 
         // Try to find existing WhatsApp chat
