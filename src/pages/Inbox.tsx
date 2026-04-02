@@ -8,6 +8,7 @@ import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { AttendeePicturesProvider } from '@/contexts/AttendeePicturesContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { AnimatedChatBubble } from '@/components/ui/AnimatedChatBubble';
 
 export default function Inbox() {
   const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();

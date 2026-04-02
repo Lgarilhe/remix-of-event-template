@@ -31,6 +31,7 @@ import iconAnalytics3d from '@/assets/icon-analytics-3d.webp';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { AnimatedFunnel } from '@/components/ui/AnimatedFunnel';
 
 export type { ATSCandidate };
 export { ATS_STAGES };
