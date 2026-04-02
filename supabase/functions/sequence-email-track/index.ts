@@ -123,43 +123,40 @@ Deno.serve(async (req) => {
       const openPriority = STATUS_PRIORITY['opened'] ?? 3;
       const newStatus = openPriority > currentPriority ? 'opened' : execution.status;
 
-      // Atomic append to opened_at array using COALESCE + jsonb concatenation
-      await supabase.rpc('atomic_tracking_append', {
+      // Try atomic RPC first, fallback to read-modify-write if RPC not available
+      const { error: rpcError } = await supabase.rpc('atomic_tracking_append', {
         p_execution_id: execution.id,
         p_field: 'opened_at',
         p_value: now,
         p_new_status: newStatus,
-      }).then(({ error }) => {
-        if (error) {
-          // Fallback to non-atomic update if RPC doesn't exist
-          console.warn('[sequence-email-track] RPC fallback:', error.message);
-          const newOpenedAt = [...openedAt, now];
-          return supabase.from('sequence_step_executions').update({
-            tracking_data: { ...trackingData, opened_at: newOpenedAt },
-            ...(openPriority > currentPriority ? { status: 'opened' } : {}),
-          }).eq('id', execution.id);
-        }
       });
+      if (rpcError) {
+        console.warn('[sequence-email-track] RPC fallback:', rpcError.message);
+        const newOpenedAt = [...openedAt, now];
+        await supabase.from('sequence_step_executions').update({
+          tracking_data: { ...trackingData, opened_at: newOpenedAt },
+          ...(openPriority > currentPriority ? { status: 'opened' } : {}),
+        }).eq('id', execution.id);
+      }
 
     } else if (evt === 'click') {
       const clickPriority = STATUS_PRIORITY['clicked'] ?? 4;
       const newStatus = clickPriority > currentPriority ? 'clicked' : execution.status;
 
-      await supabase.rpc('atomic_tracking_append', {
+      const { error: rpcError } = await supabase.rpc('atomic_tracking_append', {
         p_execution_id: execution.id,
         p_field: 'clicked_at',
         p_value: now,
         p_new_status: newStatus,
-      }).then(({ error }) => {
-        if (error) {
-          console.warn('[sequence-email-track] RPC fallback:', error.message);
-          const newClickedAt = [...clickedAt, now];
-          return supabase.from('sequence_step_executions').update({
-            tracking_data: { ...trackingData, clicked_at: newClickedAt },
-            ...(clickPriority > currentPriority ? { status: 'clicked' } : {}),
-          }).eq('id', execution.id);
-        }
       });
+      if (rpcError) {
+        console.warn('[sequence-email-track] RPC fallback:', rpcError.message);
+        const newClickedAt = [...clickedAt, now];
+        await supabase.from('sequence_step_executions').update({
+          tracking_data: { ...trackingData, clicked_at: newClickedAt },
+          ...(clickPriority > currentPriority ? { status: 'clicked' } : {}),
+        }).eq('id', execution.id);
+      }
     }
   } catch (err) {
     // Log but don't fail — tracking should be invisible to the user
