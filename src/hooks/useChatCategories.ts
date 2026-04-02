@@ -14,9 +14,9 @@ export interface ChatCategoryInfo {
 }
 
 export const CHAT_CATEGORIES: Record<ChatCategory, ChatCategoryInfo> = {
-  interested: { label: 'Intéressé', emoji: '🟢', color: 'text-green-600 bg-green-100 border-green-300' },
-  not_interested: { label: 'Pas intéressé', emoji: '🔴', color: 'text-red-600 bg-red-100 border-red-300' },
-  to_recontact: { label: 'À recontacter', emoji: '🟡', color: 'text-yellow-600 bg-yellow-100 border-yellow-300' },
+  interested: { label: 'Intéressé', emoji: '🟢', color: 'text-success bg-success/10 border-success/30' },
+  not_interested: { label: 'Pas intéressé', emoji: '🔴', color: 'text-destructive bg-destructive/10 border-destructive/30' },
+  to_recontact: { label: 'À recontacter', emoji: '🟡', color: 'text-warning bg-warning/10 border-warning/30' },
   no_response: { label: 'Sans réponse', emoji: '⚪', color: 'text-muted-foreground bg-muted border-muted-foreground/20' },
 };
 

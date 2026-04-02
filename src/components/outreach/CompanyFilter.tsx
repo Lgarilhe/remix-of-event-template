@@ -25,9 +25,9 @@ export interface CompanyKeywordFilter {
 
 // Options for priority
 export const COMPANY_PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-green-100 text-green-700', icon: '✓' },
-  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-blue-100 text-blue-700', icon: '○' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-red-100 text-red-700', icon: '✕' },
+  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-green-700', icon: '✓' },
+  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-blue-700', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-red-700', icon: '✕' },
 ];
 
 // Options for scope
@@ -179,7 +179,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             return (
               <div 
                 key={index} 
-                className="bg-card border border-gray-100 rounded-md p-2 shadow-sm"
+                className="bg-card border border-border rounded-md p-2 shadow-sm"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <button
@@ -193,7 +193,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   <button 
                     type="button" 
                     onClick={() => onRemoveKeywordCompany(index)} 
-                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full p-0.5 transition-colors"
+                    className="text-muted-foreground hover:text-red-500 hover:bg-destructive/10 rounded-full p-0.5 transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -234,7 +234,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
       )}
 
       {/* Add new keyword company */}
-      <div className="space-y-1.5 p-2 bg-gray-50/80 rounded-md border border-dashed border-gray-200">
+      <div className="space-y-1.5 p-2 bg-muted/80 rounded-md border border-dashed border-border">
         <Input
           value={newKeywords}
           onChange={(e) => setNewKeywords(e.target.value)}

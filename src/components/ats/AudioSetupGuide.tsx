@@ -123,7 +123,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
         <div className={cn(
           "flex items-center gap-2 px-3 py-2 text-xs border",
           hasHeadset
-            ? "border-amber-400/50 bg-amber-50/30 text-amber-700"
+            ? "border-amber-400/50 bg-warning/10 text-amber-700"
             : "border-border text-muted-foreground"
         )}>
           {hasHeadset ? (

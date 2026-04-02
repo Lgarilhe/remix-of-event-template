@@ -8,8 +8,8 @@ interface LikelyToSwitchBadgeProps {
 }
 
 const LEVEL_CONFIG = {
-  high: { label: 'Très dispo', shortLabel: 'Dispo', bg: 'bg-green-50 border-green-300', text: 'text-green-700', dot: 'bg-green-500' },
-  medium: { label: 'Potentiellement dispo', shortLabel: 'Signal', bg: 'bg-yellow-50 border-yellow-300', text: 'text-yellow-700', dot: 'bg-yellow-500' },
+  high: { label: 'Très dispo', shortLabel: 'Dispo', bg: 'bg-success/10 border-green-300', text: 'text-green-700', dot: 'bg-green-500' },
+  medium: { label: 'Potentiellement dispo', shortLabel: 'Signal', bg: 'bg-warning/10 border-yellow-300', text: 'text-yellow-700', dot: 'bg-yellow-500' },
   low: { label: 'Peu de signaux', shortLabel: 'Faible', bg: 'bg-muted border-border', text: 'text-muted-foreground', dot: 'bg-muted-foreground' },
   unknown: { label: 'Pas de signal', shortLabel: '', bg: '', text: '', dot: '' },
 };

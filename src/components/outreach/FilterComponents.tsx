@@ -110,7 +110,7 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1 ml-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <Badge variant="outline" className="h-4 px-1 text-xs border-amber-300 text-amber-600 bg-amber-50">
+                <Badge variant="outline" className="h-4 px-1 text-xs border-amber-300 text-amber-600 bg-warning/10">
                   Non supporté
                 </Badge>
               </span>

@@ -86,9 +86,9 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
     <div className="flex flex-col h-full overflow-hidden">
       {/* Question header */}
       <div className="mb-3 shrink-0">
-        <h3 className="text-base font-semibold text-gray-900 leading-tight">{question.title}</h3>
+        <h3 className="text-base font-semibold text-foreground leading-tight">{question.title}</h3>
         {question.description && (
-          <p className="text-sm text-gray-500 mt-1">{question.description}</p>
+          <p className="text-sm text-muted-foreground mt-1">{question.description}</p>
         )}
       </div>
 
@@ -103,8 +103,8 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   key={option.id}
                   className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${
                     isOptionSelected(option.id)
-                      ? 'bg-emerald-50 border-emerald-300'
-                      : 'bg-card border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      ? 'bg-success/10 border-emerald-300'
+                      : 'bg-card border-border hover:border-border hover:bg-accent'
                   }`}
                 >
                   <Checkbox
@@ -113,11 +113,11 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                     className="mt-0.5 h-4 w-4 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
                   />
                   <div className="flex-1 min-w-0">
-                    <span className={`text-sm font-medium block leading-tight ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-medium block leading-tight ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-foreground'}`}>
                       {option.label}
                     </span>
                     {option.description && (
-                      <span className="text-xs text-gray-500 block mt-0.5 line-clamp-2">
+                      <span className="text-xs text-muted-foreground block mt-0.5 line-clamp-2">
                         {option.description}
                       </span>
                     )}
@@ -129,7 +129,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
               {customItems.map((item) => (
                 <div
                   key={item}
-                  className="flex items-center gap-2 p-2.5 rounded-lg border bg-blue-50 border-blue-300"
+                  className="flex items-center gap-2 p-2.5 rounded-lg border bg-info/10 border-blue-300"
                 >
                   <Checkbox checked={true} disabled className="h-4 w-4 data-[state=checked]:bg-blue-600" />
                   <span className="text-sm font-medium text-blue-800 flex-1 truncate">{item}</span>
@@ -152,17 +152,17 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   onClick={() => handleOptionToggle(option.id)}
                   className={`w-full text-left p-3 rounded-lg border transition-all ${
                     isOptionSelected(option.id)
-                      ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-200'
-                      : 'bg-card border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      ? 'bg-success/10 border-emerald-400 ring-1 ring-emerald-200'
+                      : 'bg-card border-border hover:border-border hover:bg-accent'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-gray-900'}`}>
+                      <div className={`font-medium text-sm ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-foreground'}`}>
                         {option.label}
                       </div>
                       {option.description && (
-                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                        <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                           {option.description}
                         </div>
                       )}
@@ -178,7 +178,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
 
           {/* Custom input */}
           {question.allowCustom && (
-            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+            <div className="flex gap-2 mt-3 pt-3 border-t border-border">
               <Input
                 value={customValue}
                 onChange={(e) => setCustomValue(e.target.value)}
@@ -202,13 +202,13 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
       </div>
 
       {/* Navigation - fixed at bottom */}
-      <div className="flex justify-between mt-4 pt-4 border-t border-gray-100 shrink-0">
+      <div className="flex justify-between mt-4 pt-4 border-t border-border shrink-0">
         <Button
           variant="ghost"
           size="sm"
           onClick={onBack}
           disabled={isFirst}
-          className="text-gray-600"
+          className="text-muted-foreground"
         >
           ← Précédent
         </Button>

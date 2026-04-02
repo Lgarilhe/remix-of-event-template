@@ -41,8 +41,8 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
     <div className="flex items-center gap-2">
       <div className={cn(
         "w-6 h-6 flex items-center justify-center",
-        isCritical ? "bg-red-100 text-red-600" :
-        isWarning ? "bg-amber-100 text-amber-600" :
+        isCritical ? "bg-destructive/10 text-red-600" :
+        isWarning ? "bg-warning/10 text-amber-600" :
         "bg-muted text-muted-foreground"
       )}>
         {icon}
@@ -136,7 +136,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             <div className={cn(
               "flex items-center gap-1.5 px-2 py-1 text-xs font-medium cursor-help border",
               isCritical ? "bg-destructive/10 text-destructive border-destructive/30" :
-              isWarning ? "bg-amber-100 text-amber-700 border-amber-300" :
+              isWarning ? "bg-warning/10 text-amber-700 border-amber-300" :
               "bg-muted text-foreground border-border"
             )}>
               {(isWarning || isCritical) && <AlertTriangle className="w-3 h-3" />}

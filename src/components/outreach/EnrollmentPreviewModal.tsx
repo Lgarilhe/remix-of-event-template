@@ -76,11 +76,11 @@ const ACTION_LABELS: Record<string, string> = {
 
 const CHANNEL_COLORS: Record<string, string> = {
   email: 'bg-info/10 text-info-foreground border-info/20',
-  message: 'bg-sky-50 text-sky-700 border-sky-200',
-  smart_message: 'bg-sky-50 text-sky-700 border-sky-200',
-  inmail: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  connection_request: 'bg-violet-50 text-violet-700 border-violet-200',
-  whatsapp_message: 'bg-green-50 text-green-700 border-green-200',
+  message: 'bg-info/10 text-sky-700 border-sky-200',
+  smart_message: 'bg-info/10 text-sky-700 border-sky-200',
+  inmail: 'bg-brand-purple/10 text-indigo-700 border-indigo-200',
+  connection_request: 'bg-brand-purple/10 text-violet-700 border-violet-200',
+  whatsapp_message: 'bg-success/10 text-green-700 border-green-200',
 };
 
 function mapSteps(rawSteps: any[]): SequenceStepPreview[] {

@@ -71,7 +71,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={activeFiltersPreview}
-      bgColorClass="bg-sky-50/40"
+      bgColorClass="bg-info/5"
     >
       {/* Location - with priority and scope for Recruiter */}
       <FilterGroup title="Localisation" badge={filters.location.length}>
@@ -109,7 +109,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
         )}
         {/* Location radius - only for Recruiter when locations are selected */}
         {filters.api === 'recruiter' && filters.location.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-border">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Rayon de recherche</span>
               <Select
@@ -215,7 +215,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
               })();
             }}
           >
-            <SelectTrigger className="h-8 text-xs bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:border-amber-300 w-auto gap-2">
+            <SelectTrigger className="h-8 text-xs bg-gradient-to-r from-warning/10 to-warning/10 border-amber-200 hover:border-amber-300 w-auto gap-2">
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
               <span className="text-amber-800 font-medium">TOP 15 Écoles</span>
             </SelectTrigger>

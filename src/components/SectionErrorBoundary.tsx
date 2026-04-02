@@ -22,7 +22,7 @@ export class SectionErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[SectionErrorBoundary]', error, errorInfo);
+    console.error('[SectionErrorBoundary]', error, errorInfo?.componentStack);
   }
 
   handleRetry = () => {
@@ -38,7 +38,7 @@ export class SectionErrorBoundary extends Component<Props, State> {
             {this.props.fallbackTitle || 'Erreur dans cette section'}
           </p>
           <p className="text-xs text-muted-foreground font-mono mb-3">
-            {this.state.error?.message?.slice(0, 100)}
+            {this.state.error?.message?.slice(0, 200)}
           </p>
           <button
             onClick={this.handleRetry}

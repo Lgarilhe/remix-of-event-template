@@ -286,9 +286,9 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                 {insights.map((insight, i) => (
                   <div key={i} className={cn(
                     "border-l-4 p-3 flex items-start gap-3",
-                    insight.priority === 'high' ? "border-red-400 bg-red-50/30" :
-                    insight.priority === 'medium' ? "border-yellow-400 bg-yellow-50/30" :
-                    "border-green-400 bg-green-50/30"
+                    insight.priority === 'high' ? "border-red-400 bg-destructive/10" :
+                    insight.priority === 'medium' ? "border-yellow-400 bg-warning/10" :
+                    "border-green-400 bg-success/10"
                   )}>
                     <span className="text-lg shrink-0">{insight.icon}</span>
                     <div className="flex-1 min-w-0">
@@ -322,8 +322,8 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                       "w-2 h-2 rounded-full shrink-0",
                       item.status === 'shortlisted' ? "bg-purple-400" :
                       item.status === 'messaged' ? "bg-blue-400" :
-                      item.status === 'dismissed' ? "bg-red-300" :
-                      "bg-gray-300"
+                      item.status === 'dismissed' ? "bg-destructive/40" :
+                      "bg-muted-foreground/30"
                     )} />
                     <div className="flex-1 min-w-0">
                       <span className="text-xs font-medium text-foreground">{item.name}</span>

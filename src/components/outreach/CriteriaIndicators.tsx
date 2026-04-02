@@ -20,9 +20,9 @@ const CRITERIA_CONFIG: Record<string, { label: string; shortLabel: string }> = {
 };
 
 function getIndicator(score: number): { emoji: string; color: string; bg: string } {
-  if (score >= 70) return { emoji: '✅', color: 'text-green-600', bg: 'bg-green-50 border-green-200' };
-  if (score >= 40) return { emoji: '🟡', color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-200' };
-  return { emoji: '🔴', color: 'text-red-500', bg: 'bg-red-50 border-red-200' };
+  if (score >= 70) return { emoji: '✅', color: 'text-green-600', bg: 'bg-success/10 border-green-200' };
+  if (score >= 40) return { emoji: '🟡', color: 'text-yellow-600', bg: 'bg-warning/10 border-yellow-200' };
+  return { emoji: '🔴', color: 'text-red-500', bg: 'bg-destructive/10 border-red-200' };
 }
 
 export const CriteriaIndicators: React.FC<CriteriaIndicatorsProps> = ({ dimensions, compact = false }) => {

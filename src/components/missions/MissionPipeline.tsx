@@ -79,9 +79,9 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
         {candidate.score != null && (
           <span className={cn(
             "text-xs font-bold px-1.5 py-0.5 shrink-0",
-            candidate.score >= 70 ? "bg-green-100 text-green-700" :
-            candidate.score >= 40 ? "bg-yellow-100 text-yellow-700" :
-            "bg-red-100 text-red-600"
+            candidate.score >= 70 ? "bg-success/10 text-green-700" :
+            candidate.score >= 40 ? "bg-warning/10 text-yellow-700" :
+            "bg-destructive/10 text-red-600"
           )}>
             {candidate.score}
           </span>
@@ -148,7 +148,7 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
     >
       <div className={cn(
         "p-3 border-b border-border",
-        isDismissed ? "bg-red-50" : "bg-accent/50"
+        isDismissed ? "bg-destructive/10" : "bg-accent/50"
       )}>
         <div className="flex items-center justify-between">
           <h3 className={cn(
@@ -284,7 +284,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
               if (count === 0 || totalCandidates === 0) return null;
-              const colors = ['bg-gray-300', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
+              const colors = ['bg-muted-foreground/30', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
               return (
                 <div
                   key={col.key}
@@ -296,7 +296,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             })}
             {(candidatesByColumn['dismissed']?.length || 0) > 0 && (
               <div
-                className="bg-red-300 h-full"
+                className="bg-destructive/40 h-full"
                 style={{ width: `${((candidatesByColumn['dismissed']?.length || 0) / totalCandidates) * 100}%` }}
                 title={`${candidatesByColumn['dismissed']?.length || 0} écartés`}
               />
@@ -305,7 +305,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
-              const colors = ['bg-gray-300', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
+              const colors = ['bg-muted-foreground/30', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
               return (
                 <span key={col.key} className="text-xs text-muted-foreground uppercase tracking-wider">
                   <span className={cn("inline-block w-2 h-2 mr-1", colors[i % colors.length])} />
@@ -314,7 +314,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               );
             })}
             <span className="text-xs text-muted-foreground uppercase tracking-wider">
-              <span className="inline-block w-2 h-2 bg-red-300 mr-1" />
+              <span className="inline-block w-2 h-2 bg-destructive/40 mr-1" />
               {candidatesByColumn['dismissed']?.length || 0} écartés
             </span>
             <span className="text-xs font-bold text-foreground uppercase tracking-wider ml-auto">

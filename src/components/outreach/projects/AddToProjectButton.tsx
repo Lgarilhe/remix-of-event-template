@@ -184,7 +184,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           <Button
             variant="ghost"
             size={compact ? "icon" : "sm"}
-            className={`${compact ? 'h-7 w-7' : 'gap-1.5'} text-gray-400`}
+            className={`${compact ? 'h-7 w-7' : 'gap-1.5'} text-muted-foreground`}
             disabled
           >
             <FolderOpen className="w-3.5 h-3.5" />
@@ -216,7 +216,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
           Choisir un projet
         </div>
         <DropdownMenuSeparator />
@@ -238,7 +238,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         {relevantProjects.length > 5 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled className="text-xs text-gray-400">
+            <DropdownMenuItem disabled className="text-xs text-muted-foreground">
               +{relevantProjects.length - 5} autres projets
             </DropdownMenuItem>
           </>

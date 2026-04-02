@@ -620,17 +620,17 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => (
   <div className="flex items-center gap-4 p-4 border border-border bg-foreground/[0.03]">
     <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
-      (candidate.score ?? 0) >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
-      (candidate.score ?? 0) >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+      (candidate.score ?? 0) >= 70 ? 'border-emerald-400 bg-success/10 text-emerald-700' :
+      (candidate.score ?? 0) >= 40 ? 'border-amber-400 bg-warning/10 text-amber-700' :
       'border-destructive/40 bg-destructive/5 text-destructive'
     )}>{candidate.score}</div>
     <div className="flex-1 min-w-0">
       <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score global /100</span>
       {candidate.recommendation && (
         <span className={cn("text-xs px-2 py-0.5 border font-medium uppercase tracking-wider mt-1 inline-block",
-          candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+          candidate.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-success/10' :
           candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-          'border-amber-300 text-amber-700 bg-amber-50'
+          'border-amber-300 text-amber-700 bg-warning/10'
         )}>{candidate.recommendation === 'shortlist' ? 'Recommandé' : candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}</span>
       )}
       {candidate.scoringDetails && (

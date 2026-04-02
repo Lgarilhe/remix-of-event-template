@@ -58,7 +58,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
-        <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card hover:bg-gray-50 transition-colors text-sm">
+        <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-card hover:bg-accent transition-colors text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <History className="w-4 h-4" />
             <span className="font-medium">Historique</span>
@@ -92,7 +92,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                     </span>
                     <span
                       role="button"
-                      className="inline-flex items-center justify-center h-6 w-6 rounded text-red-400 hover:text-red-600 hover:bg-red-50"
+                      className="inline-flex items-center justify-center h-6 w-6 rounded text-red-400 hover:text-red-600 hover:bg-destructive/10"
                       onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
                       title="Supprimer"
                     >

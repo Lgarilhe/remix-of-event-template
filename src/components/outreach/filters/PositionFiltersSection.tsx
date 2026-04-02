@@ -103,7 +103,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={activeFiltersPreview}
-      bgColorClass="bg-violet-50/40"
+      bgColorClass="bg-brand-purple/5"
     >
       {/* Job Title with priority */}
       <FilterGroup
@@ -137,7 +137,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
         unsupportedTooltip={getFilterTooltip(filters.api, 'role')}
       >
         {filters.role.map((role, index) => (
-          <div key={index} className="p-2 bg-purple-50 rounded-lg mb-2 space-y-2">
+          <div key={index} className="p-2 bg-brand-purple/10 rounded-lg mb-2 space-y-2">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -181,7 +181,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
             </div>
           </div>
         ))}
-        <div className={`space-y-2 p-2 bg-gray-50 rounded-lg ${!isFilterSupported(filters.api, 'role') ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`space-y-2 p-2 bg-muted rounded-lg ${!isFilterSupported(filters.api, 'role') ? 'opacity-50 pointer-events-none' : ''}`}>
           <div className="flex gap-2">
             <button
               type="button"

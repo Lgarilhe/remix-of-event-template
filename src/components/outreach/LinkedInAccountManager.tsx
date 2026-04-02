@@ -332,13 +332,13 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         {/* Subscription badges */}
                         <div className="flex items-center gap-1">
                           {account.subscriptions?.recruiter && (
-                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-purple-100 text-purple-700">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-brand-purple/10 text-purple-700">
                               <Building2 className="w-2.5 h-2.5 mr-0.5" />
                               Recruiter
                             </Badge>
                           )}
                           {account.subscriptions?.sales_navigator && (
-                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-blue-100 text-blue-700">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 bg-info/10 text-blue-700">
                               Sales Nav
                             </Badge>
                           )}
@@ -368,7 +368,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                                   {getSubscriptionOverrides()[account.id]?.recruiter ? (
                                     <ToggleRight className="w-4 h-4 text-purple-600" />
                                   ) : (
-                                    <ToggleLeft className="w-4 h-4 text-gray-400" />
+                                    <ToggleLeft className="w-4 h-4 text-muted-foreground" />
                                   )}
                                   Forcer Recruiter
                                 </button>
@@ -400,7 +400,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => handleReconnect(account)}
-                        className="text-[#0077B5] hover:text-[#005E93] hover:bg-blue-50 border-[#0077B5]/30"
+                        className="text-[#0077B5] hover:text-[#005E93] hover:bg-info/10 border-[#0077B5]/30"
                       >
                         <RefreshCw className="w-4 h-4 mr-1" />
                         Reconnecter
@@ -411,7 +411,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                       size="sm"
                       onClick={() => handleDisconnect(account.id)}
                       disabled={disconnecting === account.id}
-                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                      className="text-red-500 hover:text-red-600 hover:bg-destructive/10"
                     >
                       {disconnecting === account.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -448,7 +448,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
         <div className="p-4">
           {checkpoint ? (
             <div className="space-y-4">
-              <div className="p-4 bg-yellow-50 border border-border rounded-lg">
+              <div className="p-4 bg-warning/10 border border-border rounded-lg">
                 <p className="text-sm text-yellow-800">
                   <strong>Vérification requise :</strong> {checkpoint.type}
                 </p>
@@ -504,7 +504,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               </TabsList>
 
               <TabsContent value="cookie" className="space-y-4">
-                <div className="p-3 bg-blue-50 border border-border rounded-lg text-xs text-blue-700">
+                <div className="p-3 bg-info/10 border border-border rounded-lg text-xs text-blue-700">
                   <p className="font-medium mb-1">Comment obtenir le cookie li_at :</p>
                   <ol className="list-decimal list-inside space-y-0.5">
                     <li>Connectez-vous à LinkedIn dans votre navigateur</li>
@@ -515,7 +515,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 
                 {/* Multi-contract tip */}
                 <TooltipProvider>
-                  <div className="p-3 bg-purple-50 border border-border rounded-lg text-xs text-purple-700">
+                  <div className="p-3 bg-brand-purple/10 border border-border rounded-lg text-xs text-purple-700">
                     <div className="flex items-start gap-2">
                       <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
                       <div>
@@ -569,7 +569,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               </TabsContent>
 
               <TabsContent value="credentials" className="space-y-4">
-                <div className="p-3 bg-yellow-50 border border-border rounded-lg text-xs text-yellow-700">
+                <div className="p-3 bg-warning/10 border border-border rounded-lg text-xs text-yellow-700">
                   <p className="font-medium">⚠️ Attention</p>
                   <p>Cette méthode peut déclencher des vérifications de sécurité LinkedIn.</p>
                 </div>
