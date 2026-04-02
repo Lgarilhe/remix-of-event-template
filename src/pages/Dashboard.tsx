@@ -29,7 +29,10 @@ export default function Dashboard() {
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 mb-4">
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AnimatedOrb size={32} speed={0.8} />
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
+            </div>
 
             <button
               onClick={refetch}
