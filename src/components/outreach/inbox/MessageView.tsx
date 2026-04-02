@@ -129,7 +129,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
       if (container) {
         const timeout = setTimeout(() => {
           requestAnimationFrame(() => {
-            container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
+            try {
+              container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+            } catch {
+              container.scrollTop = container.scrollHeight;
+            }
           });
         }, 80);
         return () => clearTimeout(timeout);
