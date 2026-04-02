@@ -434,6 +434,10 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
     });
   }, [updateField]);
 
+  const setText = useCallback((fieldId: string, text: string) => {
+    updateField(fieldId, f => ({ ...f, textValue: text, textDirty: true }));
+  }, [updateField]);
+
   const setRange = useCallback((fieldId: string, min: number | null, max: number | null) => {
     updateField(fieldId, f => ({ ...f, rangeMin: min, rangeMax: max }));
   }, [updateField]);
