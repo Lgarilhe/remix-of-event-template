@@ -223,7 +223,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     skipNextCacheWriteRef.current = false;
   }, [missionCacheKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!missionCacheKey || hydratedCacheKeyRef.current === missionCacheKey) return;
 
     const cached = missionSearchCache.get(missionCacheKey);
@@ -232,7 +232,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (!cached) return;
 
     skipNextCacheWriteRef.current = true;
-    // Signal the hook that cache was hydrated so it skips stale DB snapshot reload
+    // Mark cache hydration before passive effects run so stale DB snapshot doesn't overwrite it
     search.cacheHydratedRef.current = true;
     search.setFilters(cached.filters);
     search.filtersRef.current = cached.filters;
@@ -253,7 +253,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setShowPoolView(cached.hasSearched ? cached.showPoolView : false);
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
-  }, [missionCacheKey, search]);
+  }, [missionCacheKey, search, activeProject]);
 
   useEffect(() => {
     if (!missionCacheKey || hydratedCacheKeyRef.current !== missionCacheKey) return;

@@ -434,33 +434,40 @@ export function useLinkedInSearch({
     initialFilterLoadRef.current = true;
   }, [activeProject?.id]);
 
-  // Ref to hold the latest filters for flush-on-unmount
+  // Keep latest values in refs so pending edits survive tab changes/unmounts
   const latestFiltersForSaveRef = useRef(filters);
-  useEffect(() => { latestFiltersForSaveRef.current = filters; }, [filters]);
+  const latestProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  const latestProjectSnapshotRef = useRef<Record<string, any>>((activeProject?.filters_snapshot || {}) as Record<string, any>);
 
-  const flushFilterSave = useCallback(() => {
-    if (!filterSaveTimerRef.current || !activeProject?.id) return;
-    clearTimeout(filterSaveTimerRef.current);
-    filterSaveTimerRef.current = null;
-    const currentFilters = latestFiltersForSaveRef.current;
-    if (JSON.stringify(currentFilters) === JSON.stringify(INITIAL_FILTERS)) return;
+  useEffect(() => {
+    latestFiltersForSaveRef.current = filters;
+  }, [filters]);
+
+  useEffect(() => {
+    latestProjectIdRef.current = activeProject?.id ?? null;
+    latestProjectSnapshotRef.current = (activeProject?.filters_snapshot || {}) as Record<string, any>;
+  }, [activeProject?.id, activeProject?.filters_snapshot]);
+
+  const persistFiltersSnapshot = useCallback((filtersToPersist: LinkedInFiltersState) => {
+    const projectId = latestProjectIdRef.current;
+    if (!projectId) return;
+    if (JSON.stringify(filtersToPersist) === JSON.stringify(INITIAL_FILTERS)) return;
+
     const ts = new Date().toISOString();
     filtersSnapshotRef.current = ts;
-    const currentSnapshot = (activeProject.filters_snapshot || {}) as Record<string, any>;
-    updateProject({
-      id: activeProject.id,
-      filters_snapshot: {
-        ...currentSnapshot,
-        ...currentFilters,
-        last_manual_edit: ts,
-      },
-    });
-  }, [activeProject?.id, activeProject?.filters_snapshot, updateProject]);
 
-  // Flush pending save on unmount so filters are never lost
-  useEffect(() => {
-    return () => { flushFilterSave(); };
-  }, [flushFilterSave]);
+    const nextSnapshot = {
+      ...latestProjectSnapshotRef.current,
+      ...filtersToPersist,
+      last_manual_edit: ts,
+    };
+
+    latestProjectSnapshotRef.current = nextSnapshot;
+    updateProject({
+      id: projectId,
+      filters_snapshot: nextSnapshot,
+    });
+  }, [updateProject]);
 
   useEffect(() => {
     // Skip the first render (initial load from filters_snapshot)
@@ -474,25 +481,27 @@ export function useLinkedInSearch({
 
     if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
     filterSaveTimerRef.current = setTimeout(() => {
-      const ts = new Date().toISOString();
-      // Pre-set the ref to prevent reload loop when React Query refreshes activeProject
-      filtersSnapshotRef.current = ts;
-      // Preserve existing snapshot fields (suggestions, generated_at, etc.) and merge UI filters
-      const currentSnapshot = (activeProject.filters_snapshot || {}) as Record<string, any>;
-      updateProject({
-        id: activeProject.id,
-        filters_snapshot: {
-          ...currentSnapshot,
-          ...filters,
-          last_manual_edit: ts,
-        },
-      });
+      filterSaveTimerRef.current = null;
+      persistFiltersSnapshot(latestFiltersForSaveRef.current);
     }, 2000);
 
     return () => {
-      if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
+      if (filterSaveTimerRef.current) {
+        clearTimeout(filterSaveTimerRef.current);
+        filterSaveTimerRef.current = null;
+      }
     };
-  }, [filters, activeProject?.id]);
+  }, [filters, activeProject?.id, persistFiltersSnapshot]);
+
+  // Flush pending save when leaving the mission/tab before the debounce completes
+  useEffect(() => {
+    return () => {
+      if (!filterSaveTimerRef.current) return;
+      clearTimeout(filterSaveTimerRef.current);
+      filterSaveTimerRef.current = null;
+      persistFiltersSnapshot(latestFiltersForSaveRef.current);
+    };
+  }, [activeProject?.id, persistFiltersSnapshot]);
 
   // Seed jobScores from DB statuses (so pool profiles show their scores without re-scoring)
   useEffect(() => {
