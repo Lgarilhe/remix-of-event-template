@@ -630,5 +630,8 @@ export function useLinkedInSearch({
     // Project
     activeProject,
     onProjectChange,
+    
+    // Cache coordination
+    cacheHydratedRef,
   };
 }
