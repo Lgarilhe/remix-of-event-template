@@ -1,10 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Settings2, Search, Send, Check } from 'lucide-react';
+import { FileText, Settings2, Search, Send, Check, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countBriefFields } from '@/lib/missionUtils';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import type { JobDetails } from '@/types/jobDetails';
+import type { StepReadiness } from '@/hooks/useMissionReadiness';
 
 /* ─── Step configuration ─── */
 
@@ -80,36 +81,53 @@ interface MissionProgressBarProps {
   project: SourcingProject;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  readiness?: StepReadiness[];
 }
 
 export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
   project,
   activeTab,
   onTabChange,
+  readiness = [],
 }) => {
   return (
     <div className="relative">
       {/* ── Desktop ── */}
       <div className="hidden sm:flex items-center gap-1 border-b border-border">
         {/* Primary steps */}
-        {steps.map((step) => {
+        {steps.map((step, idx) => {
           const isActive = activeTab === step.value;
           const isCompleted = step.getCompletion(project);
+          const stepReadiness = readiness.find(r => r.id === step.value);
+          const isLocked = stepReadiness?.isLocked ?? false;
           const Icon = step.icon;
 
           return (
-            <button
-              key={step.value}
-              onClick={() => onTabChange(step.value)}
-              className={cn(
-                "relative flex items-center gap-2 px-3 py-2 transition-colors rounded-md",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
-                isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            <React.Fragment key={step.value}>
+              {/* Connector between steps */}
+              {idx > 0 && (
+                <div className="flex items-center px-0.5">
+                  <div className={cn(
+                    "w-4 h-px",
+                    steps[idx - 1].getCompletion(project) ? "bg-primary" : "bg-border"
+                  )} />
+                </div>
               )}
-            >
-              {isCompleted && !isActive ? (
+              <button
+                onClick={() => onTabChange(step.value)}
+                className={cn(
+                  "relative flex items-center gap-2 px-3 py-2 transition-colors rounded-md",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
+                  isLocked
+                    ? "text-muted-foreground/40 cursor-not-allowed"
+                    : isActive
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+              {isLocked ? (
+                <Lock className="w-3.5 h-3.5 text-muted-foreground/40" />
+              ) : isCompleted && !isActive ? (
                 <Check className="w-3.5 h-3.5 text-primary" />
               ) : (
                 <Icon className={cn("w-3.5 h-3.5", isActive ? "text-foreground" : "")} />
@@ -140,6 +158,7 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
                 />
               )}
             </button>
+            </React.Fragment>
           );
         })}
 

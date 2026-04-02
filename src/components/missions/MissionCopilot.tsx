@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import type { StepReadiness } from '@/hooks/useMissionReadiness';
 
 interface MissionCopilotProps {
   project: SourcingProject;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  readiness?: StepReadiness[];
 }
 
 interface CopilotSuggestion {
@@ -134,13 +136,49 @@ function computeSuggestion(project: SourcingProject, activeTab: string): Copilot
   }
 }
 
-export const MissionCopilot = ({ project, activeTab, onTabChange }: MissionCopilotProps) => {
+export const MissionCopilot = ({ project, activeTab, onTabChange, readiness = [] }: MissionCopilotProps) => {
   const [dismissed, setDismissed] = useState(false);
 
-  const suggestion = useMemo(
+  const baseSuggestion = useMemo(
     () => computeSuggestion(project, activeTab),
     [project, activeTab]
   );
+
+  // Enhance with readiness-driven "next step" suggestion
+  const suggestion = useMemo(() => {
+    if (baseSuggestion) return baseSuggestion;
+
+    // If current step is complete, suggest the next incomplete step
+    const stepOrder = ['brief', 'process', 'sourcing', 'outreach'];
+    const currentIdx = stepOrder.indexOf(activeTab);
+    if (currentIdx >= 0) {
+      const currentStep = readiness.find(r => r.id === activeTab);
+      if (currentStep?.isComplete) {
+        const nextIncomplete = readiness.find(r => !r.isComplete && !r.isLocked && r.id !== 'process');
+        if (nextIncomplete?.nextAction) {
+          return {
+            icon: '➡️',
+            message: `Étape terminée. Prochaine étape : ${nextIncomplete.nextAction.label.toLowerCase()}.`,
+            action: nextIncomplete.nextAction,
+          };
+        }
+      }
+    }
+
+    // On overview, show the first actionable step
+    if (activeTab === 'overview') {
+      const firstIncomplete = readiness.find(r => !r.isComplete && !r.isLocked);
+      if (firstIncomplete?.nextAction) {
+        return {
+          icon: '🎯',
+          message: `Prochaine étape : ${firstIncomplete.nextAction.label.toLowerCase()}.`,
+          action: firstIncomplete.nextAction,
+        };
+      }
+    }
+
+    return null;
+  }, [baseSuggestion, readiness, activeTab]);
 
   useEffect(() => {
     setDismissed(false);

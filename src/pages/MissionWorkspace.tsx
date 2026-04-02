@@ -8,6 +8,7 @@ import { ArrowLeft, Play, Pause, CheckCircle, Archive, ChevronRight } from 'luci
 import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
+import { useMissionReadiness } from '@/hooks/useMissionReadiness';
 import { MissionBrief } from '@/components/missions/MissionBrief';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';
@@ -19,6 +20,7 @@ import { MissionCopilot } from '@/components/missions/MissionCopilot';
 import { MissionProgressBar } from '@/components/missions/MissionProgressBar';
 import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
+import { toast } from 'sonner';
 
 // ── Status config ──
 
@@ -58,6 +60,8 @@ const MissionWorkspace = () => {
   const canEditBrief = hasFeature(orgType, 'edit_brief') && isOwnMission;
   const canEditProcess = hasFeature(orgType, 'edit_process') && isOwnMission;
 
+  const readiness = useMissionReadiness(project);
+
   const tabFromUrl = searchParams.get('tab');
   const activeTab = allTabs.includes(tabFromUrl || '') ? tabFromUrl! : 'overview';
 
@@ -68,6 +72,15 @@ const MissionWorkspace = () => {
       return next;
     }, { replace: true });
   }, [setSearchParams]);
+
+  const handleTabChange = useCallback((tab: string) => {
+    const step = readiness.find(s => s.id === tab);
+    if (step?.isLocked) {
+      toast.info(step.blockerMessage || 'Complétez les étapes précédentes.');
+      return;
+    }
+    setActiveTab(tab);
+  }, [readiness, setActiveTab]);
 
   // Loading
   if (isLoading) {
@@ -146,7 +159,8 @@ const MissionWorkspace = () => {
           <MissionProgressBar
             project={project}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
+            readiness={readiness}
           />
 
           {/* ── Tab content with animations ── */}
@@ -162,7 +176,7 @@ const MissionWorkspace = () => {
             >
               {activeTab === 'overview' && (
                 <SectionErrorBoundary fallbackTitle="Erreur dans le Dashboard">
-                  <MissionBentoDashboard project={project} onTabChange={setActiveTab} />
+                  <MissionBentoDashboard project={project} onTabChange={handleTabChange} readiness={readiness} />
                 </SectionErrorBoundary>
               )}
 
@@ -212,7 +226,7 @@ const MissionWorkspace = () => {
         </div>
       </div>
 
-      <MissionCopilot project={project} activeTab={activeTab} onTabChange={setActiveTab} />
+      <MissionCopilot project={project} activeTab={activeTab} onTabChange={handleTabChange} readiness={readiness} />
     </div>
   );
 };
