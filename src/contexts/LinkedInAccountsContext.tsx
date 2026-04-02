@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 interface LinkedInAccount {
   id: string;
@@ -30,6 +30,8 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
   const [accounts, setAccounts] = useState<LinkedInAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const { isReady, user } = useAuthReady();
+  const prevUserIdRef = React.useRef<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -54,74 +56,48 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
     setHasLoaded(false);
   }, []);
 
+  const resetState = useCallback(() => {
+    prevUserIdRef.current = null;
+    setAccounts([]);
+    setHasLoaded(false);
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    let isMounted = true;
-    let prevUserId: string | null = null;
+    if (!isReady) return;
 
-    const resetState = () => {
-      if (!isMounted) return;
-      prevUserId = null;
-      setAccounts([]);
-      setHasLoaded(false);
-      setLoading(false);
-    };
+    if (!user?.id) {
+      resetState();
+      return;
+    }
 
-    // Initial check — safe to call async here (not inside onAuthStateChange)
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        if (!isMounted) return;
-        if (!session?.user) {
-          resetState();
-          return;
-        }
-        prevUserId = session.user.id;
-        void reload();
-      })
-      .catch((error) => {
-        console.warn('[LinkedInAccountsContext] Initial session check failed:', error);
-        resetState();
-      });
-
-    // Subsequent auth events — NO async Supabase calls inside callback
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) return;
-
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        resetState();
-        return;
-      }
-
-      const newUserId = session.user.id;
-      if (prevUserId && prevUserId !== newUserId) {
+    if (prevUserIdRef.current && prevUserIdRef.current !== user.id) {
         setAccounts([]);
         setHasLoaded(false);
-      }
-      prevUserId = newUserId;
+    }
 
-      // reload() calls an edge function, not a Supabase auth method — safe
-      void reload();
-    });
+    prevUserIdRef.current = user.id;
+    void reload();
+  }, [isReady, user?.id, reload, resetState]);
 
-    // Periodic health check — reload accounts every 5 minutes to detect disconnections
+  useEffect(() => {
+    if (!isReady || !user?.id) return;
+
     const healthCheckInterval = setInterval(() => {
-      if (isMounted && prevUserId) {
-        reload().catch(() => {});
-      }
+      reload().catch(() => {});
     }, 5 * 60 * 1000);
 
     return () => {
-      isMounted = false;
-      subscription.unsubscribe();
       clearInterval(healthCheckInterval);
     };
-  }, [reload]);
+  }, [isReady, user?.id, reload]);
 
   const contextValue = useMemo(() => ({
     accounts,
-    loading: loading && !hasLoaded,
+    loading: !isReady || (loading && !hasLoaded),
     reload,
     clear,
-  }), [accounts, loading, hasLoaded, reload, clear]);
+  }), [accounts, isReady, loading, hasLoaded, reload, clear]);
 
   return (
     <LinkedInAccountsContext.Provider value={contextValue}>
