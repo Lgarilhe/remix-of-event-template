@@ -63,7 +63,7 @@ export const BackgroundPaths: React.FC<BackgroundPathsProps> = ({
       d: generatePath(i + 1, w, h),
       delay: i * 0.7,
       duration: 6 + (i % 3) * 2,
-      color: `hsl(var(--brutal-accent) / ${0.08 + (i % 4) * 0.04})`,
+      color: `hsl(var(--primary) / ${0.08 + (i % 4) * 0.04})`,
       width: 1 + (i % 3) * 0.5,
     }));
   }, [pathCount]);
