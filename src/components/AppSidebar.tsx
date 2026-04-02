@@ -55,8 +55,8 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
       {/* Header — Org avatar + name */}
-      <SidebarHeader className="px-4 py-4">
-        <Link to="/dashboard" className="flex items-center gap-2.5" onClick={() => setOpenMobile(false)}>
+      <SidebarHeader className={cn("py-4", collapsed ? "px-0 flex items-center justify-center" : "px-4")}>
+        <Link to="/dashboard" className={cn("flex items-center", collapsed ? "justify-center" : "gap-2.5")} onClick={() => setOpenMobile(false)}>
           <div className="h-8 w-8 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0">
             <span className="text-sidebar-foreground font-semibold text-sm">{orgInitial}</span>
           </div>
@@ -68,9 +68,9 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-3 pt-0">
+      <SidebarContent className={cn("pt-0", collapsed ? "px-1" : "px-3")}>
         {/* Search bar (cosmetic) */}
-        {!collapsed && (
+        {!collapsed ? (
           <div className="mb-4 px-1">
             <div className="flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-[13px] cursor-default select-none">
               <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} />
@@ -80,11 +80,10 @@ export function AppSidebar() {
               </kbd>
             </div>
           </div>
-        )}
-        {collapsed && (
-          <div className="mb-4 flex justify-center px-1">
-            <div className="h-9 w-9 flex items-center justify-center rounded-lg bg-sidebar-accent text-muted-foreground cursor-default">
-              <Search className="h-5 w-5" strokeWidth={1.5} />
+        ) : (
+          <div className="mb-3 flex justify-center">
+            <div className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground cursor-default hover:bg-sidebar-accent/50 transition-colors">
+              <Search className="h-4 w-4" strokeWidth={1.5} />
             </div>
           </div>
         )}
@@ -97,7 +96,7 @@ export function AppSidebar() {
             </div>
           )}
           <SidebarGroupContent>
-            <SidebarMenu className="gap-1 px-1">
+            <SidebarMenu className={cn("gap-0.5", collapsed ? "px-0 items-center" : "px-1")}>
               {MAIN_NAV_ITEMS.map((item) => {
                 const active = isActive(item.to);
                 return (
@@ -107,15 +106,16 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={item.label}
                       className={cn(
-                        "h-9 px-3 rounded-lg text-[13px] font-medium transition-colors",
+                        "h-9 rounded-lg text-[13px] font-medium transition-colors",
+                        collapsed ? "w-9 px-0 justify-center" : "px-3",
                         active
                           ? "bg-sidebar-accent text-sidebar-foreground"
                           : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                       )}
                     >
-                      <Link to={item.to} onClick={() => setOpenMobile(false)} className="flex items-center gap-3">
+                      <Link to={item.to} onClick={() => setOpenMobile(false)} className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
                         <item.icon className={cn(
-                          "h-5 w-5 shrink-0",
+                          "h-[18px] w-[18px] shrink-0",
                           active ? "text-sidebar-foreground" : "text-muted-foreground"
                         )} strokeWidth={1.5} />
                         {!collapsed && (
@@ -129,7 +129,7 @@ export function AppSidebar() {
                           </div>
                         )}
                         {item.badgeKey === 'unread' && unreadMsgCount > 0 && collapsed && (
-                          <span className="absolute top-1 right-1 w-2 h-2 bg-sidebar-foreground rounded-full" />
+                          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-sidebar-foreground rounded-full" />
                         )}
                       </Link>
                     </SidebarMenuButton>
@@ -149,22 +149,23 @@ export function AppSidebar() {
               </div>
             )}
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1 px-1">
+              <SidebarMenu className={cn("gap-0.5", collapsed ? "px-0 items-center" : "px-1")}>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
                     isActive={isActive('/marketplace')}
                     tooltip="Marketplace"
                     className={cn(
-                      "h-9 px-3 rounded-lg text-[13px] font-medium transition-colors",
+                      "h-9 rounded-lg text-[13px] font-medium transition-colors",
+                      collapsed ? "w-9 px-0 justify-center" : "px-3",
                       isActive('/marketplace')
                         ? "bg-sidebar-accent text-sidebar-foreground"
                         : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                     )}
                   >
-                    <Link to="/marketplace" onClick={() => setOpenMobile(false)} className="flex items-center gap-3">
+                    <Link to="/marketplace" onClick={() => setOpenMobile(false)} className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
                       <Target className={cn(
-                        "h-5 w-5 shrink-0",
+                        "h-[18px] w-[18px] shrink-0",
                         isActive('/marketplace') ? "text-sidebar-foreground" : "text-muted-foreground"
                       )} strokeWidth={1.5} />
                       {!collapsed && <span>Marketplace</span>}
@@ -178,14 +179,14 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter className="border-t border-border px-3 py-3 space-y-2">
+      <SidebarFooter className={cn("border-t border-border py-3", collapsed ? "px-1" : "px-3", "space-y-1")}>
         {/* AI Credits */}
         {!creditsLoading && (
           <button
             onClick={() => navigate('/settings?tab=credits')}
             className={cn(
-              "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-              "hover:bg-sidebar-accent/50",
+              "flex items-center rounded-lg text-xs font-medium transition-colors hover:bg-sidebar-accent/50",
+              collapsed ? "h-8 w-8 justify-center mx-auto" : "w-full gap-2.5 px-3 py-2",
               isOut ? "text-destructive" : isLow ? "text-warning" : "text-muted-foreground",
             )}
           >
@@ -199,37 +200,44 @@ export function AppSidebar() {
           <NotificationDropdown />
         </div>
 
-        {/* Bottom bar: Skalr logo + org name + settings + logout (like Qonto) */}
-        <div className={cn(
-          "flex items-center gap-2 pt-2",
-          collapsed ? "flex-col" : "px-1"
-        )}>
-          {/* Skalr logo */}
-          <img
-            src={skalrLogo}
-            alt="Skalr"
-            className="h-6 w-6 shrink-0 object-contain"
-          />
-          {!collapsed && (
-            <>
-              <span className="text-xs text-muted-foreground truncate flex-1">{orgName}</span>
-              <button
-                onClick={() => { navigate('/settings'); setOpenMobile(false); }}
-                className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
-                aria-label="Paramètres"
-              >
-                <Settings className="h-4 w-4" strokeWidth={1.5} />
-              </button>
-              <button
-                onClick={async () => { await supabase.auth.signOut(); }}
-                className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
-                aria-label="Déconnexion"
-              >
-                <LogOut className="h-4 w-4" strokeWidth={1.5} />
-              </button>
-            </>
-          )}
-        </div>
+        {/* Bottom bar: Skalr logo + org name + settings + logout */}
+        {!collapsed ? (
+          <div className="flex items-center gap-2 pt-1 px-1">
+            <img src={skalrLogo} alt="Skalr" className="h-5 w-5 shrink-0 object-contain" />
+            <span className="text-xs text-muted-foreground truncate flex-1">{orgName}</span>
+            <button
+              onClick={() => { navigate('/settings'); setOpenMobile(false); }}
+              className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
+              aria-label="Paramètres"
+            >
+              <Settings className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); }}
+              className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
+              aria-label="Déconnexion"
+            >
+              <LogOut className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 pt-1">
+            <button
+              onClick={() => { navigate('/settings'); setOpenMobile(false); }}
+              className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground transition-colors rounded-lg hover:bg-sidebar-accent/50"
+              aria-label="Paramètres"
+            >
+              <Settings className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); }}
+              className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground transition-colors rounded-lg hover:bg-sidebar-accent/50"
+              aria-label="Déconnexion"
+            >
+              <LogOut className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
