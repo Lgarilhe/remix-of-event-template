@@ -5,7 +5,7 @@ import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive, Users } from 'lucide-react';
+import { ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
@@ -26,7 +26,6 @@ interface CardActionsProps {
   onArchive?: () => void;
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
-  onFindSimilar?: () => void;
   compact?: boolean;
 }
 
@@ -46,7 +45,6 @@ export const CardActions: React.FC<CardActionsProps> = ({
   onArchive,
   onSequenceEnroll,
   onProfileTreated,
-  onFindSimilar,
   compact = false,
 }) => {
   const buttonSize = compact ? 'h-7 w-7 p-0' : 'h-8 w-8 p-0';
@@ -124,25 +122,6 @@ export const CardActions: React.FC<CardActionsProps> = ({
             <ExternalLink className={iconSize} />
           </a>
         </Button>
-      )}
-
-      {/* Find Similar */}
-      {onFindSimilar && !compact && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onFindSimilar}
-              className={`text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 ${buttonSize}`}
-            >
-              <Users className={iconSize} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Trouver des profils similaires</p>
-          </TooltipContent>
-        </Tooltip>
       )}
 
       {/* Sequence enroll */}

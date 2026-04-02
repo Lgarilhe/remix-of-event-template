@@ -8,8 +8,6 @@ import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
 
-import { PreScoreBar } from './result-card/PreScoreBar';
-import { PreScoreResult } from '@/hooks/linkedin/preScoring';
 import { Job } from '@/types/jobs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,7 +31,6 @@ import { LinkedInResultCardProps } from './result-card/types';
 interface ExtendedResultCardProps extends LinkedInResultCardProps {
   onOpenDetail?: () => void;
   isBatchScoring?: boolean;
-  onFindSimilar?: (profile: LinkedInProfile) => void;
 }
 
 export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
@@ -54,7 +51,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   notionMatch,
   onOpenDetail,
   isBatchScoring = false,
-  onFindSimilar,
 }) => {
   const [isScoring, setIsScoring] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -326,14 +322,11 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   )}
                   <CardStatusBadges
                     candidateStatus={candidateStatus}
-                    jobScore={jobScore}
                     profile={profile}
-                    isLikelyToRespond={isLikelyToRespond}
                     airtableMatch={airtableMatch}
                     notionMatch={notionMatch}
                     historyData={historyData}
                     historyLoading={historyLoading}
-                    historyLatestDateLabel={historyLatestDateLabel}
                   />
                 </div>
               </div>
@@ -356,7 +349,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
                   onProfileTreated={onProfileTreated}
-                  onFindSimilar={onFindSimilar ? () => onFindSimilar(profile) : undefined}
                 />
               </div>
             </div>
@@ -409,15 +401,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               )}
             </div>
 
-            {/* Row 4: Pre-score + Job Score */}
-            {(profile as any)._preScore && (
-              <div className="mt-1.5">
-                <PreScoreBar
-                  preScore={(profile as any)._preScore as PreScoreResult}
-                  hasLLMScore={!!jobScore}
-                />
-              </div>
-            )}
+            {/* Row 4: Job Score */}
             {jobScore && (
               <div className="mt-1.5">
                 <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact />
@@ -492,7 +476,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 onArchive={onArchive}
                 onSequenceEnroll={onSequenceEnroll}
                 onProfileTreated={onProfileTreated}
-                onFindSimilar={onFindSimilar ? () => onFindSimilar(profile) : undefined}
                 compact
               />
             </div>

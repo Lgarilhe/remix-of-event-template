@@ -25,7 +25,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
-  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock, SortAsc
+  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -103,8 +103,6 @@ interface SearchResultsPanelProps {
   onArchive: (profile: LinkedInProfile) => Promise<void>;
   onMessageSent: () => void;
   onSequenceEnrollSuccess: () => void;
-  onFindSimilar?: (profile: LinkedInProfile) => void;
-  
   // Refine
   onRefineSearch: (direction: 'expand' | 'narrow') => void;
   refineLoading: boolean;
@@ -182,7 +180,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onArchive,
   onMessageSent,
   onSequenceEnrollSuccess,
-  onFindSimilar,
   onRefineSearch,
   refineLoading,
   batchReport,
@@ -361,22 +358,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   return (
     <div className="bg-background border border-foreground flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:h-full overflow-y-hidden">
-      {/* HEADER: Search + count + filters + actions — unified compact bar */}
+      {/* HEADER: count + pool toggle — compact bar */}
       <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
-        <Button
-          onClick={onSearch}
-          disabled={loading || !selectedJob}
-          size="sm"
-          className="bg-primary hover:bg-primary/90 shrink-0"
-        >
-          {loading ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-          ) : (
-            <Search className="w-3.5 h-3.5 mr-1.5" />
-          )}
-          {loading ? '...' : 'Rechercher'}
-        </Button>
-
         {hasSearched && (
           <span className="text-xs text-muted-foreground whitespace-nowrap">
             <span className="font-semibold text-foreground">{displayResults.length}</span>
@@ -519,14 +502,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       )}
 
       {/* Scored sub-filters (inline, only when scored active) */}
-      {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
+      {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe') && statusCounts.scored > 0 && (
         <div className="flex items-center justify-between px-2 sm:px-3 py-1 border-b border-border/50 bg-muted/20 shrink-0 gap-2 overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-px bg-muted/30 p-px border border-border shrink-0">
             {([
               { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
               { value: 'scored_go' as const, label: '✅ Go', count: statusCounts.scored_go },
               { value: 'scored_maybe' as const, label: '🤔 Maybe', count: statusCounts.scored_maybe },
-              { value: 'scored_not_contacted' as const, label: '🆕 New', count: statusCounts.scored_not_contacted },
             ]).map(({ value, label, count }) => (
               <button
                 key={value}
@@ -550,12 +532,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <SelectItem value="score_desc" className="text-xs"><span className="flex items-center gap-1"><ArrowDown className="w-3 h-3" /> Score ↓</span></SelectItem>
               <SelectItem value="score_asc" className="text-xs"><span className="flex items-center gap-1"><ArrowUp className="w-3 h-3" /> Score ↑</span></SelectItem>
               <SelectItem value="recent" className="text-xs"><span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Récents</span></SelectItem>
-              <SelectItem value="name" className="text-xs"><span className="flex items-center gap-1"><SortAsc className="w-3 h-3" /> A→Z</span></SelectItem>
-              <SelectItem value="tech_desc" className="text-xs"><span className="flex items-center gap-1">🔧 Tech ↓</span></SelectItem>
-              <SelectItem value="xp_desc" className="text-xs"><span className="flex items-center gap-1">📊 Expérience ↓</span></SelectItem>
-              <SelectItem value="domain_desc" className="text-xs"><span className="flex items-center gap-1">🏢 Domaine ↓</span></SelectItem>
-              <SelectItem value="fit_desc" className="text-xs"><span className="flex items-center gap-1">🤝 Culture fit ↓</span></SelectItem>
-              <SelectItem value="soft_desc" className="text-xs"><span className="flex items-center gap-1">💬 Soft skills ↓</span></SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -784,7 +760,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
                   notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
                   onOpenDetail={() => openProfileDetail(profile)}
-                  onFindSimilar={onFindSimilar}
                 />
               </motion.div>
             ))}

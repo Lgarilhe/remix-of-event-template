@@ -3,11 +3,9 @@ import { Target } from '@phosphor-icons/react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
-import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
+import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
-import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
-import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
@@ -107,16 +105,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
-  const { data: allJobs = [] } = useJobs();
-
-  const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
-    if (jobId) {
-      const foundJob = allJobs.find(j => j.id === jobId);
-      if (foundJob) {
-        onJobChange(foundJob);
-      }
-    }
-  }, [allJobs, onJobChange]);
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount);
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
@@ -337,20 +325,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               Wizard filtres
             </button>
           )}
-          <AutoFillFiltersButton
-            selectedJob={selectedJob}
-            accountId={selectedAccount}
-            currentLocation={filters.location}
-            onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
-            searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
-          />
-
-          <FilterPresetsManager
-            currentFilters={filters}
-            onApplyFilters={setFilters}
-            selectedJob={selectedJob}
-            onApplyPresetJob={handleApplyPresetJob}
-          />
         </div>
 
         {/* Custom scoring instructions (visible when job selected) */}
@@ -439,27 +413,29 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         accountId={selectedAccount}
       />
 
-      {/* Action buttons */}
-      <div className="flex gap-2">
-        <Button
-          onClick={onSearch}
-          disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
-          className="flex-1 bg-foreground text-background hover:bg-foreground/90"
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <Search className="w-4 h-4 mr-2" />
-          )}
-          {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={onClearFilters}
-          disabled={loading}
-        >
-          Effacer
-        </Button>
+      {/* Action buttons — sticky at bottom */}
+      <div className="sticky bottom-0 z-10 bg-background pt-2 pb-1 border-t border-border -mx-0 px-0">
+        <div className="flex gap-2">
+          <Button
+            onClick={onSearch}
+            disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
+            className="flex-1 bg-foreground text-background hover:bg-foreground/90"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Search className="w-4 h-4 mr-2" />
+            )}
+            {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onClearFilters}
+            disabled={loading}
+          >
+            Effacer
+          </Button>
+        </div>
       </div>
     </div>
   );
