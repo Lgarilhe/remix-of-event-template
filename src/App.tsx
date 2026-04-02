@@ -132,7 +132,7 @@ const AppContent = () => {
         <Routes>
           {/* Public routes — no sidebar */}
           <Route path="/" element={<SkalrLanding />} />
-          <Route path="/index" element={<Navigate to={withPreviewAccessToken('/')} replace />} />
+          <Route path="/index" element={<Navigate to={withPreviewAccessTokenFromSearch('/', location.search)} replace />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/portal/:token" element={<CandidatePortal />} />
