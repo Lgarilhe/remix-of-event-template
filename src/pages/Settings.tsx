@@ -128,12 +128,7 @@ const Settings = () => {
       <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="flex items-center gap-2 min-w-0 mb-4">
-            <div className="h-8 w-8 flex items-center justify-center shrink-0">
-              <img src={iconSettings3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Paramètres</h1>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight mb-4">Paramètres</h1>
 
           {/* Brutal tabs */}
           <div className="flex gap-0 border-b-2 border-border overflow-x-auto no-scrollbar mb-6">
