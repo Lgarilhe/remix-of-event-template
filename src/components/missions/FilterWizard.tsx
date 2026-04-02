@@ -676,7 +676,22 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                           />
                         )}
 
-                        {/* Toggle field */}
+                        {/* Text field */}
+                        {field.type === 'text' && (
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              value={field.textValue ?? ''}
+                              onChange={e => setText(field.id, e.target.value)}
+                              placeholder={field.placeholder}
+                              className="w-full h-9 px-3 text-xs font-bold bg-transparent border-2 border-foreground/20 text-foreground outline-none focus:border-foreground placeholder:text-foreground/30 tracking-wider"
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                              Opérateurs supportés : AND, OR, NOT, parenthèses
+                            </p>
+                          </div>
+                        )}
+
                         {field.type === 'toggle' && (
                           <div className="flex items-center gap-3">
                             <button
