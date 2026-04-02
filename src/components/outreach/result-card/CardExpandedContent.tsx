@@ -56,10 +56,10 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   const workExperience = profile.work_experience || [];
 
   return (
-    <div className="border border-border bg-background overflow-hidden">
+    <div className="bg-background rounded-lg border border-border overflow-hidden">
       <Tabs defaultValue="experience" className="w-full">
-        <div className="border-b border-border bg-foreground overflow-x-auto">
-          <TabsList className="w-max min-w-full h-10 sm:h-11 bg-transparent p-0 rounded-lg gap-0">
+        <div className="border-b border-border bg-muted/40 overflow-x-auto">
+          <TabsList className="w-max min-w-full h-9 sm:h-10 bg-transparent p-0 rounded-none gap-0">
             {[
               { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
               { value: 'education', icon: GraduationCap, label: 'Formation', shortLabel: 'Form.' },
@@ -70,7 +70,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-xs sm:text-xs h-full rounded-lg border-b-2 border-transparent text-background/60 hover:text-background data-[state=active]:border-accent data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
+                className="shrink-0 min-w-[68px] sm:min-w-0 sm:flex-1 text-xs h-full rounded-none border-b-2 border-transparent text-muted-foreground hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-2 sm:px-3 transition-colors font-medium"
               >
                 <tab.icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">{tab.label}</span>

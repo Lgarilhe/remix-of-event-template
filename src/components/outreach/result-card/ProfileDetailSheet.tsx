@@ -464,23 +464,22 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-lg border-l border-border" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          {/* ─── NAV + ACCENT BAR ─── */}
-          <div className="h-1.5 w-full bg-accent shrink-0" />
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-hidden rounded-xl border-l border-border bg-muted/30" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          {/* ─── NAV BAR ─── */}
           {(onNavigatePrev || onNavigateNext) && (
-            <div className="flex items-center justify-between px-3 sm:px-6 py-1.5 bg-muted/30 border-b border-border shrink-0">
+            <div className="flex items-center justify-between px-3 sm:px-5 py-2 bg-background border-b border-border shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onNavigatePrev}
                 disabled={!onNavigatePrev}
-                className="h-7 gap-1 text-xs rounded-lg uppercase tracking-wider font-semibold px-2"
+                className="h-7 gap-1 text-xs rounded-lg px-2 text-muted-foreground hover:text-foreground"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
                 Préc.
               </Button>
               {currentIndex != null && totalCount != null && (
-                <span className="text-xs text-muted-foreground tabular-nums font-medium uppercase tracking-wider">
+                <span className="text-xs text-muted-foreground tabular-nums font-medium">
                   {currentIndex + 1} / {totalCount}
                 </span>
               )}
@@ -489,110 +488,124 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={onNavigateNext}
                 disabled={!onNavigateNext}
-                className="h-7 gap-1 text-xs rounded-lg uppercase tracking-wider font-semibold px-2"
+                className="h-7 gap-1 text-xs rounded-lg px-2 text-muted-foreground hover:text-foreground"
               >
                 Suiv.
                 <ChevronRight className="w-3.5 h-3.5" />
               </Button>
             </div>
           )}
-          {/* ─── SWIPE HINT (mobile, first open only) ─── */}
+
+          {/* ─── SWIPE HINT ─── */}
           {showSwipeHint && (
-            <div className="sm:hidden flex items-center justify-center gap-3 py-2 bg-foreground text-background text-xs font-medium uppercase tracking-wider animate-fade-in shrink-0">
-              <ChevronLeft className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
+            <div className="sm:hidden flex items-center justify-center gap-3 py-1.5 bg-primary/10 text-primary text-xs font-medium animate-fade-in shrink-0">
+              <ChevronLeft className="w-3.5 h-3.5 animate-[pulse_1s_ease-in-out_infinite]" />
               <span>Swipez pour naviguer</span>
-              <ChevronRight className="w-4 h-4 animate-[pulse_1s_ease-in-out_infinite]" />
+              <ChevronRight className="w-3.5 h-3.5 animate-[pulse_1s_ease-in-out_infinite]" />
             </div>
           )}
+
           {/* ─── HEADER ─── */}
-          <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-border shrink-0">
-            <div className="flex items-start gap-3 sm:gap-4">
-               <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border border-border shrink-0 rounded-lg">
+          <SheetHeader className="px-3 sm:px-5 pt-4 pb-3 bg-background border-b border-border shrink-0">
+            <div className="flex items-start gap-3">
+              <Avatar className="w-12 h-12 sm:w-14 sm:h-14 border border-border shrink-0 rounded-xl shadow-sm">
                 <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-accent text-foreground text-base sm:text-xl font-bold rounded-lg">
+                <AvatarFallback className="bg-muted text-foreground text-base sm:text-lg font-semibold rounded-xl">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0 space-y-1">
-                <SheetTitle className="text-base sm:text-xl font-black text-foreground uppercase tracking-wide leading-tight truncate">
-                  {fullName || 'Profil LinkedIn'}
-                </SheetTitle>
+                <div className="flex items-center gap-2">
+                  <SheetTitle className="text-base sm:text-lg font-bold text-foreground leading-tight truncate">
+                    {fullName || 'Profil LinkedIn'}
+                  </SheetTitle>
+                  {profileUrl && (
+                    <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-6 h-6 rounded-md hover:bg-muted transition-colors shrink-0">
+                      <img src={linkedinLogo} alt="LinkedIn" className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
                 <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 leading-snug">
                   {displayProfile.headline || currentRole || 'Profil LinkedIn'}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 pt-0.5 text-xs sm:text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted-foreground">
                   {currentCompany && (
                     <span className="flex items-center gap-1.5 font-medium text-foreground/80">
                       <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
                       <span className="truncate max-w-[120px] sm:max-w-none">{currentCompany}</span>
-                      {currentJobTenure && <span className="text-muted-foreground/50 font-normal hidden sm:inline">• {currentJobTenure}</span>}
+                      {currentJobTenure && <span className="text-muted-foreground/60 font-normal hidden sm:inline">· {currentJobTenure}</span>}
                     </span>
                   )}
                   {displayProfile.location && (
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                      <MapPin className="w-3 h-3 shrink-0" />
                       <span className="truncate max-w-[100px] sm:max-w-none">{displayProfile.location}</span>
                     </span>
                   )}
                   {totalExperience && (
-                    <span className="flex items-center gap-1 font-medium text-foreground">
-                      <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                    <span className="flex items-center gap-1 font-medium text-foreground/80">
+                      <TrendingUp className="w-3 h-3 shrink-0" />
                       {totalExperience}
                     </span>
                   )}
                 </div>
-                <CardStatusBadges
-                  candidateStatus={candidateStatus}
-                  jobScore={jobScore}
-                  profile={profile}
-                  isLikelyToRespond={isLikelyToRespond}
-                  airtableMatch={airtableMatch}
-                  notionMatch={notionMatch}
-                  historyData={historyData}
-                  historyLoading={historyLoading}
-                  historyLatestDateLabel={historyLatestDateLabel}
-                />
-              </div>
 
-              {/* ─── CONTACT INFO ─── */}
-              {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
-                  {contactInfo.emails.map((email) => (
-                    <Badge
-                      key={email}
-                      variant="outline"
-                      className="gap-1 rounded-lg border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
-                    >
-                      <Mail className="h-3 w-3" />
-                      <span className="max-w-[180px] truncate">{email}</span>
-                    </Badge>
-                  ))}
-
-                  {contactInfo.phones.map((phone) => (
-                    <Badge
-                      key={phone}
-                      variant="outline"
-                      className="gap-1 rounded-lg border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
-                    >
-                      <Phone className="h-3 w-3" />
-                      <span>{phone}</span>
-                    </Badge>
-                  ))}
+                {/* Status badges */}
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  <CardStatusBadges
+                    candidateStatus={candidateStatus}
+                    jobScore={jobScore}
+                    profile={profile}
+                    isLikelyToRespond={isLikelyToRespond}
+                    airtableMatch={airtableMatch}
+                    notionMatch={notionMatch}
+                    historyData={historyData}
+                    historyLoading={historyLoading}
+                    historyLatestDateLabel={historyLatestDateLabel}
+                  />
                 </div>
-              )}
+              </div>
             </div>
 
+            {/* ─── CONTACT INFO ─── */}
+            {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 mt-2 border-t border-border">
+                {contactInfo.emails.map((email) => (
+                  <Badge
+                    key={email}
+                    variant="outline"
+                    className="gap-1 rounded-md border-border bg-muted/50 px-2 py-0.5 text-xs font-normal text-foreground cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => { navigator.clipboard.writeText(email); toast.success('Email copié'); }}
+                  >
+                    <Mail className="h-3 w-3 text-muted-foreground" />
+                    <span className="max-w-[160px] truncate">{email}</span>
+                  </Badge>
+                ))}
+                {contactInfo.phones.map((phone) => (
+                  <Badge
+                    key={phone}
+                    variant="outline"
+                    className="gap-1 rounded-md border-border bg-muted/50 px-2 py-0.5 text-xs font-normal text-foreground cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => { navigator.clipboard.writeText(phone); toast.success('Téléphone copié'); }}
+                  >
+                    <Phone className="h-3 w-3 text-muted-foreground" />
+                    <span>{phone}</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
+
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-1 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-border overflow-x-auto no-scrollbar" data-no-swipe>
+            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border overflow-x-auto no-scrollbar" data-no-swipe>
               {selectedJob && onScoreProfile && !jobScore && (
                 <Button
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                  className="h-7 gap-1 text-xs rounded-lg border border-border bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 px-3 font-medium shrink-0"
                 >
                   {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
-                  {isScoring ? '…' : 'Score'}
+                  Score
                 </Button>
               )}
 
@@ -607,12 +620,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {selectedJob && (
                 <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-7 gap-1 text-xs rounded-lg border border-border bg-accent text-foreground hover:bg-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1.5 text-xs rounded-lg px-3 font-medium shrink-0"
                 >
                   <PenLine className="w-3 h-3" />
-                  Msg
+                  Message
                 </Button>
               )}
 
@@ -633,55 +647,42 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {onArchive && (
-                <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-xs rounded-lg border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-bold shrink-0">
+                <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 gap-1.5 text-xs rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2 font-medium shrink-0 ml-auto">
                   <Archive className="w-3 h-3" />
-                  Arch.
+                  <span className="hidden sm:inline">Archiver</span>
                 </Button>
-              )}
-
-              <div className="flex-1" />
-
-              {profileUrl && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-7 h-7 border border-border hover:border-border hover:bg-muted transition-colors shrink-0">
-                      <img src={linkedinLogo} alt="LinkedIn" className="w-3.5 h-3.5" />
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent>Voir sur LinkedIn</TooltipContent>
-                </Tooltip>
               )}
             </div>
           </SheetHeader>
 
           {/* ─── CONTENT ─── */}
-          <div className="flex-1 overflow-y-auto overflow-x-auto">
-            <div className="p-2 sm:p-6 space-y-3 sm:space-y-5 min-w-0 max-w-full">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="p-2.5 sm:p-5 space-y-3 sm:space-y-4 min-w-0 max-w-full">
               {/* Job Score */}
               {jobScore && (
-                <details open className="border border-border bg-background group">
-                  <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-                    <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Scoring</h3>
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold group-open:hidden">Voir</span>
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold hidden group-open:inline">Réduire</span>
-                  </summary>
-                  <div className="px-3 sm:px-5 pb-4">
-                    <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
-                  </div>
-                </details>
+                <div className="bg-background rounded-lg border border-border overflow-hidden">
+                  <details open className="group">
+                    <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                      <h3 className="text-xs font-semibold text-foreground">Scoring</h3>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                    </summary>
+                    <div className="px-3 sm:px-4 pb-4">
+                      <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
+                    </div>
+                  </details>
+                </div>
               )}
 
-
-              {/* Airtable History Panel — always show if we have data or are loading */}
+              {/* Airtable History Panel */}
               {(historyPanelLoading || hasHistory) && (
-                <div className="border border-border overflow-hidden bg-background">
+                <div className="bg-background rounded-lg border border-border overflow-hidden">
                   <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
                 </div>
               )}
 
               {/* Aircall History */}
               {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
-                <div className="border border-border overflow-hidden bg-background p-3 sm:p-4">
+                <div className="bg-background rounded-lg border border-border overflow-hidden p-3 sm:p-4">
                   <AircallHistoryPanel
                     calls={aircallHistory.calls}
                     loading={aircallHistory.loading}
@@ -693,20 +694,22 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* À propos */}
               {displayProfile.summary && (
-                <details className="border border-border bg-background group">
-                  <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-                    <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">À propos</h3>
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-                  </summary>
-                  <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
-                  </div>
-                </details>
+                <div className="bg-background rounded-lg border border-border overflow-hidden">
+                  <details className="group">
+                    <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                      <h3 className="text-xs font-semibold text-foreground">À propos</h3>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                    </summary>
+                    <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+                      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
+                    </div>
+                  </details>
+                </div>
               )}
 
               {/* Loading indicator for pool profile enrichment */}
               {isEnriching && (
-                <div className="flex items-center gap-2 p-3 border border-border bg-muted/30 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-border bg-background text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Chargement du profil complet…
                 </div>
