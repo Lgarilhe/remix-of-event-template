@@ -434,6 +434,34 @@ export function useLinkedInSearch({
     initialFilterLoadRef.current = true;
   }, [activeProject?.id]);
 
+  // Ref to hold the latest filters for flush-on-unmount
+  const latestFiltersForSaveRef = useRef(filters);
+  useEffect(() => { latestFiltersForSaveRef.current = filters; }, [filters]);
+
+  const flushFilterSave = useCallback(() => {
+    if (!filterSaveTimerRef.current || !activeProject?.id) return;
+    clearTimeout(filterSaveTimerRef.current);
+    filterSaveTimerRef.current = null;
+    const currentFilters = latestFiltersForSaveRef.current;
+    if (JSON.stringify(currentFilters) === JSON.stringify(INITIAL_FILTERS)) return;
+    const ts = new Date().toISOString();
+    filtersSnapshotRef.current = ts;
+    const currentSnapshot = (activeProject.filters_snapshot || {}) as Record<string, any>;
+    updateProject({
+      id: activeProject.id,
+      filters_snapshot: {
+        ...currentSnapshot,
+        ...currentFilters,
+        last_manual_edit: ts,
+      },
+    });
+  }, [activeProject?.id, activeProject?.filters_snapshot, updateProject]);
+
+  // Flush pending save on unmount so filters are never lost
+  useEffect(() => {
+    return () => { flushFilterSave(); };
+  }, [flushFilterSave]);
+
   useEffect(() => {
     // Skip the first render (initial load from filters_snapshot)
     if (initialFilterLoadRef.current) {
