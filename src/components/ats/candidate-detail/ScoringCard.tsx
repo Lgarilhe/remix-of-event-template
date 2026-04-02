@@ -40,8 +40,8 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className={cn("h-10 w-10 flex items-center justify-center border text-lg font-black",
-            scoring.score >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
-            scoring.score >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
+            scoring.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
+            scoring.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
             'border-destructive/40 bg-destructive/5 text-destructive'
           )}>{scoring.score}</div>
           <div>
@@ -55,9 +55,9 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
         </div>
         {scoring.recommendation && (
           <span className={cn("text-xs px-2 py-0.5 border font-medium uppercase tracking-wider",
-            scoring.recommendation === 'shortlist' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' :
+            scoring.recommendation === 'shortlist' ? 'border-success/30 text-success bg-success/10' :
             scoring.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-            'border-amber-300 text-amber-700 bg-amber-50'
+            'border-warning/30 text-warning bg-warning/10'
           )}>
             {scoring.recommendation === 'shortlist' ? 'GO' : scoring.recommendation === 'skip' ? 'SKIP' : 'MAYBE'}
           </span>
@@ -87,15 +87,15 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
                           <span className="text-[8px] text-muted-foreground/60">({dim.weight}%)</span>
                         </span>
                         <span className={cn("font-bold",
-                          dim.score >= 70 ? 'text-emerald-600' :
-                          dim.score >= 40 ? 'text-amber-600' : 'text-destructive'
+                          dim.score >= 70 ? 'text-success' :
+                          dim.score >= 40 ? 'text-warning' : 'text-destructive'
                         )}>{dim.score}</span>
                       </div>
                       <div className="h-1.5 bg-foreground/10 rounded-full overflow-hidden">
                         <div
                           className={cn("h-full transition-all duration-500 rounded-full",
-                            dim.score >= 70 ? 'bg-emerald-500' :
-                            dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive'
+                            dim.score >= 70 ? 'bg-success' :
+                            dim.score >= 40 ? 'bg-warning' : 'bg-destructive'
                           )}
                           style={{ width: `${dim.score}%` }}
                         />
@@ -122,8 +122,8 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
                       {cfg.icon}
                       <span className="text-muted-foreground">{cfg.label}</span>
                       <span className={cn("font-bold",
-                        dim.score >= 70 ? 'text-emerald-600' :
-                        dim.score >= 40 ? 'text-amber-600' : 'text-destructive'
+                        dim.score >= 70 ? 'text-success' :
+                        dim.score >= 40 ? 'text-warning' : 'text-destructive'
                       )}>{dim.score}</span>
                     </div>
                   );
@@ -136,12 +136,12 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {details.matching_skills?.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Compétences matchées</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                <span className="text-xs font-bold uppercase tracking-wider text-success">Compétences matchées</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {details.matching_skills.map((s: string) => (
-                  <span key={s} className="text-xs px-2 py-0.5 border border-emerald-300 text-emerald-700 bg-emerald-50 font-medium">{s}</span>
+                  <span key={s} className="text-xs px-2 py-0.5 border border-success/30 text-success bg-success/10 font-medium">{s}</span>
                 ))}
               </div>
             </div>
@@ -151,12 +151,12 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {details.missing_skills?.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Compétences manquantes</span>
+                <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                <span className="text-xs font-bold uppercase tracking-wider text-warning">Compétences manquantes</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {details.missing_skills.map((s: string) => (
-                  <span key={s} className="text-xs px-2 py-0.5 border border-amber-300 text-amber-700 bg-amber-50 font-medium">{s}</span>
+                  <span key={s} className="text-xs px-2 py-0.5 border border-warning/30 text-warning bg-warning/10 font-medium">{s}</span>
                 ))}
               </div>
             </div>
@@ -165,7 +165,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {/* Strengths */}
           {details.strengths?.length > 0 && (
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1 block">Forces</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-success mb-1 block">Forces</span>
               <ul className="text-xs text-muted-foreground space-y-0.5">
                 {details.strengths.map((s: string, i: number) => <li key={i}>• {s}</li>)}
               </ul>
@@ -175,7 +175,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
           {/* Concerns */}
           {(details.concerns || details.weaknesses)?.length > 0 && (
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-1 block">Points d'attention</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-warning mb-1 block">Points d'attention</span>
               <ul className="text-xs text-muted-foreground space-y-0.5">
                 {(details.concerns || details.weaknesses)!.map((w: string, i: number) => <li key={i}>• {w}</li>)}
               </ul>
@@ -189,8 +189,8 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
                 <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-muted-foreground">Expérience :</span>
                 <span className={cn("font-medium",
-                  details.experience_match === 'compatible' ? 'text-emerald-600' :
-                  details.experience_match === 'trop_senior' ? 'text-amber-600' :
+                  details.experience_match === 'compatible' ? 'text-success' :
+                  details.experience_match === 'trop_senior' ? 'text-warning' :
                   details.experience_match === 'trop_junior' ? 'text-destructive' : 'text-muted-foreground'
                 )}>
                   {details.experience_match === 'compatible' ? 'Compatible' :
@@ -203,7 +203,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
               <div className="flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-muted-foreground">Localisation :</span>
-                <span className={cn("font-medium", details.location_match ? 'text-emerald-600' : 'text-destructive')}>
+                <span className={cn("font-medium", details.location_match ? 'text-success' : 'text-destructive')}>
                   {details.location_match ? 'Compatible' : 'Non compatible'}
                 </span>
               </div>
@@ -226,8 +226,8 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
               <Brain className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-muted-foreground">Score LLM :</span>
               <span className={cn("font-bold",
-                details.llmScore >= 70 ? 'text-emerald-600' :
-                details.llmScore >= 40 ? 'text-amber-600' : 'text-destructive'
+                details.llmScore >= 70 ? 'text-success' :
+                details.llmScore >= 40 ? 'text-warning' : 'text-destructive'
               )}>{details.llmScore}/100</span>
             </div>
           )}

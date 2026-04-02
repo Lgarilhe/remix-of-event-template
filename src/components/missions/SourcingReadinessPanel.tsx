@@ -5,9 +5,9 @@ import { useAICredits } from '@/hooks/useAICredits';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import {
-  CheckCircle, WarningCircle, XCircle, Globe, LinkedinLogo,
-  Sparkle, MagnifyingGlass, CaretDown, Lightning,
-} from '@phosphor-icons/react';
+  CheckCircle2, AlertCircle, XCircle, Globe, Linkedin,
+  Sparkle, Search, ChevronDown, Zap,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countBriefFields } from '@/lib/missionUtils';
 import type { JobDetails } from '@/types/jobDetails';
@@ -37,9 +37,9 @@ interface SourcingReadinessPanelProps {
 type CheckStatus = 'ok' | 'warning' | 'error';
 
 const statusIcon = {
-  ok: <CheckCircle weight="fill" className="w-4 h-4 text-accent" />,
-  warning: <WarningCircle weight="fill" className="w-4 h-4 text-brutal-accent" />,
-  error: <XCircle weight="fill" className="w-4 h-4 text-destructive" />,
+  ok: <CheckCircle2 className="w-4 h-4 text-accent" />,
+  warning: <AlertCircle className="w-4 h-4 text-brutal-accent" />,
+  error: <XCircle className="w-4 h-4 text-destructive" />,
 };
 
 const CheckItem: React.FC<{
@@ -180,7 +180,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
           animate={{ opacity: 1 }}
           className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"
         >
-          <Lightning weight="fill" className="w-3.5 h-3.5 text-brutal-accent" />
+          <Zap className="w-3.5 h-3.5 text-brutal-accent" />
           Choisissez votre source
         </motion.h3>
 
@@ -189,7 +189,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             selected={searchSource === 'linkedin'}
             onClick={() => onSourceChange?.('linkedin')}
             delay={0.1}
-            icon={<LinkedinLogo weight="fill" className="w-5 h-5 text-[#0A66C2]" />}
+            icon={<Linkedin className="w-5 h-5 text-[#0A66C2]" />}
             title="LinkedIn"
             description="Recherche directe via votre compte"
             badge={
@@ -208,7 +208,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             selected={searchSource === 'database'}
             onClick={() => onSourceChange?.('database')}
             delay={0.2}
-            icon={<Globe weight="duotone" className="w-5 h-5 text-foreground" />}
+            icon={<Globe className="w-5 h-5 text-foreground" />}
             title="Base Konekt"
             description="200M+ profils, sans licence LinkedIn"
             badge={
@@ -282,10 +282,10 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
                   animate={{ rotate: 360 }}
                   transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                 >
-                  <Sparkle weight="fill" className="w-4 h-4" />
+                  <Sparkle className="w-4 h-4" />
                 </motion.div>
               ) : (
-                <Sparkle weight="fill" className="w-4 h-4" />
+                <Sparkle className="w-4 h-4" />
               )}
               <span className="font-bold">Générer les filtres automatiquement</span>
               <span className="text-xs opacity-70">~4 cr</span>
@@ -302,8 +302,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider transition-colors mx-auto"
         >
           <span>ou configurez manuellement</span>
-          <CaretDown
-            weight="bold"
+          <ChevronDown
             className={cn(
               'w-3 h-3 transition-transform',
               showManualFilters && 'rotate-180',
@@ -348,7 +347,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
                 : 'border-foreground/20 bg-foreground/5 text-muted-foreground cursor-not-allowed',
             )}
           >
-            <MagnifyingGlass weight="bold" className="w-5 h-5" />
+            <Search className="w-5 h-5" />
             Lancer la recherche
           </button>
         </motion.div>

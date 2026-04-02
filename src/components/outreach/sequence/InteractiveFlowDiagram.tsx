@@ -44,32 +44,32 @@ const STEP_ICONS: Record<string, React.ElementType | null> = {
 };
 
 const STEP_BG: Record<string, string> = {
-  inmail: 'bg-blue-50 border-blue-200/80',
-  connection_request: 'bg-emerald-50 border-emerald-200/80',
+  inmail: 'bg-info/10 border-info/20',
+  connection_request: 'bg-success/10 border-success/20',
   profile_visit: 'bg-sky-50 border-sky-200/80',
-  message: 'bg-orange-50 border-orange-200/80',
+  message: 'bg-warning/10 border-warning/20',
   smart_message: 'bg-purple-50 border-purple-200/80',
   whatsapp_message: 'bg-green-50 border-green-200/80',
   email: 'bg-violet-50 border-violet-200/80',
-  wait_connection: 'bg-amber-50 border-amber-200/80',
-  wait_reply: 'bg-amber-50 border-amber-200/80',
-  wait_profile_visit: 'bg-amber-50 border-amber-200/80',
-  condition_branch: 'bg-rose-50 border-rose-200/80',
+  wait_connection: 'bg-warning/10 border-warning/20',
+  wait_reply: 'bg-warning/10 border-warning/20',
+  wait_profile_visit: 'bg-warning/10 border-warning/20',
+  condition_branch: 'bg-destructive/10 border-destructive/20',
   check_connection: 'bg-indigo-50 border-indigo-200/80',
 };
 
 const STEP_ICON_BG: Record<string, string> = {
-  inmail: 'bg-blue-100 text-blue-600',
-  connection_request: 'bg-emerald-100 text-emerald-600',
+  inmail: 'bg-info/20 text-info-foreground',
+  connection_request: 'bg-success/20 text-success-foreground',
   profile_visit: 'bg-sky-100 text-sky-600',
-  message: 'bg-orange-100 text-orange-600',
+  message: 'bg-warning/20 text-warning-foreground',
   smart_message: 'bg-purple-100 text-purple-600',
   whatsapp_message: 'bg-green-100 text-green-600',
   email: 'bg-violet-100 text-violet-600',
-  wait_connection: 'bg-amber-100 text-amber-600',
-  wait_reply: 'bg-amber-100 text-amber-600',
-  wait_profile_visit: 'bg-amber-100 text-amber-600',
-  condition_branch: 'bg-rose-100 text-rose-600',
+  wait_connection: 'bg-warning/20 text-warning-foreground',
+  wait_reply: 'bg-warning/20 text-warning-foreground',
+  wait_profile_visit: 'bg-warning/20 text-warning-foreground',
+  condition_branch: 'bg-destructive/20 text-destructive',
   check_connection: 'bg-indigo-100 text-indigo-600',
 };
 
@@ -243,11 +243,11 @@ const BranchColumn: React.FC<{
   selectedStepId: string | null;
 }> = ({ branchSteps, allSteps, branchType, parentStepId, onStepClick, onAddBranchStep, onRemoveStep, selectedStepId }) => {
   const isTrue = branchType === 'true';
-  const accentLine = isTrue ? 'bg-emerald-300' : 'bg-orange-300';
+  const accentLine = isTrue ? 'bg-success' : 'bg-warning';
   const label = isTrue ? '1er degré' : '2e/3e degré';
   const LabelIcon = isTrue ? Check : X;
-  const labelColor = isTrue ? 'text-emerald-600 bg-emerald-50 border-emerald-200/60' : 'text-orange-600 bg-orange-50 border-orange-200/60';
-  const addBorder = isTrue ? 'border-emerald-200 text-emerald-500 hover:bg-emerald-50' : 'border-orange-200 text-orange-500 hover:bg-orange-50';
+  const labelColor = isTrue ? 'text-success-foreground bg-success/10 border-success/20' : 'text-warning-foreground bg-warning/10 border-warning/20';
+  const addBorder = isTrue ? 'border-success/20 text-success-foreground hover:bg-success/10' : 'border-warning/20 text-warning-foreground hover:bg-warning/10';
 
   return (
     <div className="flex flex-col items-center min-w-[110px]">
@@ -311,9 +311,9 @@ const BranchSplit: React.FC<{
   return (
     <div className="flex flex-col items-center w-full mt-2">
       <div className="flex items-center justify-center w-full gap-1">
-        <div className="flex-1 h-px bg-emerald-300 max-w-[70px]" />
+        <div className="flex-1 h-px bg-success max-w-[70px]" />
         <div className="w-2 h-2 rounded-full bg-indigo-400" />
-        <div className="flex-1 h-px bg-orange-300 max-w-[70px]" />
+        <div className="flex-1 h-px bg-warning max-w-[70px]" />
       </div>
       <div className="flex justify-center gap-3 w-full mt-1.5">
         <BranchColumn branchSteps={trueBranchSteps} allSteps={allSteps} branchType="true" parentStepId={step.id} onStepClick={onStepClick} onAddBranchStep={onAddBranchStep} onRemoveStep={onRemoveStep} selectedStepId={selectedStepId} />

@@ -5,9 +5,9 @@ import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjec
 import { useProjectStats } from '@/hooks/useProjectStats';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
-  FileText, Users, PaperPlaneTilt, Crosshair, Sparkle, ArrowRight,
-  Lightning, TrendUp, Rocket,
-} from '@phosphor-icons/react';
+  FileText, Users, Send, Crosshair, Sparkle, ArrowRight,
+  Zap, TrendingUp, Rocket,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getBriefCompletionPercent } from '@/lib/missionUtils';
 import { FilterReviewModal } from './FilterReviewModal';
@@ -34,14 +34,14 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
 
   const statItems = [
     { value: totalCandidates, label: 'Sourcés', icon: Users },
-    { value: messaged, label: 'Contactés', icon: PaperPlaneTilt },
+    { value: messaged, label: 'Contactés', icon: Send },
     { value: shortlisted, label: 'Shortlistés', icon: Crosshair },
   ];
 
   const actions = [
     { icon: Sparkle, title: 'Sourcing', desc: 'Rechercher des profils avec l\'IA et les filtres avancés', tab: 'sourcing' },
-    { icon: Lightning, title: 'Outreach', desc: 'Envoyer des messages personnalisés aux candidats', tab: 'outreach' },
-    { icon: TrendUp, title: 'Pipeline', desc: 'Suivre et gérer l\'avancement des candidats', tab: 'pipeline' },
+    { icon: Zap, title: 'Outreach', desc: 'Envoyer des messages personnalisés aux candidats', tab: 'outreach' },
+    { icon: TrendingUp, title: 'Pipeline', desc: 'Suivre et gérer l\'avancement des candidats', tab: 'pipeline' },
   ];
 
   return (
@@ -56,7 +56,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <FileText className="w-4 h-4 text-primary" weight="duotone" />
+              <FileText className="w-4 h-4 text-primary" />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground">Brief Mission</p>
@@ -118,7 +118,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
         {statItems.map((item) => (
           <div key={item.label} className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <item.icon className="w-4 h-4 text-muted-foreground" weight="duotone" />
+              <item.icon className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
             </div>
             <span className="text-2xl font-semibold text-foreground tabular-nums">
@@ -137,7 +137,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <div className="w-9 h-9 flex items-center justify-center rounded-lg bg-primary-foreground/20 shrink-0">
-            <Rocket className="w-4 h-4 text-primary-foreground" weight="fill" />
+            <Rocket className="w-4 h-4 text-primary-foreground" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold mb-0.5">Lancer le sourcing</h3>
@@ -158,7 +158,7 @@ export const MissionBentoDashboard: React.FC<MissionBentoDashboardProps> = ({ pr
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <div className="w-9 h-9 flex items-center justify-center rounded-lg bg-muted shrink-0 group-hover:bg-primary/10 transition-colors">
-              <action.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" weight="duotone" />
+              <action.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-medium text-foreground">{action.title}</h3>

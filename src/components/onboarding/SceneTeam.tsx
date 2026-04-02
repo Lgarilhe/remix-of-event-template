@@ -204,6 +204,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       <motion.img
         src={teamIcon}
         alt=""
+        aria-hidden="true"
         className="mx-auto w-14 h-14 drop-shadow-md"
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -243,7 +244,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           >
             <motion.img
               src={linkedinLogo}
-              alt=""
+              alt="LinkedIn"
               className="w-10 h-10"
               animate={{ scale: [1, 1.15, 1] }}
               transition={{ repeat: Infinity, duration: 1.2 }}

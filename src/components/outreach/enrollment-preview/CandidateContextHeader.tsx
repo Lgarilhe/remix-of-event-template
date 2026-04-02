@@ -44,7 +44,7 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
         {profile.profile_picture_url ? (
           <img
             src={profile.profile_picture_url}
-            alt=""
+            alt={profile.name || 'Photo de profil'}
             className="w-12 h-12 rounded-full object-cover shrink-0"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />

@@ -202,7 +202,7 @@ export default function ScorecardFullPage() {
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
-          <img src={iconJob3d} alt="" className="w-5 h-5 object-contain" />
+          <img src={iconJob3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
           Poste
           {jobOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </button>
@@ -215,7 +215,7 @@ export default function ScorecardFullPage() {
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
           )}
         >
-          <img src={iconProfile3d} alt="" className="w-5 h-5 object-contain" />
+          <img src={iconProfile3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
           Profil
           {profileOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </button>
@@ -320,7 +320,7 @@ export default function ScorecardFullPage() {
                           <div className="flex items-start gap-2.5">
                             <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
                               {logoSrc ? (
-                                <img src={logoSrc} alt="" className="w-6 h-6 object-contain"
+                                <img src={logoSrc} alt={exp.company || ''} className="w-6 h-6 object-contain"
                                   onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
                               ) : (
                                 <Building2 className="w-3.5 h-3.5 text-muted-foreground/40" />
@@ -371,7 +371,7 @@ export default function ScorecardFullPage() {
                           <div className="flex items-start gap-2.5">
                             <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
                               {logoSrc ? (
-                                <img src={logoSrc} alt="" className="w-6 h-6 object-contain"
+                                <img src={logoSrc} alt={edu.school || ''} className="w-6 h-6 object-contain"
                                   onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
                               ) : (
                                 <GraduationCap className="w-3.5 h-3.5 text-muted-foreground/40" />

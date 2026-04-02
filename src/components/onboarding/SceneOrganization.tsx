@@ -323,7 +323,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           </Button>
         )}
         <div className="relative flex-1">
-          <img src={searchIcon} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none" />
+          <img src={searchIcon} alt="" aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none" />
           <Input
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
@@ -420,9 +420,9 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   className="w-full text-left border-2 border-foreground/20 hover:border-foreground p-3 flex items-center gap-3 transition-all hover:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
                 >
                   {c.logoUrl ? (
-                    <img src={c.logoUrl} alt="" className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={c.logoUrl} alt={c.name} className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : c.domain ? (
-                    <img src={`https://logo.clearbit.com/${c.domain}`} alt="" className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={`https://logo.clearbit.com/${c.domain}`} alt={c.name} className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
                     <div className="w-8 h-8 bg-muted flex items-center justify-center rounded-sm shrink-0">
                       <Building2 className="w-4 h-4 text-muted-foreground" />

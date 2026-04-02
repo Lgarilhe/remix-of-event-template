@@ -84,7 +84,7 @@ function CompanyLogo({ companyName, website }: { companyName?: string; website?:
   return (
     <img
       src={logos[logoIndex]}
-      alt=""
+      alt={companyName || ''}
       className="w-4 h-4 border border-border/30 object-contain bg-background shrink-0"
       onError={() => setLogoIndex((prev) => (prev < logos.length - 1 ? prev + 1 : prev))}
       loading="lazy"

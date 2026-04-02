@@ -181,7 +181,7 @@ export default function ClientPortal() {
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {data.org_logo && (
-              <img src={data.org_logo} alt="" className="h-7 w-7 object-contain" />
+              <img src={data.org_logo} alt={data.org_name || 'Logo organisation'} className="h-7 w-7 object-contain" />
             )}
             <div>
               <h1 className="text-sm font-bold uppercase tracking-wider text-foreground">

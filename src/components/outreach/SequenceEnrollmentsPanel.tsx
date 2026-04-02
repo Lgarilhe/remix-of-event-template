@@ -93,35 +93,35 @@ interface SequenceEnrollmentsPanelProps {
 }
 
 const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  active: { 
-    label: 'Active', 
-    icon: <Clock className="w-3 h-3" />, 
-    className: 'bg-blue-500 text-white border border-blue-600' 
+  active: {
+    label: 'Active',
+    icon: <Clock className="w-3 h-3" />,
+    className: 'bg-info text-info-foreground border border-info'
   },
-  paused: { 
-    label: 'En pause', 
-    icon: <StopCircle className="w-3 h-3" />, 
-    className: 'bg-amber-500 text-white border border-amber-600' 
+  paused: {
+    label: 'En pause',
+    icon: <StopCircle className="w-3 h-3" />,
+    className: 'bg-warning text-warning-foreground border border-warning'
   },
-  completed: { 
-    label: 'Terminée', 
-    icon: <CheckCircle className="w-3 h-3" />, 
-    className: 'bg-emerald-500 text-white border border-emerald-600' 
+  completed: {
+    label: 'Terminée',
+    icon: <CheckCircle className="w-3 h-3" />,
+    className: 'bg-success text-success-foreground border border-success'
   },
-  replied: { 
-    label: 'Répondu', 
-    icon: <MessageCircle className="w-3 h-3" />, 
-    className: 'bg-purple-500 text-white border border-purple-600' 
+  replied: {
+    label: 'Répondu',
+    icon: <MessageCircle className="w-3 h-3" />,
+    className: 'bg-purple-500 text-white border border-purple-600'
   },
-  cancelled: { 
-    label: 'Annulée', 
-    icon: <XCircle className="w-3 h-3" />, 
-    className: 'bg-muted text-muted-foreground border border-foreground/20' 
+  cancelled: {
+    label: 'Annulée',
+    icon: <XCircle className="w-3 h-3" />,
+    className: 'bg-muted text-muted-foreground border border-foreground/20'
   },
-  booked: { 
-    label: 'RDV pris', 
-    icon: <CalendarCheck className="w-3 h-3" />, 
-    className: 'bg-green-600 text-white border border-green-700' 
+  booked: {
+    label: 'RDV pris',
+    icon: <CalendarCheck className="w-3 h-3" />,
+    className: 'bg-success text-success-foreground border border-success'
   },
 };
 
@@ -130,13 +130,13 @@ const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wai
 
 const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
   send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
-  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
+  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
+  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
   visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
   smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-700', bgColor: 'bg-indigo-500' },
   profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
-  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
+  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
+  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
   inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
 };
 
@@ -164,9 +164,9 @@ const formatErrorMessage = (error: string | null): string => {
 
 const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10 border-dashed' },
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-blue-500/10 text-blue-700 border-blue-500/30' },
-  executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' },
+  scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-info/10 text-info-foreground border-info/30' },
+  executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
+  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
   skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10' },
   failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
   cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10' },
@@ -588,12 +588,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     return (
                                       <>
                                         {lastExecuted && (
-                                          <span className="text-xs text-emerald-600">
+                                          <span className="text-xs text-success-foreground">
                                             ✓ {format(new Date(lastExecuted.executed_at!), 'dd/MM à HH:mm', { locale: fr })}
                                           </span>
                                         )}
                                         {nextScheduled && (
-                                          <span className="text-xs text-blue-600 font-medium">
+                                          <span className="text-xs text-info-foreground font-medium">
                                             → {(() => {
                                               const actionType = nextScheduled.step?.action_type || '';
                                               const label = actionTypeConfig[actionType]?.label || actionType;
@@ -629,7 +629,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 {enrollment.status === 'active' ? (
                                   <DropdownMenuItem 
                                     onClick={() => stopEnrollment(enrollment.id)}
-                                    className="text-orange-600"
+                                    className="text-warning-foreground"
                                   >
                                     <StopCircle className="w-4 h-4 mr-2" />
                                     Arrêter la séquence
@@ -637,7 +637,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 ) : enrollment.status === 'paused' ? (
                                   <DropdownMenuItem 
                                     onClick={() => resumeEnrollment(enrollment.id)}
-                                    className="text-green-600"
+                                    className="text-success-foreground"
                                   >
                                     <Play className="w-4 h-4 mr-2" />
                                     Reprendre la séquence
@@ -678,8 +678,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   const actionConfig = actionTypeConfig[step.action_type] || { 
                                     label: step.action_type, 
                                     icon: <Send className="w-3.5 h-3.5" />,
-                                    color: 'text-gray-600',
-                                    bgColor: 'bg-gray-100'
+                                    color: 'text-muted-foreground',
+                                    bgColor: 'bg-muted'
                                   };
                                   
                                   // Determine status: from execution or 'pending' if no execution yet
@@ -714,7 +714,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <span className={cn(
                                             "text-sm font-medium", 
-                                            isPending ? 'text-gray-400' : 'text-foreground'
+                                            isPending ? 'text-muted-foreground' : 'text-foreground'
                                           )}>
                                             {actionConfig.label}
                                           </span>
@@ -743,7 +743,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                               </span>
                                             )}
                                             {(exec.status === 'executed' || exec.status === 'sent') && exec.executed_at && (
-                                              <span className="text-emerald-600">
+                                              <span className="text-success-foreground">
                                                 ✓ {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
                                               </span>
                                             )}

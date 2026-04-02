@@ -38,7 +38,7 @@ export const NotificationDropdown: React.FC = () => {
         onClick={() => setOpen(!open)}
         className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-xs font-medium uppercase border border-foreground leading-none"
       >
-        <img src={iconBell3d} alt="" className="w-5 h-5 object-contain" />
+        <img src={iconBell3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 z-20 min-w-[14px] h-3.5 flex items-center justify-center px-0.5 text-[8px] font-bold bg-destructive text-destructive-foreground rounded-full">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -68,7 +68,7 @@ export const NotificationDropdown: React.FC = () => {
           <div className="flex-1 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <img src={iconBell3d} alt="" className="w-6 h-6 mb-2 opacity-30" />
+                <img src={iconBell3d} alt="" aria-hidden="true" className="w-6 h-6 mb-2 opacity-30" />
                 <p className="text-xs font-medium uppercase tracking-wider">Aucune notification</p>
               </div>
             ) : (

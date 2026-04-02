@@ -1,8 +1,14 @@
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+
 interface AuthSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -28,9 +34,9 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
             emailRedirectTo: `${window.location.origin}/`
           }
         });
-        
+
         if (error) throw error;
-        
+
         toast({
           title: 'Account created!',
           description: 'You can now sign in with your credentials.'
@@ -41,9 +47,9 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
           email,
           password
         });
-        
+
         if (error) throw error;
-        
+
         toast({
           title: 'Welcome back!',
           description: 'You have successfully signed in.'
@@ -61,65 +67,49 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black opacity-50 z-[1000]"
-        onClick={onClose}
-      />
-      
-      {/* Sheet */}
-      <div className={`fixed right-0 top-0 h-full w-full max-w-md bg-[#1A1A1A] z-[1001] shadow-2xl transition-transform duration-300 ${isOpen ? 'animate-slide-in-right' : ''}`}>
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-8 right-8 text-white hover:text-gray-300 transition-colors"
-        >
-          <X size={24} />
-        </button>
-
-        {/* Content */}
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="fixed right-0 top-0 left-auto h-full w-full max-w-md translate-x-0 translate-y-0 rounded-none border-l border-border bg-background p-0 shadow-2xl data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 sm:rounded-none">
         <div className="flex flex-col h-full px-10 pt-24 pb-10">
-          <h2 className="text-white text-4xl font-medium mb-2">
-            {isSignUp ? 'Créer un compte' : 'Connexion'}
-          </h2>
-          <p className="text-muted-foreground text-sm mb-8">
-            {isSignUp
-              ? 'Rejoignez Skalr pour piloter vos recrutements'
-              : 'Content de vous revoir ! Connectez-vous pour continuer'}
-          </p>
+          <DialogHeader className="text-left mb-8">
+            <DialogTitle className="text-foreground text-4xl font-medium mb-2">
+              {isSignUp ? 'Créer un compte' : 'Connexion'}
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-sm">
+              {isSignUp
+                ? 'Rejoignez Skalr pour piloter vos recrutements'
+                : 'Content de vous revoir ! Connectez-vous pour continuer'}
+            </DialogDescription>
+          </DialogHeader>
 
           <form onSubmit={handleAuth} className="flex flex-col gap-6">
             <div>
-              <label htmlFor="email" className="block text-white text-sm font-medium mb-2 uppercase tracking-wide">
+              <label htmlFor="auth-email" className="block text-foreground text-sm font-medium mb-2 uppercase tracking-wide">
                 Email
               </label>
               <input
-                id="email"
+                id="auth-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full bg-white/10 border border-white/20 text-white px-4 py-3 focus:outline-none focus:border-brutal-accent transition-colors"
+                className="w-full bg-muted border border-border text-foreground px-4 py-3 focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
                 placeholder="votre@email.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-white text-sm font-medium mb-2 uppercase tracking-wide">
+              <label htmlFor="auth-password" className="block text-foreground text-sm font-medium mb-2 uppercase tracking-wide">
                 Mot de passe
               </label>
               <input
-                id="password"
+                id="auth-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full bg-white/10 border border-white/20 text-white px-4 py-3 focus:outline-none focus:border-brutal-accent transition-colors"
+                className="w-full bg-muted border border-border text-foreground px-4 py-3 focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
                 placeholder="••••••••"
               />
             </div>
@@ -127,7 +117,7 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-brutal-accent text-foreground font-medium py-3 px-6 uppercase text-sm border border-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-brutal-accent text-foreground font-medium py-3 px-6 uppercase text-sm border border-border hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Chargement...' : isSignUp ? 'Créer un compte' : 'Connexion'}
             </button>
@@ -136,7 +126,7 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
           <div className="mt-6 text-center">
             <button
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-muted-foreground hover:text-white transition-colors text-sm"
+              className="text-muted-foreground hover:text-foreground transition-colors text-sm"
             >
               {isSignUp
                 ? 'Déjà un compte ? Se connecter'
@@ -144,8 +134,7 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
         </div>
-      </div>
-    </>,
-    document.body
+      </DialogContent>
+    </Dialog>
   );
 };

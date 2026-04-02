@@ -249,7 +249,7 @@ const LinkedInHostedAuthCard = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       {account.profile_picture_url ? (
-                        <img src={account.profile_picture_url} alt="" className="w-8 h-8 rounded-full" />
+                        <img src={account.profile_picture_url} alt={account.name || 'Photo de profil'} className="w-8 h-8 rounded-full" />
                       ) : (
                         <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
                           <Linkedin className="w-4 h-4 text-primary" />

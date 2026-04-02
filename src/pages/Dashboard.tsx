@@ -31,7 +31,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 min-w-0">
               <div className="h-8 w-8 flex items-center justify-center shrink-0">
-                <img src={iconDashboard3d} alt="" className="w-8 h-8 object-contain" />
+                <img src={iconDashboard3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
               {orgType && (

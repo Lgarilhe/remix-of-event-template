@@ -95,10 +95,10 @@ const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; c
 };
 
 const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-blue-500 text-white border-blue-600' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'bg-emerald-500 text-white border-emerald-600' },
+  scheduled: { label: 'Planifié', icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-info text-info-foreground border-info' },
+  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'bg-success text-success-foreground border-success' },
   skipped: { label: 'Ignoré', icon: <SkipForward className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-foreground/20' },
-  failed: { label: 'Échoué', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-red-500 text-white border-red-600' },
+  failed: { label: 'Échoué', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
   cancelled: { label: 'Annulé', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-foreground/20' },
   replied: { label: 'Répondu', icon: <MessageSquare className="w-3.5 h-3.5" />, className: 'bg-purple-500 text-white border-purple-600' },
 };
@@ -337,19 +337,19 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
             <div className="p-2.5 sm:p-3 border border-foreground text-center">
-              <div className="text-lg sm:text-xl font-bold text-blue-600">{stats.scheduled}</div>
+              <div className="text-lg sm:text-xl font-bold text-info-foreground">{stats.scheduled}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
             </div>
             <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center bg-amber-400/10">
-              <div className="text-lg sm:text-xl font-bold text-red-600">{stats.pending}</div>
+              <div className="text-lg sm:text-xl font-bold text-destructive">{stats.pending}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
             </div>
             <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
-              <div className="text-lg sm:text-xl font-bold text-emerald-600">{stats.sent}</div>
+              <div className="text-lg sm:text-xl font-bold text-success-foreground">{stats.sent}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
             </div>
             <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
-              <div className="text-lg sm:text-xl font-bold text-red-500">{stats.failed}</div>
+              <div className="text-lg sm:text-xl font-bold text-destructive">{stats.failed}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
             </div>
           </div>
@@ -423,8 +423,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                     const actionConfig = actionTypeConfig[exec.step?.action_type || ''] || {
                       label: exec.step?.action_type || 'Action',
                       icon: <Activity className="w-4 h-4" />,
-                      color: 'text-gray-600',
-                      bgColor: 'bg-gray-100',
+                      color: 'text-muted-foreground',
+                      bgColor: 'bg-muted',
                     };
                     const execStatus = statusConfig[exec.status] || statusConfig.scheduled;
                     const isExpanded = expandedItems.has(exec.id);
@@ -441,8 +441,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                       >
                         <div className={cn(
                           "border border-foreground rounded-none overflow-hidden transition-colors",
-                          isOverdue && "border-amber-500 bg-amber-400/5",
-                          exec.status === 'failed' && "border-red-500 bg-red-500/5",
+                          isOverdue && "border-warning bg-warning/5",
+                          exec.status === 'failed' && "border-destructive bg-destructive/5",
                         )}>
                           <CollapsibleTrigger className="w-full">
                             <div className="p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
@@ -499,12 +499,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                             <div className="px-3 pb-3 pt-2 space-y-2 border-t border-foreground bg-muted/30">
                               {/* Error message */}
                               {hasError && (
-                                <div className="p-2.5 bg-red-500/10 border border-red-500 rounded-none text-sm">
-                                  <div className="flex items-center gap-2 font-medium text-red-700">
+                                <div className="p-2.5 bg-destructive/10 border border-destructive rounded-none text-sm">
+                                  <div className="flex items-center gap-2 font-medium text-destructive">
                                     <AlertCircle className="w-4 h-4" />
                                     {exec.status === 'failed' ? 'Erreur' : 'Raison'}
                                   </div>
-                                  <p className="mt-1 text-red-600 text-xs">
+                                  <p className="mt-1 text-destructive text-xs">
                                     {exec.error_message || exec.skip_reason}
                                   </p>
                                 </div>
@@ -552,7 +552,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleCancelExecution(exec.id);
@@ -573,7 +573,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 </div>
                                 {exec.executed_at && (
                                   <div className="flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3 text-green-600" />
+                                    <CheckCircle2 className="w-3 h-3 text-success-foreground" />
                                     <span>Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}</span>
                                   </div>
                                 )}

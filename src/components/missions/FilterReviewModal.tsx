@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Play, Sparkle, MapPin, Briefcase, GraduationCap, Buildings, MagnifyingGlass, Sliders, UserCircle, Plus, PencilSimple, Check } from '@phosphor-icons/react';
+import { X, Play, Sparkle, MapPin, Briefcase, GraduationCap, Building2, Search, SlidersHorizontal, CircleUser, Plus, Pencil, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* ─── Types ─── */
@@ -61,7 +61,7 @@ function buildSections(filters: AnalysisFilters, analysis: AnalysisData): Filter
   if (activeRoles.length > 0 || roleSuggestions.length > 0) {
     sections.push({
       id: 'roles',
-      icon: UserCircle,
+      icon: CircleUser,
       label: 'Titres de poste',
       enabled: true,
       chips: activeRoles,
@@ -130,7 +130,7 @@ function buildSections(filters: AnalysisFilters, analysis: AnalysisData): Filter
   if (filters.keywords) {
     sections.push({
       id: 'boolean',
-      icon: MagnifyingGlass,
+      icon: Search,
       label: 'Recherche Boolean',
       enabled: true,
       chips: [filters.keywords],
@@ -142,7 +142,7 @@ function buildSections(filters: AnalysisFilters, analysis: AnalysisData): Filter
   if (analysis.domain_expertise?.length > 0 && skills.length === 0) {
     sections.push({
       id: 'domain',
-      icon: Buildings,
+      icon: Building2,
       label: 'Domaines',
       enabled: true,
       chips: analysis.domain_expertise,
@@ -182,7 +182,7 @@ const ChipInput: React.FC<{
         onClick={submit}
         className="h-7 w-7 flex items-center justify-center text-foreground/40 hover:text-foreground transition-colors"
       >
-        <Plus className="w-3 h-3" weight="bold" />
+        <Plus className="w-3 h-3" />
       </button>
     </div>
   );
@@ -221,7 +221,7 @@ const EditableChip: React.FC<{
           className="h-7 w-[140px] px-2 text-xs font-bold uppercase tracking-wider bg-transparent text-foreground outline-none"
         />
         <button onClick={confirm} className="h-7 w-6 flex items-center justify-center text-foreground/60 hover:text-foreground">
-          <Check className="w-3 h-3" weight="bold" />
+          <Check className="w-3 h-3" />
         </button>
       </span>
     );
@@ -234,13 +234,13 @@ const EditableChip: React.FC<{
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         className="w-3.5 h-3.5 flex items-center justify-center text-foreground/20 hover:text-foreground transition-colors"
       >
-        <PencilSimple className="w-2.5 h-2.5" weight="bold" />
+        <Pencil className="w-2.5 h-2.5" />
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         className="w-3.5 h-3.5 flex items-center justify-center text-foreground/20 hover:text-destructive transition-colors"
       >
-        <X className="w-2.5 h-2.5" weight="bold" />
+        <X className="w-2.5 h-2.5" />
       </button>
     </span>
   );
@@ -363,7 +363,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
             <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground/[0.02]">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-foreground flex items-center justify-center">
-                  <Sliders className="w-4 h-4 text-background" weight="bold" />
+                  <SlidersHorizontal className="w-4 h-4 text-background" />
                 </div>
                 <div>
                   <h2 className="text-xs font-black uppercase tracking-wider text-foreground">Filtres proposés</h2>
@@ -374,7 +374,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 onClick={() => onOpenChange(false)}
                 className="w-8 h-8 flex items-center justify-center border-2 border-foreground/20 hover:border-foreground transition-colors"
               >
-                <X className="w-4 h-4" weight="bold" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -382,7 +382,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
             {analysis.search_rationale && (
               <div className="shrink-0 px-4 py-3 border-b-2 border-foreground/15 bg-brutal-accent/10">
                 <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-1">
-                  <Sparkle className="w-3 h-3 inline mr-1" weight="fill" />
+                  <Sparkle className="w-3 h-3 inline mr-1" />
                   Stratégie IA
                 </p>
                 <p className="text-xs text-foreground leading-relaxed">{analysis.search_rationale}</p>
@@ -415,10 +415,10 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                       )}>
                         {section.enabled ? '✓' : ''}
                       </div>
-                      <section.icon className="w-4 h-4 text-foreground/70 shrink-0" weight="duotone" />
+                      <section.icon className="w-4 h-4 text-foreground/70 shrink-0" />
                       <span className="text-xs font-black uppercase tracking-wider text-foreground flex-1">{section.label}</span>
                       {section.editable && section.enabled && (
-                        <PencilSimple className="w-3 h-3 text-foreground/30" weight="bold" />
+                        <Pencil className="w-3 h-3 text-foreground/30" />
                       )}
                     </button>
 
@@ -453,7 +453,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                                   onClick={(e) => { e.stopPropagation(); removeChip(section.id, i); }}
                                   className="w-3.5 h-3.5 flex items-center justify-center text-foreground/30 hover:text-destructive transition-colors"
                                 >
-                                  <X className="w-2.5 h-2.5" weight="bold" />
+                                  <X className="w-2.5 h-2.5" />
                                 </button>
                               </span>
                             ))
@@ -464,7 +464,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                         {section.suggestions && section.suggestions.length > 0 && (
                           <div className="pt-1.5 border-t border-foreground/10">
                             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
-                              <Sparkle className="w-2.5 h-2.5" weight="fill" />
+                              <Sparkle className="w-2.5 h-2.5" />
                               Suggestions IA
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -513,7 +513,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                     : "bg-muted text-muted-foreground cursor-not-allowed"
                 )}
               >
-                <Play className="w-3.5 h-3.5 relative z-10" weight="fill" />
+                <Play className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Lancer le sourcing</span>
                 {enabledCount > 0 && (
                   <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />

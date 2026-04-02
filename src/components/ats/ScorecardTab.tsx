@@ -47,11 +47,11 @@ const INTERVIEW_STAGES: { value: InterviewStage; label: string }[] = [
 ];
 
 const RECOMMENDATION_OPTIONS: { value: Recommendation; label: string; color: string }[] = [
-  { value: 'strong_yes', label: 'Strong Yes', color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
-  { value: 'yes', label: 'Yes', color: 'border-emerald-300 bg-emerald-50/50 text-emerald-600' },
-  { value: 'maybe', label: 'Maybe', color: 'border-amber-400 bg-amber-50 text-amber-700' },
-  { value: 'no', label: 'No', color: 'border-red-300 bg-red-50/50 text-red-600' },
-  { value: 'strong_no', label: 'Strong No', color: 'border-red-500 bg-red-50 text-red-700' },
+  { value: 'strong_yes', label: 'Strong Yes', color: 'border-success bg-success/10 text-success' },
+  { value: 'yes', label: 'Yes', color: 'border-success/30 bg-success/5 text-success' },
+  { value: 'maybe', label: 'Maybe', color: 'border-warning/40 bg-warning/10 text-warning' },
+  { value: 'no', label: 'No', color: 'border-destructive/30 bg-destructive/5 text-destructive' },
+  { value: 'strong_no', label: 'Strong No', color: 'border-destructive bg-destructive/10 text-destructive' },
 ];
 
 interface EvaluationData {
@@ -69,10 +69,10 @@ interface EvaluationData {
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
-  technical: { label: 'Tech', color: 'border-blue-400 bg-blue-50 text-blue-700', dotColor: 'bg-blue-400' },
-  soft_skill: { label: 'Soft', color: 'border-amber-400 bg-amber-50 text-amber-700', dotColor: 'bg-amber-400' },
-  culture_fit: { label: 'Culture', color: 'border-purple-400 bg-purple-50 text-purple-700', dotColor: 'bg-purple-400' },
-  motivation: { label: 'Motiv.', color: 'border-emerald-400 bg-emerald-50 text-emerald-700', dotColor: 'bg-emerald-400' },
+  technical: { label: 'Tech', color: 'border-info/40 bg-info/10 text-info', dotColor: 'bg-info' },
+  soft_skill: { label: 'Soft', color: 'border-warning/40 bg-warning/10 text-warning', dotColor: 'bg-warning' },
+  culture_fit: { label: 'Culture', color: 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple', dotColor: 'bg-brand-purple' },
+  motivation: { label: 'Motiv.', color: 'border-success/40 bg-success/10 text-success', dotColor: 'bg-success' },
 };
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching }) => {
@@ -520,9 +520,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             {activeEval.overallScore != null && (
               <div className={cn(
                 "h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center border-2 text-base sm:text-lg font-bold",
-                activeEval.overallScore >= 4 ? "border-emerald-400 bg-emerald-50 text-emerald-700" :
-                activeEval.overallScore >= 3 ? "border-amber-400 bg-amber-50 text-amber-700" :
-                "border-red-400 bg-red-50 text-red-700"
+                activeEval.overallScore >= 4 ? "border-success/40 bg-success/10 text-success" :
+                activeEval.overallScore >= 3 ? "border-warning/40 bg-warning/10 text-warning" :
+                "border-destructive/40 bg-destructive/10 text-destructive"
               )}>
                 {activeEval.overallScore}
               </div>
@@ -610,10 +610,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 }
                 navigate(`/ats/scorecard/${candidate.candidateId}?coaching=1`);
               }}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-red-500 text-red-500 text-xs font-medium uppercase tracking-wider group -ml-px">
+              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-destructive text-destructive text-xs font-medium uppercase tracking-wider group -ml-px">
               <Mic className="w-3 h-3 relative z-10" />
               <span className="relative z-10 hidden sm:inline">Coaching Live</span>
-              <span className="absolute inset-0 bg-red-50 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <span className="absolute inset-0 bg-destructive/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
             <button onClick={handleGenerate} disabled={generating}
               className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
@@ -719,9 +719,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   )}>
                   <div className="flex items-center gap-1.5">
                     <span className={cn("w-1.5 h-1.5 shrink-0", catConfig.dotColor,
-                      r != null && r >= 4 ? "bg-emerald-400" :
-                      r != null && r >= 3 ? "bg-amber-400" :
-                      r != null ? "bg-red-400" : catConfig.dotColor
+                      r != null && r >= 4 ? "bg-success" :
+                      r != null && r >= 3 ? "bg-warning" :
+                      r != null ? "bg-destructive" : catConfig.dotColor
                     )} />
                     <span className="truncate">{c.label}</span>
                     {r != null && <span className="text-[8px] tabular-nums ml-auto shrink-0 font-bold">{r}</span>}
@@ -925,11 +925,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
                   {/* Red flags for current criterion */}
                   {currentCriterion.redFlags && currentCriterion.redFlags.length > 0 && (
-                    <div className="border border-red-200 bg-red-50/30 p-3">
-                      <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-2">⚠️ Red flags</p>
+                    <div className="border border-destructive/20 bg-destructive/5 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wider text-destructive mb-2">⚠️ Red flags</p>
                       <div className="space-y-1">
                         {currentCriterion.redFlags.map((rf: string, i: number) => (
-                          <p key={i} className="text-xs text-red-700">{rf}</p>
+                          <p key={i} className="text-xs text-destructive">{rf}</p>
                         ))}
                       </div>
                     </div>
@@ -1050,9 +1050,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 {ev.overallScore != null && (
                   <div className={cn(
                     "h-10 w-10 flex items-center justify-center border-2 text-base font-bold",
-                    ev.overallScore >= 4 ? "border-emerald-400 bg-emerald-50 text-emerald-700" :
-                    ev.overallScore >= 3 ? "border-amber-400 bg-amber-50 text-amber-700" :
-                    "border-red-400 bg-red-50 text-red-700"
+                    ev.overallScore >= 4 ? "border-success/40 bg-success/10 text-success" :
+                    ev.overallScore >= 3 ? "border-warning/40 bg-warning/10 text-warning" :
+                    "border-destructive/40 bg-destructive/10 text-destructive"
                   )}>
                     {ev.overallScore}
                   </div>
@@ -1088,9 +1088,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     const r = ev.ratings[c.id];
                     return (
                       <span key={c.id} className={cn("w-1.5 h-1.5 rounded-full",
-                        r != null && r >= 4 ? "bg-emerald-400" :
-                        r != null && r >= 3 ? "bg-amber-400" :
-                        r != null ? "bg-red-400" : "bg-foreground/20"
+                        r != null && r >= 4 ? "bg-success" :
+                        r != null && r >= 3 ? "bg-warning" :
+                        r != null ? "bg-destructive" : "bg-foreground/20"
                       )} />
                     );
                   })}
@@ -1100,7 +1100,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   <Pencil className="w-3 h-3" /> Modifier
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); handleDelete(index); }}
-                  className="h-[28px] px-2 flex items-center border border-red-300 text-red-500 text-xs hover:bg-red-50 transition-colors">
+                  className="h-[28px] px-2 flex items-center border border-destructive/30 text-destructive text-xs hover:bg-destructive/5 transition-colors">
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
