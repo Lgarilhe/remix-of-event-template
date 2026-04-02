@@ -951,7 +951,7 @@ function MessageStepCard({
               )}
             </div>
             {preview?.personalizationPoints && preview.personalizationPoints.length > 0 && (
-              <div className="pt-1 border-t border-current/5">
+              <div className="pt-1 border-t border-border/50">
                 <p className="text-[10px] text-muted-foreground mb-1">Points de personnalisation</p>
                 <div className="flex flex-wrap gap-1">
                   {preview.personalizationPoints.map((pt, i) => (
