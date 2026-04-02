@@ -445,7 +445,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
             {/* Tone selector */}
             <div className="flex-1">
-              <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Ton
               </label>
               <div className="flex gap-1.5">
