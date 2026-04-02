@@ -47,11 +47,10 @@ const FilterButton: React.FC<{
           </span>
         )}
         {count === 0 && (
-          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
         )}
       </button>
     </PopoverTrigger>
-    <PopoverContent className="w-56 p-3 rounded-none border-border" align="start">
+    <PopoverContent className="w-56 p-3 rounded-lg border-border" align="start">
       {children}
     </PopoverContent>
   </Popover>
@@ -78,7 +77,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
           placeholder="Rechercher..."
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-56 rounded-none border-border bg-background text-sm h-[34px]"
+          className="pl-9 w-56 rounded-lg border-border bg-background text-sm h-[34px]"
         />
       </div>
 
@@ -167,7 +166,6 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
         <Bell className="w-3.5 h-3.5 relative z-10" />
         <span className="relative z-10">Rappels</span>
         {!filters.hasReminder && (
-          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
         )}
       </button>
 

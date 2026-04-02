@@ -568,7 +568,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         onChange={(e) => setBriefText(e.target.value)}
                         placeholder={"Collez ici la fiche de poste, le brief client, ou une URL de page carrières...\n\nExemple :\nRecherche d'un Lead Developer React/Node.js à Paris, 5+ ans d'expérience, télétravail partiel, salaire 60-75K€..."}
                         rows={10}
-                        className="border-border rounded-none resize-none"
+                        className="border-border rounded-lg resize-none"
                         autoFocus
                       />
                       <div className="flex items-center justify-between">
@@ -606,7 +606,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         {briefAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : '🤖'}
                         {briefAnalyzing ? 'Analyse en cours...' : 'Analyser avec l\'IA'}
                       </span>
-                      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
                   </>
                 ) : (
@@ -629,7 +628,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <Input
                           value={briefName}
                           onChange={(e) => setBriefName(e.target.value)}
-                          className="border-border rounded-none h-[34px] text-sm"
+                          className="border-border rounded-lg h-[34px] text-sm"
                           placeholder="Ex: Lead DevOps — Numspot"
                         />
                       </div>
@@ -638,7 +637,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <Input
                           value={briefClientName}
                           onChange={(e) => setBriefClientName(e.target.value)}
-                          className="border-border rounded-none h-[34px] text-sm"
+                          className="border-border rounded-lg h-[34px] text-sm"
                           placeholder="Ex: Numspot"
                         />
                       </div>
@@ -745,7 +744,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         className="relative overflow-hidden h-[42px] px-4 text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground group"
                       >
                         <span className="relative z-10">Modifier</span>
-                        <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                       </button>
                     </div>
                   </>
@@ -802,7 +800,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                           onChange={(e) => setCompanyName(e.target.value)}
                           onKeyDown={handleImportKeyDown}
                           placeholder="Ex: Datadog, OVHcloud, Scaleway..."
-                          className="border-border rounded-none h-11"
+                          className="border-border rounded-lg h-11"
                           autoFocus
                         />
                       </div>
@@ -814,7 +812,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                           onChange={(e) => setDirectUrl(e.target.value)}
                           onKeyDown={handleImportKeyDown}
                           placeholder="Ex: https://www.welcometothejungle.com/fr/companies/datadog/jobs"
-                          className="border-border rounded-none h-11"
+                          className="border-border rounded-lg h-11"
                           autoFocus
                         />
                         {detectedImportSource && directUrl.length > 10 && (
@@ -832,7 +830,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
                     >
                       <span className="relative z-10 flex items-center justify-center gap-2">🔍 Scanner</span>
-                      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
                   </motion.div>
                 )}
@@ -841,7 +838,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 {importPhase === 'scanning' && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
                     <div className="space-y-4">
-                      <Progress value={progress} className="h-2 rounded-none bg-muted [&>div]:bg-foreground" />
+                      <Progress value={progress} className="h-2 rounded-lg bg-muted [&>div]:bg-foreground" />
                       <div className="flex flex-wrap gap-3">
                         {sources.map(src => (
                           <div key={src.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -874,7 +871,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <p className="text-sm text-muted-foreground mb-4">Aucun poste ouvert détecté pour cette entreprise.</p>
                         <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-6 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
                           <span className="relative z-10">← Nouvelle recherche</span>
-                          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                         </button>
                       </div>
                     ) : (
@@ -993,7 +989,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <Label>Poste associé</Label>
                       <Popover open={jobPopoverOpen} onOpenChange={setJobPopoverOpen}>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" className="w-full justify-between font-normal border-border rounded-none">
+                          <Button variant="outline" role="combobox" className="w-full justify-between font-normal border-border rounded-lg">
                             {selectedJob ? (
                               <span className="truncate">{selectedJob.title}{selectedJob.client?.name ? ` @ ${selectedJob.client.name}` : ''}</span>
                             ) : (
@@ -1040,12 +1036,12 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                   <div className="space-y-2">
                     <Label htmlFor="name">Nom du projet</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={selectedJob?.title || "Ex: Développeurs Senior Paris"} className="border-border rounded-none" />
+                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={selectedJob?.title || "Ex: Développeurs Senior Paris"} className="border-border rounded-lg" />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="description">Description (optionnel)</Label>
-                    <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Notes sur ce projet de sourcing..." rows={3} className="border-border rounded-none" />
+                    <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Notes sur ce projet de sourcing..." rows={3} className="border-border rounded-lg" />
                   </div>
 
                   <div className="flex gap-3 pt-2">
@@ -1061,7 +1057,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         {isCreating && <Loader2 className="w-4 h-4 animate-spin" />}
                         Créer le projet
                       </span>
-                      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
                   </div>
                 </form>
@@ -1079,7 +1074,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </button>
               <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
                 <span className="relative z-10">← Nouvelle recherche</span>
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             </div>
             <div className="flex items-center gap-4">

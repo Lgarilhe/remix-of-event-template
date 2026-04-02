@@ -198,7 +198,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                       <img
                         src={selectedAccountData.profile_picture_url}
                         alt={selectedAccountData.name || selectedAccountData.identifier || 'Photo de profil'}
-                        className="w-5 h-5 rounded-none object-cover shrink-0"
+                        className="w-5 h-5 rounded-lg object-cover shrink-0"
                       />
                     )}
                     <span>{selectedAccountData.name || selectedAccountData.identifier}</span>
@@ -214,7 +214,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                       <img
                         src={account.profile_picture_url}
                         alt={account.name || account.identifier || 'Photo de profil'}
-                        className="w-5 h-5 rounded-none object-cover"
+                        className="w-5 h-5 rounded-lg object-cover"
                       />
                     )}
                     <span>{account.name || account.identifier}</span>

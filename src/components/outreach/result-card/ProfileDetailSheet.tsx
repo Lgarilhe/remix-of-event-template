@@ -464,7 +464,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-border" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-lg border-l border-border" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           {/* ─── NAV + ACCENT BAR ─── */}
           <div className="h-1.5 w-full bg-accent shrink-0" />
           {(onNavigatePrev || onNavigateNext) && (
@@ -474,7 +474,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={onNavigatePrev}
                 disabled={!onNavigatePrev}
-                className="h-7 gap-1 text-xs rounded-none uppercase tracking-wider font-semibold px-2"
+                className="h-7 gap-1 text-xs rounded-lg uppercase tracking-wider font-semibold px-2"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
                 Préc.
@@ -489,7 +489,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 size="sm"
                 onClick={onNavigateNext}
                 disabled={!onNavigateNext}
-                className="h-7 gap-1 text-xs rounded-none uppercase tracking-wider font-semibold px-2"
+                className="h-7 gap-1 text-xs rounded-lg uppercase tracking-wider font-semibold px-2"
               >
                 Suiv.
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -507,9 +507,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           {/* ─── HEADER ─── */}
           <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-border shrink-0">
             <div className="flex items-start gap-3 sm:gap-4">
-               <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border border-border shrink-0 rounded-none">
+               <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border border-border shrink-0 rounded-lg">
                 <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-accent text-foreground text-base sm:text-xl font-bold rounded-none">
+                <AvatarFallback className="bg-accent text-foreground text-base sm:text-xl font-bold rounded-lg">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
@@ -561,7 +561,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     <Badge
                       key={email}
                       variant="outline"
-                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
+                      className="gap-1 rounded-lg border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
                     >
                       <Mail className="h-3 w-3" />
                       <span className="max-w-[180px] truncate">{email}</span>
@@ -572,7 +572,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     <Badge
                       key={phone}
                       variant="outline"
-                      className="gap-1 rounded-none border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
+                      className="gap-1 rounded-lg border-border/70 bg-background px-2 py-0.5 text-xs font-medium text-foreground"
                     >
                       <Phone className="h-3 w-3" />
                       <span>{phone}</span>
@@ -589,7 +589,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                  className="h-7 gap-1 text-xs rounded-none border border-border bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1 text-xs rounded-lg border border-border bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
                 >
                   {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
                   {isScoring ? '…' : 'Score'}
@@ -609,7 +609,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-7 gap-1 text-xs rounded-none border border-border bg-accent text-foreground hover:bg-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1 text-xs rounded-lg border border-border bg-accent text-foreground hover:bg-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
                 >
                   <PenLine className="w-3 h-3" />
                   Msg
@@ -633,7 +633,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {onArchive && (
-                <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-xs rounded-none border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-bold shrink-0">
+                <Button variant="outline" size="sm" onClick={onArchive} className="h-7 gap-1 text-xs rounded-lg border border-destructive/60 text-destructive hover:bg-destructive hover:text-destructive-foreground px-2 uppercase tracking-wider font-bold shrink-0">
                   <Archive className="w-3 h-3" />
                   Arch.
                 </Button>

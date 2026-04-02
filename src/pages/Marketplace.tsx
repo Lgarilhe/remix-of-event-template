@@ -288,7 +288,6 @@ export default function Marketplace() {
                           {applyingId === mission.id ? 'Envoi...' : 'Postuler'}
                         </span>
                         {applyingId !== mission.id && (
-                          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                         )}
                       </button>
                     </div>

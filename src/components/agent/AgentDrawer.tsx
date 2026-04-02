@@ -40,7 +40,7 @@ const AgentFAB: React.FC = () => {
       >
         <div className="relative pointer-events-none">
           <AnimatedOrb size={52} speed={6} />
-          <div className="absolute inset-0 -z-10 translate-x-[3px] translate-y-[3px] rounded-full bg-accent/40" />
+          <div className="absolute inset-0 -z-10 rounded-full bg-accent/20 blur-sm" />
           {unreadCount > 0 && (
             <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-background animate-pulse" />
           )}

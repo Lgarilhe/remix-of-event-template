@@ -46,7 +46,6 @@ export class SectionErrorBoundary extends Component<Props, State> {
           >
             <RefreshCw className="w-3 h-3 relative z-10" />
             <span className="relative z-10">Réessayer</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         </div>
       );

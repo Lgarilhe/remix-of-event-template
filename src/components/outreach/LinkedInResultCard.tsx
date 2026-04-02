@@ -184,13 +184,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const hasHighScore = jobScore && jobScore.match_score > 80;
   const flashColorMap = {
     go: 'hsl(var(--accent))',
-    maybe: 'hsl(var(--brutal-accent))',
+    maybe: 'hsl(var(--primary))',
     skip: 'hsl(var(--destructive))',
   };
 
   return (
     <div
-      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sm`}
+      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-sm hover:shadow-sm`}
       style={{ wordBreak: 'break-word' }}
       onClick={(e) => {
         if (showScoringOverlay) return;

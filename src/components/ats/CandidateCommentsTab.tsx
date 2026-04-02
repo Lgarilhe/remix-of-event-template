@@ -247,7 +247,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Ajouter un commentaire... Tapez @ pour mentionner"
-              className="min-h-[60px] rounded-none border-border text-sm resize-none pr-2"
+              className="min-h-[60px] rounded-lg border-border text-sm resize-none pr-2"
             />
             {/* Mention autocomplete dropdown */}
             {showMentions && filteredMembers.length > 0 && (

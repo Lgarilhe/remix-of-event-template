@@ -405,8 +405,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-none border border-border shadow-[4px_4px_0_0_hsl(var(--foreground))]">
-        {/* Header — brutal style */}
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-lg border border-border shadow-md">
+        {/* Header — clean style */}
         <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-muted/30">
           <DialogHeader className="space-y-2">
             <DialogTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-foreground tracking-tight">
@@ -439,7 +439,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 value={senderName}
                 onChange={(e) => handleSenderNameChange(e.target.value)}
                 placeholder="Prénom"
-                className="w-full sm:w-32 h-9 text-sm rounded-none border-border focus:border-border"
+                className="w-full sm:w-32 h-9 text-sm rounded-lg border-border focus:border-border"
               />
             </div>
 
@@ -459,7 +459,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => setTone(t.value as Tone)}
-                    className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-none transition-all ${
+                    className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-lg transition-all ${
                       tone === t.value 
                         ? 'bg-foreground text-background border-border hover:bg-foreground/90' 
                         : 'border-border hover:border-border hover:bg-muted/50'
@@ -494,7 +494,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 onClick={generateMessage}
                 disabled={loading}
                 size="lg"
-                className="flex-1 h-12 bg-foreground hover:bg-foreground/90 text-background font-bold rounded-none border border-border shadow-[2px_2px_0_0_hsl(var(--primary))] hover:shadow-none transition-all uppercase tracking-wide text-sm"
+                className="flex-1 h-12 bg-foreground hover:bg-foreground/90 text-background font-bold rounded-lg border border-border shadow-sm transition-all uppercase tracking-wide text-sm"
               >
                 {loading ? (
                   <>
@@ -530,7 +530,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="Objet du message..."
-                  className="h-10 font-medium rounded-none border-border focus:border-border"
+                  className="h-10 font-medium rounded-lg border-border focus:border-border"
                 />
               </div>
 
@@ -574,10 +574,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     onClick={handleSendMessage}
                     disabled={sending || messageSent}
                     size="lg"
-                    className={`flex-1 h-11 font-bold rounded-none border transition-all text-sm ${
+                    className={`flex-1 h-11 font-bold rounded-lg border transition-all text-sm ${
                       messageSent
                         ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-foreground text-background border-border shadow-[2px_2px_0_0_hsl(var(--primary))] hover:shadow-none hover:bg-foreground/90'
+                        : 'bg-foreground text-background border-border shadow-sm hover:bg-foreground/90'
                     }`}
                   >
                     {messageSent ? (
@@ -604,10 +604,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   onClick={handleCopy}
                   variant={canSendDirectly ? 'outline' : 'default'}
                   size="lg"
-                  className={`h-11 rounded-none border font-bold text-sm ${
+                  className={`h-11 rounded-lg border font-bold text-sm ${
                     canSendDirectly 
                       ? 'px-4 border-border hover:border-border hover:bg-muted/50'
-                      : 'flex-1 bg-foreground text-background border-border shadow-[2px_2px_0_0_hsl(var(--primary))] hover:shadow-none'
+                      : 'flex-1 bg-foreground text-background border-border shadow-sm'
                   }`}
                 >
                   {copied ? (
@@ -629,7 +629,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   size="lg"
                   onClick={generateMessage}
                   disabled={loading}
-                  className="h-11 px-4 rounded-none border-border hover:border-border hover:bg-muted/50"
+                  className="h-11 px-4 rounded-lg border-border hover:border-border hover:bg-muted/50"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

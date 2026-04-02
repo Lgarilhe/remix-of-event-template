@@ -113,7 +113,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               <span className="font-medium text-foreground text-sm">
                                 {candidate.name}
                               </span>
-                              {candidate.hasReminder && <Bell className="w-3.5 h-3.5 text-brutal-accent" />}
+                              {candidate.hasReminder && <Bell className="w-3.5 h-3.5 text-primary" />}
                               {(candidate.notesCount || 0) > 0 && (
                                 <div className="flex items-center gap-0.5 text-muted-foreground">
                                   <StickyNote className="w-3.5 h-3.5" />

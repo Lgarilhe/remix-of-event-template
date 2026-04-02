@@ -286,7 +286,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               placeholder="Rechercher un poste, client, compétence..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 border-border rounded-none"
+              className="pl-10 border-border rounded-lg"
             />
           </div>
 
@@ -295,7 +295,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               <button className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-border bg-background text-foreground group shrink-0">
                 <Filter className="w-3.5 h-3.5 relative z-10" />
                 <span className="hidden sm:inline relative z-10">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="border-border">
@@ -322,7 +321,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-border bg-background text-foreground shrink-0 group"
           >
             <span className="relative z-10">📥 Importer</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <button
             onClick={() => {
@@ -378,7 +376,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             return (
               <div
                 key={project.key}
-                className="bg-background border border-border p-5 sm:p-6 shadow-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sm transition-all cursor-pointer"
+                className="bg-background border border-border p-5 sm:p-6 shadow-sm hover:shadow-sm transition-all cursor-pointer"
                 onClick={() => navigateToWorkspace(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">

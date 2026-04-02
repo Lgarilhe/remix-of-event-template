@@ -232,14 +232,14 @@ export const SnippetsManager: React.FC = () => {
             placeholder="Rechercher..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-background border-border rounded-none"
+            className="pl-9 bg-background border-border rounded-lg"
           />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[160px] bg-background border-border rounded-none text-xs uppercase tracking-wide">
+          <SelectTrigger className="w-[160px] bg-background border-border rounded-lg text-xs uppercase tracking-wide">
             <SelectValue placeholder="Catégorie" />
           </SelectTrigger>
-          <SelectContent className="bg-background border-border rounded-none">
+          <SelectContent className="bg-background border-border rounded-lg">
             <SelectItem value="all">Toutes</SelectItem>
             {CATEGORIES.map(c => (
               <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
@@ -289,7 +289,7 @@ export const SnippetsManager: React.FC = () => {
               </p>
               <div className="flex items-center justify-between">
                 {snippet.category && (
-                  <Badge variant="outline" className="text-[10px] uppercase tracking-wider rounded-none border-border">
+                  <Badge variant="outline" className="text-[10px] uppercase tracking-wider rounded-full border-border">
                     {getCategoryLabel(snippet.category)}
                   </Badge>
                 )}
@@ -304,7 +304,7 @@ export const SnippetsManager: React.FC = () => {
 
       {/* Create/Edit modal */}
       <Dialog open={editModal.open} onOpenChange={(open) => !open && setEditModal({ open: false })}>
-        <DialogContent className="bg-background border-border rounded-none max-w-md">
+        <DialogContent className="bg-background border-border rounded-lg max-w-md">
           <DialogHeader>
             <DialogTitle className="uppercase tracking-wide text-sm">
               {editModal.snippet ? 'Modifier le snippet' : 'Nouveau snippet'}
@@ -317,16 +317,16 @@ export const SnippetsManager: React.FC = () => {
                 value={formData.name}
                 onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))}
                 placeholder="Ex: Intro sourcing tech"
-                className="mt-1.5 border-border rounded-none"
+                className="mt-1.5 border-border rounded-lg"
               />
             </div>
             <div>
               <Label>Catégorie</Label>
               <Select value={formData.category || 'none'} onValueChange={(v) => setFormData(p => ({ ...p, category: v === 'none' ? '' : v }))}>
-                <SelectTrigger className="mt-1.5 border-border rounded-none">
+                <SelectTrigger className="mt-1.5 border-border rounded-lg">
                   <SelectValue placeholder="Sélectionner..." />
                 </SelectTrigger>
-                <SelectContent className="bg-background border-border rounded-none">
+                <SelectContent className="bg-background border-border rounded-lg">
                   <SelectItem value="none">Sans catégorie</SelectItem>
                   {CATEGORIES.map(c => (
                     <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
@@ -346,15 +346,15 @@ export const SnippetsManager: React.FC = () => {
                 onChange={(e) => setFormData(p => ({ ...p, content: e.target.value }))}
                 placeholder="Bonjour {{first_name}}, je me permets de vous contacter..."
                 rows={6}
-                className="border-border rounded-none text-sm"
+                className="border-border rounded-lg text-sm"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditModal({ open: false })} className="border-border rounded-none">
+            <Button variant="outline" onClick={() => setEditModal({ open: false })} className="border-border rounded-lg">
               Annuler
             </Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-foreground text-background rounded-none">
+            <Button onClick={handleSave} disabled={saving} className="bg-foreground text-background rounded-lg">
               {saving ? 'Sauvegarde...' : 'Sauvegarder'}
             </Button>
           </DialogFooter>
@@ -363,14 +363,14 @@ export const SnippetsManager: React.FC = () => {
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="bg-background border-border rounded-none">
+        <AlertDialogContent className="bg-background border-border rounded-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer ce snippet ?</AlertDialogTitle>
             <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-none">Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground rounded-none">
+            <AlertDialogCancel className="rounded-lg">Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground rounded-lg">
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>

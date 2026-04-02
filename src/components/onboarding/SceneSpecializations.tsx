@@ -111,7 +111,7 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
         <Button
           onClick={() => onSubmit(Array.from(selected))}
           className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />
         </Button>

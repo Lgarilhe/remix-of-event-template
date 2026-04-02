@@ -134,7 +134,7 @@ const Pricing = () => {
             Commencez gratuitement, passez à Pro quand vous êtes prêt.
           </p>
 
-          {/* Toggle brutal */}
+          {/* Toggle */}
           <div
             className="flex items-center justify-center gap-3 mt-8"
             style={{

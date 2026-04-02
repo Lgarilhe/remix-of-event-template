@@ -175,7 +175,6 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
             <span className="relative z-10">{sub.emoji}</span>
             <span className="relative z-10">{sub.label}</span>
             {outreachTab !== sub.value && (
-              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             )}
           </button>
         ))}

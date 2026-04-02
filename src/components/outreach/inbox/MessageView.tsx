@@ -234,9 +234,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
         >
           <ChevronLeft className="w-5 h-5" />
         </Button>
-        <Avatar className="w-8 h-8 md:w-10 md:h-10 rounded-none shrink-0">
+        <Avatar className="w-8 h-8 md:w-10 md:h-10 rounded-lg shrink-0">
           <AvatarImage src={avatar} />
-          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-none text-xs md:text-sm">
+          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-lg text-xs md:text-sm">
             {getInitials(displayName)}
           </AvatarFallback>
         </Avatar>
@@ -276,7 +276,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <span className="hidden md:inline">IA</span>
             </span>
             {!aiPanelOpen && (
-              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             )}
           </button>
         )}
@@ -294,7 +293,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <CalendarPlus className="w-3.5 h-3.5" />
             <span className="hidden md:inline">RDV</span>
           </span>
-          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
         </button>
 
         {selectedChat.attendees?.[0]?.profile_url && (
@@ -308,7 +306,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <User className="w-3 h-3" />
               <span className="hidden md:inline">Profil</span>
             </span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </a>
         )}
       </div>

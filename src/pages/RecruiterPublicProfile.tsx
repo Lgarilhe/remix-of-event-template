@@ -113,7 +113,7 @@ const RecruiterPublicProfile: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             className="border-2 border-border p-6 md:p-8 space-y-6"
-            style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
+            style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
           >
             {/* Header */}
             <div className="flex items-start gap-4">
@@ -266,7 +266,7 @@ const RecruiterPublicProfile: React.FC = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold border-2 border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
-                  style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+                  style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
                 >
                   <Linkedin className="w-4 h-4" />
                   Contacter sur LinkedIn

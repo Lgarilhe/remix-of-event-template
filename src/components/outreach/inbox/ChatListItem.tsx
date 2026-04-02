@@ -92,9 +92,9 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       >
         {/* Avatar with unread indicator + channel badge */}
         <div className="relative shrink-0">
-          <Avatar className="w-12 h-12 rounded-none">
+          <Avatar className="w-12 h-12 rounded-lg">
             <AvatarImage src={avatar} />
-            <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-none">
+            <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-lg">
               {getInitials(displayName)}
             </AvatarFallback>
           </Avatar>

@@ -244,7 +244,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
               >
                 <span className="text-base">{qa.emoji}</span>
-                <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-brutal-accent transition-colors">
+                <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-primary transition-colors">
                   {qa.label}
                 </p>
               </button>
@@ -334,7 +334,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               )}
               <p className={cn(
                 "text-xs uppercase tracking-wider",
-                isActive ? "text-brutal-accent" : "text-muted-foreground"
+                isActive ? "text-primary" : "text-muted-foreground"
               )}>
                 {statusLabel}
               </p>
@@ -400,7 +400,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                   onClick={() => handleSend(starter.prompt)}
                   className="border border-border hover:border-border p-4 transition-all duration-200 hover:bg-muted cursor-pointer group text-left"
                 >
-                  <starter.icon className="w-5 h-5 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                  <starter.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                   <p className="text-sm font-semibold text-foreground mt-2">{starter.title}</p>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{starter.desc}</p>
                 </button>
@@ -480,7 +480,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             </span>
           </div>
         )}
-        <div className="flex items-end gap-2 border border-border focus-within:border-border focus-within:shadow-[0_0_16px_-4px_hsl(var(--brutal-accent)/0.2)] transition-all duration-200 px-3 py-2">
+        <div className="flex items-end gap-2 border border-border focus-within:border-border focus-within:shadow-sm transition-all duration-200 px-3 py-2">
           <textarea
             ref={inputRef}
             value={input}

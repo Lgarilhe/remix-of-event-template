@@ -78,7 +78,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               placeholder="Ajouter une note personnelle..."
-              className="flex-1 min-h-[60px] rounded-none border-border text-sm resize-none"
+              className="flex-1 min-h-[60px] rounded-lg border-border text-sm resize-none"
             />
             <button onClick={handleAdd} disabled={addingNote || !newNote.trim()}
               className="h-auto px-4 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">

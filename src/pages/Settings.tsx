@@ -127,7 +127,7 @@ const Settings = () => {
 
       <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
-          {/* Header brutal */}
+          {/* Header */}
           <div className="flex items-center gap-2 min-w-0 mb-4">
             <div className="h-8 w-8 flex items-center justify-center shrink-0">
               <img src={iconSettings3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
@@ -153,7 +153,6 @@ const Settings = () => {
                   <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain relative z-10" />
                   <span className="relative z-10 hidden sm:inline">{tab.label}</span>
                   {!isActive && (
-                    <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                   )}
                 </button>
               );

@@ -259,7 +259,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
                   onClick={() => handleAddSuggestion(group.key, item)}
                   className="group flex items-center gap-1 h-[24px] px-2 text-xs font-medium border border-border bg-background text-foreground hover:border-border hover:bg-foreground hover:text-background transition-colors"
                 >
-                  <Plus className="w-2.5 h-2.5 text-brutal-accent group-hover:text-background" />
+                  <Plus className="w-2.5 h-2.5 text-primary group-hover:text-background" />
                   {item}
                   <span
                     onClick={(e) => { e.stopPropagation(); handleDismissSuggestion(group.key, item); }}

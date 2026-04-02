@@ -167,7 +167,7 @@ const SkalrLanding = () => {
         <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
           <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
             <span className="text-lg font-bold uppercase tracking-widest text-foreground">
-              Skalr<span className="text-brutal-accent">.</span>
+              Skalr<span className="text-primary">.</span>
             </span>
             
             <div className="hidden md:flex items-center gap-8">
@@ -519,7 +519,7 @@ const SkalrLanding = () => {
         <footer className="py-8 px-6 border-t-2 border-border bg-background">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <span className="text-sm font-bold uppercase tracking-widest text-foreground">
-              Skalr<span className="text-brutal-accent">.</span>
+              Skalr<span className="text-primary">.</span>
             </span>
             <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">
               <a href="#" className="hover:text-foreground transition-colors">Mentions légales</a>
@@ -590,20 +590,20 @@ const SkalrLanding = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Nom *</label>
-                      <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} placeholder="Votre nom" className="rounded-none border-2 border-border" required />
+                      <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} placeholder="Votre nom" className="rounded-lg border-2 border-border" required />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Email *</label>
-                      <Input type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} placeholder="vous@entreprise.com" className="rounded-none border-2 border-border" required />
+                      <Input type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} placeholder="vous@entreprise.com" className="rounded-lg border-2 border-border" required />
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Entreprise</label>
-                    <Input value={contactForm.company} onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })} placeholder="Nom de votre entreprise" className="rounded-none border-2 border-border" />
+                    <Input value={contactForm.company} onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })} placeholder="Nom de votre entreprise" className="rounded-lg border-2 border-border" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Message *</label>
-                    <Textarea value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })} placeholder="Comment pouvons-nous vous aider ?" className="min-h-[120px] rounded-none border-2 border-border" required />
+                    <Textarea value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })} placeholder="Comment pouvons-nous vous aider ?" className="min-h-[120px] rounded-lg border-2 border-border" required />
                   </div>
                   <BrutalButton className="w-full justify-center">
                     {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Envoi...</> : <>Envoyer <ArrowRight className="h-3.5 w-3.5" /></>}

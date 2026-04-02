@@ -216,7 +216,6 @@ function DetailTab({ active, emoji, label, count, onClick }: { active: boolean; 
         )}>{count}</span>
       )}
       {!active && (
-        <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
       )}
     </button>
   );
@@ -569,7 +568,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           <div className="flex items-start gap-4">
             <div className={cn(
               "h-14 w-14 border-2 flex items-center justify-center text-lg font-bold uppercase shrink-0",
-              isEnriched ? "border-[hsl(var(--brutal-accent))]" : "border-background/30"
+              isEnriched ? "border-[hsl(var(--primary))]" : "border-background/30"
             )}>
               {(contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
             </div>
@@ -597,7 +596,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   <span className={cn(
                     "text-xs uppercase tracking-widest px-2 py-1 font-bold",
                     enrichment.is_relevant
-                      ? "bg-[hsl(var(--brutal-accent))] text-foreground"
+                      ? "bg-[hsl(var(--primary))] text-foreground"
                       : "border border-background/20 text-background/40"
                   )}>
                     {enrichment.is_relevant ? '✓ Pertinent' : '✗ Non pertinent'}
@@ -660,8 +659,8 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
                   {/* Enriched profile card */}
                   {isEnriched && (
-                    <div className="border-2 border-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.04)]">
-                      <div className="px-4 py-2.5 border-b border-[hsl(var(--brutal-accent)/0.2)] flex items-center gap-2">
+                    <div className="border-2 border-[hsl(var(--primary))] bg-[hsl(var(--accent))]">
+                      <div className="px-4 py-2.5 border-b border-[hsl(var(--border))] flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--skalr-purple))]" />
                         <span className="text-xs font-bold uppercase tracking-widest">Profil enrichi</span>
                         <span className="ml-auto text-xs uppercase tracking-wider border border-border px-1.5 py-0.5 text-muted-foreground">
@@ -823,7 +822,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                       <div className="h-1.5 bg-border w-full">
                                         <div className={cn(
                                           "h-full transition-all",
-                                          maxStage >= 8 ? "bg-foreground" : maxStage >= 5 ? "bg-[hsl(var(--brutal-accent))]" : "bg-muted-foreground/40"
+                                          maxStage >= 8 ? "bg-foreground" : maxStage >= 5 ? "bg-[hsl(var(--primary))]" : "bg-muted-foreground/40"
                                         )} style={{ width: `${progressPct}%` }} />
                                       </div>
                                       <div className="flex justify-between mt-0.5">
@@ -854,7 +853,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                             <span className={cn(
                                               "text-[8px] px-1.5 py-0.5 border uppercase tracking-wider shrink-0",
                                               isPlaced ? "border-border bg-foreground text-background" :
-                                              isAdvanced ? "border-[hsl(var(--brutal-accent))] text-foreground bg-[hsl(var(--brutal-accent)/0.1)]" :
+                                              isAdvanced ? "border-[hsl(var(--primary))] text-foreground bg-[hsl(var(--accent))]" :
                                               "border-border text-muted-foreground"
                                             )}>{stage?.label || c.status || '?'}</span>
                                           </div>
@@ -905,7 +904,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       {/* Context: when was last interaction */}
                       {careerAnalysis.lastInteractionDate && (
                         <div className="border-2 border-border bg-foreground text-background p-3 flex items-center gap-3">
-                          <Clock className="w-5 h-5 shrink-0 text-[hsl(var(--brutal-accent))]" />
+                          <Clock className="w-5 h-5 shrink-0 text-[hsl(var(--primary))]" />
                           <div>
                             <div className="text-xs uppercase tracking-widest text-background/50">Dernier échange avec Skalr</div>
                             <div className="text-sm font-bold">{relativeTime(careerAnalysis.lastInteractionDate)}</div>
@@ -926,7 +925,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       {evolutions.map((evo, i) => (
                         <div key={i} className={cn(
                           "border-2 p-4 space-y-1.5",
-                          evo.type === 'positive' ? "border-border bg-[hsl(var(--brutal-accent)/0.06)]" :
+                          evo.type === 'positive' ? "border-border bg-[hsl(var(--accent))]" :
                           evo.type === 'negative' ? "border-destructive/40 bg-destructive/5" :
                           "border-border"
                         )}>
@@ -965,7 +964,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                             ].filter(r => r.before || r.after).map((row, i) => {
                               const changed = row.before !== row.after && row.before && row.after;
                               return (
-                                <div key={i} className={cn("grid grid-cols-3", changed && "bg-[hsl(var(--brutal-accent)/0.04)]")}>
+                                <div key={i} className={cn("grid grid-cols-3", changed && "bg-[hsl(var(--accent))]")}>
                                   <div className="p-2 text-xs font-medium">{row.label}</div>
                                   <div className="p-2 text-xs text-muted-foreground">{row.before || '—'}</div>
                                   <div className={cn("p-2 text-xs", changed ? "font-semibold text-foreground" : "text-muted-foreground")}>{row.after || '—'}</div>
@@ -990,13 +989,13 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                 <div key={i} className={cn(
                                   "flex items-start gap-3 p-2.5 border-l-2 ml-2",
                                   isCurrent ? "border-l-foreground bg-muted/20" : 
-                                  wasActiveAtLastInteraction ? "border-l-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.04)]" :
+                                  wasActiveAtLastInteraction ? "border-l-[hsl(var(--primary))] bg-[hsl(var(--accent))]" :
                                   "border-l-border"
                                 )}>
                                   <div className={cn(
                                     "-ml-[11px] w-5 h-5 flex items-center justify-center text-[8px] shrink-0 border",
                                     isCurrent ? "bg-foreground text-background border-border" :
-                                    wasActiveAtLastInteraction ? "bg-[hsl(var(--brutal-accent))] text-foreground border-[hsl(var(--brutal-accent))]" :
+                                    wasActiveAtLastInteraction ? "bg-[hsl(var(--primary))] text-foreground border-[hsl(var(--primary))]" :
                                     "bg-background text-muted-foreground border-border"
                                   )}>
                                     {isCurrent ? '●' : wasActiveAtLastInteraction ? '◆' : '○'}
@@ -1045,7 +1044,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <Star className="w-3.5 h-3.5 text-[hsl(var(--brutal-accent))]" />
+                              <Star className="w-3.5 h-3.5 text-[hsl(var(--primary))]" />
                               <span className="text-xs uppercase tracking-widest text-background/50">Contact principal</span>
                             </div>
                             <div className="text-sm font-bold mt-0.5">{recruiterStats[0].name}</div>
@@ -1063,7 +1062,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
                       {/* Recommendation */}
                       {recruiterStats.length > 0 && (
-                        <div className="border border-[hsl(var(--brutal-accent))] bg-[hsl(var(--brutal-accent)/0.06)] p-3 mt-2">
+                        <div className="border border-[hsl(var(--primary))] bg-[hsl(var(--accent))] p-3 mt-2">
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--skalr-purple))]" />
                             <span className="text-xs font-bold uppercase tracking-widest">Recommandation</span>
@@ -1180,7 +1179,6 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
             <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
           )}
           {!showMore && activeFilterCount === 0 && (
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           )}
         </button>
       </div>
@@ -1605,7 +1603,6 @@ function ContactsView() {
           >
             <RefreshCw className="w-3 h-3 relative z-10" />
             <span className="relative z-10 hidden sm:inline">Ré-enrichir</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         )}
         {enrichments.size > 0 && (
@@ -1727,7 +1724,6 @@ export function VivierList() {
               <span className="text-sm relative z-10">{tab.emoji}</span>
               <span className="relative z-10">{tab.label}</span>
               {!isActive && (
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               )}
             </button>
           );

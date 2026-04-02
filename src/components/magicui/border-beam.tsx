@@ -20,7 +20,7 @@ export function BorderBeam({
   size = 200,
   duration = 8,
   delay = 0,
-  colorFrom = "hsl(var(--brutal-accent))",
+  colorFrom = "hsl(var(--primary))",
   colorTo = "transparent",
   borderWidth = 1.5,
 }: BorderBeamProps) {

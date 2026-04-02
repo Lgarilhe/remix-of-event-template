@@ -71,7 +71,7 @@ export const ToneSelector: React.FC<ToneSelectorProps> = ({
           <Palette className="w-3 h-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-56 p-2 rounded-none border-border" align="start">
+      <PopoverContent className="w-56 p-2 rounded-lg border-border" align="start">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
             Ton des réponses IA

@@ -183,7 +183,6 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               >
                 <Globe className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Publier sur la marketplace</span>
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             ) : huntStatus === 'published' ? (
               <button

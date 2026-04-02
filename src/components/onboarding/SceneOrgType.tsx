@@ -73,7 +73,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
                   ? 'border-border bg-foreground/[0.03]'
                   : 'border-border hover:border-border'}
               `}
-              style={isSelected ? { boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' } : {}}
+              style={isSelected ? { boxShadow: '3px 3px 0px 0px hsl(var(--primary))' } : {}}
             >
               <div
                 className={`w-9 h-9 flex items-center justify-center shrink-0 transition-colors ${
@@ -117,7 +117,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
           onClick={() => selected && onSelect(selected)}
           disabled={!selected}
           className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />
         </Button>

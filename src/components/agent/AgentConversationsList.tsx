@@ -13,7 +13,7 @@ interface Props {
 const statusMap: Record<string, { label: string; className: string; pulse?: boolean }> = {
   calibrating: { label: 'Calibration', className: 'text-muted-foreground' },
   plan_proposed: { label: 'Plan proposé', className: 'text-foreground' },
-  running: { label: 'En cours', className: 'text-brutal-accent', pulse: true },
+  running: { label: 'En cours', className: 'text-primary', pulse: true },
   completed: { label: 'Terminé', className: 'text-emerald-600' },
   paused: { label: 'En pause', className: 'text-muted-foreground' },
   failed: { label: 'Erreur', className: 'text-destructive' },
@@ -95,7 +95,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
               className={cn(
                 "w-full text-left px-3 py-3 transition-all duration-150 group flex items-center gap-3",
                 "border-b border-border/8 hover:bg-foreground/[0.02]",
-                isRunning && "border-l-2 border-l-brutal-accent",
+                isRunning && "border-l-2 border-l-primary",
                 conv.status === 'completed' && "border-l-2 border-l-emerald-500/50",
               )}
             >

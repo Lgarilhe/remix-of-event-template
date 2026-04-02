@@ -51,7 +51,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
       <div
         className={cn(
           "border border-border overflow-hidden transition-shadow duration-300",
-          isThinking && "shadow-[0_0_20px_-4px_hsl(var(--brutal-accent)/0.2)]"
+          isThinking && "shadow-md"
         )}
       >
         {/* Header */}
@@ -136,7 +136,7 @@ function PhaseCircle({ status }: { status: 'pending' | 'active' | 'done' }) {
     return (
       <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
         <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-accent/30" />
-        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-transparent border-t-brutal-accent animate-spin" />
+        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-transparent border-t-primary animate-spin" />
         <span className="h-1.5 w-1.5 rounded-full bg-accent/60" />
       </span>
     );

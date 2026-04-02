@@ -69,7 +69,7 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="fixed right-0 top-0 left-auto h-full w-full max-w-md translate-x-0 translate-y-0 rounded-none border-l border-border bg-background p-0 shadow-2xl data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 sm:rounded-none">
+      <DialogContent className="fixed right-0 top-0 left-auto h-full w-full max-w-md translate-x-0 translate-y-0 rounded-lg border-l border-border bg-background p-0 shadow-2xl data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 sm:rounded-lg">
         <div className="flex flex-col h-full px-10 pt-24 pb-10">
           <DialogHeader className="text-left mb-8">
             <DialogTitle className="text-foreground text-4xl font-medium mb-2">

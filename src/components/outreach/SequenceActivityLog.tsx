@@ -325,7 +325,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-none border-l border-border">
+        <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-lg border-l border-border">
         <SheetHeader className="p-6 pb-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
             <Activity className="w-5 h-5" />
@@ -362,12 +362,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-background border-border rounded-none"
+                className="pl-9 bg-background border-border rounded-lg"
               />
             </div>
             <div className="flex gap-2">
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-none">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-lg">
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
@@ -379,7 +379,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 </SelectContent>
               </Select>
               <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-none">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-lg">
                   <SelectValue placeholder="Période" />
                 </SelectTrigger>
                 <SelectContent>
@@ -389,7 +389,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                   <SelectItem value="upcoming">À venir</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" className="shrink-0 border-border rounded-none" onClick={fetchExecutions} disabled={loading}>
+              <Button variant="outline" size="icon" className="shrink-0 border-border rounded-lg" onClick={fetchExecutions} disabled={loading}>
                 <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
               </Button>
             </div>
@@ -440,14 +440,14 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                         onOpenChange={() => toggleExpanded(exec.id)}
                       >
                         <div className={cn(
-                          "border border-border rounded-none overflow-hidden transition-colors",
+                          "border border-border rounded-lg overflow-hidden transition-colors",
                           isOverdue && "border-warning bg-warning/5",
                           exec.status === 'failed' && "border-destructive bg-destructive/5",
                         )}>
                           <CollapsibleTrigger className="w-full">
                             <div className="p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
                               {/* Action icon */}
-                              <div className={cn("w-9 h-9 rounded-none flex items-center justify-center shrink-0", actionConfig.bgColor)}>
+                              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", actionConfig.bgColor)}>
                                 <span className={actionConfig.color}>{actionConfig.icon}</span>
                               </div>
 
@@ -499,7 +499,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                             <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border bg-muted/30">
                               {/* Error message */}
                               {hasError && (
-                                <div className="p-2.5 bg-destructive/10 border border-destructive rounded-none text-sm">
+                                <div className="p-2.5 bg-destructive/10 border border-destructive rounded-lg text-sm">
                                   <div className="flex items-center gap-2 font-medium text-destructive">
                                     <AlertCircle className="w-4 h-4" />
                                     {exec.status === 'failed' ? 'Erreur' : 'Raison'}
@@ -512,7 +512,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
                               {/* Message preview */}
                               {hasMessage && (
-                                <div className="p-3 bg-background border border-border rounded-none mt-2">
+                                <div className="p-3 bg-background border border-border rounded-lg mt-2">
                                   {(exec.final_subject || exec.step?.subject_template) && (
                                     <div className="text-xs text-muted-foreground mb-2 pb-2 border-b">
                                       <span className="font-medium">Objet :</span>{' '}

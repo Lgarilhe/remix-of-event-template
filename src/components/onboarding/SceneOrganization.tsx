@@ -337,7 +337,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           onClick={handleSearch}
           disabled={query.trim().length < 2 || phase === 'scanning'}
           className="h-11 px-5 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           {phase === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
         </Button>
@@ -369,7 +369,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                         ? 'border-transparent text-foreground'
                         : 'border-border text-muted-foreground'
                     }`}
-                    style={s.done ? { background: 'hsl(var(--brutal-accent))' } : {}}
+                    style={s.done ? { background: 'hsl(var(--primary))' } : {}}
                   >
                     {s.done ? <Check className="w-3 h-3" /> : String(i + 1).padStart(2, '0')}
                   </div>
@@ -462,7 +462,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             {/* Company card */}
             <div
               className="border-2 border-border/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
-              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
+              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
             >
               <img
                 src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`)}
@@ -568,7 +568,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 onClick={handleContinue}
                 disabled={isCreating}
                 className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                 {isCreating ? 'Création...' : 'Continuer'}
@@ -742,7 +742,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <Users className="w-3.5 h-3.5" />
             Répartition des équipes
           </h4>
-          <div className="space-y-2 border-2 border-border p-3" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
+          <div className="space-y-2 border-2 border-border p-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
             {headcountEntries.map(([dept, count]) => (
               <div key={dept} className="space-y-0.5">
                 <div className="flex items-center justify-between text-xs">
@@ -755,7 +755,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                     animate={{ width: `${(count / maxHeadcount) * 100}%` }}
                     transition={{ duration: 0.6, delay: 0.1 }}
                     className="h-full"
-                    style={{ backgroundColor: 'hsl(var(--brutal-accent))' }}
+                    style={{ backgroundColor: 'hsl(var(--primary))' }}
                   />
                 </div>
               </div>
@@ -771,7 +771,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <TrendingUp className="w-3.5 h-3.5" />
             Historique de levées
           </h4>
-          <div className="border-2 border-border p-3 space-y-0" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
+          <div className="border-2 border-border p-3 space-y-0" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
             {fundingEvents.map((ev, i) => (
               <div key={i} className="flex gap-3 relative">
                 {/* Vertical line */}

@@ -248,7 +248,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                       className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
                         s.done ? 'border-transparent text-foreground' : 'border-border text-muted-foreground'
                       }`}
-                      style={s.done ? { background: 'hsl(var(--brutal-accent))' } : {}}
+                      style={s.done ? { background: 'hsl(var(--primary))' } : {}}
                     >
                       {s.done ? <Check className="w-3 h-3" /> : String(i + 1).padStart(2, '0')}
                     </div>
@@ -295,7 +295,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               <Button
                 onClick={onNext}
                 className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Passer
               </Button>
@@ -315,7 +315,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
             {/* Score card */}
             <div
               className="border-2 border-border/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
-              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
+              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
             >
               <img src={analyticsIcon} alt="" aria-hidden="true" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
 
@@ -470,7 +470,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               <Button
                 onClick={onNext}
                 className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Continuer
               </Button>

@@ -9,9 +9,9 @@ export const ATSStatsSkeleton: React.FC = () => {
           key={i}
           className={`flex items-center gap-2 px-3 py-2 border border-border bg-background ${i > 0 ? '-ml-px' : ''}`}
         >
-          <Skeleton className="h-3.5 w-3.5 rounded-none" />
-          <Skeleton className="h-4 w-8 rounded-none" />
-          <Skeleton className="h-2.5 w-12 rounded-none hidden sm:block" />
+          <Skeleton className="h-3.5 w-3.5 rounded-lg" />
+          <Skeleton className="h-4 w-8 rounded-lg" />
+          <Skeleton className="h-2.5 w-12 rounded-lg hidden sm:block" />
         </div>
       ))}
     </div>

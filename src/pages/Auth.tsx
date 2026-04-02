@@ -290,7 +290,6 @@ const Auth = () => {
             <span className="relative z-10">
               {loading ? 'Chargement...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Connexion' : 'Inscription'}
             </span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         </form>
         {!isResettingPassword && !isForgotPassword && (

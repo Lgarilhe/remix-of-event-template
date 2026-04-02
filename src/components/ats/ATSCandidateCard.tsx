@@ -83,7 +83,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
             </span>
           )}
           {candidate.hasReminder && (
-            <Bell className="w-3.5 h-3.5 text-brutal-accent" />
+            <Bell className="w-3.5 h-3.5 text-primary" />
           )}
           {(candidate.notesCount || 0) > 0 && (
             <div className="flex items-center gap-0.5 text-muted-foreground">

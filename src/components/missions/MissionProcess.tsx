@@ -668,7 +668,6 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
                 ) : (
                   <><Sparkles className="w-3.5 h-3.5 relative z-10" /><span className="relative z-10">Suggestion IA (basé sur le brief)</span></>
                 )}
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
 
               {/* Template grid */}

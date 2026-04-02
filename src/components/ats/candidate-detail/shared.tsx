@@ -31,7 +31,6 @@ export function BrutalButton({ children, onClick, first = true }: { children: Re
         !first && '-ml-px'
       )}>
       {children}
-      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
     </button>
   );
 }
@@ -47,7 +46,6 @@ export function BrutalActionButton({ children, onClick, disabled, loading, first
         !first && '-ml-px'
       )}>
       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : children}
-      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
     </button>
   );
 }

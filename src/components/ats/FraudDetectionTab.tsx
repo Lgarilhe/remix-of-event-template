@@ -86,7 +86,6 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
             className="relative overflow-hidden h-[34px] px-6 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10">Lancer l'analyse</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <CreditCostBadge actionId="screen_candidate" />
           <ModelPicker actionId="screen_candidate" value={selectedModel} onChange={setSelectedModel} compact />

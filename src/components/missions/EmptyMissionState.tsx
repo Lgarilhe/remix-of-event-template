@@ -30,7 +30,7 @@ const NeuralBackground: React.FC = () => {
           key={`e-${i}`}
           x1={nodes[a].x} y1={nodes[a].y}
           x2={nodes[b].x} y2={nodes[b].y}
-          stroke="hsl(var(--brutal-accent))"
+          stroke="hsl(var(--primary))"
           strokeWidth="0.15"
           initial={{ pathLength: 0, opacity: 0 }}
           animate={{ pathLength: 1, opacity: 0.25 }}
@@ -41,7 +41,7 @@ const NeuralBackground: React.FC = () => {
         <motion.circle
           key={`n-${i}`}
           cx={n.x} cy={n.y} r="0.6"
-          fill="hsl(var(--brutal-accent))"
+          fill="hsl(var(--primary))"
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: [0, 1.5, 1], opacity: [0, 0.6, 0.3] }}
           transition={{ delay: 0.5 + i * 0.08, duration: 0.6 }}
@@ -52,7 +52,7 @@ const NeuralBackground: React.FC = () => {
         <motion.circle
           key={`pulse-${i}`}
           r="0.4"
-          fill="hsl(var(--brutal-accent))"
+          fill="hsl(var(--primary))"
           initial={{ cx: nodes[a].x, cy: nodes[a].y, opacity: 0 }}
           animate={{
             cx: [nodes[a].x, nodes[b].x],
@@ -166,7 +166,7 @@ const OrbitRing: React.FC = () => {
             ease: 'linear' as const,
           }}
         >
-          <Icon className="w-3 h-3 text-brutal-accent/60" />
+          <Icon className="w-3 h-3 text-primary/60" />
         </motion.div>
       ))}
     </div>
@@ -367,7 +367,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             className={cn(
               "relative w-full text-left border-2 border-border p-7 sm:p-9 overflow-hidden h-full",
-              "bg-gradient-to-br from-[hsl(var(--brutal-accent)/0.08)] via-transparent to-[hsl(var(--brutal-accent)/0.03)]",
+              "bg-gradient-to-br from-[hsl(var(--accent))] via-transparent to-[hsl(var(--accent))]",
               "focus-visible:outline-none group"
             )}
           >

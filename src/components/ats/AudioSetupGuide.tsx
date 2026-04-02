@@ -210,7 +210,6 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
               className="relative overflow-hidden w-full h-[36px] bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group"
             >
               <span className="relative z-10">J'ai compris — lancer le coaching</span>
-              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
           )}
         </div>

@@ -162,7 +162,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{qs.verdictNotes}</p>
                   )}
                   <a href={`/qualification/${qs.id}`} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-foreground underline underline-offset-2 hover:text-brutal-accent flex items-center gap-1 mt-1">
+                    className="text-xs text-foreground underline underline-offset-2 hover:text-primary flex items-center gap-1 mt-1">
                     <ExternalLink className="w-3 h-3" /> Voir la scorecard
                   </a>
                 </div>
@@ -219,7 +219,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
             {candidate.linkedin && (
               <ContactLine icon={<img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />}>
                 <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                  className="text-foreground hover:text-brutal-accent underline underline-offset-2">Voir le profil</a>
+                  className="text-foreground hover:text-primary underline underline-offset-2">Voir le profil</a>
               </ContactLine>
             )}
           </div>

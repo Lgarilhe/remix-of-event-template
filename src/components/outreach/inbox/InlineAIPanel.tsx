@@ -200,7 +200,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           <Sparkles className="w-3.5 h-3.5" />
           Réponses
           {positive.length + negative.length > 0 && (
-            <Badge variant="outline" className="text-xs rounded-none h-4 px-1 ml-0.5">
+            <Badge variant="outline" className="text-xs rounded-full h-4 px-1 ml-0.5">
               {positive.length + negative.length}
             </Badge>
           )}
@@ -217,7 +217,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           <Search className="w-3.5 h-3.5" />
           Postes
           {jobMatches.length > 0 && (
-            <Badge variant="outline" className="text-xs rounded-none h-4 px-1 ml-0.5">
+            <Badge variant="outline" className="text-xs rounded-full h-4 px-1 ml-0.5">
               {jobMatches.length}
             </Badge>
           )}
@@ -252,14 +252,14 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
       <div className="max-h-[280px] overflow-y-auto p-3">
         {loading && !analysis ? (
           <div className="space-y-2">
-            <Skeleton className="h-12 w-full rounded-none" />
-            <Skeleton className="h-12 w-full rounded-none" />
-            <Skeleton className="h-12 w-3/4 rounded-none" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-3/4 rounded-lg" />
           </div>
         ) : error ? (
           <div className="text-center py-4">
             <p className="text-xs text-destructive mb-2">{error}</p>
-            <Button variant="outline" size="sm" className="rounded-none text-xs" onClick={() => { setError(null); analyze(); }}>
+            <Button variant="outline" size="sm" className="rounded-lg text-xs" onClick={() => { setError(null); analyze(); }}>
               Réessayer
             </Button>
           </div>
@@ -357,7 +357,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-xs font-bold truncate">{job.jobTitle}</p>
-                          <Badge variant="outline" className="text-xs rounded-none shrink-0">
+                          <Badge variant="outline" className="text-xs rounded-full shrink-0">
                             {job.recommendation === 'go' ? '✓' : job.recommendation === 'maybe' ? '?' : '✗'}
                           </Badge>
                         </div>

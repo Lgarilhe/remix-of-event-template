@@ -75,7 +75,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
 
     return (
       <div className="flex items-center gap-2.5 px-3 py-2 border border-border/8 bg-muted/20 text-xs animate-fade-in">
-        <StatusIcon className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+        <StatusIcon className="w-3.5 h-3.5 text-primary shrink-0" />
         <span className="text-muted-foreground font-medium">{cleanContent}</span>
       </div>
     );

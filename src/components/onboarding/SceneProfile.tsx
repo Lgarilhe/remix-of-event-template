@@ -270,7 +270,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         {/* Experience list — single container */}
         <div
           className="border-2 border-border divide-y divide-foreground/5 overflow-hidden"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.15)' }}
+          style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}
         >
           {expClassifications.map((exp, i) => {
             if (!exp.title && !exp.company) return null;
@@ -383,7 +383,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             onClick={handleGenerateBio}
             disabled={generatingBio}
             className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {generatingBio ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -421,7 +421,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         className="mx-auto flex items-center justify-center w-20 h-20 text-2xl font-bold text-white border-2 border-border"
         style={{
           background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))',
-          boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))',
+          boxShadow: '3px 3px 0px 0px hsl(var(--primary))',
         }}
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -500,7 +500,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               className="border-2 border-border p-4 space-y-4"
-              style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}
+              style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}
             >
               {/* Header with photo */}
               <div className="flex items-start gap-3">
@@ -688,7 +688,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             type="submit"
             disabled={saving || scanning}
             className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

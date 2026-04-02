@@ -61,7 +61,6 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="relative overflow-hidden inline-flex items-center gap-2 h-[34px] px-5 bg-background text-foreground border border-border text-xs font-medium uppercase tracking-wider group"
               >
                 <span className="relative z-10">Réessayer</span>
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
               <button
                 onClick={this.handleReload}

@@ -423,7 +423,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-none border-l border-border">
+      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-lg border-l border-border">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2 uppercase tracking-wide">
             <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center">
@@ -497,7 +497,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               placeholder="Rechercher un candidat…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 text-xs border-border rounded-none"
+              className="pl-8 h-8 text-xs border-border rounded-lg"
             />
           </div>
 
@@ -568,7 +568,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   </p>
                                 )}
                                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  <Badge className={`text-xs rounded-none ${status.className}`}>
+                                  <Badge className={`text-xs rounded-full ${status.className}`}>
                                     {status.icon}
                                     <span className="ml-1">{status.label}</span>
                                   </Badge>
@@ -619,13 +619,13 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 <Button 
                                   variant="outline" 
                                   size="icon"
-                                  className="h-8 w-8 shrink-0 border-border rounded-none"
+                                  className="h-8 w-8 shrink-0 border-border rounded-lg"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[3000] bg-background border-border rounded-none">
+                              <DropdownMenuContent align="end" className="z-[3000] bg-background border-border rounded-lg">
                                 {enrollment.status === 'active' ? (
                                   <DropdownMenuItem 
                                     onClick={() => stopEnrollment(enrollment.id)}

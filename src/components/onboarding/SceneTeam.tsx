@@ -344,7 +344,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               size="icon"
               disabled={isInviting || !email.trim()}
               className="h-10 w-10 border-2 border-border bg-foreground text-background hover:bg-foreground/90 shrink-0"
-              style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+              style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
             >
               {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             </Button>
@@ -373,7 +373,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             onClick={handleFinish}
             disabled={isSending}
             className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
             {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}

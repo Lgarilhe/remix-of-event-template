@@ -538,7 +538,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                   </Button>
                 )}
                 {hasVariants && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 rounded-none border-border">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 rounded-full border-border">
                     <FlaskConical className="w-3 h-3 mr-0.5" />A/B
                   </Badge>
                 )}
@@ -699,9 +699,9 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                           )}
                         </div>
                         <Tabs defaultValue={step.id} className="w-full">
-                          <TabsList className="w-full rounded-none h-8 bg-muted/50">
+                          <TabsList className="w-full rounded-lg h-8 bg-muted/50">
                             {variants.sort((a, b) => (a.variantGroup || '').localeCompare(b.variantGroup || '')).map(v => (
-                              <TabsTrigger key={v.id} value={v.id} className="flex-1 h-6 text-xs rounded-none">
+                              <TabsTrigger key={v.id} value={v.id} className="flex-1 h-6 text-xs rounded-lg">
                                 Variante {v.variantGroup}<span className="ml-1 text-muted-foreground">({v.variantWeight || 0}%)</span>
                               </TabsTrigger>
                             ))}
@@ -1034,7 +1034,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
             <div className="border border-border rounded-lg p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold uppercase">{sequence.name || '(Sans nom)'}</span>
-                <Badge variant="outline" className="rounded-none">{sequence.steps.length} étapes</Badge>
+                <Badge variant="outline" className="rounded-full">{sequence.steps.length} étapes</Badge>
               </div>
               {sequence.description && <p className="text-xs text-muted-foreground">{sequence.description}</p>}
 

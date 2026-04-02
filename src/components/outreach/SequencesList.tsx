@@ -549,7 +549,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           >
             <BarChart3 className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Analytics</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <button 
             onClick={handleForceReschedule}
@@ -566,7 +565,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           >
             <Activity className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Journal</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <button 
             onClick={handleCreateNew}
@@ -587,7 +585,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             placeholder="Rechercher une séquence..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-background border-border rounded-none"
+            className="pl-9 bg-background border-border rounded-lg"
           />
         </div>
       </div>
@@ -622,7 +620,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10 flex items-center gap-2">Créer ma première séquence</span>
-            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         </div>
       ) : (
@@ -900,7 +897,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <AlertDialogContent className="bg-background border-border rounded-none">
+        <AlertDialogContent className="bg-background border-border rounded-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette séquence ?</AlertDialogTitle>
             <AlertDialogDescription>

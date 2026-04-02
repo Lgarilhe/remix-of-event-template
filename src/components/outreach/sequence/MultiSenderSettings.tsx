@@ -205,7 +205,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
 
           {/* Team member picker modal */}
           <Dialog open={showPickerModal} onOpenChange={setShowPickerModal}>
-            <DialogContent className="max-w-md bg-background border-border rounded-none p-0 gap-0">
+            <DialogContent className="max-w-md bg-background border-border rounded-lg p-0 gap-0">
               <DialogHeader className="px-5 pt-5 pb-4 border-b border-border">
                 <DialogTitle className="flex items-center gap-2.5 text-base">
                   <div className="w-8 h-8 bg-muted flex items-center justify-center">
@@ -275,7 +275,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                             </span>
                           )}
                           {alreadyAdded && (
-                            <Badge variant="secondary" className="text-[10px] h-5 rounded-none">
+                            <Badge variant="secondary" className="text-[10px] h-5 rounded-full">
                               Ajouté
                             </Badge>
                           )}

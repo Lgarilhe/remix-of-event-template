@@ -267,7 +267,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[580px] sm:max-w-[580px] bg-background p-0 rounded-none border-l border-border">
+      <SheetContent className="w-full sm:w-[580px] sm:max-w-[580px] bg-background p-0 rounded-lg border-l border-border">
         {/* Header */}
         <SheetHeader className="px-5 py-4 border-b border-border bg-accent">
           <SheetTitle className="flex items-center gap-2 text-foreground uppercase tracking-wider text-sm font-bold">
@@ -282,10 +282,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               {!sequenceId && (
                 <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-border rounded-none text-xs uppercase tracking-wide">
+                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-border rounded-lg text-xs uppercase tracking-wide">
                     <SelectValue placeholder="Toutes les séquences" />
                   </SelectTrigger>
-                  <SelectContent className="bg-background border-border rounded-none">
+                  <SelectContent className="bg-background border-border rounded-lg">
                     <SelectItem value="all">Toutes les séquences</SelectItem>
                     {sequences.map(s => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
@@ -294,10 +294,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 </Select>
               )}
               <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90')}>
-                <SelectTrigger className="w-[120px] bg-background border-border rounded-none text-xs uppercase tracking-wide">
+                <SelectTrigger className="w-[120px] bg-background border-border rounded-lg text-xs uppercase tracking-wide">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-background border-border rounded-none">
+                <SelectContent className="bg-background border-border rounded-lg">
                   <SelectItem value="7">7 jours</SelectItem>
                   <SelectItem value="30">30 jours</SelectItem>
                   <SelectItem value="90">90 jours</SelectItem>
@@ -308,7 +308,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 size="icon"
                 onClick={fetchData}
                 disabled={loading}
-                className="border-border rounded-none h-9 w-9"
+                className="border-border rounded-lg h-9 w-9"
               >
                 <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
               </Button>
@@ -471,7 +471,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                           />
                           <Bar dataKey="invites" name="Invitations" fill="hsl(var(--foreground))" radius={0} />
                           <Bar dataKey="messages" name="Messages" fill="hsl(var(--muted-foreground))" radius={0} />
-                          <Bar dataKey="replies" name="Réponses" fill="hsl(var(--brutal-accent))" radius={0} />
+                          <Bar dataKey="replies" name="Réponses" fill="hsl(var(--primary))" radius={0} />
                         </BarChart>
                       </ResponsiveContainer>
                       <div className="flex items-center gap-4 mt-2 justify-center">

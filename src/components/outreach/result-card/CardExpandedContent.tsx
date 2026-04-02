@@ -59,7 +59,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
     <div className="border border-border bg-background overflow-hidden">
       <Tabs defaultValue="experience" className="w-full">
         <div className="border-b border-border bg-foreground overflow-x-auto">
-          <TabsList className="w-max min-w-full h-10 sm:h-11 bg-transparent p-0 rounded-none gap-0">
+          <TabsList className="w-max min-w-full h-10 sm:h-11 bg-transparent p-0 rounded-lg gap-0">
             {[
               { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
               { value: 'education', icon: GraduationCap, label: 'Formation', shortLabel: 'Form.' },
@@ -70,7 +70,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-xs sm:text-xs h-full rounded-none border-b-2 border-transparent text-background/60 hover:text-background data-[state=active]:border-accent data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
+                className="shrink-0 min-w-[74px] sm:min-w-0 sm:flex-1 text-xs sm:text-xs h-full rounded-lg border-b-2 border-transparent text-background/60 hover:text-background data-[state=active]:border-accent data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none gap-1 sm:gap-1.5 px-1.5 sm:px-2 transition-all uppercase tracking-wider font-semibold"
               >
                 <tab.icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -218,7 +218,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
             <p className="text-xs text-muted-foreground mb-4">
               Consultez les dernières publications de ce candidat
             </p>
-            <Button variant="outline" size="sm" className="rounded-none border border-border text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
+            <Button variant="outline" size="sm" className="rounded-lg border border-border text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
               <Newspaper className="w-4 h-4 mr-2" />
               Voir les posts
             </Button>

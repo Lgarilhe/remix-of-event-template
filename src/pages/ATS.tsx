@@ -215,7 +215,6 @@ export default function ATS() {
               >
                 <RefreshCw className={`w-3 h-3 relative z-10 ${loading ? 'animate-spin' : ''}`} />
                 <span className="relative z-10 hidden sm:inline">Actualiser</span>
-                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
               <button
                 onClick={() => setShowReminders(!showReminders)}
@@ -227,7 +226,6 @@ export default function ATS() {
                 <Bell className="w-3 h-3 relative z-10" />
                 <span className="relative z-10 hidden sm:inline">Rappels</span>
                 {!showReminders && (
-                  <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                 )}
               </button>
             </div>
@@ -261,7 +259,6 @@ export default function ATS() {
                         <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
                         {!isActive && (
-                          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                         )}
                       </button>
                     );
@@ -283,7 +280,6 @@ export default function ATS() {
                     className="relative overflow-hidden h-[34px] px-6 mt-4 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
                   >
                     <span className="relative z-10">Réessayer</span>
-                    <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                   </button>
                 </div>
               ) : (
@@ -370,7 +366,6 @@ export default function ATS() {
                                       <tab.Icon className="w-3 h-3 shrink-0 relative z-10" />
                                       <span className="relative z-10">{tab.label}</span>
                                       {shortlistViewMode !== tab.value && (
-                                        <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                                       )}
                                     </button>
                                   ))}

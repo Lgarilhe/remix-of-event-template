@@ -200,7 +200,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     ) : (
                       <div className="flex items-center gap-2">
                         <Select value={selectedLinkedInId} onValueChange={setSelectedLinkedInId}>
-                          <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-border">
+                          <SelectTrigger className="h-8 text-xs flex-1 rounded-lg border-border">
                             <SelectValue placeholder="Associer un compte LinkedIn…" />
                           </SelectTrigger>
                           <SelectContent>
@@ -258,7 +258,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                     <div className="flex items-center gap-2">
                       <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                        <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-border">
+                        <SelectTrigger className="h-8 text-xs flex-1 rounded-lg border-border">
                           <SelectValue placeholder="Sélectionner un poste…" />
                         </SelectTrigger>
                         <SelectContent>
@@ -325,7 +325,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                   type="number"
                                   min={0}
                                   max={max}
-                                  className="h-6 w-16 text-xs text-right rounded-none border-border px-1.5"
+                                  className="h-6 w-16 text-xs text-right rounded-lg border-border px-1.5"
                                   value={value}
                                   onChange={e => setEditingQuotas(prev => ({
                                     ...prev,

@@ -121,7 +121,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 
         {/* ── Accent bar ── */}
         <motion.div
-          className="h-1 bg-gradient-to-r from-brutal-accent via-primary to-brutal-accent"
+          className="h-1 bg-gradient-to-r from-primary via-primary to-primary"
           initial={{ scaleX: 0, transformOrigin: 'left' }}
           animate={{ scaleX: 1 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
@@ -136,7 +136,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 animate={{ rotate: 0, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
               >
-                <Sparkles className="w-5 h-5 text-brutal-accent" />
+                <Sparkles className="w-5 h-5 text-primary" />
               </motion.div>
               <div>
                 <h2 className="text-sm font-black uppercase tracking-widest text-foreground">
@@ -292,7 +292,7 @@ const StatCard: React.FC<{
     </div>
     <span className={cn(
       "text-base font-black tabular-nums",
-      highlight ? 'text-brutal-accent' : 'text-foreground'
+      highlight ? 'text-primary' : 'text-foreground'
     )}>
       {value}
       {suffix && <span className="text-xs font-bold text-muted-foreground ml-0.5">{suffix}</span>}

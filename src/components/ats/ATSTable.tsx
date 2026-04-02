@@ -79,7 +79,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
   const SortButton = ({ label, sortKeyVal }: { label: string; sortKeyVal: SortKey }) => (
     <button
       onClick={() => handleSort(sortKeyVal)}
-      className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-foreground hover:text-brutal-accent transition-colors"
+      className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-foreground hover:text-primary transition-colors"
     >
       {label}
       <ArrowUpDown className="w-3 h-3" />
@@ -114,7 +114,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                     <span className="font-medium text-foreground truncate text-sm">
                       {candidate.name}
                     </span>
-                    {candidate.hasReminder && <Bell className="w-3.5 h-3.5 text-brutal-accent flex-shrink-0" />}
+                    {candidate.hasReminder && <Bell className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
                     {(candidate.notesCount || 0) > 0 && (
                       <div className="flex items-center gap-0.5 text-muted-foreground flex-shrink-0">
                         <StickyNote className="w-3.5 h-3.5" />

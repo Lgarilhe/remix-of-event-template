@@ -32,7 +32,7 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
                 className={cn(
                   "w-full text-left px-3 py-2.5 transition-all duration-150 flex items-center gap-3 border-2",
                   isSelected
-                    ? "border-border bg-foreground/[0.03] shadow-[3px_3px_0_0_hsl(var(--brutal-accent)/0.3)]"
+                    ? "border-border bg-foreground/[0.03] shadow-sm"
                     : "border-transparent hover:border-border"
                 )}
               >
@@ -83,7 +83,7 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
           className={cn(
             "w-full h-11 text-xs font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
             selectedJob
-              ? "border-border bg-foreground text-background hover:shadow-[4px_4px_0_0_hsl(var(--brutal-accent)/0.5)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+              ? "border-border bg-foreground text-background hover:shadow-md"
               : "border-border text-muted-foreground/40 cursor-not-allowed"
           )}
         >

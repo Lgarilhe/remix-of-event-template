@@ -269,8 +269,8 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
             type="button"
             className={cn(
               "flex h-9 w-full items-center justify-between border border-border bg-background px-3 py-1.5 text-sm transition-shadow",
-              "hover:shadow-[2px_2px_0px_hsl(var(--brutal-accent))]",
-              "focus:outline-none focus:shadow-[2px_2px_0px_hsl(var(--brutal-accent))]",
+              "hover:shadow-sm",
+              "focus:outline-none focus:shadow-sm",
               selectedJob && "border-accent"
             )}
             onClick={() => setPopoverOpen((prev) => !prev)}
@@ -298,7 +298,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
 
           {popoverOpen && (
             <div
-              className="absolute left-0 right-0 mt-1 z-[70] border border-border bg-background shadow-[3px_3px_0px_hsl(var(--foreground)/0.1)]"
+              className="absolute left-0 right-0 mt-1 z-[70] border border-border bg-background shadow-md"
               onPointerDown={(e) => e.stopPropagation()}
             >
               <div className="p-2 border-b border-border">
@@ -308,7 +308,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     placeholder="Rechercher un poste..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-sm border-border rounded-none"
+                    className="pl-8 h-8 text-sm border-border rounded-lg"
                     autoFocus
                   />
                 </div>
@@ -356,7 +356,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                       className={cn(
                         "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-left border-b border-border/5 transition-colors",
                         "hover:bg-accent/50",
-                        isSelected && "bg-accent/10 border-l-2 border-l-brutal-accent"
+                        isSelected && "bg-accent/10 border-l-2 border-l-primary"
                       )}
                       onClick={() => {
                         handleChange(job.id);
@@ -366,7 +366,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     >
                       {/* Check / favicon column */}
                       {isSelected ? (
-                        <Check className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+                        <Check className="w-3.5 h-3.5 text-primary shrink-0" />
                       ) : faviconUrl ? (
                         <img
                           src={faviconUrl}

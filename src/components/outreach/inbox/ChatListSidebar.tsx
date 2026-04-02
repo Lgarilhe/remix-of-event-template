@@ -122,7 +122,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             placeholder="Rechercher..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-8 h-7 text-xs border-border rounded-none"
+            className="pl-8 h-7 text-xs border-border rounded-lg"
           />
         </div>
         

@@ -35,7 +35,7 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
   };
 
   const variantStyles = {
-    info: 'border-l-4 border-l-brutal-accent bg-accent/5',
+    info: 'border-l-4 border-l-primary bg-accent/5',
     warning: 'border-l-4 border-l-destructive bg-destructive/5',
     success: 'border-l-4 border-l-primary bg-primary/5',
   };

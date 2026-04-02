@@ -220,7 +220,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-border rounded-none">
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-border rounded-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
              <GitBranch className="w-5 h-5 text-foreground" />
@@ -309,7 +309,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={handleClose} className="border-border rounded-none">
+          <Button variant="outline" onClick={handleClose} className="border-border rounded-lg">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
           {!results && (
@@ -317,7 +317,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               <Button
                  onClick={handleEnroll}
                  disabled={isEnrolling}
-                 className="bg-foreground text-background rounded-none"
+                 className="bg-foreground text-background rounded-lg"
               >
                 {isEnrolling ? (
                   <>

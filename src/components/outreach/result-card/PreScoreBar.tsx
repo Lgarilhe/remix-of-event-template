@@ -103,7 +103,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
             </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-border">
+        <TooltipContent side="left" className="max-w-xs p-3 rounded-lg border-border">
           <TooltipBreakdown pct={pct} breakdown={breakdown} flags={flags} />
         </TooltipContent>
       </Tooltip>
@@ -127,7 +127,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
             </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-border">
+        <TooltipContent side="left" className="max-w-xs p-3 rounded-lg border-border">
           <TooltipBreakdown pct={pct} breakdown={breakdown} flags={flags} />
         </TooltipContent>
       </Tooltip>
@@ -139,7 +139,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
           <Badge
             key={i}
             variant="outline"
-            className={`text-xs px-1.5 py-0 h-4 font-medium rounded-none max-w-[140px] truncate ${flagLevelClass[style.level]}`}
+            className={`text-xs px-1.5 py-0 h-4 font-medium rounded-lg max-w-[140px] truncate ${flagLevelClass[style.level]}`}
           >
             {style.icon} {f.length > 20 ? f.slice(0, 17) + '…' : f}
           </Badge>

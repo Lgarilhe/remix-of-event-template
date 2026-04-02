@@ -175,7 +175,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col bg-background border-border rounded-none w-[calc(100%-1rem)] sm:w-full">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col bg-background border-border rounded-lg w-[calc(100%-1rem)] sm:w-full">
         <DialogHeader>
           <DialogTitle className="uppercase tracking-wide text-sm flex items-center gap-2">
             {step !== 'choice' && (
@@ -258,10 +258,10 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                           <div className="flex items-center gap-2">
                             <p className="font-bold text-sm text-foreground truncate">{template.name}</p>
                             {template.is_system && (
-                              <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30 rounded-none">Skalr</Badge>
+                              <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30 rounded-full">Skalr</Badge>
                             )}
                             {cat && (
-                              <Badge variant="outline" className="text-[9px] rounded-none border-border">
+                              <Badge variant="outline" className="text-[9px] rounded-full border-border">
                                 {cat.emoji} {cat.label}
                               </Badge>
                             )}
@@ -403,26 +403,26 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-background border-border rounded-none max-w-md">
+      <DialogContent className="bg-background border-border rounded-lg max-w-md">
         <DialogHeader>
           <DialogTitle className="uppercase tracking-wide text-sm">Sauvegarder comme template</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div>
             <Label>Nom du template *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5 border-border rounded-none" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5 border-border rounded-lg" />
           </div>
           <div>
             <Label>Description</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1.5 border-border rounded-none" placeholder="Décrivez l'usage de ce template..." />
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1.5 border-border rounded-lg" placeholder="Décrivez l'usage de ce template..." />
           </div>
           <div>
             <Label>Catégorie</Label>
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="mt-1.5 border-border rounded-none">
+              <SelectTrigger className="mt-1.5 border-border rounded-lg">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-background border-border rounded-none">
+              <SelectContent className="bg-background border-border rounded-lg">
                 {TEMPLATE_CATEGORIES.map(c => (
                   <SelectItem key={c.value} value={c.value}>{c.emoji} {c.label}</SelectItem>
                 ))}
@@ -431,8 +431,8 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} className="border-border rounded-none">Annuler</Button>
-          <Button onClick={handleSave} disabled={saving || !name.trim()} className="bg-foreground text-background rounded-none">
+          <Button variant="outline" onClick={onClose} className="border-border rounded-lg">Annuler</Button>
+          <Button onClick={handleSave} disabled={saving || !name.trim()} className="bg-foreground text-background rounded-lg">
             {saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </Button>
         </div>

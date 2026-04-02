@@ -15,12 +15,12 @@ export const ATSTableSkeleton: React.FC = () => {
       <Table>
         <TableHeader>
           <TableRow className="bg-accent/50 border-b border-border">
-            <TableHead className="w-[250px]"><Skeleton className="h-4 w-20 rounded-none" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-16 rounded-none" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-16 rounded-none" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-24 rounded-none" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-20 rounded-none" /></TableHead>
-            <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto rounded-none" /></TableHead>
+            <TableHead className="w-[250px]"><Skeleton className="h-4 w-20 rounded-lg" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-16 rounded-lg" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-16 rounded-lg" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-24 rounded-lg" /></TableHead>
+            <TableHead><Skeleton className="h-4 w-20 rounded-lg" /></TableHead>
+            <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto rounded-lg" /></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -28,18 +28,18 @@ export const ATSTableSkeleton: React.FC = () => {
             <TableRow key={i} className="border-b border-border">
               <TableCell>
                 <div className="space-y-1.5">
-                  <Skeleton className="h-4 w-32 rounded-none" />
-                  <Skeleton className="h-3 w-48 rounded-none" />
+                  <Skeleton className="h-4 w-32 rounded-lg" />
+                  <Skeleton className="h-3 w-48 rounded-lg" />
                 </div>
               </TableCell>
-              <TableCell><Skeleton className="h-5 w-20 rounded-none" /></TableCell>
-              <TableCell><Skeleton className="h-5 w-16 rounded-none" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-24 rounded-none" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-20 rounded-none" /></TableCell>
+              <TableCell><Skeleton className="h-5 w-20 rounded-lg" /></TableCell>
+              <TableCell><Skeleton className="h-5 w-16 rounded-lg" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-24 rounded-lg" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-20 rounded-lg" /></TableCell>
               <TableCell className="text-right">
                 <div className="flex gap-1 justify-end">
-                  <Skeleton className="h-7 w-7 rounded-none" />
-                  <Skeleton className="h-7 w-7 rounded-none" />
+                  <Skeleton className="h-7 w-7 rounded-lg" />
+                  <Skeleton className="h-7 w-7 rounded-lg" />
                 </div>
               </TableCell>
             </TableRow>

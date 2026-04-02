@@ -619,7 +619,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
               {generating ? <Loader2 className="w-3 h-3 animate-spin relative z-10" /> : <RotateCcw className="w-3 h-3 relative z-10" />}
               <span className="relative z-10 hidden sm:inline">Régénérer</span>
-              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
             <button onClick={handleSave} disabled={saving}
               className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
@@ -829,7 +828,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
                 {/* Notes */}
                 <Textarea value={comment} onChange={e => handleComment(criterion.id, e.target.value)}
-                  placeholder="Notes rapides..." className="text-xs min-h-[50px] rounded-none border-2 border-border focus:border-border resize-none py-1.5 px-2" />
+                  placeholder="Notes rapides..." className="text-xs min-h-[50px] rounded-lg border-2 border-border focus:border-border resize-none py-1.5 px-2" />
               </div>
 
               {/* Navigation arrows */}
@@ -996,7 +995,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               value={activeEval.summary || ''}
               onChange={e => updateActiveEval(ev => ({ ...ev, summary: e.target.value }))}
               placeholder="Résumé de l'entretien et justification de la recommandation..."
-              className="text-xs min-h-[80px] rounded-none border-border resize-none"
+              className="text-xs min-h-[80px] rounded-lg border-border resize-none"
             />
           </div>
 
@@ -1007,7 +1006,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               value={activeEval.followUpNotes || ''}
               onChange={e => updateActiveEval(ev => ({ ...ev, followUpNotes: e.target.value }))}
               placeholder="Questions à creuser, points à vérifier lors du prochain entretien..."
-              className="text-xs min-h-[60px] rounded-none border-border resize-none"
+              className="text-xs min-h-[60px] rounded-lg border-border resize-none"
             />
           </div>
         </div>

@@ -40,7 +40,7 @@ const STAGE_COLORS: Record<string, string> = {
 
 const SOURCE_COLORS = [
   'hsl(var(--foreground))',
-  'hsl(var(--brutal-accent))',
+  'hsl(var(--primary))',
   'hsl(217, 91%, 60%)',
 ];
 
@@ -978,7 +978,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                   />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="invitesSent" name="Envoyées" fill="hsl(var(--foreground))" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="invitesAccepted" name="Acceptées" fill="hsl(var(--brutal-accent))" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="invitesAccepted" name="Acceptées" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

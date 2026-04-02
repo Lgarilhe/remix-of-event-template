@@ -318,7 +318,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         onInteractOutside={(e) => { if (mobileProfileOpen) e.preventDefault(); }}
         onPointerDownOutside={(e) => { if (mobileProfileOpen) e.preventDefault(); }}
         className={cn(
-         "overflow-hidden flex flex-col p-0 rounded-none border-border gap-0 [&>button]:hidden transition-all duration-300",
+         "overflow-hidden flex flex-col p-0 rounded-lg border-border gap-0 [&>button]:hidden transition-all duration-300",
          "w-[100vw] h-[100dvh] max-w-[100vw] max-h-[100dvh]",
          "sm:w-auto sm:h-auto",
          isSplitMode
@@ -363,10 +363,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-4 pb-2 sm:pb-4 border-b border-border">
             <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground hidden sm:inline">Étape :</span>
             <Select value={candidate.stage} onValueChange={(v) => onStageChange(candidate.id, v)}>
-              <SelectTrigger className="w-[140px] sm:w-[180px] rounded-none border-border h-8 sm:h-9 text-xs">
+              <SelectTrigger className="w-[140px] sm:w-[180px] rounded-lg border-border h-8 sm:h-9 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="rounded-none border-border">
+              <SelectContent className="rounded-lg border-border">
                 {ATS_STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -419,7 +419,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 placeholder="+ tag"
-                className="h-6 w-20 text-xs rounded-none border-border px-1.5"
+                className="h-6 w-20 text-xs rounded-lg border-border px-1.5"
               />
             </form>
           </div>

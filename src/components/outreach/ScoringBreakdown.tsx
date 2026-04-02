@@ -73,13 +73,13 @@ const InsightsPanel: React.FC<{ strengths: string[]; concerns: string[] }> = ({ 
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-1">
     {strengths.length > 0 && (
       <div className="space-y-1">
-        <p className="text-xs font-bold uppercase tracking-widest text-brutal-accent flex items-center gap-1">
+        <p className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-1">
           <ThumbsUp className="w-3 h-3" /> Points forts
         </p>
         <ul className="space-y-0.5">
           {strengths.map((s, i) => (
             <li key={i} className="flex items-start gap-1.5 text-xs text-foreground/80 leading-snug">
-              <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0 text-brutal-accent" />
+              <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
               <span>{s}</span>
             </li>
           ))}

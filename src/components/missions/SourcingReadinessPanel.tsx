@@ -38,7 +38,7 @@ type CheckStatus = 'ok' | 'warning' | 'error';
 
 const statusIcon = {
   ok: <CheckCircle2 className="w-4 h-4 text-accent" />,
-  warning: <AlertCircle className="w-4 h-4 text-brutal-accent" />,
+  warning: <AlertCircle className="w-4 h-4 text-primary" />,
   error: <XCircle className="w-4 h-4 text-destructive" />,
 };
 
@@ -121,7 +121,7 @@ const StatusBadge: React.FC<{ status: CheckStatus; label: string }> = ({ status,
   <span className={cn(
     'inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider px-2 py-0.5 border',
     status === 'ok' && 'text-accent border-accent/30 bg-accent/10',
-    status === 'warning' && 'text-brutal-accent border-accent/30 bg-accent/10',
+    status === 'warning' && 'text-primary border-accent/30 bg-accent/10',
     status === 'error' && 'text-destructive border-destructive/30 bg-destructive/10',
   )}>
     {statusIcon[status]}
@@ -180,7 +180,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
           animate={{ opacity: 1 }}
           className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"
         >
-          <Zap className="w-3.5 h-3.5 text-brutal-accent" />
+          <Zap className="w-3.5 h-3.5 text-primary" />
           Choisissez votre source
         </motion.h3>
 
@@ -343,7 +343,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             className={cn(
               'w-full h-[48px] flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
               filtersReady
-                ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm active:shadow-none active:translate-x-[4px] active:translate-y-[4px]'
+                ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm'
                 : 'border-border bg-accent/50 text-muted-foreground cursor-not-allowed',
             )}
           >

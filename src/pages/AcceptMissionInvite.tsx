@@ -44,7 +44,6 @@ export default function AcceptMissionInvite() {
               className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group"
             >
               <span className="relative z-10">Voir la mission</span>
-              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
           </>
         )}
