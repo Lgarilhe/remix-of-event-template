@@ -32,7 +32,8 @@ export default function Outreach() {
 
       <div className="py-6 w-full max-w-full">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
-          <div className="mb-4 sm:mb-6">
+          <div className="flex items-center gap-2.5 mb-4 sm:mb-6">
+            <AnimatedCompass size={32} speed={0.8} />
             <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">
               Missions
             </h1>
