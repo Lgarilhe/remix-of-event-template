@@ -39,7 +39,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
   if (!canFillScorecard || submitted) {
     if (submitted) {
       return (
-        <div className="flex items-center gap-1.5 px-3 py-2 bg-foreground/5 border border-foreground/10">
+        <div className="flex items-center gap-1.5 px-3 py-2 bg-accent/50 border border-border">
           <Check className="w-3 h-3 text-foreground" />
           <span className="text-xs text-foreground font-medium">Évaluation envoyée</span>
         </div>
@@ -93,7 +93,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
   };
 
   return (
-    <div className="border border-foreground/10">
+    <div className="border border-border">
       {/* Toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -120,8 +120,8 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
                     className={cn(
                       "w-8 h-8 text-xs font-bold border transition-colors",
                       ratings[criterion.key] === n
-                        ? "bg-foreground text-background border-foreground"
-                        : "border-foreground/20 text-foreground hover:border-foreground"
+                        ? "bg-foreground text-background border-border"
+                        : "border-border text-foreground hover:border-border"
                     )}
                   >
                     {n}
@@ -147,8 +147,8 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
                   className={cn(
                     "px-2 py-1 text-xs font-bold uppercase tracking-wider border transition-colors",
                     recommendation === opt.key
-                      ? "bg-foreground text-background border-foreground"
-                      : "border-foreground/20 text-foreground hover:border-foreground"
+                      ? "bg-foreground text-background border-border"
+                      : "border-border text-foreground hover:border-border"
                   )}
                 >
                   {opt.label}
@@ -164,7 +164,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="Vos impressions sur ce candidat..."
-              className="w-full min-h-[60px] px-3 py-2 text-sm border border-foreground/20 bg-background text-foreground resize-y focus:border-foreground focus:outline-none"
+              className="w-full min-h-[60px] px-3 py-2 text-sm border border-border bg-background text-foreground resize-y focus:border-border focus:outline-none"
             />
           </div>
 
@@ -172,12 +172,11 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
           <button
             onClick={handleSubmit}
             disabled={submitting || Object.keys(ratings).length === 0}
-            className="relative overflow-hidden w-full h-[34px] bg-foreground text-background border border-foreground text-xs font-bold uppercase tracking-wider group disabled:opacity-50"
+            className="relative overflow-hidden w-full h-[34px] bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group disabled:opacity-50"
           >
             <span className="relative z-10 flex items-center justify-center gap-1.5">
               {submitting ? 'Envoi...' : <><Send className="w-3 h-3" /> Envoyer mon évaluation</>}
             </span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         </div>
       )}

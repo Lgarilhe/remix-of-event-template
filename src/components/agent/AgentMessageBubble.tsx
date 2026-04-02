@@ -74,8 +74,8 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       : Activity;
 
     return (
-      <div className="flex items-center gap-2.5 px-3 py-2 border border-foreground/8 bg-muted/20 text-xs animate-fade-in">
-        <StatusIcon className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+      <div className="flex items-center gap-2.5 px-3 py-2 border border-border/8 bg-muted/20 text-xs animate-fade-in">
+        <StatusIcon className="w-3.5 h-3.5 text-primary shrink-0" />
         <span className="text-muted-foreground font-medium">{cleanContent}</span>
       </div>
     );
@@ -168,13 +168,13 @@ function ThinkingCard({ thinking }: { thinking: string }) {
   if (displayLines.length === 0) return null;
 
   return (
-    <div className="border border-foreground/10 bg-muted/20 overflow-hidden">
+    <div className="border border-border bg-muted/20 overflow-hidden">
       {/* Toggle header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/30 transition-colors"
       >
-        <div className="h-[18px] w-[18px] flex items-center justify-center border border-foreground/15">
+        <div className="h-[18px] w-[18px] flex items-center justify-center border border-border">
           <Brain className="w-2.5 h-2.5 text-muted-foreground" />
         </div>
         <span className="text-xs text-muted-foreground font-medium flex-1">
@@ -199,7 +199,7 @@ function ThinkingCard({ thinking }: { thinking: string }) {
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="overflow-hidden"
           >
-            <div className="border-t border-foreground/8 px-3 py-2.5 space-y-0.5 max-h-[240px] overflow-y-auto scrollbar-hide">
+            <div className="border-t border-border/8 px-3 py-2.5 space-y-0.5 max-h-[240px] overflow-y-auto scrollbar-hide">
               {displayLines.map((line, i) => (
                 <div key={i} className="flex items-start gap-2 py-0.5">
                   <span className="mt-[6px] h-1 w-1 bg-foreground/15 shrink-0" />
@@ -221,7 +221,7 @@ function StepCard({ current, total, title, question }: {
   current: number; total: number; title: string; question: string;
 }) {
   return (
-    <div className="border border-foreground/10 p-4 mb-2">
+    <div className="border border-border p-4 mb-2">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-7 h-7 flex items-center justify-center text-xs font-semibold text-white shrink-0 skalr-gradient-bg">
           {current}
@@ -438,8 +438,8 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
   }
 
   return (
-    <div className="border-2 border-foreground/15 overflow-hidden">
-      <div className="px-3.5 py-3 flex items-center justify-between border-b border-foreground/10">
+    <div className="border-2 border-border overflow-hidden">
+      <div className="px-3.5 py-3 flex items-center justify-between border-b border-border">
         <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
           Plan de recherche
         </span>
@@ -457,7 +457,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
               estimatedCount > 100
                 ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5"
                 : estimatedCount > 20
-                  ? "border-foreground/15 text-foreground/70"
+                  ? "border-border text-foreground/70"
                   : "border-amber-500/30 text-amber-600 bg-amber-500/5"
             )}>
               {estimatedCount.toLocaleString('fr-FR')} profils LinkedIn
@@ -483,19 +483,19 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
 
       {/* Pills */}
       {(locationKeywords.length > 0 || filters.calculated_experience_min != null || stopConditions.target_go_profiles) && (
-        <div className="border-t border-foreground/10 px-3.5 py-2.5 flex flex-wrap gap-1.5">
+        <div className="border-t border-border px-3.5 py-2.5 flex flex-wrap gap-1.5">
           {locationKeywords.length > 0 && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-border text-foreground/60">
               {locationKeywords.join(', ')}
             </span>
           )}
           {filters.calculated_experience_min != null && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-border text-foreground/60">
               {filters.calculated_experience_min}–{filters.calculated_experience_max} ans
             </span>
           )}
           {stopConditions.target_go_profiles && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-foreground/10 text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-border text-foreground/60">
               {stopConditions.target_go_profiles} profils Go
             </span>
           )}
@@ -520,7 +520,7 @@ function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
     .join('');
 
   return (
-    <div className="border border-foreground/10 p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors">
+    <div className="border border-border p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors">
       <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center text-xs font-bold shrink-0">
         {initials}
       </div>

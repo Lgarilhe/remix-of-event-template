@@ -61,9 +61,9 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
 
   return (
     <div className={cn(
-      "bg-background border border-foreground/20 p-2.5 cursor-grab transition-all",
-      "hover:border-foreground hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
-      isDragging && "shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] border-foreground"
+      "bg-background border border-border p-2.5 cursor-grab transition-all",
+      "hover:border-border hover:shadow-sm",
+      isDragging && "shadow-sm border-border"
     )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -141,14 +141,14 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-shrink-0 border border-foreground/30 bg-background transition-all",
+        "flex-shrink-0 border border-border bg-background transition-all",
         isDismissed ? "w-[200px]" : "w-[260px]",
-        isOver && "border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
+        isOver && "border-border shadow-sm"
       )}
     >
       <div className={cn(
-        "p-3 border-b border-foreground/20",
-        isDismissed ? "bg-red-50" : "bg-foreground/5"
+        "p-3 border-b border-border",
+        isDismissed ? "bg-red-50" : "bg-accent/50"
       )}>
         <div className="flex items-center justify-between">
           <h3 className={cn(
@@ -276,11 +276,11 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const totalCandidates = stats?.total || candidates.length;
 
   return (
-    <div className="bg-background border border-foreground border-t-0 p-3 sm:p-6">
+    <div className="bg-background border border-border border-t-0 p-3 sm:p-6">
       {/* Stats bar */}
       {totalCandidates > 0 && (
         <div className="mb-4">
-          <div className="flex h-2 w-full overflow-hidden border border-foreground/20">
+          <div className="flex h-2 w-full overflow-hidden border border-border">
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
               if (count === 0 || totalCandidates === 0) return null;
@@ -340,7 +340,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('table')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground group",
+              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border group",
               viewMode === 'table' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >
@@ -349,7 +349,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('kanban')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 group",
+              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border border-l-0 group",
               viewMode === 'kanban' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >

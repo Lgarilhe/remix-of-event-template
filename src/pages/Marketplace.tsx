@@ -106,7 +106,7 @@ export default function Marketplace() {
 
         <div className="py-6 pb-14">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
-            <div className="border border-foreground p-12 text-center">
+            <div className="border border-border p-12 text-center">
               <Lock className="w-8 h-8 text-muted-foreground mx-auto mb-4" />
               <h2 className="text-sm font-bold uppercase tracking-wider mb-2">Marketplace réservée</h2>
               <p className="text-xs text-muted-foreground">
@@ -146,13 +146,13 @@ export default function Marketplace() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Rechercher un poste, un client..."
-                className="w-full h-[34px] pl-9 pr-3 text-sm border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors"
+                className="w-full h-[34px] pl-9 pr-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <select
               value={filterContract}
               onChange={(e) => setFilterContract(e.target.value)}
-              className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
+              className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
             >
               <option value="">Tous les contrats</option>
               <option value="cdi">CDI</option>
@@ -162,7 +162,7 @@ export default function Marketplace() {
             <select
               value={filterRemote}
               onChange={(e) => setFilterRemote(e.target.value)}
-              className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none"
+              className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
             >
               <option value="">Tous les modes</option>
               <option value="onsite">Sur site</option>
@@ -174,10 +174,10 @@ export default function Marketplace() {
           {/* Mission cards */}
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground animate-spin" />
+              <div className="w-5 h-5 border-2 border-border border-t-foreground animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="border border-dashed border-foreground/20 p-12 text-center">
+            <div className="border border-dashed border-border p-12 text-center">
               <Target className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
               <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Aucune mission disponible</h3>
               <p className="text-xs text-muted-foreground">
@@ -193,7 +193,7 @@ export default function Marketplace() {
                 return (
                   <div
                     key={mission.id}
-                    className="border border-foreground/20 bg-background hover:border-foreground hover:shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all"
+                    className="border border-border bg-background hover:border-border hover:shadow-sm transition-all"
                   >
                     <div className="p-4 space-y-3">
                       {/* Title + client */}
@@ -211,22 +211,22 @@ export default function Marketplace() {
                       {/* Tags */}
                       <div className="flex flex-wrap gap-1.5">
                         {jd.contract_type && (
-                          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-foreground/20 text-foreground">
+                          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-foreground">
                             {jd.contract_type.toUpperCase()}
                           </span>
                         )}
                         {jd.location && (
-                          <span className="flex items-center gap-0.5 px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground">
+                          <span className="flex items-center gap-0.5 px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground">
                             <MapPin className="w-2.5 h-2.5" /> {jd.location}
                           </span>
                         )}
                         {jd.remote_policy && (
-                          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground">
+                          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground">
                             {jd.remote_policy === 'full_remote' ? 'Remote' : jd.remote_policy === 'hybrid' ? 'Hybride' : 'Sur site'}
                           </span>
                         )}
                         {jd.seniority && (
-                          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground">
+                          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground">
                             {jd.seniority}
                           </span>
                         )}
@@ -247,7 +247,7 @@ export default function Marketplace() {
                       )}
 
                       {/* Bottom row */}
-                      <div className="flex items-center justify-between pt-2 border-t border-foreground/10">
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                           {mission.hunt_bounty_percent && (
                             <span className="flex items-center gap-0.5">
@@ -272,12 +272,12 @@ export default function Marketplace() {
                     </div>
 
                     {/* Apply button */}
-                    <div className="border-t border-foreground/10 p-3">
+                    <div className="border-t border-border p-3">
                       <button
                         onClick={() => handleApply(mission.id)}
                         disabled={applyingId === mission.id}
                         className={cn(
-                          "relative overflow-hidden w-full h-[34px] border border-foreground text-xs font-medium uppercase tracking-wider group",
+                          "relative overflow-hidden w-full h-[34px] border border-border text-xs font-medium uppercase tracking-wider group",
                           applyingId === mission.id
                             ? "bg-muted text-muted-foreground"
                             : "bg-foreground text-background"
@@ -288,7 +288,6 @@ export default function Marketplace() {
                           {applyingId === mission.id ? 'Envoi...' : 'Postuler'}
                         </span>
                         {applyingId !== mission.id && (
-                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                         )}
                       </button>
                     </div>

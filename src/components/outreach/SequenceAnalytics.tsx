@@ -267,9 +267,9 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[580px] sm:max-w-[580px] bg-background p-0 rounded-none border-l border-foreground">
+      <SheetContent className="w-full sm:w-[580px] sm:max-w-[580px] bg-background p-0 rounded-lg border-l border-border">
         {/* Header */}
-        <SheetHeader className="px-5 py-4 border-b border-foreground bg-brutal-accent">
+        <SheetHeader className="px-5 py-4 border-b border-border bg-accent">
           <SheetTitle className="flex items-center gap-2 text-foreground uppercase tracking-wider text-sm font-bold">
             <BarChart3 className="w-4 h-4" />
             {sequenceName ? `Analytics — ${sequenceName}` : 'Analytics globales'}
@@ -282,10 +282,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               {!sequenceId && (
                 <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-foreground rounded-none text-xs uppercase tracking-wide">
+                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-border rounded-lg text-xs uppercase tracking-wide">
                     <SelectValue placeholder="Toutes les séquences" />
                   </SelectTrigger>
-                  <SelectContent className="bg-background border-foreground rounded-none">
+                  <SelectContent className="bg-background border-border rounded-lg">
                     <SelectItem value="all">Toutes les séquences</SelectItem>
                     {sequences.map(s => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
@@ -294,10 +294,10 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 </Select>
               )}
               <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90')}>
-                <SelectTrigger className="w-[120px] bg-background border-foreground rounded-none text-xs uppercase tracking-wide">
+                <SelectTrigger className="w-[120px] bg-background border-border rounded-lg text-xs uppercase tracking-wide">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-background border-foreground rounded-none">
+                <SelectContent className="bg-background border-border rounded-lg">
                   <SelectItem value="7">7 jours</SelectItem>
                   <SelectItem value="30">30 jours</SelectItem>
                   <SelectItem value="90">90 jours</SelectItem>
@@ -308,7 +308,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 size="icon"
                 onClick={fetchData}
                 disabled={loading}
-                className="border-foreground rounded-none h-9 w-9"
+                className="border-border rounded-lg h-9 w-9"
               >
                 <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
               </Button>
@@ -316,7 +316,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
             {loading ? (
               <div className="flex items-center justify-center py-20">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-foreground" />
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-border" />
               </div>
             ) : (
               <>
@@ -328,9 +328,9 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                       <div
                         key={item.label}
                         className={cn(
-                          "flex flex-col items-center px-3 py-3 border border-foreground bg-background min-w-[80px] flex-1",
+                          "flex flex-col items-center px-3 py-3 border border-border bg-background min-w-[80px] flex-1",
                           index > 0 && "-ml-px",
-                          "hover:bg-brutal-accent transition-colors duration-200"
+                          "hover:bg-accent transition-colors duration-200"
                         )}
                       >
                         <Icon className="w-3.5 h-3.5 text-muted-foreground mb-1" />
@@ -351,8 +351,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 </div>
 
                 {/* Funnel */}
-                <div className="border border-foreground bg-background">
-                  <div className="px-3 py-2 border-b border-foreground bg-muted flex items-center gap-2">
+                <div className="border border-border bg-background">
+                  <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
                     <TrendingUp className="w-3.5 h-3.5 text-foreground" />
                     <span className="text-xs font-bold text-foreground uppercase tracking-widest">
                       Funnel de conversion
@@ -400,8 +400,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
                 {/* Enrollment status breakdown */}
                 {statusData.length > 0 && (
-                  <div className="border border-foreground bg-background">
-                    <div className="px-3 py-2 border-b border-foreground bg-muted">
+                  <div className="border border-border bg-background">
+                    <div className="px-3 py-2 border-b border-border bg-muted">
                       <span className="text-xs font-bold text-foreground uppercase tracking-widest">
                         Répartition prospects
                       </span>
@@ -438,8 +438,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
                 {/* Activity chart */}
                 {chartData.length > 0 && (
-                  <div className="border border-foreground bg-background">
-                    <div className="px-3 py-2 border-b border-foreground bg-muted">
+                  <div className="border border-border bg-background">
+                    <div className="px-3 py-2 border-b border-border bg-muted">
                       <span className="text-xs font-bold text-foreground uppercase tracking-widest">
                         Activité quotidienne
                       </span>
@@ -471,13 +471,13 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                           />
                           <Bar dataKey="invites" name="Invitations" fill="hsl(var(--foreground))" radius={0} />
                           <Bar dataKey="messages" name="Messages" fill="hsl(var(--muted-foreground))" radius={0} />
-                          <Bar dataKey="replies" name="Réponses" fill="hsl(var(--brutal-accent))" radius={0} />
+                          <Bar dataKey="replies" name="Réponses" fill="hsl(var(--primary))" radius={0} />
                         </BarChart>
                       </ResponsiveContainer>
                       <div className="flex items-center gap-4 mt-2 justify-center">
                         <LegendDot label="Invitations" className="bg-foreground" />
                         <LegendDot label="Messages" className="bg-muted-foreground" />
-                        <LegendDot label="Réponses" className="bg-brutal-accent" />
+                        <LegendDot label="Réponses" className="bg-accent" />
                       </div>
                     </div>
                   </div>
@@ -485,7 +485,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
                 {/* Empty state */}
                 {chartData.length === 0 && !enrollmentStats?.total && (
-                  <div className="border border-foreground bg-background text-center py-16">
+                  <div className="border border-border bg-background text-center py-16">
                     <BarChart3 className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
                     <p className="text-sm font-bold text-foreground uppercase tracking-wider">
                       Aucune donnée

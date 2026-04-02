@@ -55,7 +55,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
       style={style}
       {...attributes}
       {...listeners}
-      className={`bg-white rounded-lg border border-[#1A1A1A]/10 p-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing touch-none ${
+      className={`bg-card rounded-lg border border-[#1A1A1A]/10 p-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing touch-none ${
         isDragging ? 'shadow-lg z-50' : ''
       }`}
     >

@@ -117,14 +117,14 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
           <Button
             variant="outline"
             size="sm"
-            className="border-green-600 text-green-600 hover:bg-green-50 px-2 h-7 gap-1 text-xs uppercase tracking-wider font-bold rounded-none shrink-0"
+            className="border-green-600 text-green-600 hover:bg-green-50 px-2 h-7 gap-1 text-xs uppercase tracking-wider font-bold rounded-lg shrink-0"
           >
             <GitBranch className="w-3 h-3 shrink-0" />
             Séq.
             <ChevronDown className="w-2.5 h-2.5 shrink-0" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-white w-64 z-[9999]">
+        <DropdownMenuContent align="end" className="bg-card w-64 z-[9999]">
           {loading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />

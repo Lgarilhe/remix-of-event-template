@@ -13,7 +13,7 @@ interface Props {
 const statusMap: Record<string, { label: string; className: string; pulse?: boolean }> = {
   calibrating: { label: 'Calibration', className: 'text-muted-foreground' },
   plan_proposed: { label: 'Plan proposé', className: 'text-foreground' },
-  running: { label: 'En cours', className: 'text-brutal-accent', pulse: true },
+  running: { label: 'En cours', className: 'text-primary', pulse: true },
   completed: { label: 'Terminé', className: 'text-emerald-600' },
   paused: { label: 'En pause', className: 'text-muted-foreground' },
   failed: { label: 'Erreur', className: 'text-destructive' },
@@ -37,7 +37,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="border border-foreground/8 p-3 flex items-center gap-3 animate-fade-in"
+            className="border border-border/8 p-3 flex items-center gap-3 animate-fade-in"
             style={{ animationDelay: `${i * 100}ms`, animationFillMode: 'backwards' }}
           >
             <div className="w-2 h-2 bg-foreground/10 shrink-0" />
@@ -55,7 +55,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
                 />
               </div>
             </div>
-            <div className="w-3 h-3 bg-foreground/5 shrink-0" />
+            <div className="w-3 h-3 bg-accent/50 shrink-0" />
           </div>
         ))}
       </div>
@@ -65,7 +65,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   if (conversations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <div className="h-10 w-10 border-2 border-foreground/15 flex items-center justify-center">
+        <div className="h-10 w-10 border-2 border-border flex items-center justify-center">
           <Bot className="w-5 h-5 text-muted-foreground/30" />
         </div>
         <div className="text-center">
@@ -94,8 +94,8 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
               onClick={() => onSelect(conv)}
               className={cn(
                 "w-full text-left px-3 py-3 transition-all duration-150 group flex items-center gap-3",
-                "border-b border-foreground/8 hover:bg-foreground/[0.02]",
-                isRunning && "border-l-2 border-l-brutal-accent",
+                "border-b border-border/8 hover:bg-foreground/[0.02]",
+                isRunning && "border-l-2 border-l-primary",
                 conv.status === 'completed' && "border-l-2 border-l-emerald-500/50",
               )}
             >
@@ -108,8 +108,8 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
                   <div className="flex items-center gap-1.5">
                     {status.pulse ? (
                       <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brutal-accent/50" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brutal-accent" />
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/50" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
                       </span>
                     ) : (
                       <span className="h-1.5 w-1.5 bg-foreground/20 shrink-0" />

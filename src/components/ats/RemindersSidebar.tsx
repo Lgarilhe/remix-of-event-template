@@ -160,7 +160,7 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
                     p-3 rounded-lg border transition-all cursor-pointer
                     ${isCompleted 
                       ? 'bg-muted border-border opacity-60'
-                      : 'bg-background border-border hover:border-foreground/20'
+                      : 'bg-background border-border hover:border-border'
                     }
                   `}
                   onClick={() => onReminderClick(reminder.candidate_id)}

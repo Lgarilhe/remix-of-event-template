@@ -117,7 +117,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   if (compact) {
     if (isDatabaseMode) {
       return (
-        <div className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium border bg-muted text-foreground border-foreground">
+        <div className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium border bg-muted text-foreground border-border">
           <span>Base Konekt</span>
         </div>
       );
@@ -137,7 +137,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
               "flex items-center gap-1.5 px-2 py-1 text-xs font-medium cursor-help border",
               isCritical ? "bg-destructive/10 text-destructive border-destructive/30" :
               isWarning ? "bg-amber-100 text-amber-700 border-amber-300" :
-              "bg-muted text-foreground border-foreground"
+              "bg-muted text-foreground border-border"
             )}>
               {(isWarning || isCritical) && <AlertTriangle className="w-3 h-3" />}
               <span>Quota: {Math.round(percentUsed)}%</span>
@@ -191,7 +191,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
   }
 
   return (
-    <div className="bg-background border border-foreground p-4">
+    <div className="bg-background border border-border p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium">Quotas LinkedIn ({getApiModeLabel(apiMode)})</h4>

@@ -66,7 +66,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
             ? "bg-emerald-500/10 border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 transition-colors"
             : isAircall
               ? "bg-green-500/10 border-green-500/30"
-              : "bg-muted/50 border-foreground/15"
+              : "bg-muted/50 border-border"
         )}
         onClick={isBooking && event.qualificationSessionId ? () => navigate(`/qualification/${event.qualificationSessionId}`) : undefined}
       >

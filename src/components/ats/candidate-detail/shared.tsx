@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="p-4 bg-foreground/[0.03] border border-foreground/10">
+    <div className="p-4 bg-foreground/[0.03] border border-border">
       <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">{title}</h4>
       {children}
     </div>
@@ -13,7 +13,7 @@ export function Section({ title, children }: { title: string; children: React.Re
 
 export function BadgeItem({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-foreground/30 text-foreground font-medium uppercase tracking-wider">
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-border text-foreground font-medium uppercase tracking-wider">
       {icon}{children}
     </span>
   );
@@ -27,11 +27,10 @@ export function BrutalButton({ children, onClick, first = true }: { children: Re
   return (
     <button onClick={onClick}
       className={cn(
-        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group",
+        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group",
         !first && '-ml-px'
       )}>
       {children}
-      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
     </button>
   );
 }
@@ -42,12 +41,11 @@ export function BrutalActionButton({ children, onClick, disabled, loading, first
   return (
     <button onClick={onClick} disabled={disabled}
       className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 disabled:cursor-not-allowed",
+        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 disabled:cursor-not-allowed",
         first !== false && 'first:ml-0',
         !first && '-ml-px'
       )}>
       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /> : children}
-      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
     </button>
   );
 }
@@ -63,7 +61,7 @@ export function CenteredLoader() {
 export function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
-    <div className="border border-foreground/15">
+    <div className="border border-border">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-foreground/[0.03] transition-colors">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
         {open ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
@@ -83,12 +81,12 @@ export function CollapsibleCard({ title, subtitle, icon, variant = 'dark', defau
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
-    <div className="border border-foreground bg-card">
+    <div className="border border-border bg-card">
       <button
         onClick={() => setOpen(!open)}
         className={cn(
           "w-full px-3 py-2 flex items-center gap-2 transition-colors",
-          variant === 'dark' ? "bg-foreground text-background hover:bg-foreground/90" : "bg-brutal-accent text-foreground hover:bg-brutal-accent/80"
+          variant === 'dark' ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-foreground hover:bg-accent/80"
         )}
       >
         {icon}
@@ -131,7 +129,7 @@ export function ExperienceItem({ exp }: { exp: { title: string; company: string;
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
-        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-foreground/30")} />
+        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-border")} />
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -169,7 +167,7 @@ export function EducationItem({ edu }: { edu: { school: string; logo?: string; d
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
-        <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-foreground/30" />
+        <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-border" />
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">

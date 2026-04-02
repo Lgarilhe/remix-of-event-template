@@ -252,7 +252,7 @@ const Admin = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white p-8">
+    <div className="min-h-screen bg-card p-8">
       <SEOHead 
         title="Administration | Skalr"
         description="Administration de la plateforme Skalr"

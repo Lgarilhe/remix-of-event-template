@@ -113,7 +113,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[540px] max-h-[85dvh] p-0 gap-0 border-2 border-foreground overflow-hidden bg-background">
+      <DialogContent className="sm:max-w-[540px] max-h-[85dvh] p-0 gap-0 border-2 border-border overflow-hidden bg-background">
         <DialogHeader className="sr-only">
           <DialogTitle>Rapport de scoring</DialogTitle>
           <DialogDescription>Résultats du scoring IA des profils</DialogDescription>
@@ -121,7 +121,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 
         {/* ── Accent bar ── */}
         <motion.div
-          className="h-1 bg-gradient-to-r from-brutal-accent via-primary to-brutal-accent"
+          className="h-1 bg-gradient-to-r from-primary via-primary to-primary"
           initial={{ scaleX: 0, transformOrigin: 'left' }}
           animate={{ scaleX: 1 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
@@ -136,7 +136,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 animate={{ rotate: 0, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
               >
-                <Sparkles className="w-5 h-5 text-brutal-accent" />
+                <Sparkles className="w-5 h-5 text-primary" />
               </motion.div>
               <div>
                 <h2 className="text-sm font-black uppercase tracking-widest text-foreground">
@@ -150,7 +150,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
             </div>
             <button
               onClick={() => onClose?.()}
-              className="p-1.5 text-muted-foreground hover:text-foreground border border-transparent hover:border-foreground/20 transition-all rounded-sm"
+              className="p-1.5 text-muted-foreground hover:text-foreground border border-transparent hover:border-border transition-all rounded-sm"
             >
               <X className="w-4 h-4" />
             </button>
@@ -215,8 +215,8 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 className={cn(
                   "h-6 px-2.5 text-xs font-black uppercase tracking-widest border transition-all",
                   filter === item.key
-                    ? 'bg-foreground text-background border-foreground'
-                    : 'text-muted-foreground border-border hover:text-foreground hover:border-foreground/40'
+                    ? 'bg-foreground text-background border-border'
+                    : 'text-muted-foreground border-border hover:text-foreground hover:border-border'
                 )}
               >
                 {item.label} {item.count}
@@ -284,7 +284,7 @@ const StatCard: React.FC<{
 }> = ({ icon, label, value, suffix, accent, highlight }) => (
   <div className={cn(
     "border px-3 py-2 flex flex-col gap-1",
-    accent ? 'border-brutal-accent/30 bg-brutal-accent/5' : 'border-border bg-muted/30'
+    accent ? 'border-accent/30 bg-accent/5' : 'border-border bg-muted/30'
   )}>
     <div className="flex items-center gap-1.5 text-muted-foreground">
       {icon}
@@ -292,7 +292,7 @@ const StatCard: React.FC<{
     </div>
     <span className={cn(
       "text-base font-black tabular-nums",
-      highlight ? 'text-brutal-accent' : 'text-foreground'
+      highlight ? 'text-primary' : 'text-foreground'
     )}>
       {value}
       {suffix && <span className="text-xs font-bold text-muted-foreground ml-0.5">{suffix}</span>}
@@ -306,9 +306,9 @@ const ScoreBadge: React.FC<{ score: number; recommendation: string }> = ({ score
   <div className={cn(
     "w-8 h-8 flex items-center justify-center text-xs font-black tabular-nums shrink-0 border transition-colors",
     recommendation === 'go'
-      ? 'bg-foreground text-background border-foreground'
+      ? 'bg-foreground text-background border-border'
       : recommendation === 'maybe'
-        ? 'bg-muted text-foreground border-foreground/40'
+        ? 'bg-muted text-foreground border-border'
         : 'bg-muted/50 text-muted-foreground border-border'
   )}>
     {score}
@@ -379,7 +379,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           className="overflow-hidden"
         >
-          <div className="px-4 pb-2.5 ml-[2.625rem] text-xs text-muted-foreground space-y-1 border-l-2 border-foreground/10 pl-2.5">
+          <div className="px-4 pb-2.5 ml-[2.625rem] text-xs text-muted-foreground space-y-1 border-l-2 border-border pl-2.5">
             {entry.hardFilterKO && (
               <p>
                 <span className="font-black text-foreground/60 uppercase tracking-widest text-[8px]">Filtre :</span>{' '}

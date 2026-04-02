@@ -139,7 +139,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
-              className="border-2 border-foreground/10 overflow-hidden"
+              className="border-2 border-border overflow-hidden"
             >
               <div className="flex items-center gap-3 p-3">
                 <img src={def.logo} alt={def.name} className="w-8 h-8 object-contain shrink-0" />
@@ -148,7 +148,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                     <span className="text-sm font-semibold">{def.name}</span>
                     {def.essential && (
                       <span
-                        className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 border border-foreground"
+                        className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 border border-border"
                         style={{ background: 'hsl(var(--landing-accent-yellow))' }}
                       >
                         Essentiel
@@ -170,8 +170,8 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                       size="sm"
                       onClick={() => handleHostedConnect(def.id === 'whatsapp' ? 'WHATSAPP' : 'LINKEDIN')}
                       disabled={isLoading}
-                      className="text-xs uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
-                      style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+                      className="text-xs uppercase tracking-wider font-bold border-2 border-border bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
+                      style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
                     >
                       {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 mr-1" />}
                       Connecter
@@ -190,8 +190,8 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   <Button
                     size="sm"
                     onClick={() => setExpandedId(isExpanded ? null : def.id)}
-                    className="text-xs uppercase tracking-wider font-bold border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 h-8 px-3 shrink-0"
-                    style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+                    className="text-xs uppercase tracking-wider font-bold border-2 border-border bg-foreground text-background hover:bg-foreground/90 h-8 px-3 shrink-0"
+                    style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
                   >
                     Connecter
                   </Button>
@@ -205,13 +205,13 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
 
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+        <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
           onClick={onNext}
-          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           <ArrowRight className="w-4 h-4" />
           {totalConnected > 0 ? 'Continuer' : 'Passer'}

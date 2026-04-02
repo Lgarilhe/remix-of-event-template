@@ -292,7 +292,7 @@ const ChipInput: React.FC<{ onAdd: (value: string) => void; placeholder?: string
     if (trimmed) { onAdd(trimmed); setValue(''); }
   };
   return (
-    <div className="inline-flex items-center border-2 border-dashed border-foreground/20 hover:border-foreground/40 transition-colors">
+    <div className="inline-flex items-center border-2 border-dashed border-border hover:border-border transition-colors">
       <input
         value={value}
         onChange={e => setValue(e.target.value)}
@@ -323,7 +323,7 @@ const EditableChip: React.FC<{ value: string; onEdit: (newValue: string) => void
 
   if (editing) {
     return (
-      <span className="inline-flex items-center border-2 border-foreground bg-foreground/5">
+      <span className="inline-flex items-center border-2 border-border bg-accent/50">
         <input ref={inputRef} value={editValue} onChange={e => setEditValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirm(); } if (e.key === 'Escape') { setEditValue(value); setEditing(false); } }}
           onBlur={confirm}
@@ -336,7 +336,7 @@ const EditableChip: React.FC<{ value: string; onEdit: (newValue: string) => void
   }
 
   return (
-    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-foreground/20 text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-foreground/40 transition-colors cursor-default">
+    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-border text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-border transition-colors cursor-default">
       <span className="max-w-[200px] truncate">{value}</span>
       <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="w-3.5 h-3.5 flex items-center justify-center text-foreground/20 hover:text-foreground transition-colors">
         <Pencil className="w-2.5 h-2.5" />
@@ -358,13 +358,13 @@ const RangeInput: React.FC<{
     <input
       type="number" min={0} placeholder="Min"
       value={min ?? ''} onChange={e => onChange(e.target.value ? parseInt(e.target.value) : null, max)}
-      className="h-8 w-20 px-2 text-xs font-bold bg-transparent border-2 border-foreground/20 text-foreground outline-none focus:border-foreground"
+      className="h-8 w-20 px-2 text-xs font-bold bg-transparent border-2 border-border text-foreground outline-none focus:border-border"
     />
     <span className="text-xs text-muted-foreground">—</span>
     <input
       type="number" min={0} placeholder="Max"
       value={max ?? ''} onChange={e => onChange(min, e.target.value ? parseInt(e.target.value) : null)}
-      className="h-8 w-20 px-2 text-xs font-bold bg-transparent border-2 border-foreground/20 text-foreground outline-none focus:border-foreground"
+      className="h-8 w-20 px-2 text-xs font-bold bg-transparent border-2 border-border text-foreground outline-none focus:border-border"
     />
     <span className="text-xs text-muted-foreground">ans</span>
   </div>
@@ -523,14 +523,14 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
 
           {/* Panel */}
           <motion.div
-            className="relative z-[1] w-full sm:max-w-xl max-h-[90dvh] flex flex-col bg-background border-2 border-foreground sm:mx-4 overflow-hidden pointer-events-auto"
+            className="relative z-[1] w-full sm:max-w-xl max-h-[90dvh] flex flex-col bg-background border-2 border-border sm:mx-4 overflow-hidden pointer-events-auto"
             initial={{ y: '100%', opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
           >
             {/* ── Header ── */}
-            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground/[0.02]">
+            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-border bg-foreground/[0.02]">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-foreground flex items-center justify-center">
                   <Crosshair className="w-4 h-4 text-background" />
@@ -544,14 +544,14 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
               </div>
               <button
                 onClick={() => onOpenChange(false)}
-                className="w-8 h-8 flex items-center justify-center border-2 border-foreground/20 hover:border-foreground transition-colors"
+                className="w-8 h-8 flex items-center justify-center border-2 border-border hover:border-border transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* ── Stepper ── */}
-            <div className="shrink-0 flex items-center px-4 py-2.5 border-b-2 border-foreground/10 bg-foreground/[0.01] gap-1 overflow-x-auto">
+            <div className="shrink-0 flex items-center px-4 py-2.5 border-b-2 border-border bg-foreground/[0.01] gap-1 overflow-x-auto">
               {steps.map((s, i) => {
                 const StepIcon = s.icon;
                 const isActive = i === currentStep;
@@ -563,10 +563,10 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                     className={cn(
                       "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider border-2 transition-all shrink-0",
                       isActive
-                        ? "border-foreground bg-foreground text-background"
+                        ? "border-border bg-foreground text-background"
                         : isDone
-                        ? "border-foreground/30 bg-foreground/5 text-foreground"
-                        : "border-foreground/15 text-foreground/40 hover:border-foreground/30 hover:text-foreground/60"
+                        ? "border-border bg-accent/50 text-foreground"
+                        : "border-border text-foreground/40 hover:border-border hover:text-foreground/60"
                     )}
                   >
                     {isDone ? (
@@ -597,7 +597,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
 
                     {/* Fields */}
                     {step.fields.map(field => (
-                      <div key={field.id} className="border-2 border-foreground/15 p-3 space-y-2">
+                      <div key={field.id} className="border-2 border-border p-3 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-black uppercase tracking-wider text-foreground">
                             {field.label}
@@ -632,7 +632,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                                     key={`${chip}-${i}`}
                                     className={cn(
                                       "inline-flex items-center gap-1 px-2 py-1 border-2 text-xs font-bold uppercase tracking-wider cursor-pointer transition-colors",
-                                      "border-foreground/20 text-foreground/80 hover:border-foreground/40"
+                                      "border-border text-foreground/80 hover:border-border"
                                     )}
                                     onClick={() => removeChip(field.id, i)}
                                   >
@@ -645,7 +645,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
 
                             {/* Suggestions */}
                             {field.suggestions.length > 0 && (
-                              <div className="pt-1.5 border-t border-foreground/10">
+                              <div className="pt-1.5 border-t border-border">
                                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                                   <Sparkle className="w-2.5 h-2.5" />
                                   Suggestions
@@ -655,7 +655,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                                     <button
                                       key={`sug-${sug}-${i}`}
                                       onClick={() => addChip(field.id, sug)}
-                                      className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-foreground/15 text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-foreground/40 hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
+                                      className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-border text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-border hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
                                     >
                                       <Plus className="w-2.5 h-2.5" />
                                       <span>{sug}</span>
@@ -684,7 +684,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                               value={field.textValue ?? ''}
                               onChange={e => setText(field.id, e.target.value)}
                               placeholder={field.placeholder}
-                              className="w-full h-9 px-3 text-xs font-bold bg-transparent border-2 border-foreground/20 text-foreground outline-none focus:border-foreground placeholder:text-foreground/30 tracking-wider"
+                              className="w-full h-9 px-3 text-xs font-bold bg-transparent border-2 border-border text-foreground outline-none focus:border-border placeholder:text-foreground/30 tracking-wider"
                             />
                             <p className="text-[10px] text-muted-foreground">
                               Opérateurs supportés : AND, OR, NOT, parenthèses
@@ -699,8 +699,8 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                               className={cn(
                                 "w-5 h-5 border-2 flex items-center justify-center shrink-0 text-xs font-black transition-colors",
                                 field.toggleValue
-                                  ? "bg-foreground text-background border-foreground"
-                                  : "bg-background text-foreground/30 border-foreground/30"
+                                  ? "bg-foreground text-background border-border"
+                                  : "bg-background text-foreground/30 border-border"
                               )}
                             >
                               {field.toggleValue ? '✓' : ''}
@@ -718,11 +718,11 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
             </div>
 
             {/* ── Footer ── */}
-            <div className="shrink-0 border-t-2 border-foreground p-4 flex items-center gap-2 bg-background">
+            <div className="shrink-0 border-t-2 border-border p-4 flex items-center gap-2 bg-background">
               {currentStep > 0 && (
                 <button
                   onClick={() => setCurrentStep(p => p - 1)}
-                  className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground hover:bg-foreground/[0.04] transition-colors flex items-center gap-1.5"
+                  className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-border bg-background text-foreground hover:bg-foreground/[0.04] transition-colors flex items-center gap-1.5"
                 >
                   <ArrowLeft className="w-3 h-3" />
                   Retour
@@ -738,16 +738,15 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
               {isLast ? (
                 <button
                   onClick={handleApply}
-                  className="relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background group transition-colors"
+                  className="relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-border bg-foreground text-background group transition-colors"
                 >
                   <Play className="w-3.5 h-3.5 relative z-10" />
                   <span className="relative z-10">Appliquer & chercher</span>
-                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                 </button>
               ) : (
                 <button
                   onClick={() => setCurrentStep(p => p + 1)}
-                  className="flex items-center gap-1.5 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                  className="flex items-center gap-1.5 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
                 >
                   Suivant
                   <ArrowRight className="w-3 h-3" />

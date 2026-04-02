@@ -64,8 +64,8 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
             variant={selected === s.value ? 'default' : 'outline'}
             className={`cursor-pointer text-xs px-3 py-1.5 transition-all ${
               selected === s.value
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-foreground/20 hover:border-foreground/40'
+                ? 'bg-foreground text-background border-border'
+                : 'border-border hover:border-border'
             }`}
             onClick={() => setSelected(s.value)}
           >
@@ -91,8 +91,8 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
         <Button
           onClick={() => selected && onSubmit(selected)}
           disabled={!selected}
-          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />
         </Button>

@@ -117,7 +117,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="Jean Dupont"
-                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-border focus:outline-none transition-colors"
               />
             </div>
 
@@ -133,7 +133,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="jean.dupont@email.com"
-                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-border focus:outline-none transition-colors"
               />
             </div>
 
@@ -148,7 +148,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 value={formData.phone}
                 onChange={handleChange}
                 placeholder="+33 6 12 34 56 78"
-                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-border focus:outline-none transition-colors"
               />
             </div>
 
@@ -163,7 +163,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 value={formData.linkedin}
                 onChange={handleChange}
                 placeholder="https://linkedin.com/in/jeandupont"
-                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-border focus:outline-none transition-colors"
               />
             </div>
 
@@ -178,7 +178,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 value={formData.cvUrl}
                 onChange={handleChange}
                 placeholder="https://drive.google.com/..."
-                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-border focus:outline-none transition-colors"
               />
               <p className="text-xs text-muted-foreground/60 mt-1">
                 Google Drive, Dropbox, ou autre lien public
@@ -196,7 +196,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
                 onChange={handleChange}
                 rows={4}
                 placeholder="Présentez-vous brièvement et expliquez votre motivation pour ce poste..."
-                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors resize-none"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-border focus:outline-none transition-colors resize-none"
               />
             </div>
 

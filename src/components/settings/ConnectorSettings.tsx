@@ -167,7 +167,7 @@ export const ConnectorSettings = () => {
                 return (
                   <div
                     key={instance.id}
-                    className="flex items-center justify-between py-3 border-b border-foreground/10 last:border-0"
+                    className="flex items-center justify-between py-3 border-b border-border last:border-0"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
@@ -227,14 +227,14 @@ export const ConnectorSettings = () => {
         <CardContent className="space-y-6">
           {CATEGORY_ORDER.filter(cat => groupedAvailable[cat]?.length).map(cat => (
             <div key={cat}>
-              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground mb-3 border-b border-foreground/10 pb-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground mb-3 border-b border-border pb-1.5">
                 {CATEGORY_LABELS[cat] || cat.toUpperCase()}
               </h3>
               <div className="space-y-2">
                 {groupedAvailable[cat].map(connector => (
                   <div
                     key={connector.id}
-                    className="flex items-center justify-between py-2.5 border-b border-foreground/5 last:border-0"
+                    className="flex items-center justify-between py-2.5 border-b border-border/5 last:border-0"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">{connector.name}</p>

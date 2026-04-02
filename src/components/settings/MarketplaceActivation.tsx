@@ -61,7 +61,7 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
   if (!available) return null;
 
   return (
-    <div className="border border-foreground/20 p-4 sm:p-6">
+    <div className="border border-border p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <Icon className="w-5 h-5 text-foreground" />
@@ -72,9 +72,9 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
         </div>
         <span className={cn(
           "px-2 py-0.5 text-xs font-bold uppercase tracking-wider border",
-          status === 'active' ? "bg-foreground text-background border-foreground" :
+          status === 'active' ? "bg-foreground text-background border-border" :
           status === 'pending_validation' ? "border-amber-500 text-amber-600" :
-          "border-foreground/30 text-muted-foreground"
+          "border-border text-muted-foreground"
         )}>
           {STATUS_CONFIG[status]?.label || status}
         </span>
@@ -85,7 +85,7 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
         {checklist.map(item => {
           const done = !!cl[item.key];
           return (
-            <div key={item.key} className="flex items-center gap-3 px-3 py-2 border border-foreground/10">
+            <div key={item.key} className="flex items-center gap-3 px-3 py-2 border border-border">
               {done ? (
                 <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
               ) : (
@@ -109,7 +109,7 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
         </p>
         {status !== 'active' && (
           <button
-            className="h-[30px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-50"
+            className="h-[30px] px-4 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-50"
           >
             {completedCount === 0 ? 'Commencer l\'activation' : 'Continuer'}
           </button>

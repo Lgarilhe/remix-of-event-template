@@ -2,50 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/* Skalr Design System — Qonto-inspired dark-first theme.
+   All colors MUST be HSL.
+   Default = dark. .light class = light mode.
 */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 265 4% 12.9%;
+    /* ── Dark theme (default) ── */
+    --background: 40 3% 11%;
+    --foreground: 0 0% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 265 4% 12.9%;
+    --card: 40 3% 14%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 265 4% 12.9%;
+    --popover: 40 3% 16%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 266 4% 20.8%;
-    --primary-foreground: 248 0.3% 98.4%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 40 3% 11%;
 
-    --secondary: 248 0.7% 96.8%;
-    --secondary-foreground: 266 4% 20.8%;
+    --secondary: 40 3% 18%;
+    --secondary-foreground: 0 0% 90%;
 
-    --muted: 248 0.7% 96.8%;
-    --muted-foreground: 257 4.6% 55.4%;
+    --muted: 40 3% 18%;
+    --muted-foreground: 40 2% 56%;
 
-    --accent: 248 0.7% 96.8%;
-    --accent-foreground: 266 4% 20.8%;
+    --accent: 40 3% 20%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 27 24.5% 57.7%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 256 1.3% 92.9%;
-    --input: 256 1.3% 92.9%;
-    --ring: 257 4% 70.4%;
+    --border: 0 0% 100% / 10%;
+    --input: 0 0% 100% / 12%;
+    --ring: 0 0% 100% / 25%;
 
-    --radius: 0.375rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 99%;
-    --sidebar-foreground: 265 4% 12.9%;
-    --sidebar-primary: 271 81% 56%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 265 5% 95%;
-    --sidebar-accent-foreground: 265 4% 12.9%;
-    --sidebar-border: 0 0% 92%;
-    --sidebar-ring: 271 81% 56%;
+    /* Sidebar */
+    --sidebar-background: 40 3% 8%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 40 3% 8%;
+    --sidebar-accent: 40 3% 15%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 100% / 8%;
+    --sidebar-ring: 0 0% 100% / 25%;
 
     /* Skalr brand colors */
     --skalr-purple: 271 81% 56%;
@@ -57,99 +60,109 @@ All colors MUST be HSL.
     /* Semantic status colors */
     --status-success: 142 71% 45%;
     --status-success-foreground: 0 0% 100%;
+    --status-success-muted: 142 40% 18%;
     --status-warning: 45 93% 47%;
     --status-warning-foreground: 0 0% 10%;
+    --status-warning-muted: 45 50% 18%;
     --status-info: 217 91% 60%;
     --status-info-foreground: 0 0% 100%;
+    --status-info-muted: 217 50% 18%;
 
-    /* Status muted backgrounds */
-    --status-success-muted: 142 71% 95%;
-    --status-warning-muted: 45 93% 95%;
-    --status-info-muted: 217 91% 95%;
+    /* Accent (kept for backwards compat — maps to Qonto subtle hover) */
+    --brutal-accent: 271 81% 56%;
 
-    /* Brutal accent */
-    --brutal-accent: 297 100% 73%;
-    --chart-1: 41 22.2% 64.6%;
-    --chart-2: 185 11.8% 60%;
-    --chart-3: 227 7% 39.8%;
-    --chart-4: 84 18.9% 82.8%;
-    --chart-5: 70 18.8% 76.9%;
-    --sidebar: 248 0.3% 98.4%;
+    /* Charts */
+    --chart-1: 271 60% 55%;
+    --chart-2: 187 60% 50%;
+    --chart-3: 142 50% 45%;
+    --chart-4: 330 60% 55%;
+    --chart-5: 45 80% 55%;
+
+    --sidebar: 40 3% 14%;
+
+    /* Fonts */
     --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
     --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+
+    /* Shadows (subtle for dark theme) */
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.15);
+    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.15);
+    --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.2), 0 1px 2px -1px hsl(0 0% 0% / 0.15);
+    --shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.2), 0 1px 2px -1px hsl(0 0% 0% / 0.15);
+    --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.2), 0 2px 4px -2px hsl(0 0% 0% / 0.15);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.2), 0 4px 6px -4px hsl(0 0% 0% / 0.15);
+    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.2), 0 8px 10px -6px hsl(0 0% 0% / 0.15);
+    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.4);
+
     --tracking-normal: 0em;
     --spacing: 0.25rem;
   }
 
-  .dark {
-    --background: 0 0% 15%;
-    --foreground: 248 0.3% 98.4%;
+  /* ── Light theme ── */
+  .light {
+    --background: 0 0% 98%;
+    --foreground: 40 3% 11%;
 
-    --card: 266 4% 20.8%;
-    --card-foreground: 248 0.3% 98.4%;
+    --card: 0 0% 100%;
+    --card-foreground: 40 3% 11%;
 
-    --popover: 266 4% 20.8%;
-    --popover-foreground: 248 0.3% 98.4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 40 3% 11%;
 
-    --primary: 256 1.3% 92.9%;
-    --primary-foreground: 266 4% 20.8%;
+    --primary: 40 3% 11%;
+    --primary-foreground: 0 0% 98%;
 
-    --secondary: 260 4.1% 27.9%;
-    --secondary-foreground: 248 0.3% 98.4%;
+    --secondary: 40 3% 95%;
+    --secondary-foreground: 40 3% 20%;
 
-    --muted: 260 4.1% 27.9%;
-    --muted-foreground: 257 4% 70.4%;
+    --muted: 40 3% 95%;
+    --muted-foreground: 40 3% 46%;
 
-    --accent: 260 4.1% 27.9%;
-    --accent-foreground: 248 0.3% 98.4%;
+    --accent: 40 3% 93%;
+    --accent-foreground: 40 3% 11%;
 
-    --destructive: 22 19.1% 70.4%;
-    --destructive-foreground: 248 0.3% 98.4%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 100% / 10%;
-    --input: 0 0% 100% / 15%;
-    --ring: 264 2.7% 55.1%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 248 0.3% 98.4%;
-    --sidebar-primary: 248 0.3% 98.4%;
-    --sidebar-primary-foreground: 240 5.9% 10%;
-    --sidebar-accent: 240 4% 16%;
-    --sidebar-accent-foreground: 248 0.3% 98.4%;
-    --sidebar-border: 248 0.3% 98.4% / 10%;
-    --sidebar-ring: 248 0.3% 98.4%;
-    --chart-1: 264 24.3% 48.8%;
-    --chart-2: 162 17% 69.6%;
-    --chart-3: 70 18.8% 76.9%;
-    --chart-4: 304 26.5% 62.7%;
-    --chart-5: 16 24.6% 64.5%;
-    --sidebar: 266 4% 20.8%;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --border: 40 3% 90%;
+    --input: 40 3% 90%;
+    --ring: 40 3% 60%;
+
+    --sidebar-background: 40 3% 96%;
+    --sidebar-foreground: 40 3% 30%;
+    --sidebar-primary: 40 3% 11%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 40 3% 92%;
+    --sidebar-accent-foreground: 40 3% 11%;
+    --sidebar-border: 40 3% 90%;
+    --sidebar-ring: 40 3% 60%;
+
+    --chart-1: 271 60% 55%;
+    --chart-2: 187 60% 50%;
+    --chart-3: 142 50% 45%;
+    --chart-4: 330 60% 55%;
+    --chart-5: 45 80% 55%;
+    --sidebar: 40 3% 96%;
+
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.04);
+    --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.06);
+    --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.08), 0 1px 2px -1px hsl(0 0% 0% / 0.06);
+    --shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.08), 0 1px 2px -1px hsl(0 0% 0% / 0.06);
+    --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.08), 0 2px 4px -2px hsl(0 0% 0% / 0.06);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.08), 0 4px 6px -4px hsl(0 0% 0% / 0.06);
+    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.08), 0 8px 10px -6px hsl(0 0% 0% / 0.06);
+    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.15);
 
     --status-success: 142 71% 45%;
     --status-success-foreground: 0 0% 100%;
-    --status-success-muted: 142 71% 20%;
+    --status-success-muted: 142 71% 95%;
     --status-warning: 45 93% 47%;
     --status-warning-foreground: 0 0% 10%;
-    --status-warning-muted: 45 93% 20%;
+    --status-warning-muted: 45 93% 95%;
     --status-info: 217 91% 60%;
     --status-info-foreground: 0 0% 100%;
-    --status-info-muted: 217 91% 20%;
+    --status-info-muted: 217 91% 95%;
   }
 }
 
@@ -166,12 +179,12 @@ All colors MUST be HSL.
 
   /* Skip-to-content link */
   .skip-to-content {
-    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium;
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:text-sm focus:font-medium;
   }
 
   html,
   body {
-    @apply bg-background text-foreground font-sans font-medium;
+    @apply bg-background text-foreground font-sans font-medium antialiased;
     width: 100%;
     min-width: 0;
     overflow-x: auto;
@@ -225,7 +238,6 @@ All colors MUST be HSL.
     display: none;
   }
 
-  /* Perspective container for 3D children */
   .perspective-1000 {
     perspective: 1000px;
   }

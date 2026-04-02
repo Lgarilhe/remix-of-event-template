@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Plus, Sparkles, Bell } from 'lucide-react';
+import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Sparkles, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -19,23 +19,15 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-// ── Nav items ──
+// ── Nav groups ──
 
-const NAV_ITEMS = [
+const MAIN_NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/missions', label: 'Missions', icon: Target },
   { to: '/pipeline', label: 'Pipeline', icon: Kanban },
   { to: '/inbox', label: 'Messages', icon: MessageSquare, badgeKey: 'unread' as const },
-  { to: '/settings', label: 'Paramètres', icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -52,65 +44,59 @@ export function AppSidebar() {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  const handleNav = (to: string) => {
-    navigate(to);
-    setOpenMobile(false);
-  };
-
   const creditDisplay = creditsRemaining > 9999
     ? `${Math.round(creditsRemaining / 1000)}k`
     : creditsRemaining.toLocaleString();
 
+  const orgInitial = organization?.name?.charAt(0)?.toUpperCase() || 'S';
+
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
-      {/* Header — Logo */}
+      {/* Header — Org avatar + name */}
       <SidebarHeader className="px-4 py-4">
-        <Link to="/dashboard" className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <span className="text-primary-foreground font-bold text-sm">S</span>
+        <Link to="/dashboard" className="flex items-center gap-2.5" onClick={() => setOpenMobile(false)}>
+          <div className="h-8 w-8 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0">
+            <span className="text-sidebar-foreground font-semibold text-sm">{orgInitial}</span>
           </div>
           {!collapsed && (
-            <span className="text-[15px] font-semibold tracking-tight text-foreground">Skalr</span>
+            <span className="text-[15px] font-semibold tracking-tight text-sidebar-foreground truncate">
+              {organization?.name || 'Skalr'}
+            </span>
           )}
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-3 pt-1">
-        {/* Create mission CTA */}
-        {hasFeature(orgType, 'create_missions') && (
-          <div className="mb-2 px-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className={cn(
-                  "w-full flex items-center gap-2 h-9 px-3 text-sm font-medium rounded-lg",
-                  "bg-primary text-primary-foreground",
-                  "hover:bg-primary/90 transition-colors",
-                  collapsed && "justify-center px-0"
-                )}>
-                  <Plus className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span>Nouvelle mission</span>}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="right" sideOffset={8} className="rounded-lg">
-                <DropdownMenuItem onClick={() => handleNav('/missions?create=brief')} className="rounded-md">
-                  📋 Brief IA
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleNav('/missions?create=import')} className="rounded-md">
-                  📥 Importer
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleNav('/missions?create=manual')} className="rounded-md">
-                  ✏️ Manuelle
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+      <SidebarContent className="px-3 pt-0">
+        {/* Search bar (cosmetic) */}
+        {!collapsed && (
+          <div className="mb-4 px-1">
+            <div className="flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-[13px] cursor-default select-none">
+              <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+              <span className="flex-1">Rechercher</span>
+              <kbd className="text-[10px] font-mono bg-sidebar-background px-1.5 py-0.5 rounded border border-border">
+                Ctrl+K
+              </kbd>
+            </div>
+          </div>
+        )}
+        {collapsed && (
+          <div className="mb-4 flex justify-center px-1">
+            <div className="h-9 w-9 flex items-center justify-center rounded-lg bg-sidebar-accent text-muted-foreground cursor-default">
+              <Search className="h-5 w-5" strokeWidth={1.5} />
+            </div>
           </div>
         )}
 
-        {/* Navigation */}
+        {/* Main nav group */}
         <SidebarGroup className="p-0">
+          {!collapsed && (
+            <div className="px-3 pb-1.5">
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Main</span>
+            </div>
+          )}
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5 px-1">
-              {NAV_ITEMS.map((item) => {
+            <SidebarMenu className="gap-1 px-1">
+              {MAIN_NAV_ITEMS.map((item) => {
                 const active = isActive(item.to);
                 return (
                   <SidebarMenuItem key={item.to}>
@@ -119,62 +105,74 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={item.label}
                       className={cn(
-                        "h-9 rounded-lg text-[13px] font-medium transition-colors",
+                        "h-9 px-3 rounded-lg text-[13px] font-medium transition-colors",
                         active
-                          ? "bg-accent text-accent-foreground font-semibold"
-                          : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                          ? "bg-sidebar-accent text-sidebar-foreground"
+                          : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                       )}
                     >
                       <Link to={item.to} onClick={() => setOpenMobile(false)} className="flex items-center gap-3">
                         <item.icon className={cn(
-                          "h-[18px] w-[18px] shrink-0",
-                          active ? "text-primary" : "text-muted-foreground"
-                        )} />
+                          "h-5 w-5 shrink-0",
+                          active ? "text-sidebar-foreground" : "text-muted-foreground"
+                        )} strokeWidth={1.5} />
                         {!collapsed && (
                           <div className="flex items-center justify-between flex-1 min-w-0">
                             <span>{item.label}</span>
                             {item.badgeKey === 'unread' && unreadMsgCount > 0 && (
-                              <span className="ml-auto min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[11px] font-semibold bg-primary text-primary-foreground rounded-full">
+                              <span className="ml-auto min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[11px] font-semibold bg-sidebar-foreground text-sidebar-background rounded-full">
                                 {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                               </span>
                             )}
                           </div>
                         )}
                         {item.badgeKey === 'unread' && unreadMsgCount > 0 && collapsed && (
-                          <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+                          <span className="absolute top-1 right-1 w-2 h-2 bg-sidebar-foreground rounded-full" />
                         )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
-              {hasFeature(orgType, 'marketplace_browse') && (
+        {/* Tools nav group */}
+        {hasFeature(orgType, 'marketplace_browse') && (
+          <SidebarGroup className="p-0 mt-4">
+            {!collapsed && (
+              <div className="px-3 pb-1.5">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Outils</span>
+              </div>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1 px-1">
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
                     isActive={isActive('/marketplace')}
                     tooltip="Marketplace"
                     className={cn(
-                      "h-9 rounded-lg text-[13px] font-medium transition-colors",
+                      "h-9 px-3 rounded-lg text-[13px] font-medium transition-colors",
                       isActive('/marketplace')
-                        ? "bg-accent text-accent-foreground font-semibold"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                        ? "bg-sidebar-accent text-sidebar-foreground"
+                        : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                     )}
                   >
                     <Link to="/marketplace" onClick={() => setOpenMobile(false)} className="flex items-center gap-3">
                       <Target className={cn(
-                        "h-[18px] w-[18px] shrink-0",
-                        isActive('/marketplace') ? "text-primary" : "text-muted-foreground"
-                      )} />
+                        "h-5 w-5 shrink-0",
+                        isActive('/marketplace') ? "text-sidebar-foreground" : "text-muted-foreground"
+                      )} strokeWidth={1.5} />
                       {!collapsed && <span>Marketplace</span>}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       {/* Footer */}
@@ -185,11 +183,11 @@ export function AppSidebar() {
             onClick={() => navigate('/settings?tab=credits')}
             className={cn(
               "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-              "hover:bg-accent/50",
+              "hover:bg-sidebar-accent/50",
               isOut ? "text-destructive" : isLow ? "text-status-warning" : "text-muted-foreground",
             )}
           >
-            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+            <Sparkles className="h-4 w-4 shrink-0" strokeWidth={1.5} />
             {!collapsed && <span>{creditDisplay} crédits</span>}
           </button>
         )}
@@ -199,20 +197,27 @@ export function AppSidebar() {
           <NotificationDropdown />
         </div>
 
-        {/* Org + Sign out */}
+        {/* Settings + Org + Sign out */}
         <div className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-lg",
-          collapsed && "justify-center px-0"
+          collapsed && "flex-col gap-1 px-0"
         )}>
           {!collapsed && organization?.name && (
             <span className="text-xs text-muted-foreground truncate flex-1">{organization.name}</span>
           )}
           <button
+            onClick={() => { navigate('/settings'); setOpenMobile(false); }}
+            className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
+            title="Paramètres"
+          >
+            <Settings className="h-4 w-4" strokeWidth={1.5} />
+          </button>
+          <button
             onClick={async () => { await supabase.auth.signOut(); }}
-            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-1 rounded-md hover:bg-accent/50"
+            className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
             title="Déconnexion"
           >
-            <LogOut className="h-3.5 w-3.5" />
+            <LogOut className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
       </SidebarFooter>

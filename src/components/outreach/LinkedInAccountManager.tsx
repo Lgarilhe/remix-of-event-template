@@ -282,8 +282,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
     <div className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-2">
       {/* Connected accounts */}
-      <div className="bg-background border border-foreground">
-        <div className="p-4 border-b border-foreground/10">
+      <div className="bg-background border border-border">
+        <div className="p-4 border-b border-border">
           <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <img src={linkedInLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
             Comptes connectés
@@ -302,7 +302,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center justify-between p-3 bg-muted/50 rounded-none border border-foreground"
+                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-[#0077B5] flex items-center justify-center">
@@ -428,8 +428,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
       </div>
 
       {/* Connect new account or Reconnect */}
-      <div className="bg-background border border-foreground">
-        <div className="p-4 border-b border-foreground/10">
+      <div className="bg-background border border-border">
+        <div className="p-4 border-b border-border">
           <h3 className="flex items-center justify-between text-sm font-bold uppercase tracking-wider">
             <span>{reconnectingAccount ? 'Reconnecter le compte' : 'Connecter un compte'}</span>
             {reconnectingAccount && (
@@ -448,7 +448,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
         <div className="p-4">
           {checkpoint ? (
             <div className="space-y-4">
-              <div className="p-4 bg-yellow-50 border border-foreground rounded-none">
+              <div className="p-4 bg-yellow-50 border border-border rounded-lg">
                 <p className="text-sm text-yellow-800">
                   <strong>Vérification requise :</strong> {checkpoint.type}
                 </p>
@@ -504,7 +504,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               </TabsList>
 
               <TabsContent value="cookie" className="space-y-4">
-                <div className="p-3 bg-blue-50 border border-foreground rounded-none text-xs text-blue-700">
+                <div className="p-3 bg-blue-50 border border-border rounded-lg text-xs text-blue-700">
                   <p className="font-medium mb-1">Comment obtenir le cookie li_at :</p>
                   <ol className="list-decimal list-inside space-y-0.5">
                     <li>Connectez-vous à LinkedIn dans votre navigateur</li>
@@ -515,7 +515,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 
                 {/* Multi-contract tip */}
                 <TooltipProvider>
-                  <div className="p-3 bg-purple-50 border border-foreground rounded-none text-xs text-purple-700">
+                  <div className="p-3 bg-purple-50 border border-border rounded-lg text-xs text-purple-700">
                     <div className="flex items-start gap-2">
                       <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
                       <div>
@@ -569,7 +569,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
               </TabsContent>
 
               <TabsContent value="credentials" className="space-y-4">
-                <div className="p-3 bg-yellow-50 border border-foreground rounded-none text-xs text-yellow-700">
+                <div className="p-3 bg-yellow-50 border border-border rounded-lg text-xs text-yellow-700">
                   <p className="font-medium">⚠️ Attention</p>
                   <p>Cette méthode peut déclencher des vérifications de sécurité LinkedIn.</p>
                 </div>
@@ -612,8 +612,8 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
       </div>
 
       {/* Signature settings */}
-      <div className="bg-background border border-foreground">
-        <div className="p-4 border-b border-foreground/10">
+      <div className="bg-background border border-border">
+        <div className="p-4 border-b border-border">
           <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
             <UserCircle className="w-5 h-5" />
             Signature des messages

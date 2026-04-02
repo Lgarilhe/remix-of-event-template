@@ -247,13 +247,13 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Ajouter un commentaire... Tapez @ pour mentionner"
-              className="min-h-[60px] rounded-none border-foreground/30 text-sm resize-none pr-2"
+              className="min-h-[60px] rounded-lg border-border text-sm resize-none pr-2"
             />
             {/* Mention autocomplete dropdown */}
             {showMentions && filteredMembers.length > 0 && (
               <div
                 ref={mentionListRef}
-                className="absolute top-full left-0 right-0 mt-1 bg-background border border-foreground/20 shadow-lg z-[100] max-h-40 overflow-y-auto rounded-sm"
+                className="absolute top-full left-0 right-0 mt-1 bg-background border border-border shadow-lg z-[100] max-h-40 overflow-y-auto rounded-sm"
               >
                 {filteredMembers.map((member, i) => (
                   <button
@@ -278,7 +278,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
           <button
             onClick={handleSubmit}
             disabled={submitting || !newComment.trim()}
-            className="h-auto px-4 border border-foreground -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50 hover:bg-foreground/90 transition-colors"
+            className="h-auto px-4 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50 hover:bg-foreground/90 transition-colors"
           >
             {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           </button>
@@ -299,7 +299,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
       ) : (
         <div className="space-y-2">
           {comments.map(comment => (
-            <div key={comment.id} className="group p-3 border border-foreground/10 bg-foreground/[0.02] hover:border-foreground/20 transition-colors">
+            <div key={comment.id} className="group p-3 border border-border bg-foreground/[0.02] hover:border-border transition-colors">
               <div className="flex items-start gap-2">
                 <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0 mt-0.5">
                   {getMemberName(comment.created_by).charAt(0)}

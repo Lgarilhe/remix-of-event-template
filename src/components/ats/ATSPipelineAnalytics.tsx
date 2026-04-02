@@ -117,8 +117,8 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
     <div className="space-y-6">
       {/* Bottleneck Alerts */}
       {bottlenecks.length > 0 && (
-        <div className="border border-foreground bg-background">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground bg-destructive/5">
+        <div className="border border-border bg-background">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-destructive/5">
             <AlertTriangle className="w-4 h-4 text-destructive" />
             <span className="text-xs font-bold uppercase tracking-wider text-destructive">
               Goulots d'étranglement détectés
@@ -158,8 +158,8 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       )}
 
       {/* Time in Stage Distribution */}
-      <div className="border border-foreground bg-background">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground">
+      <div className="border border-border bg-background">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
           <Clock className="w-4 h-4 text-foreground" />
           <span className="text-xs font-bold uppercase tracking-wider">
             Temps moyen par étape
@@ -205,8 +205,8 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       </div>
 
       {/* Conversion Funnel */}
-      <div className="border border-foreground bg-background">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground">
+      <div className="border border-border bg-background">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
           <TrendingDown className="w-4 h-4 text-foreground" />
           <span className="text-xs font-bold uppercase tracking-wider">
             Taux de conversion entre étapes

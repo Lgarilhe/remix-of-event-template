@@ -31,7 +31,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
       return (
          <div className="flex items-center justify-center h-full text-muted-foreground bg-background">
           <div className="text-center">
-            <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-5 h-5 border-2 border-border border-t-foreground rounded-full animate-spin mx-auto mb-4" />
             <p className="text-xs uppercase tracking-wider text-muted-foreground">Chargement des comptes...</p>
           </div>
         </div>
@@ -135,7 +135,7 @@ const MessagesInboxInner: React.FC<
       )}
 
       {/* Desktop layout + mobile chat list */}
-      <div className={cn("flex bg-background overflow-hidden relative", fullHeight ? "h-full border-x border-t border-foreground" : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-foreground")}>
+      <div className={cn("flex bg-background overflow-hidden relative", fullHeight ? "h-full border-x border-t border-border" : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-border")}>
         {/* Chat List Sidebar */}
         <ChatListSidebar
           chats={inbox.chats}
@@ -209,7 +209,7 @@ const MessagesInboxInner: React.FC<
         {/* Sequence Selection Modal */}
         {inbox.showSequenceSelect && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-background border border-foreground p-4 max-w-sm w-full mx-4 shadow-xl">
+            <div className="bg-background border border-border p-4 max-w-sm w-full mx-4 shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold uppercase tracking-wide text-sm">Choisir une séquence</h3>
                 <Button
@@ -226,7 +226,7 @@ const MessagesInboxInner: React.FC<
                   <button
                     key={sequence.id}
                     onClick={() => inbox.enrollInSequence(sequence)}
-                    className="w-full p-3 text-left border border-foreground hover:bg-brutal-accent/20 transition-colors"
+                    className="w-full p-3 text-left border border-border hover:bg-accent/20 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <GitBranch className="w-4 h-4 text-foreground" />

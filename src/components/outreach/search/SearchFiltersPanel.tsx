@@ -135,7 +135,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Source Toggle: Apollo (Base Konekt) vs LinkedIn */}
       {onSearchSourceChange && (
-        <div className="bg-background border border-foreground p-3">
+        <div className="bg-background border border-border p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -174,7 +174,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Account selector — only visible in LinkedIn mode */}
       {searchSource !== 'database' && (
-      <div className="bg-background border border-foreground p-3 space-y-2">
+      <div className="bg-background border border-border p-3 space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compte</label>
           <QuotaDisplay
@@ -198,7 +198,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                       <img
                         src={selectedAccountData.profile_picture_url}
                         alt={selectedAccountData.name || selectedAccountData.identifier || 'Photo de profil'}
-                        className="w-5 h-5 rounded-none object-cover shrink-0"
+                        className="w-5 h-5 rounded-lg object-cover shrink-0"
                       />
                     )}
                     <span>{selectedAccountData.name || selectedAccountData.identifier}</span>
@@ -214,7 +214,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                       <img
                         src={account.profile_picture_url}
                         alt={account.name || account.identifier || 'Photo de profil'}
-                        className="w-5 h-5 rounded-none object-cover"
+                        className="w-5 h-5 rounded-lg object-cover"
                       />
                     )}
                     <span>{account.name || account.identifier}</span>
@@ -312,7 +312,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Mission context: show selected job info */}
       {activeProject && selectedJob && (
-        <div className="bg-background border border-foreground p-3 space-y-1">
+        <div className="bg-background border border-border p-3 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-sm">🎯</span>
             <span className="text-xs font-bold text-foreground uppercase tracking-widest">Poste actif</span>
@@ -330,7 +330,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           {onOpenFilterWizard && (
             <button
               onClick={onOpenFilterWizard}
-              className="flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 transition-colors"
+              className="flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
             >
               <Crosshair className="w-3 h-3" />
               Wizard filtres
@@ -354,7 +354,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
-          <div className="bg-background border border-foreground p-3">
+          <div className="bg-background border border-border p-3">
             <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
@@ -363,7 +363,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               onChange={(e) => onScoringInstructionsChange(e.target.value)}
               placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer le critère localisation, bonus si exp. scale-up..."
               rows={2}
-              className="w-full px-3 py-2 text-sm border border-foreground/30 bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground resize-none"
+              className="w-full px-3 py-2 text-sm border border-border bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-border resize-none"
             />
           </div>
         )}
@@ -380,7 +380,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       {/* Keywords preview + edit dialog */}
-      <div className="bg-background border border-foreground p-4">
+      <div className="bg-background border border-border p-4">
         <label className="text-sm font-medium text-foreground mb-2 block uppercase tracking-wide">
           Mots-clés
         </label>
@@ -411,7 +411,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             className="min-h-[140px] text-sm font-mono"
             rows={6}
           />
-          <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 p-3 border border-foreground/10">
+          <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/50 p-3 border border-border">
             <p className="font-medium text-foreground/70">💡 Astuces Boolean avancées :</p>
             <ul className="space-y-1 list-disc list-inside">
               <li><strong>OR</strong> entre synonymes : <code className="text-xs bg-muted px-1">Java OR JEE OR J2EE</code></li>

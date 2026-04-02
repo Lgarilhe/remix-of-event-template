@@ -84,7 +84,7 @@ export const AgencySettings: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground animate-spin" />
+        <div className="w-5 h-5 border-2 border-border border-t-foreground animate-spin" />
       </div>
     );
   }
@@ -94,20 +94,20 @@ export const AgencySettings: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Agency info */}
-      <div className="border border-foreground/20 p-4 sm:p-6">
+      <div className="border border-border p-4 sm:p-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Infos cabinet
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="border border-foreground/10 p-4 text-center">
+          <div className="border border-border p-4 text-center">
             <p className="text-2xl font-bold text-foreground">{memberCount}</p>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">Membres</p>
           </div>
-          <div className="border border-foreground/10 p-4 text-center">
+          <div className="border border-border p-4 text-center">
             <p className="text-2xl font-bold text-foreground">{ownerCount}</p>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">Owners</p>
           </div>
-          <div className="border border-foreground/10 p-4 text-center">
+          <div className="border border-border p-4 text-center">
             <p className="text-2xl font-bold text-foreground">{recruiterCount}</p>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">Recruteurs</p>
           </div>
@@ -115,7 +115,7 @@ export const AgencySettings: React.FC = () => {
       </div>
 
       {/* Permissions */}
-      <div className="border border-foreground/20 p-4 sm:p-6">
+      <div className="border border-border p-4 sm:p-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Permissions agence
         </h3>
@@ -128,7 +128,7 @@ export const AgencySettings: React.FC = () => {
           {PERMISSION_CONFIG.map(({ key, label, description }) => (
             <div
               key={key}
-              className="flex items-center justify-between px-4 py-3 border border-foreground/10 hover:border-foreground/30 transition-colors"
+              className="flex items-center justify-between px-4 py-3 border border-border hover:border-border transition-colors"
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground">{label}</p>
@@ -140,8 +140,8 @@ export const AgencySettings: React.FC = () => {
                 className={cn(
                   "h-[30px] px-4 text-xs font-bold uppercase tracking-wider border transition-colors shrink-0 ml-4",
                   perms[key]
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-background text-muted-foreground border-foreground/30",
+                    ? "bg-foreground text-background border-border"
+                    : "bg-background text-muted-foreground border-border",
                   !isOwner && "opacity-50 cursor-not-allowed"
                 )}
               >
@@ -153,14 +153,14 @@ export const AgencySettings: React.FC = () => {
       </div>
 
       {/* Metrics placeholder */}
-      <div className="border border-foreground/20 p-4 sm:p-6">
+      <div className="border border-border p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Métriques agence
           </h3>
         </div>
-        <div className="border border-dashed border-foreground/20 p-8 text-center">
+        <div className="border border-dashed border-border p-8 text-center">
           <BarChart3 className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
           <p className="text-xs text-muted-foreground">
             Les métriques agence (pipeline value, placements par membre, taux de conversion) seront disponibles prochainement.

@@ -120,7 +120,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   }, [setSearchParams]);
 
   return (
-    <div className="bg-background border-2 border-foreground border-t-0 p-4 sm:p-6">
+    <div className="bg-background border-2 border-border border-t-0 p-4 sm:p-6">
       {/* Voice toggle */}
       {!readOnly && (
         <div className="flex items-center justify-end mb-4">
@@ -129,8 +129,8 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
             className={cn(
               "flex items-center gap-1.5 h-[30px] px-3 text-xs font-black uppercase tracking-wider border-2 transition-all",
               showVoice
-                ? "bg-foreground text-background border-foreground"
-                : "bg-background text-muted-foreground border-foreground/30 hover:border-foreground hover:text-foreground"
+                ? "bg-foreground text-background border-border"
+                : "bg-background text-muted-foreground border-border hover:border-border hover:text-foreground"
             )}
           >
             <Mic className="w-3 h-3" /> {showVoice ? 'Masquer la dictée' : 'Dicter le brief'}
@@ -140,7 +140,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
 
       {/* Voice mode */}
       {showVoice && !readOnly && (
-        <div className="mb-6 border-2 border-foreground/30 p-4 space-y-3">
+        <div className="mb-6 border-2 border-border p-4 space-y-3">
           <VoiceDictation
             onTranscript={(chunk) => setVoiceTranscript(prev => (prev ? prev + ' ' : '') + chunk)}
             onComplete={(fullText) => {
@@ -149,7 +149,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
             }}
           />
           {voiceTranscript && (
-            <div className="border-2 border-foreground/15 bg-foreground/[0.03] p-3 max-h-[150px] overflow-y-auto">
+            <div className="border-2 border-border bg-foreground/[0.03] p-3 max-h-[150px] overflow-y-auto">
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{voiceTranscript}</p>
             </div>
           )}
@@ -170,7 +170,7 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
           onClick={handleAnalyze}
           disabled={isAnalyzing}
           className={cn(
-            "relative overflow-hidden flex items-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground group",
+            "relative overflow-hidden flex items-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-border group",
             isAnalyzing ? "bg-muted text-muted-foreground" : "bg-foreground text-background"
           )}
         >
@@ -178,7 +178,6 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
             <><Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /><span className="relative z-10">Analyse en cours...</span></>
           ) : (
             <><Sparkles className="w-3.5 h-3.5 relative z-10" /><span className="relative z-10">Analyser avec l'IA</span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" /></>
           )}
         </button>
       </div>

@@ -205,7 +205,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   return (
     <div className="space-y-2">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 p-1 bg-muted/50 border border-foreground/20">
+      <div className="flex items-center gap-1 p-1 bg-muted/50 border border-border">
         <TooltipProvider delayDuration={200}>
           {/* Formatting buttons */}
           <Tooltip>
@@ -370,7 +370,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         data-placeholder={placeholder}
         suppressContentEditableWarning
         className={cn(
-          "w-full rounded-none border border-input bg-background px-3 py-2 text-sm",
+          "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm",
           "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "font-sans leading-relaxed overflow-y-auto whitespace-pre-wrap break-words",
           "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground empty:before:pointer-events-none",

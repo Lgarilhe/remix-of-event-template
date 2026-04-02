@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       />
       <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
-        <header className="border-b-2 border-foreground">
+        <header className="border-b-2 border-border">
           <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
             <Link to="/" className="text-sm font-bold uppercase tracking-widest hover:text-muted-foreground transition-colors flex items-center gap-2">
               <ArrowLeft className="w-4 h-4" />

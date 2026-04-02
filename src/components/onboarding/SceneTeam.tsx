@@ -217,7 +217,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           onClick={startScan}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="border-2 border-foreground/15 p-4 flex items-center gap-4 text-left hover:border-foreground/30 transition-colors w-full"
+          className="border-2 border-border p-4 flex items-center gap-4 text-left hover:border-border transition-colors w-full"
         >
           <img src={linkedinLogo} alt="LinkedIn" className="w-10 h-10 object-contain shrink-0" />
           <div className="flex-1 min-w-0">
@@ -240,7 +240,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="border-2 border-foreground/10 p-6 flex flex-col items-center gap-3"
+            className="border-2 border-border p-6 flex flex-col items-center gap-3"
           >
             <motion.img
               src={linkedinLogo}
@@ -250,7 +250,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               transition={{ repeat: Infinity, duration: 1.2 }}
             />
             <p className="text-sm text-muted-foreground">Analyse en cours...</p>
-            <div className="w-32 h-1 bg-foreground/5 overflow-hidden">
+            <div className="w-32 h-1 bg-accent/50 overflow-hidden">
               <motion.div
                 className="h-full"
                 style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
@@ -284,7 +284,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           {profiles.map((p) => (
             <label
               key={p.id}
-              className="flex items-center gap-3 p-2.5 border border-foreground/10 hover:border-foreground/20 transition-colors cursor-pointer"
+              className="flex items-center gap-3 p-2.5 border border-border hover:border-border transition-colors cursor-pointer"
             >
               <Checkbox
                 checked={selected.has(p.id)}
@@ -293,7 +293,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               <img
                 src={`https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=random&size=32&font-size=0.4`}
                 alt={p.name}
-                className="w-8 h-8 border border-foreground/10 shrink-0"
+                className="w-8 h-8 border border-border shrink-0"
               />
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-medium">{p.name}</span>
@@ -326,11 +326,11 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             placeholder="collegue@entreprise.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="flex-1 min-w-0 border-2 border-foreground/15 text-sm h-10"
+            className="flex-1 min-w-0 border-2 border-border text-sm h-10"
           />
           <div className="flex gap-2 w-full sm:w-auto">
             <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="w-24 text-xs border-2 border-foreground/15 h-10">
+              <SelectTrigger className="w-24 text-xs border-2 border-border h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -343,8 +343,8 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               type="submit"
               size="icon"
               disabled={isInviting || !email.trim()}
-              className="h-10 w-10 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 shrink-0"
-              style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent))' }}
+              className="h-10 w-10 border-2 border-border bg-foreground text-background hover:bg-foreground/90 shrink-0"
+              style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
             >
               {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             </Button>
@@ -366,14 +366,14 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       {/* Navigation */}
       <div className="flex flex-col items-end gap-1 pt-2">
         <div className="flex items-center justify-between w-full">
-          <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+          <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
             <ArrowLeft className="w-4 h-4" /> Retour
           </Button>
           <Button
             onClick={handleFinish}
             disabled={isSending}
-            className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+            className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
             {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}

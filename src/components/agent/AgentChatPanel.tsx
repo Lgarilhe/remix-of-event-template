@@ -210,7 +210,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     return (
       <div className="flex flex-col h-full bg-background animate-slide-in-left">
         {/* Header */}
-        <div className="relative overflow-hidden px-5 py-4 border-b-2 border-foreground">
+        <div className="relative overflow-hidden px-5 py-4 border-b-2 border-border">
           <div className="absolute inset-0 skalr-gradient-bg opacity-5" />
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -225,7 +225,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground border border-foreground/15 px-2.5 py-1 hover:border-foreground transition-all duration-150"
+                className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground border border-border px-2.5 py-1 hover:border-border transition-all duration-150"
               >
                 Fermer
               </button>
@@ -234,17 +234,17 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </div>
 
         {/* Quick Actions Grid */}
-        <div className="px-4 py-4 border-b border-foreground/10 shrink-0">
+        <div className="px-4 py-4 border-b border-border shrink-0">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3">Actions rapides</p>
           <div className="grid grid-cols-2 gap-2">
             {QUICK_ACTIONS.map((qa) => (
               <button
                 key={qa.label}
                 onClick={() => handleQuickAction(qa.prompt)}
-                className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+                className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
               >
                 <span className="text-base">{qa.emoji}</span>
-                <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-brutal-accent transition-colors">
+                <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-1.5 leading-tight group-hover:text-primary transition-colors">
                   {qa.label}
                 </p>
               </button>
@@ -253,7 +253,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b-2 border-foreground/10 shrink-0">
+        <div className="flex border-b-2 border-border shrink-0">
           <button
             onClick={() => setActiveTab('new')}
             className={cn(
@@ -309,11 +309,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   return (
     <div className="flex flex-col h-full bg-background relative animate-slide-in-right">
       {/* Chat header */}
-      <div className="relative overflow-hidden flex items-center gap-3 px-4 py-3 border-b-2 border-foreground shrink-0">
+      <div className="relative overflow-hidden flex items-center gap-3 px-4 py-3 border-b-2 border-border shrink-0">
         <div className="absolute inset-0 skalr-gradient-bg opacity-10" />
         <button
           onClick={() => setShowList(true)}
-          className="relative z-10 h-8 w-8 flex items-center justify-center border border-foreground hover:bg-brutal-accent/10 transition-colors"
+          className="relative z-10 h-8 w-8 flex items-center justify-center border border-border hover:bg-accent/10 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-foreground" />
         </button>
@@ -328,13 +328,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             <div className="flex items-center gap-1.5 mt-0.5">
               {isActive && (
                 <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brutal-accent/50" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brutal-accent" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/50" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
                 </span>
               )}
               <p className={cn(
                 "text-xs uppercase tracking-wider",
-                isActive ? "text-brutal-accent" : "text-muted-foreground"
+                isActive ? "text-primary" : "text-muted-foreground"
               )}>
                 {statusLabel}
               </p>
@@ -350,7 +350,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <div className="flex flex-col items-center justify-center py-16 gap-6">
             {/* Brutal square scanner */}
             <div className="relative">
-              <div className="h-12 w-12 border-2 border-foreground relative">
+              <div className="h-12 w-12 border-2 border-border relative">
                 <div
                   className="absolute inset-x-1 h-[2px] animate-[scan_1.5s_ease-in-out_infinite]"
                   style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
@@ -366,7 +366,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="h-10 border border-foreground/10 bg-muted relative overflow-hidden"
+                  className="h-10 border border-border bg-muted relative overflow-hidden"
                   style={{ animationDelay: `${i * 150}ms` }}
                 >
                   <div
@@ -398,9 +398,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 <button
                   key={starter.title}
                   onClick={() => handleSend(starter.prompt)}
-                  className="border border-foreground/10 hover:border-foreground/30 p-4 transition-all duration-200 hover:bg-muted cursor-pointer group text-left"
+                  className="border border-border hover:border-border p-4 transition-all duration-200 hover:bg-muted cursor-pointer group text-left"
                 >
-                  <starter.icon className="w-5 h-5 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
+                  <starter.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                   <p className="text-sm font-semibold text-foreground mt-2">{starter.title}</p>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{starter.desc}</p>
                 </button>
@@ -414,7 +414,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                     <button
                       key={job.id}
                       onClick={() => handleNewConversation(job)}
-                      className="border border-foreground/15 px-3 py-1.5 text-xs hover:bg-foreground hover:text-background transition-colors cursor-pointer truncate max-w-[200px] shrink-0"
+                      className="border border-border px-3 py-1.5 text-xs hover:bg-foreground hover:text-background transition-colors cursor-pointer truncate max-w-[200px] shrink-0"
                     >
                       {job.title}
                     </button>
@@ -464,10 +464,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       />
 
       {/* Input bar */}
-      <div className="shrink-0 bg-background border-t border-foreground/10 px-4 py-3 z-10 space-y-2">
+      <div className="shrink-0 bg-background border-t border-border px-4 py-3 z-10 space-y-2">
         {selectedJob && conversationId !== jobSentForConv && (
           <div className="flex items-center gap-1.5">
-            <span className="bg-brutal-accent/10 text-xs px-2 py-1 border border-brutal-accent/30 flex items-center gap-1.5 truncate max-w-full">
+            <span className="bg-accent/10 text-xs px-2 py-1 border border-accent/30 flex items-center gap-1.5 truncate max-w-full">
               <span>📋</span>
               <span className="truncate">{selectedJob.title}</span>
               <button
@@ -480,7 +480,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             </span>
           </div>
         )}
-        <div className="flex items-end gap-2 border border-foreground/20 focus-within:border-foreground/50 focus-within:shadow-[0_0_16px_-4px_hsl(var(--brutal-accent)/0.2)] transition-all duration-200 px-3 py-2">
+        <div className="flex items-end gap-2 border border-border focus-within:border-border focus-within:shadow-sm transition-all duration-200 px-3 py-2">
           <textarea
             ref={inputRef}
             value={input}
@@ -506,13 +506,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             className={cn(
               "h-7 w-7 flex items-center justify-center shrink-0 transition-all duration-150 active:scale-90",
               input.trim() && !sending
-                ? "bg-foreground text-background hover:bg-brutal-accent"
+                ? "bg-foreground text-background hover:bg-accent"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >
             {sending ? (
               <div className="h-7 w-7 flex items-center justify-center relative">
-                <div className="h-5 w-5 border border-foreground/30 relative">
+                <div className="h-5 w-5 border border-border relative">
                   <div
                     className="absolute w-[5px] h-[5px] -top-[2.5px] -left-[2.5px] skalr-gradient-bg animate-[spin_1.5s_linear_infinite]"
                     style={{ transformOrigin: '12.5px 12.5px' }}

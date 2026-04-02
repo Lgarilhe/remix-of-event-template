@@ -65,12 +65,12 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
                 className={cn(
                   "w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-semibold transition-colors border-2",
                   isCurrent
-                    ? "bg-foreground text-background border-foreground"
+                    ? "bg-foreground text-background border-border"
                     : isCompleted && !hasErrors
                       ? "bg-emerald-500 text-white border-emerald-500"
                       : hasErrors
                         ? "bg-destructive/10 text-destructive border-destructive/40"
-                        : "bg-background text-muted-foreground border-border group-hover:border-foreground/30"
+                        : "bg-background text-muted-foreground border-border group-hover:border-border"
                 )}
                 initial={false}
                 animate={isCurrent ? { scale: [1, 1.1, 1] } : {}}

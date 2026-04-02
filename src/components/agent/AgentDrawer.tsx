@@ -40,15 +40,15 @@ const AgentFAB: React.FC = () => {
       >
         <div className="relative pointer-events-none">
           <AnimatedOrb size={52} speed={6} />
-          <div className="absolute inset-0 -z-10 translate-x-[3px] translate-y-[3px] rounded-full bg-brutal-accent/40" />
+          <div className="absolute inset-0 -z-10 rounded-full bg-accent/20 blur-sm" />
           {unreadCount > 0 && (
-            <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-brutal-accent ring-2 ring-background animate-pulse" />
+            <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-background animate-pulse" />
           )}
         </div>
       </button>
       <span
         className={cn(
-          "text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground bg-background/80 backdrop-blur-sm border border-foreground/10 px-1.5 py-0.5 transition-all duration-200 pointer-events-none",
+          "text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground bg-background/80 backdrop-blur-sm border border-border px-1.5 py-0.5 transition-all duration-200 pointer-events-none",
           hovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
         )}
       >
@@ -79,7 +79,7 @@ export const AgentDrawer: React.FC = () => {
       <Sheet open={isOpen} onOpenChange={(open) => { if (!open) closeAgent(); }}>
         <SheetContent
           side="right"
-          className="w-full sm:w-[420px] p-0 bg-background border-l border-foreground border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
+          className="w-full sm:w-[420px] p-0 bg-background border-l border-border border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
         >
           <SheetTitle className="sr-only">Assistant IA</SheetTitle>
           <SheetDescription className="sr-only">

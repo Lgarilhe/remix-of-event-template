@@ -318,7 +318,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         onInteractOutside={(e) => { if (mobileProfileOpen) e.preventDefault(); }}
         onPointerDownOutside={(e) => { if (mobileProfileOpen) e.preventDefault(); }}
         className={cn(
-         "overflow-hidden flex flex-col p-0 rounded-none border-foreground gap-0 [&>button]:hidden transition-all duration-300",
+         "overflow-hidden flex flex-col p-0 rounded-lg border-border gap-0 [&>button]:hidden transition-all duration-300",
          "w-[100vw] h-[100dvh] max-w-[100vw] max-h-[100dvh]",
          "sm:w-auto sm:h-auto",
          isSplitMode
@@ -354,19 +354,19 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 )}
               </div>
             </div>
-            <button onClick={onClose} className="h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center border border-foreground text-foreground hover:bg-brutal-accent transition-colors shrink-0">
+            <button onClick={onClose} className="h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center border border-border text-foreground hover:bg-accent transition-colors shrink-0">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Stage + Actions */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-4 pb-2 sm:pb-4 border-b border-foreground/20">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-4 pb-2 sm:pb-4 border-b border-border">
             <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground hidden sm:inline">Étape :</span>
             <Select value={candidate.stage} onValueChange={(v) => onStageChange(candidate.id, v)}>
-              <SelectTrigger className="w-[140px] sm:w-[180px] rounded-none border-foreground h-8 sm:h-9 text-xs">
+              <SelectTrigger className="w-[140px] sm:w-[180px] rounded-lg border-border h-8 sm:h-9 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="rounded-none border-foreground">
+              <SelectContent className="rounded-lg border-border">
                 {ATS_STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -394,11 +394,11 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           </div>
 
           {/* Tags */}
-          <div className="hidden sm:flex flex-wrap items-center gap-1.5 mt-3 pb-4 border-b border-foreground/20">
+          <div className="hidden sm:flex flex-wrap items-center gap-1.5 mt-3 pb-4 border-b border-border">
             {(candidate.tags || []).map(tag => (
               <span
                 key={tag}
-                className="text-xs px-2 py-0.5 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium flex items-center gap-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
+                className="text-xs px-2 py-0.5 bg-accent/20 text-foreground border border-accent/40 font-medium flex items-center gap-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
                 onClick={() => onTagsChange?.(candidate.id, (candidate.tags || []).filter(t => t !== tag))}
                 title="Cliquer pour supprimer"
               >
@@ -419,7 +419,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 placeholder="+ tag"
-                className="h-6 w-20 text-xs rounded-none border-foreground/30 px-1.5"
+                className="h-6 w-20 text-xs rounded-lg border-border px-1.5"
               />
             </form>
           </div>
@@ -427,7 +427,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
         {/* Tabs */}
         <div className="px-3 sm:px-6 pt-2 sm:pt-4">
-          <div className="flex gap-0 border-b border-foreground/10 overflow-x-auto no-scrollbar">
+          <div className="flex gap-0 border-b border-border overflow-x-auto no-scrollbar">
             {tabsConfig.map(tab => {
               const isActive = activeTab === tab.key;
               const count = tab.key === 'notes' ? notes.length
@@ -496,7 +496,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               style={{ animationDuration: '2s' }}
             >
               <User className="w-5 h-5" />
-              <span className="absolute inset-0 rounded-full border-2 border-foreground/40 animate-ping" style={{ animationDuration: '3s' }} />
+              <span className="absolute inset-0 rounded-full border-2 border-border animate-ping" style={{ animationDuration: '3s' }} />
             </button>
 
             {/* RIGHT: Compact profile sidebar (desktop) */}
@@ -594,9 +594,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     {/* Mobile profile overlay */}
     {mobileProfileOpen && createPortal(
       <div className="fixed inset-0 z-[2700] bg-background overflow-y-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-between p-3 bg-background border-b border-foreground/20">
+        <div className="sticky top-0 z-10 flex items-center justify-between p-3 bg-background border-b border-border">
           <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Profil candidat</h3>
-          <button onClick={() => setMobileProfileOpen(false)} className="h-8 w-8 flex items-center justify-center border border-foreground text-foreground">
+          <button onClick={() => setMobileProfileOpen(false)} className="h-8 w-8 flex items-center justify-center border border-border text-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -618,7 +618,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 // ========== Small inline sub-components ==========
 
 const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => (
-  <div className="flex items-center gap-4 p-4 border border-foreground/10 bg-foreground/[0.03]">
+  <div className="flex items-center gap-4 p-4 border border-border bg-foreground/[0.03]">
     <div className={cn("h-14 w-14 flex items-center justify-center border-2 text-xl font-black shrink-0",
       (candidate.score ?? 0) >= 70 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
       (candidate.score ?? 0) >= 40 ? 'border-amber-400 bg-amber-50 text-amber-700' :
@@ -679,7 +679,7 @@ const CandidateProfileSidebarContent = React.memo<{
       <Link2 className="w-3.5 h-3.5" /> Portail candidat
     </button>
     {candidate.score != null && (
-      <div className="border border-foreground/15 p-2">
+      <div className="border border-border p-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score IA</span>
           <span className={cn("text-sm font-bold",
@@ -718,7 +718,7 @@ const CandidateProfileSidebarContent = React.memo<{
       <CollapsibleSection title="Compétences" defaultOpen={false}>
         <div className="flex flex-wrap gap-1">
           {enrichedProfile.skills.map(s => (
-            <span key={s} className="text-xs px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+            <span key={s} className="text-xs px-1.5 py-0.5 border border-border text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
           ))}
         </div>
       </CollapsibleSection>
@@ -727,7 +727,7 @@ const CandidateProfileSidebarContent = React.memo<{
       <CollapsibleSection title="Langues" defaultOpen={false}>
         <div className="flex flex-wrap gap-1">
           {enrichedProfile.languages.map(l => (
-            <span key={l} className="text-xs px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
+            <span key={l} className="text-xs px-1.5 py-0.5 border border-border text-muted-foreground font-medium uppercase tracking-wider">{l}</span>
           ))}
         </div>
       </CollapsibleSection>
@@ -742,16 +742,16 @@ const JobDetailsSidebarContent = React.memo<{ jobDetails: any }>(({ jobDetails }
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {jobDetails.contractType && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">{jobDetails.contractType}</span>
+          <span className="px-1.5 py-0.5 border border-border font-medium uppercase tracking-wider text-xs">{jobDetails.contractType}</span>
         )}
         {jobDetails.remote && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">{jobDetails.remote}</span>
+          <span className="px-1.5 py-0.5 border border-border font-medium uppercase tracking-wider text-xs">{jobDetails.remote}</span>
         )}
         {jobDetails.seniority && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">{jobDetails.seniority}</span>
+          <span className="px-1.5 py-0.5 border border-border font-medium uppercase tracking-wider text-xs">{jobDetails.seniority}</span>
         )}
         {(jobDetails.salaryMin || jobDetails.salaryMax) && (
-          <span className="px-1.5 py-0.5 border border-foreground/20 font-medium uppercase tracking-wider text-xs">
+          <span className="px-1.5 py-0.5 border border-border font-medium uppercase tracking-wider text-xs">
             {jobDetails.salaryMin && jobDetails.salaryMax
               ? `${jobDetails.salaryMin}-${jobDetails.salaryMax}k€`
               : jobDetails.salaryMin ? `${jobDetails.salaryMin}k€+` : `≤${jobDetails.salaryMax}k€`}
@@ -761,7 +761,7 @@ const JobDetailsSidebarContent = React.memo<{ jobDetails: any }>(({ jobDetails }
       {jobDetails.skills?.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
           {jobDetails.skills.slice(0, 8).map((s: string) => (
-            <span key={s} className="text-xs px-1.5 py-0.5 border border-foreground/20 text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
+            <span key={s} className="text-xs px-1.5 py-0.5 border border-border text-muted-foreground font-medium uppercase tracking-wider">{s}</span>
           ))}
         </div>
       )}

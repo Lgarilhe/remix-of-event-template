@@ -185,22 +185,22 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
   const qualQuestions = analysis?.qualificationQuestions || [];
 
   return (
-    <div className="border-t-2 border-foreground bg-background">
+    <div className="border-t-2 border-border bg-background">
       {/* Tab bar */}
-      <div className="flex items-center border-b border-foreground/20">
+      <div className="flex items-center border-b border-border">
         <button
           onClick={() => setActiveSection('suggestions')}
           className={cn(
             "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
             activeSection === 'suggestions'
-              ? "border-foreground text-foreground"
+              ? "border-border text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
           <Sparkles className="w-3.5 h-3.5" />
           Réponses
           {positive.length + negative.length > 0 && (
-            <Badge variant="outline" className="text-xs rounded-none h-4 px-1 ml-0.5">
+            <Badge variant="outline" className="text-xs rounded-full h-4 px-1 ml-0.5">
               {positive.length + negative.length}
             </Badge>
           )}
@@ -210,14 +210,14 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           className={cn(
             "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
             activeSection === 'jobs'
-              ? "border-foreground text-foreground"
+              ? "border-border text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
           <Search className="w-3.5 h-3.5" />
           Postes
           {jobMatches.length > 0 && (
-            <Badge variant="outline" className="text-xs rounded-none h-4 px-1 ml-0.5">
+            <Badge variant="outline" className="text-xs rounded-full h-4 px-1 ml-0.5">
               {jobMatches.length}
             </Badge>
           )}
@@ -252,14 +252,14 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
       <div className="max-h-[280px] overflow-y-auto p-3">
         {loading && !analysis ? (
           <div className="space-y-2">
-            <Skeleton className="h-12 w-full rounded-none" />
-            <Skeleton className="h-12 w-full rounded-none" />
-            <Skeleton className="h-12 w-3/4 rounded-none" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-3/4 rounded-lg" />
           </div>
         ) : error ? (
           <div className="text-center py-4">
             <p className="text-xs text-destructive mb-2">{error}</p>
-            <Button variant="outline" size="sm" className="rounded-none text-xs" onClick={() => { setError(null); analyze(); }}>
+            <Button variant="outline" size="sm" className="rounded-lg text-xs" onClick={() => { setError(null); analyze(); }}>
               Réessayer
             </Button>
           </div>
@@ -339,10 +339,10 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                     <button
                       key={i}
                       className={cn(
-                        "w-full flex items-start gap-2.5 p-2.5 border text-left transition-colors hover:bg-brutal-accent/10",
+                        "w-full flex items-start gap-2.5 p-2.5 border text-left transition-colors hover:bg-accent/10",
                         job.recommendation === 'go' && "border-emerald-500/50",
                         job.recommendation === 'maybe' && "border-amber-500/50",
-                        job.recommendation === 'skip' && "border-foreground/20"
+                        job.recommendation === 'skip' && "border-border"
                       )}
                       onClick={() => onAddToPipeline?.(job.jobId, job.jobTitle)}
                     >
@@ -357,7 +357,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-xs font-bold truncate">{job.jobTitle}</p>
-                          <Badge variant="outline" className="text-xs rounded-none shrink-0">
+                          <Badge variant="outline" className="text-xs rounded-full shrink-0">
                             {job.recommendation === 'go' ? '✓' : job.recommendation === 'maybe' ? '?' : '✗'}
                           </Badge>
                         </div>

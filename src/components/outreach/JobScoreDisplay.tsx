@@ -89,7 +89,7 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-foreground/20 text-muted-foreground cursor-help rounded-none bg-background">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-muted-foreground cursor-help rounded-lg bg-background">
           <Icon className="w-3 h-3" /> {config.label}
         </span>
       </TooltipTrigger>
@@ -111,7 +111,7 @@ const ScoreRing: React.FC<{ score: number; size?: number }> = ({ score, size = 6
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} />
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--brutal-accent))" strokeWidth={strokeWidth}
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--primary))" strokeWidth={strokeWidth}
           strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="butt" className="transition-all duration-700 ease-out" />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
@@ -124,13 +124,13 @@ const ScoreRing: React.FC<{ score: number; size?: number }> = ({ score, size = 6
 // ── Recommendation pill ──
 const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
   const config = {
-    go: { icon: CheckCircle2, label: 'À contacter', cls: 'bg-brutal-accent/20 text-foreground border-brutal-accent' },
-    maybe: { icon: AlertCircle, label: 'À évaluer', cls: 'bg-muted text-foreground border-foreground/30' },
-    skip: { icon: XCircle, label: 'Peu adapté', cls: 'bg-muted text-muted-foreground border-foreground/20' },
-  }[rec] || { icon: AlertCircle, label: 'Inconnu', cls: 'bg-muted text-muted-foreground border-foreground/20' };
+    go: { icon: CheckCircle2, label: 'À contacter', cls: 'bg-accent/20 text-foreground border-accent' },
+    maybe: { icon: AlertCircle, label: 'À évaluer', cls: 'bg-muted text-foreground border-border' },
+    skip: { icon: XCircle, label: 'Peu adapté', cls: 'bg-muted text-muted-foreground border-border' },
+  }[rec] || { icon: AlertCircle, label: 'Inconnu', cls: 'bg-muted text-muted-foreground border-border' };
   const Icon = config.icon;
   return (
-    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border uppercase tracking-wider rounded-none", config.cls)}>
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border uppercase tracking-wider rounded-lg", config.cls)}>
       <Icon className="w-3 h-3" /> {config.label}
     </span>
   );
@@ -139,8 +139,8 @@ const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
 // ── Meta pill ──
 const MetaPill: React.FC<{ icon: React.ElementType; label: string; ok: boolean }> = ({ icon: Icon, label, ok }) => (
   <span className={cn(
-    "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border uppercase tracking-wider rounded-none",
-    ok ? "bg-background text-foreground border-foreground/30" : "bg-muted text-muted-foreground border-foreground/20"
+    "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border uppercase tracking-wider rounded-lg",
+    ok ? "bg-background text-foreground border-border" : "bg-muted text-muted-foreground border-border"
   )}>
     <Icon className="w-3 h-3" /> {label}
   </span>
@@ -149,10 +149,10 @@ const MetaPill: React.FC<{ icon: React.ElementType; label: string; ok: boolean }
 // ── Skill tag ──
 const SkillTag: React.FC<{ skill: string; matched: boolean }> = ({ skill, matched }) => (
   <span className={cn(
-    "text-xs px-2 py-0.5 font-medium rounded-none border",
+    "text-xs px-2 py-0.5 font-medium rounded-lg border",
     matched
-      ? "bg-brutal-accent/10 text-foreground border-brutal-accent/30"
-      : "bg-muted/50 text-muted-foreground border-foreground/10 line-through decoration-foreground/20"
+      ? "bg-accent/10 text-foreground border-accent/30"
+      : "bg-muted/50 text-muted-foreground border-border line-through decoration-foreground/20"
   )}>
     {skill}
   </span>
@@ -161,7 +161,7 @@ const SkillTag: React.FC<{ skill: string; matched: boolean }> = ({ skill, matche
 export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTitle, compact = false }) => {
   if (result.error) {
     return (
-      <div className="bg-muted border border-foreground/20 p-3 text-sm text-foreground rounded-none">
+      <div className="bg-muted border border-border p-3 text-sm text-foreground rounded-lg">
         Erreur: {result.error}
       </div>
     );
@@ -169,7 +169,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
 
   if (result.hardFilterPassed === false && result.hardFilterKO) {
     return (
-      <div className="flex items-start gap-2.5 p-3 border border-foreground/20 bg-muted rounded-none">
+      <div className="flex items-start gap-2.5 p-3 border border-border bg-muted rounded-lg">
         <Ban className="w-4 h-4 text-foreground/60 mt-0.5 shrink-0" />
         <div>
           <p className="text-xs font-bold text-foreground uppercase tracking-wider">Éliminé par filtre</p>
@@ -189,7 +189,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   const confidenceBadge = result.confidenceScore != null && result.confidenceScore < 70 ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-foreground/20 text-muted-foreground cursor-help rounded-none bg-muted">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-border text-muted-foreground cursor-help rounded-lg bg-muted">
           {result.confidenceScore < 40 ? <AlertTriangle className="w-3 h-3" /> : <Search className="w-3 h-3" />}
           {result.confidenceScore < 40 ? 'Données insuffisantes' : 'Score partiel'}
         </span>
@@ -205,7 +205,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
 
   if (compact) {
     return (
-      <div className="flex items-center gap-3 p-2 border border-foreground/10 bg-muted/20 rounded-none">
+      <div className="flex items-center gap-3 p-2 border border-border bg-muted/20 rounded-lg">
         <ScoreRing score={result.match_score} size={40} />
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">

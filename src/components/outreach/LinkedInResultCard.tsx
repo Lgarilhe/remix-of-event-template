@@ -184,13 +184,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const hasHighScore = jobScore && jobScore.match_score > 80;
   const flashColorMap = {
     go: 'hsl(var(--accent))',
-    maybe: 'hsl(var(--brutal-accent))',
+    maybe: 'hsl(var(--primary))',
     skip: 'hsl(var(--destructive))',
   };
 
   return (
     <div
-      className={`relative bg-background border border-foreground transition-all max-w-full cursor-pointer group shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))]`}
+      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-sm hover:shadow-sm`}
       style={{ wordBreak: 'break-word' }}
       onClick={(e) => {
         if (showScoringOverlay) return;
@@ -201,7 +201,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
     >
       {/* High score indicator — left accent bar */}
       {hasHighScore && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brutal-accent" />
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
       )}
 
       {/* Score flash overlay */}
@@ -371,13 +371,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               {currentCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   {profileData.currentJob?.logo ? (
-                    <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-white border border-border/30 shrink-0" />
+                    <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                   ) : (
                     <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 border border-foreground/15 text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
+                    <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
                       {companyType.label}
                     </span>
                   )}
@@ -431,7 +431,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
                     <div key={index} className="flex items-center gap-2 text-xs min-w-0">
                       {pos.logo ? (
-                        <img src={pos.logo} alt={pos.company || ''} className="w-4 h-4 rounded object-contain bg-white border border-border/30 shrink-0" />
+                        <img src={pos.logo} alt={pos.company || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                       ) : (
                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-green-500' : 'bg-primary/40'}`} />
                       )}

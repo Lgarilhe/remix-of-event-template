@@ -72,7 +72,7 @@ export const EmailSignatures: React.FC = () => {
             {signatures.map((sig) => (
               <div
                 key={sig.id}
-                className="group border border-foreground/10 p-3 hover:border-foreground/30 transition-colors"
+                className="group border border-border p-3 hover:border-border transition-colors"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -138,7 +138,7 @@ export const EmailSignatures: React.FC = () => {
               <div>
                 <Label className="text-xs text-muted-foreground">Aperçu</Label>
                 <div
-                  className="mt-1 p-3 border border-foreground/10 bg-muted/30 rounded text-sm"
+                  className="mt-1 p-3 border border-border bg-muted/30 rounded text-sm"
                   dangerouslySetInnerHTML={{ __html: form.content }}
                 />
               </div>

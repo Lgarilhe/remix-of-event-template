@@ -30,7 +30,7 @@ const NeuralBackground: React.FC = () => {
           key={`e-${i}`}
           x1={nodes[a].x} y1={nodes[a].y}
           x2={nodes[b].x} y2={nodes[b].y}
-          stroke="hsl(var(--brutal-accent))"
+          stroke="hsl(var(--primary))"
           strokeWidth="0.15"
           initial={{ pathLength: 0, opacity: 0 }}
           animate={{ pathLength: 1, opacity: 0.25 }}
@@ -41,7 +41,7 @@ const NeuralBackground: React.FC = () => {
         <motion.circle
           key={`n-${i}`}
           cx={n.x} cy={n.y} r="0.6"
-          fill="hsl(var(--brutal-accent))"
+          fill="hsl(var(--primary))"
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: [0, 1.5, 1], opacity: [0, 0.6, 0.3] }}
           transition={{ delay: 0.5 + i * 0.08, duration: 0.6 }}
@@ -52,7 +52,7 @@ const NeuralBackground: React.FC = () => {
         <motion.circle
           key={`pulse-${i}`}
           r="0.4"
-          fill="hsl(var(--brutal-accent))"
+          fill="hsl(var(--primary))"
           initial={{ cx: nodes[a].x, cy: nodes[a].y, opacity: 0 }}
           animate={{
             cx: [nodes[a].x, nodes[b].x],
@@ -88,7 +88,7 @@ const FloatingParticles: React.FC = () => {
       {particles.map(p => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-brutal-accent/20"
+          className="absolute rounded-full bg-accent/20"
           style={{
             width: p.size,
             height: p.size,
@@ -134,7 +134,7 @@ const OrbitRing: React.FC = () => {
     <div className="relative w-20 h-20 mx-auto mb-2">
       {/* Center glow */}
       <motion.div
-        className="absolute inset-2 bg-brutal-accent/10 border border-brutal-accent/20"
+        className="absolute inset-2 bg-accent/10 border border-accent/20"
         animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.6, 0.3] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' as const }}
       />
@@ -166,7 +166,7 @@ const OrbitRing: React.FC = () => {
             ease: 'linear' as const,
           }}
         >
-          <Icon className="w-3 h-3 text-brutal-accent/60" />
+          <Icon className="w-3 h-3 text-primary/60" />
         </motion.div>
       ))}
     </div>
@@ -198,7 +198,7 @@ const TypingText: React.FC<{ text: string; delay?: number }> = ({ text, delay = 
       <motion.span
         animate={{ opacity: [1, 0] }}
         transition={{ duration: 0.5, repeat: Infinity }}
-        className="inline-block w-[2px] h-[1em] bg-brutal-accent ml-0.5 align-text-bottom"
+        className="inline-block w-[2px] h-[1em] bg-accent ml-0.5 align-text-bottom"
       />
     </span>
   );
@@ -243,9 +243,9 @@ const aiBullets = [
 ];
 
 const manualBullets = [
-  { icon: Pencil, text: 'Contrôle total sur chaque paramètre', color: 'text-foreground/60', bg: 'bg-foreground/5 border-foreground/10' },
-  { icon: List, text: 'Importez depuis une URL ou un fichier', color: 'text-foreground/60', bg: 'bg-foreground/5 border-foreground/10' },
-  { icon: Settings, text: 'Pour les recruteurs expérimentés', color: 'text-foreground/60', bg: 'bg-foreground/5 border-foreground/10' },
+  { icon: Pencil, text: 'Contrôle total sur chaque paramètre', color: 'text-foreground/60', bg: 'bg-accent/50 border-border' },
+  { icon: List, text: 'Importez depuis une URL ou un fichier', color: 'text-foreground/60', bg: 'bg-accent/50 border-border' },
+  { icon: Settings, text: 'Pour les recruteurs expérimentés', color: 'text-foreground/60', bg: 'bg-accent/50 border-border' },
 ];
 
 /* ─── Logo carousel (real integrations) ─── */
@@ -366,8 +366,8 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
             whileTap={{ scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             className={cn(
-              "relative w-full text-left border-2 border-foreground p-7 sm:p-9 overflow-hidden h-full",
-              "bg-gradient-to-br from-[hsl(var(--brutal-accent)/0.08)] via-transparent to-[hsl(var(--brutal-accent)/0.03)]",
+              "relative w-full text-left border-2 border-border p-7 sm:p-9 overflow-hidden h-full",
+              "bg-gradient-to-br from-[hsl(var(--accent))] via-transparent to-[hsl(var(--accent))]",
               "focus-visible:outline-none group"
             )}
           >
@@ -376,28 +376,28 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
 
             {/* Animated corner accents */}
             <motion.div
-              className="absolute top-0 left-0 w-8 h-[2px] bg-brutal-accent"
+              className="absolute top-0 left-0 w-8 h-[2px] bg-accent"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
               transition={{ delay: 1.2, duration: 0.4 }}
               style={{ transformOrigin: 'left' }}
             />
             <motion.div
-              className="absolute top-0 left-0 w-[2px] h-8 bg-brutal-accent"
+              className="absolute top-0 left-0 w-[2px] h-8 bg-accent"
               initial={{ scaleY: 0 }}
               animate={{ scaleY: 1 }}
               transition={{ delay: 1.2, duration: 0.4 }}
               style={{ transformOrigin: 'top' }}
             />
             <motion.div
-              className="absolute bottom-0 right-0 w-8 h-[2px] bg-brutal-accent"
+              className="absolute bottom-0 right-0 w-8 h-[2px] bg-accent"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
               transition={{ delay: 1.4, duration: 0.4 }}
               style={{ transformOrigin: 'right' }}
             />
             <motion.div
-              className="absolute bottom-0 right-0 w-[2px] h-8 bg-brutal-accent"
+              className="absolute bottom-0 right-0 w-[2px] h-8 bg-accent"
               initial={{ scaleY: 0 }}
               animate={{ scaleY: 1 }}
               transition={{ delay: 1.4, duration: 0.4 }}
@@ -414,7 +414,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               <span className="relative px-2.5 py-1 bg-foreground text-background text-xs font-bold uppercase tracking-widest">
                 Recommandé
                 <motion.span
-                  className="absolute inset-0 bg-brutal-accent/30"
+                  className="absolute inset-0 bg-accent/30"
                   animate={{ opacity: [0, 0.5, 0] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
@@ -425,7 +425,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               {/* Icon with animated ring */}
               <div className="relative w-14 h-14 mb-6">
                 <motion.div
-                  className="absolute inset-0 border-2 border-brutal-accent/30"
+                  className="absolute inset-0 border-2 border-accent/30"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 20, repeat: Infinity, ease: 'linear' as const }}
                   style={{ borderRadius: '30% 70% 70% 30% / 30% 30% 70% 70%' }}
@@ -503,15 +503,15 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
             whileTap={{ scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             className={cn(
-              "relative w-full text-left border border-foreground/20 p-7 sm:p-9 overflow-hidden h-full bg-background",
-              "hover:border-foreground/40 transition-colors duration-300",
+              "relative w-full text-left border border-border p-7 sm:p-9 overflow-hidden h-full bg-background",
+              "hover:border-border transition-colors duration-300",
               "focus-visible:outline-none group"
             )}
           >
             <div className="relative z-10">
               {/* Icon */}
               <div className="relative w-14 h-14 mb-6">
-                <div className="absolute inset-0 border border-foreground/20" />
+                <div className="absolute inset-0 border border-border" />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Pencil className="w-6 h-6 text-foreground/70" />
                 </div>
@@ -547,12 +547,12 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               </ul>
 
               {/* CTA outline */}
-              <div className="relative overflow-hidden w-full h-[48px] text-xs font-bold uppercase tracking-wider border border-foreground bg-background text-foreground flex items-center justify-center gap-2 group/btn">
+              <div className="relative overflow-hidden w-full h-[48px] text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground flex items-center justify-center gap-2 group/btn">
                 <span className="relative z-10 flex items-center gap-2">
                   <Pencil className="w-3.5 h-3.5" />
                   Création manuelle
                 </span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300 ease-out" />
+                <span className="absolute inset-0 bg-accent translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300 ease-out" />
               </div>
             </div>
           </motion.button>

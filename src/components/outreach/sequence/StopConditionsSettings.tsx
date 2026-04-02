@@ -32,7 +32,7 @@ export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ 
         {STOP_ITEMS.map(item => {
           const Icon = item.icon;
           return (
-            <div key={item.key} className="flex items-center justify-between p-2.5 border border-foreground/20 bg-background">
+            <div key={item.key} className="flex items-center justify-between p-2.5 border border-border bg-background">
               <div className="flex items-center gap-2.5">
                 <Icon className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm">{item.label}</span>

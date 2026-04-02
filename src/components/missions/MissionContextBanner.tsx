@@ -35,7 +35,7 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
   };
 
   const variantStyles = {
-    info: 'border-l-4 border-l-brutal-accent bg-brutal-accent/5',
+    info: 'border-l-4 border-l-primary bg-accent/5',
     warning: 'border-l-4 border-l-destructive bg-destructive/5',
     success: 'border-l-4 border-l-primary bg-primary/5',
   };
@@ -48,7 +48,7 @@ export const MissionContextBanner: React.FC<MissionContextBannerProps> = ({
         exit={{ opacity: 0, height: 0, y: -8 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
         className={cn(
-          "border border-foreground/10 overflow-hidden",
+          "border border-border overflow-hidden",
           variantStyles[variant],
           className
         )}

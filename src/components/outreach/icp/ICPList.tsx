@@ -60,14 +60,14 @@ function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => 
   }
 
   return (
-    <div className="border border-foreground/15 bg-background hover:border-foreground/30 transition-colors group">
+    <div className="border border-border bg-background hover:border-border transition-colors group">
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm">{typeInfo.emoji}</span>
               <h3 className="text-sm font-semibold text-foreground truncate">{icp.name}</h3>
-              <Badge variant="outline" className="text-xs shrink-0 border-foreground/20">
+              <Badge variant="outline" className="text-xs shrink-0 border-border">
                 {typeInfo.label}
               </Badge>
             </div>
@@ -104,13 +104,13 @@ function ICPCard({ icp, onEdit, onDelete, onSearch }: { icp: ICP; onEdit: () => 
       </div>
 
       {expanded && allCriteria.length > 0 && (
-        <div className="border-t border-foreground/10 px-4 py-3 bg-muted/30 space-y-2">
+        <div className="border-t border-border px-4 py-3 bg-muted/30 space-y-2">
           {allCriteria.map((item, i) => (
             <div key={i} className="flex items-start gap-2">
               <span className="text-xs uppercase tracking-wider text-muted-foreground w-28 shrink-0 pt-0.5">{item.label}</span>
               <div className="flex flex-wrap gap-1">
                 {item.values.map((v, j) => (
-                  <Badge key={j} variant="outline" className="text-xs border-foreground/15 font-normal">
+                  <Badge key={j} variant="outline" className="text-xs border-border font-normal">
                     {v}
                   </Badge>
                 ))}
@@ -152,12 +152,12 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
   };
 
   return (
-    <div className="bg-background border border-foreground p-3 sm:p-6">
+    <div className="bg-background border border-border p-3 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Target className="w-4 h-4" />
           <h2 className="text-sm font-bold uppercase tracking-wider">Profils Cibles (ICP)</h2>
-          <Badge variant="outline" className="text-xs border-foreground/20">{icps.length}</Badge>
+          <Badge variant="outline" className="text-xs border-border">{icps.length}</Badge>
         </div>
         <Button
           onClick={() => { setEditingICP(null); setFormOpen(true); }}
@@ -170,11 +170,11 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 border border-foreground/10 animate-pulse bg-muted/20" />
+            <div key={i} className="h-20 border border-border animate-pulse bg-muted/20" />
           ))}
         </div>
       ) : icps.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-foreground/20">
+        <div className="text-center py-12 border border-dashed border-border">
           <Target className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50" />
           <h3 className="text-sm font-semibold text-foreground mb-1">Aucun ICP défini</h3>
           <p className="text-xs text-muted-foreground mb-4 max-w-sm mx-auto">
@@ -183,7 +183,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
           <Button
             onClick={() => setFormOpen(true)}
             variant="outline"
-            className="text-xs border-foreground/30 gap-1.5"
+            className="text-xs border-border gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" /> Créer un ICP
           </Button>

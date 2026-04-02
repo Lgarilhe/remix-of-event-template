@@ -36,7 +36,7 @@ function getFlag(flag: string) {
 
 const flagLevelClass = {
   error: 'border-destructive text-destructive bg-destructive/5',
-  warn: 'border-foreground/30 text-foreground/70 bg-muted',
+  warn: 'border-border text-foreground/70 bg-muted',
   info: 'border-primary/30 text-primary bg-primary/5',
 };
 
@@ -47,7 +47,7 @@ const BreakdownRow: React.FC<{ label: string; value: number; max: number }> = ({
       <span className="w-20 text-muted-foreground uppercase tracking-wider truncate">{label}</span>
       <div className="flex-1 h-1 bg-muted overflow-hidden">
         <div
-          className={`h-full transition-all ${pct >= 70 ? 'bg-foreground' : pct >= 40 ? 'bg-foreground/50' : 'bg-destructive'}`}
+          className={`h-full transition-all ${pct >= 70 ? 'bg-foreground' : pct >= 40 ? 'bg-accent/500' : 'bg-destructive'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -103,7 +103,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
             </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-foreground">
+        <TooltipContent side="left" className="max-w-xs p-3 rounded-lg border-border">
           <TooltipBreakdown pct={pct} breakdown={breakdown} flags={flags} />
         </TooltipContent>
       </Tooltip>
@@ -127,7 +127,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
             </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-foreground">
+        <TooltipContent side="left" className="max-w-xs p-3 rounded-lg border-border">
           <TooltipBreakdown pct={pct} breakdown={breakdown} flags={flags} />
         </TooltipContent>
       </Tooltip>
@@ -139,7 +139,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
           <Badge
             key={i}
             variant="outline"
-            className={`text-xs px-1.5 py-0 h-4 font-medium rounded-none max-w-[140px] truncate ${flagLevelClass[style.level]}`}
+            className={`text-xs px-1.5 py-0 h-4 font-medium rounded-lg max-w-[140px] truncate ${flagLevelClass[style.level]}`}
           >
             {style.icon} {f.length > 20 ? f.slice(0, 17) + '…' : f}
           </Badge>

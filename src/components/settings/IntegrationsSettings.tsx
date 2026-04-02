@@ -461,7 +461,7 @@ const IntegrationCard = ({
                   onChange={(e) =>
                     setLocalValues(prev => ({ ...prev, [field.key]: e.target.value }))
                   }
-                  className="pr-10 text-sm border-foreground/15"
+                  className="pr-10 text-sm border-border"
                 />
                 {field.secret && (
                   <button

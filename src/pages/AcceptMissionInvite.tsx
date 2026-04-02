@@ -41,10 +41,9 @@ export default function AcceptMissionInvite() {
             <p className="text-xs text-muted-foreground">Vous avez été ajouté à la mission. Vous pouvez maintenant sourcer et proposer des candidats.</p>
             <button
               onClick={() => navigate(projectId ? `/missions/${projectId}` : '/missions')}
-              className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group"
+              className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group"
             >
               <span className="relative z-10">Voir la mission</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
           </>
         )}

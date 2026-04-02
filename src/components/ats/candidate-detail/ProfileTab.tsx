@@ -55,28 +55,28 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
       {/* Key metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {enrichedProfile?.location && (
-          <div className="p-3 border border-foreground/10">
+          <div className="p-3 border border-border">
             <MapPin className="w-4 h-4 text-muted-foreground mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Localisation</p>
             <p className="text-sm font-medium text-foreground mt-0.5">{enrichedProfile.location}</p>
           </div>
         )}
         {enrichedProfile?.yearsOfExperience && (
-          <div className="p-3 border border-foreground/10">
+          <div className="p-3 border border-border">
             <Briefcase className="w-4 h-4 text-muted-foreground mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Expérience</p>
             <p className="text-sm font-medium text-foreground mt-0.5">~{enrichedProfile.yearsOfExperience} ans</p>
           </div>
         )}
         {enrichedProfile?.currentCompany && (
-          <div className="p-3 border border-foreground/10">
+          <div className="p-3 border border-border">
             <Target className="w-4 h-4 text-muted-foreground mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Entreprise</p>
             <p className="text-sm font-medium text-foreground mt-0.5 truncate">{enrichedProfile.currentCompany}</p>
           </div>
         )}
         {enrichedProfile?.currentRole && (
-          <div className="p-3 border border-foreground/10">
+          <div className="p-3 border border-border">
             <Activity className="w-4 h-4 text-muted-foreground mb-1" />
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Poste</p>
             <p className="text-sm font-medium text-foreground mt-0.5 truncate">{enrichedProfile.currentRole}</p>
@@ -113,7 +113,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
         <Section title="Compétences">
           <div className="flex flex-wrap gap-1.5">
             {enrichedProfile.skills.map(s => (
-              <span key={s} className="text-xs px-2 py-0.5 border border-foreground/20 text-foreground font-medium uppercase tracking-wider">{s}</span>
+              <span key={s} className="text-xs px-2 py-0.5 border border-border text-foreground font-medium uppercase tracking-wider">{s}</span>
             ))}
           </div>
         </Section>
@@ -142,7 +142,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
                   qs.verdict === 'go' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
                   qs.verdict === 'no_go' ? 'border-destructive/40 bg-destructive/5 text-destructive' :
                   qs.verdict === 'maybe' ? 'border-amber-400 bg-amber-50 text-amber-700' :
-                  'border-foreground/20 bg-foreground/5 text-muted-foreground'
+                  'border-border bg-accent/50 text-muted-foreground'
                 )}>
                   {qs.verdict === 'go' ? '✓' : qs.verdict === 'no_go' ? '✗' : qs.verdict === 'maybe' ? '?' : '📅'}
                 </div>
@@ -162,7 +162,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{qs.verdictNotes}</p>
                   )}
                   <a href={`/qualification/${qs.id}`} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-foreground underline underline-offset-2 hover:text-brutal-accent flex items-center gap-1 mt-1">
+                    className="text-xs text-foreground underline underline-offset-2 hover:text-primary flex items-center gap-1 mt-1">
                     <ExternalLink className="w-3 h-3" /> Voir la scorecard
                   </a>
                 </div>
@@ -189,7 +189,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
               </div>
             )}
             {fullProfile.airtableShortlists.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-foreground/10">
+              <div className="mt-2 pt-2 border-t border-border">
                 <span className="text-xs font-bold uppercase tracking-wider text-foreground mb-2 block">
                   Shortlists précédentes ({fullProfile.airtableShortlists.length})
                 </span>
@@ -219,7 +219,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
             {candidate.linkedin && (
               <ContactLine icon={<img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />}>
                 <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                  className="text-foreground hover:text-brutal-accent underline underline-offset-2">Voir le profil</a>
+                  className="text-foreground hover:text-primary underline underline-offset-2">Voir le profil</a>
               </ContactLine>
             )}
           </div>

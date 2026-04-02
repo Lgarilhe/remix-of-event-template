@@ -150,7 +150,7 @@ export function WebhookManager() {
         ) : (
           <>
             {/* Status summary */}
-            <div className="flex items-center gap-2 p-3 rounded-none border border-foreground bg-muted/50">
+            <div className="flex items-center gap-2 p-3 rounded-lg border border-border bg-muted/50">
               {missingSources.length === 0 ? (
                 <>
                   <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -174,7 +174,7 @@ export function WebhookManager() {
                 {webhooks.map((webhook) => (
                   <div
                     key={webhook.id}
-                    className="flex items-center justify-between p-3 rounded-none border border-foreground bg-card"
+                    className="flex items-center justify-between p-3 rounded-lg border border-border bg-card"
                   >
                     <div className="flex items-center gap-3">
                       <Badge variant="outline" className="bg-[#0077B5]/10 text-[#0077B5] border-[#0077B5]/20">

@@ -157,7 +157,7 @@ export const CandidatePipeline: React.FC<CandidatePipelineProps> = ({ data, stag
       <DragOverlay dropAnimation={null}>
         {activeEntry ? (
           <div className="w-[280px] opacity-90">
-            <div className="bg-background border border-foreground p-3 shadow-lg">
+            <div className="bg-background border border-border p-3 shadow-lg">
               <h4 className="font-medium text-foreground truncate">
                 {activeEntry.candidate?.name || activeEntry.name}
               </h4>

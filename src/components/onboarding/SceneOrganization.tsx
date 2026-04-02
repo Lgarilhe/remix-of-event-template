@@ -318,7 +318,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       {/* Search input */}
       <div className="flex gap-2">
         {onBack && (
-          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border-2 border-foreground/20 shrink-0">
+          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border-2 border-border shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         )}
@@ -330,14 +330,14 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             onKeyDown={handleKeyDown}
             placeholder="Le nom de votre société..."
             autoFocus
-            className="pl-11 pr-4 border-2 border-foreground/20 focus:border-foreground focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
+            className="pl-11 pr-4 border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
           />
         </div>
         <Button
           onClick={handleSearch}
           disabled={query.trim().length < 2 || phase === 'scanning'}
-          className="h-11 px-5 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+          className="h-11 px-5 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
+          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           {phase === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
         </Button>
@@ -367,9 +367,9 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                     className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
                       s.done
                         ? 'border-transparent text-foreground'
-                        : 'border-foreground/20 text-muted-foreground'
+                        : 'border-border text-muted-foreground'
                     }`}
-                    style={s.done ? { background: 'hsl(var(--brutal-accent))' } : {}}
+                    style={s.done ? { background: 'hsl(var(--primary))' } : {}}
                   >
                     {s.done ? <Check className="w-3 h-3" /> : String(i + 1).padStart(2, '0')}
                   </div>
@@ -387,7 +387,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   key={b.id}
                   initial={{ opacity: 0, y: 8, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="bg-muted/60 border border-foreground/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
+                  className="bg-muted/60 border border-border/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
                 >
                   {b.text}
                 </motion.div>
@@ -417,7 +417,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   onClick={() => selectCandidate(c.id)}
-                  className="w-full text-left border-2 border-foreground/20 hover:border-foreground p-3 flex items-center gap-3 transition-all hover:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
+                  className="w-full text-left border-2 border-border hover:border-border p-3 flex items-center gap-3 transition-all hover:shadow-sm"
                 >
                   {c.logoUrl ? (
                     <img src={c.logoUrl} alt={c.name} className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -461,8 +461,8 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           >
             {/* Company card */}
             <div
-              className="border-2 border-foreground/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
-              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
+              className="border-2 border-border/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
+              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
             >
               <img
                 src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`)}
@@ -483,20 +483,20 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   }
                 }}
                 referrerPolicy="no-referrer"
-                className="w-12 h-12 border border-foreground/10 bg-background object-contain"
+                className="w-12 h-12 border border-border bg-background object-contain"
                 
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-lg leading-tight">{company.name}</h3>
                   <span
-                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border"
                     style={{ background: 'hsl(var(--landing-accent-yellow))' }}
                   >
                     Enrichi
                   </span>
                   {(company.suborganizations?.length || 0) > 0 && (
-                    <span className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground/30 bg-muted flex items-center gap-1">
+                    <span className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border bg-muted flex items-center gap-1">
                       <GitBranch className="w-3 h-3" />
                       {company.suborganizations!.length} filiale{company.suborganizations!.length > 1 ? 's' : ''}
                     </span>
@@ -525,14 +525,14 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-0 border-b-2 border-foreground/10">
+            <div className="flex gap-0 border-b-2 border-border">
               {tabs.map((t) => (
                 <button
                   key={t.key}
                   onClick={() => setActiveTab(t.key)}
                   className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-[2px] ${
                     activeTab === t.key
-                      ? 'border-foreground text-foreground'
+                      ? 'border-border text-foreground'
                       : 'border-transparent text-muted-foreground hover:text-foreground/70'
                   }`}
                 >
@@ -567,8 +567,8 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               <Button
                 onClick={handleContinue}
                 disabled={isCreating}
-                className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
+                className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                 {isCreating ? 'Création...' : 'Continuer'}
@@ -622,7 +622,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.08 }}
-                  className="border border-foreground/10 p-3 hover:border-foreground/20 transition-colors flex gap-2.5"
+                  className="border border-border p-3 hover:border-border transition-colors flex gap-2.5"
                 >
                   <div
                     className="w-6 h-6 flex items-center justify-center shrink-0 mt-0.5"
@@ -646,7 +646,7 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
       ) : company.insights.length > 0 ? (
         /* Fallback: flat insights */
         <div
-          className="border border-foreground/10 p-4 space-y-3"
+          className="border border-border p-4 space-y-3"
           style={{ borderLeftWidth: '3px', borderLeftColor: 'hsl(var(--skalr-purple))' }}
         >
           <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skalr-purple))' }}>
@@ -666,14 +666,14 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
         <div className="flex flex-wrap gap-2">
           {company.websiteUrl && (
             <a href={company.websiteUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/15 h-8">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-border h-8">
                 <Globe className="w-3.5 h-3.5" /> Site web
               </Button>
             </a>
           )}
           {company.careersUrl && (
             <a href={company.careersUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-foreground/15 h-8">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-border h-8">
                 <Briefcase className="w-3.5 h-3.5" /> Page carrière
               </Button>
             </a>
@@ -742,20 +742,20 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <Users className="w-3.5 h-3.5" />
             Répartition des équipes
           </h4>
-          <div className="space-y-2 border-2 border-foreground/10 p-3" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
+          <div className="space-y-2 border-2 border-border p-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
             {headcountEntries.map(([dept, count]) => (
               <div key={dept} className="space-y-0.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-medium capitalize">{dept.replace(/_/g, ' ')}</span>
                   <span className="font-bold tabular-nums">{count}</span>
                 </div>
-                <div className="h-2 bg-muted border border-foreground/5 overflow-hidden">
+                <div className="h-2 bg-muted border border-border/5 overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${(count / maxHeadcount) * 100}%` }}
                     transition={{ duration: 0.6, delay: 0.1 }}
                     className="h-full"
-                    style={{ backgroundColor: 'hsl(var(--brutal-accent))' }}
+                    style={{ backgroundColor: 'hsl(var(--primary))' }}
                   />
                 </div>
               </div>
@@ -771,7 +771,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <TrendingUp className="w-3.5 h-3.5" />
             Historique de levées
           </h4>
-          <div className="border-2 border-foreground/10 p-3 space-y-0" style={{ boxShadow: '2px 2px 0px 0px hsl(var(--brutal-accent) / 0.3)' }}>
+          <div className="border-2 border-border p-3 space-y-0" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
             {fundingEvents.map((ev, i) => (
               <div key={i} className="flex gap-3 relative">
                 {/* Vertical line */}
@@ -779,11 +779,11 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                   <div className="absolute left-[7px] top-5 bottom-0 w-[2px] bg-foreground/10" />
                 )}
                 {/* Dot */}
-                <div className="w-4 h-4 mt-0.5 shrink-0 border-2 border-foreground/40 bg-background z-10" style={{ borderRadius: 0 }} />
+                <div className="w-4 h-4 mt-0.5 shrink-0 border-2 border-border bg-background z-10" style={{ borderRadius: 0 }} />
                 <div className="pb-3 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     {ev.type && (
-                      <span className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 border border-foreground/20 bg-muted">
+                      <span className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 border border-border bg-muted">
                         {ev.type}
                       </span>
                     )}
@@ -820,7 +820,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                 href={article.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-start gap-2 p-2 border border-foreground/10 hover:border-foreground/25 transition-colors group"
+                className="flex items-start gap-2 p-2 border border-border hover:border-border/25 transition-colors group"
               >
                 <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
                 <div className="min-w-0 flex-1">
@@ -889,7 +889,7 @@ const TabRoles: React.FC<{
       {uniqueRoles.map((role, i) => (
         <label
           key={i}
-          className="flex items-center gap-3 p-3 border border-foreground/10 hover:border-foreground/25 transition-colors cursor-pointer"
+          className="flex items-center gap-3 p-3 border border-border hover:border-border/25 transition-colors cursor-pointer"
         >
           <Checkbox
             checked={selected.has(i)}

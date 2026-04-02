@@ -127,7 +127,7 @@ const Settings = () => {
 
       <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
-          {/* Header brutal */}
+          {/* Header */}
           <div className="flex items-center gap-2 min-w-0 mb-4">
             <div className="h-8 w-8 flex items-center justify-center shrink-0">
               <img src={iconSettings3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
@@ -136,7 +136,7 @@ const Settings = () => {
           </div>
 
           {/* Brutal tabs */}
-          <div className="flex gap-0 border-b-2 border-foreground overflow-x-auto no-scrollbar mb-6">
+          <div className="flex gap-0 border-b-2 border-border overflow-x-auto no-scrollbar mb-6">
             {tabs.map(tab => {
               const isActive = activeTab === tab.value;
               return (
@@ -144,7 +144,7 @@ const Settings = () => {
                   key={tab.value}
                   onClick={() => setActiveTab(tab.value)}
                   className={cn(
-                    "relative px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] whitespace-nowrap flex items-center gap-2 border-r border-foreground/10 last:border-r-0 overflow-hidden group transition-colors",
+                    "relative px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] whitespace-nowrap flex items-center gap-2 border-r border-border last:border-r-0 overflow-hidden group transition-colors",
                     isActive
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground"
@@ -153,7 +153,6 @@ const Settings = () => {
                   <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain relative z-10" />
                   <span className="relative z-10 hidden sm:inline">{tab.label}</span>
                   {!isActive && (
-                    <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                   )}
                 </button>
               );
@@ -182,7 +181,7 @@ const Settings = () => {
                     />
                   )}
 
-                  <div className="border-t border-foreground/10 pt-3 space-y-3">
+                  <div className="border-t border-border pt-3 space-y-3">
                   <div>
                     <label className="text-sm text-muted-foreground">Nom</label>
                     {editingName ? (
@@ -222,7 +221,7 @@ const Settings = () => {
                     <label className="text-sm text-muted-foreground">Identifiant</label>
                     <p className="text-foreground font-mono text-sm">{organization?.slug}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-foreground/10">
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
                     <div>
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Plan</label>
                       <p className="text-sm font-semibold text-foreground mt-0.5">
@@ -271,7 +270,7 @@ const Settings = () => {
                         {members.map((member) => {
                           const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] || User;
                           return (
-                            <div key={member.id} className="flex items-center justify-between py-3 border-b border-foreground/10 last:border-0">
+                            <div key={member.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center">
                                   <RoleIcon className="w-4 h-4 text-muted-foreground" />

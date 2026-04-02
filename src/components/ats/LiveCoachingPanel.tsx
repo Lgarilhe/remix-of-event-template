@@ -521,9 +521,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
 
   return (
-    <div className="border-2 border-foreground/20 bg-foreground/[0.02] mb-4 max-h-[520px] flex flex-col overflow-hidden">
+    <div className="border-2 border-border bg-foreground/[0.02] mb-4 max-h-[520px] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-foreground/10">
+      <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
           {isRecording && (
             <span className="relative flex h-2.5 w-2.5">
@@ -566,11 +566,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             </>
           )}
           {onOpenProfile && (
-            <button onClick={onOpenProfile} className="lg:hidden h-[28px] px-2 flex items-center gap-1 border border-foreground/20 text-muted-foreground text-xs font-medium uppercase tracking-wider hover:bg-foreground/5 transition-colors">
+            <button onClick={onOpenProfile} className="lg:hidden h-[28px] px-2 flex items-center gap-1 border border-border text-muted-foreground text-xs font-medium uppercase tracking-wider hover:bg-accent/50 transition-colors">
               <User className="w-3 h-3" /> <span className="hidden sm:inline">CV</span>
             </button>
           )}
-          <button onClick={onClose} className="h-[28px] px-2 flex items-center border border-foreground/20 text-muted-foreground text-xs hover:bg-foreground/5 transition-colors">
+          <button onClick={onClose} className="h-[28px] px-2 flex items-center border border-border text-muted-foreground text-xs hover:bg-accent/50 transition-colors">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -634,7 +634,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                     onClick={() => status?.covered && setExpandedCriterion(isExpanded ? null : c.id)}
                     className={cn(
                       "flex items-center gap-1.5 px-2 py-1.5 border text-xs font-medium text-left transition-all",
-                      !status?.covered && "border-foreground/10 bg-foreground/[0.02] text-muted-foreground",
+                      !status?.covered && "border-border bg-foreground/[0.02] text-muted-foreground",
                       status?.covered && status.signal === 'positive' && "border-success/30 bg-success/10 text-success",
                       status?.covered && status.signal === 'negative' && "border-destructive/30 bg-destructive/10 text-destructive",
                       status?.covered && status.signal === 'neutral' && "border-warning/30 bg-warning/10 text-warning",
@@ -658,7 +658,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             </div>
             {/* Expanded verbatim */}
             {expandedCriterion && criteriaStatus[expandedCriterion]?.verbatim && (
-              <div className="mt-1.5 px-2 py-1.5 border border-foreground/10 bg-foreground/[0.02] text-xs text-muted-foreground italic">
+              <div className="mt-1.5 px-2 py-1.5 border border-border bg-foreground/[0.02] text-xs text-muted-foreground italic">
                 "{criteriaStatus[expandedCriterion].verbatim}"
               </div>
             )}
@@ -706,7 +706,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                 {segments.reduce((acc, s) => acc + s.text.split(' ').length, 0)} mots
               </span>
             </div>
-            <div className="max-h-[140px] overflow-y-auto space-y-1 border border-foreground/10 p-2">
+            <div className="max-h-[140px] overflow-y-auto space-y-1 border border-border p-2">
               {segments.length === 0 && (
                 <p className="text-xs text-muted-foreground italic">En attente…</p>
               )}
@@ -767,7 +767,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               <p className="text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">Évaluation par critère</p>
               <div className="space-y-1">
                 {report.criteria_evaluation.map((ce, i) => (
-                  <div key={i} className="flex items-start gap-2 px-2 py-1.5 border border-foreground/10 text-xs">
+                  <div key={i} className="flex items-start gap-2 px-2 py-1.5 border border-border text-xs">
                     <span className={cn(
                       "font-bold w-5 text-center shrink-0",
                       ce.score >= 4 ? 'text-success' : ce.score >= 3 ? 'text-warning' : 'text-destructive'
@@ -823,14 +823,14 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   <Copy className="w-3 h-3" /> Copier
                 </button>
               </div>
-              <div className="px-3 py-2 border border-foreground/15 bg-foreground/[0.02] text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+              <div className="px-3 py-2 border border-border bg-foreground/[0.02] text-xs text-foreground leading-relaxed whitespace-pre-wrap">
                 {report.follow_up_message}
               </div>
             </div>
           )}
 
           {/* Debrief actions */}
-          <div className="pt-3 border-t border-foreground/10">
+          <div className="pt-3 border-t border-border">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Actions post-entretien</p>
             <div className="flex flex-wrap gap-2">
               {report.recommendation === 'GO' && (
@@ -839,7 +839,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                     toast.success('Candidat avancé à l\'étape suivante');
                     onClose();
                   }}
-                  className="flex items-center gap-1.5 h-[32px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background"
+                  className="flex items-center gap-1.5 h-[32px] px-4 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background"
                 >
                   ✓ Avancer dans le pipeline
                 </button>
@@ -863,7 +863,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   toast.success('Entretien suivant à planifier');
                   onClose();
                 }}
-                className="flex items-center gap-1.5 h-[32px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground/30 text-foreground hover:border-foreground transition-colors"
+                className="flex items-center gap-1.5 h-[32px] px-4 text-xs font-bold uppercase tracking-wider border border-border text-foreground hover:border-border transition-colors"
               >
                 📅 Planifier la suite
               </button>

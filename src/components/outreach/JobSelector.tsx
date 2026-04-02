@@ -201,7 +201,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   // Show skeleton while loading
   if (loading) {
     return (
-      <div className="border border-foreground bg-background p-3 space-y-2">
+      <div className="border border-border bg-background p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm">🎯</span>
           <span className="text-xs font-bold text-foreground uppercase tracking-widest">Scoring Job</span>
@@ -212,7 +212,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
   }
 
   return (
-    <div className="border border-foreground bg-background p-3 space-y-2">
+    <div className="border border-border bg-background p-3 space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-sm">🎯</span>
         <label className="text-xs font-bold text-foreground uppercase tracking-widest">
@@ -254,7 +254,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
         <select
           value={selectedJob?.id || 'none'}
           onChange={(e) => handleChange(e.target.value)}
-          className="flex h-9 w-full items-center border border-foreground bg-background px-3 py-2 text-sm focus:outline-none"
+          className="flex h-9 w-full items-center border border-border bg-background px-3 py-2 text-sm focus:outline-none"
         >
           <option value="none">Pas de scoring job</option>
           {jobs.map((job) => (
@@ -268,10 +268,10 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           <button
             type="button"
             className={cn(
-              "flex h-9 w-full items-center justify-between border border-foreground bg-background px-3 py-1.5 text-sm transition-shadow",
-              "hover:shadow-[2px_2px_0px_hsl(var(--brutal-accent))]",
-              "focus:outline-none focus:shadow-[2px_2px_0px_hsl(var(--brutal-accent))]",
-              selectedJob && "border-brutal-accent"
+              "flex h-9 w-full items-center justify-between border border-border bg-background px-3 py-1.5 text-sm transition-shadow",
+              "hover:shadow-sm",
+              "focus:outline-none focus:shadow-sm",
+              selectedJob && "border-accent"
             )}
             onClick={() => setPopoverOpen((prev) => !prev)}
           >
@@ -298,17 +298,17 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
 
           {popoverOpen && (
             <div
-              className="absolute left-0 right-0 mt-1 z-[70] border border-foreground bg-background shadow-[3px_3px_0px_hsl(var(--foreground)/0.1)]"
+              className="absolute left-0 right-0 mt-1 z-[70] border border-border bg-background shadow-md"
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <div className="p-2 border-b border-foreground/20">
+              <div className="p-2 border-b border-border">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <Input
                     placeholder="Rechercher un poste..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-sm border-foreground/30 rounded-none"
+                    className="pl-8 h-8 text-sm border-border rounded-lg"
                     autoFocus
                   />
                 </div>
@@ -319,9 +319,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-2 text-sm text-left border-b border-foreground/10 transition-colors",
-                    "hover:bg-foreground/5",
-                    !selectedJob && "bg-foreground/5 font-medium"
+                    "flex w-full items-center gap-2 px-3 py-2 text-sm text-left border-b border-border transition-colors",
+                    "hover:bg-accent/50",
+                    !selectedJob && "bg-accent/50 font-medium"
                   )}
                   onClick={() => {
                     handleChange('none');
@@ -354,9 +354,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                       key={job.id}
                       type="button"
                       className={cn(
-                        "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-left border-b border-foreground/5 transition-colors",
-                        "hover:bg-foreground/5",
-                        isSelected && "bg-brutal-accent/10 border-l-2 border-l-brutal-accent"
+                        "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-left border-b border-border/5 transition-colors",
+                        "hover:bg-accent/50",
+                        isSelected && "bg-accent/10 border-l-2 border-l-primary"
                       )}
                       onClick={() => {
                         handleChange(job.id);
@@ -366,7 +366,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                     >
                       {/* Check / favicon column */}
                       {isSelected ? (
-                        <Check className="w-3.5 h-3.5 text-brutal-accent shrink-0" />
+                        <Check className="w-3.5 h-3.5 text-primary shrink-0" />
                       ) : faviconUrl ? (
                         <img
                           src={faviconUrl}
@@ -378,7 +378,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                           }}
                         />
                       ) : (
-                        <div className="w-4 h-4 border border-foreground/20 bg-muted flex items-center justify-center shrink-0">
+                        <div className="w-4 h-4 border border-border bg-muted flex items-center justify-center shrink-0">
                           <Building2 className="w-2.5 h-2.5 text-muted-foreground" />
                         </div>
                       )}
@@ -413,7 +413,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           {selectedJob.skills.slice(0, 5).map((skill, i) => (
             <span 
               key={i} 
-              className="text-xs px-1.5 py-0.5 border border-foreground/20 bg-foreground/5 text-foreground/70 font-medium uppercase tracking-wide"
+              className="text-xs px-1.5 py-0.5 border border-border bg-accent/50 text-foreground/70 font-medium uppercase tracking-wide"
             >
               {skill}
             </span>

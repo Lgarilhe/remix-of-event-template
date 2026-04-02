@@ -167,7 +167,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
             onClick={startRecording}
             disabled={isConnecting}
             className={cn(
-              "relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-foreground group",
+              "relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-border group",
               isConnecting ? "bg-muted text-muted-foreground" : "bg-foreground text-background"
             )}
           >
@@ -180,7 +180,6 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
               <>
                 <Mic className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Dicter le brief</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </>
             )}
           </button>
@@ -208,7 +207,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
 
       {/* Interim text (live) */}
       {(isRecording || interimText) && (
-        <div className="border border-foreground/20 bg-muted/20 p-3 min-h-[60px]">
+        <div className="border border-border bg-muted/20 p-3 min-h-[60px]">
           {interimText && (
             <p className="text-sm text-muted-foreground italic">{interimText}</p>
           )}

@@ -365,7 +365,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-background border border-foreground flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:h-full overflow-y-hidden">
+    <div className="bg-background border border-border flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:h-full overflow-y-hidden">
       {/* HEADER: Search + count + filters + actions — unified compact bar */}
       <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
         <Button
@@ -613,8 +613,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Batch workflow banner */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="border border-foreground bg-brutal-accent/15 mb-3 overflow-hidden">
-                <div className="h-0.5 bg-brutal-accent" />
+              <div className="border border-border bg-accent/15 mb-3 overflow-hidden">
+                <div className="h-0.5 bg-accent" />
                 <div className="p-3 sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     {/* Left: bold typographic count */}
@@ -648,7 +648,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         size="sm"
                         onClick={() => onRefineSearch('expand')}
                         disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
                       >
                         {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
                         Élargir
@@ -658,7 +658,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         size="sm"
                         onClick={() => onRefineSearch('narrow')}
                         disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
                       >
                         {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
                         Affiner
@@ -709,7 +709,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="border border-brutal-accent/30 bg-brutal-accent/5 p-3 flex items-start gap-2.5"
+                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
                 >
                   <span className="text-sm shrink-0">🎯</span>
                   <p className="text-xs text-foreground/80 leading-relaxed flex-1">
@@ -797,7 +797,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {/* Next batch / Load more */}
             <div ref={loadMoreTriggerRef} className="py-4">
               {loadingMore && (
-                <div className="border border-foreground bg-brutal-accent/10 p-4 sm:p-6">
+                <div className="border border-border bg-accent/10 p-4 sm:p-6">
                   <BrutalLoader
                     variant="search"
                     messages={[
@@ -959,7 +959,7 @@ const SearchWelcomeMessage: React.FC = () => (
           num: '1',
           title: 'Sélectionnez un poste',
           content: <p className="text-sm text-muted-foreground ml-8">Choisissez un <strong>poste de référence</strong> dans le panneau de gauche.</p>,
-          bg: 'bg-muted/50 border-foreground',
+          bg: 'bg-muted/50 border-border',
         },
         {
           num: '2',
@@ -970,13 +970,13 @@ const SearchWelcomeMessage: React.FC = () => (
               <li>• Cliquez sur <strong>Rechercher</strong></li>
             </ul>
           ),
-          bg: 'bg-muted/30 border-foreground',
+          bg: 'bg-muted/30 border-border',
         },
         {
           num: '3',
           title: 'Sélectionnez et scorez',
           content: <p className="text-sm text-muted-foreground ml-8">Sélectionnez les profils, puis cliquez sur <strong><Target className="w-3 h-3 inline" /> Scorer</strong>.</p>,
-          bg: 'bg-muted border-foreground/10',
+          bg: 'bg-muted border-border',
         },
         {
           num: '4',
@@ -987,7 +987,7 @@ const SearchWelcomeMessage: React.FC = () => (
               <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
             </ul>
           ),
-          bg: 'bg-muted/50 border-foreground/10',
+          bg: 'bg-muted/50 border-border',
         },
       ].map((step, i) => (
         <motion.div

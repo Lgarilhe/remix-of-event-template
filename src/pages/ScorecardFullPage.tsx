@@ -138,7 +138,7 @@ export default function ScorecardFullPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-border border-t-foreground rounded-full animate-spin" />
       </div>
     );
   }
@@ -150,12 +150,12 @@ export default function ScorecardFullPage() {
   return (
     <div className="min-h-screen bg-background text-foreground pb-16">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-background border-b-2 border-foreground px-4 py-3">
+      <div className="sticky top-0 z-10 bg-background border-b-2 border-border px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => navigate(-1)}
-              className="h-8 w-8 flex items-center justify-center border-2 border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors shrink-0"
+              className="h-8 w-8 flex items-center justify-center border-2 border-border text-foreground hover:bg-foreground hover:text-background transition-colors shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -192,11 +192,11 @@ export default function ScorecardFullPage() {
       </div>
 
       {/* Fixed bottom toolbar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 bg-background/70 backdrop-blur-xl border-t border-foreground/10 px-4 py-2 flex items-center justify-between">
+      <div className="fixed inset-x-0 bottom-0 z-30 bg-background/70 backdrop-blur-xl border-t border-border px-4 py-2 flex items-center justify-between">
         <button
           onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-xs font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border-2 border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
             jobOpen
               ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
@@ -209,7 +209,7 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-foreground shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-all text-xs font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border-2 border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
             profileOpen
               ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
@@ -223,9 +223,9 @@ export default function ScorecardFullPage() {
 
       {/* Profile preview drawer (bottom sheet) */}
       {profileOpen && (
-        <div className="fixed inset-x-0 bottom-[52px] z-20 bg-background border-t-2 border-foreground shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-200">
+        <div className="fixed inset-x-0 bottom-[52px] z-20 bg-background border-t-2 border-border shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-200">
           {/* Sticky profile header + nav */}
-          <div className="shrink-0 border-b border-foreground/10">
+          <div className="shrink-0 border-b border-border">
             <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
               {/* Identity row */}
               <div className="flex items-start justify-between gap-3 mb-3">
@@ -253,12 +253,12 @@ export default function ScorecardFullPage() {
                 <div className="flex items-center gap-1.5 shrink-0">
                   {candidate.linkedin && (
                     <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                      className="h-7 px-2.5 flex items-center gap-1 border border-foreground text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
+                      className="h-7 px-2.5 flex items-center gap-1 border border-border text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
                       <ExternalLink className="w-3 h-3" /> LinkedIn
                     </a>
                   )}
                   <button onClick={() => setProfileOpen(false)}
-                    className="h-7 w-7 flex items-center justify-center border border-foreground/20 text-muted-foreground hover:text-foreground transition-colors">
+                    className="h-7 w-7 flex items-center justify-center border border-border text-muted-foreground hover:text-foreground transition-colors">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -275,8 +275,8 @@ export default function ScorecardFullPage() {
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border transition-colors -mr-px",
                       profileSection === tab.key
-                        ? "bg-foreground text-background border-foreground"
-                        : "border-foreground/20 text-muted-foreground hover:border-foreground/40"
+                        ? "bg-foreground text-background border-border"
+                        : "border-border text-muted-foreground hover:border-border"
                     )}>
                     <tab.icon className="w-3 h-3" />
                     {tab.label}
@@ -309,7 +309,7 @@ export default function ScorecardFullPage() {
                       return (
                         <div key={i} className={cn(
                           "border-l-2 pl-3 py-2 cursor-pointer hover:bg-foreground/[0.02] transition-colors",
-                          exp.isCurrent ? "border-emerald-400" : "border-foreground/15"
+                          exp.isCurrent ? "border-emerald-400" : "border-border"
                         )}
                           onClick={() => setExpandedExp(prev => {
                             const next = new Set(prev);
@@ -318,7 +318,7 @@ export default function ScorecardFullPage() {
                           })}
                         >
                           <div className="flex items-start gap-2.5">
-                            <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
+                            <div className="w-8 h-8 shrink-0 border border-border bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
                               {logoSrc ? (
                                 <img src={logoSrc} alt={exp.company || ''} className="w-6 h-6 object-contain"
                                   onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
@@ -367,9 +367,9 @@ export default function ScorecardFullPage() {
                       const logoSrc = dataLogo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
 
                       return (
-                        <div key={i} className="border-l-2 border-foreground/15 pl-3 py-2">
+                        <div key={i} className="border-l-2 border-border pl-3 py-2">
                           <div className="flex items-start gap-2.5">
-                            <div className="w-8 h-8 shrink-0 border border-foreground/10 bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
+                            <div className="w-8 h-8 shrink-0 border border-border bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
                               {logoSrc ? (
                                 <img src={logoSrc} alt={edu.school || ''} className="w-6 h-6 object-contain"
                                   onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
@@ -400,7 +400,7 @@ export default function ScorecardFullPage() {
                       {enrichedProfile.skills.map((skill, i) => {
                         const name = typeof skill === 'string' ? skill : (skill as any).name || '';
                         return (
-                          <span key={i} className="px-2.5 py-1 border border-foreground/15 text-xs font-medium text-muted-foreground hover:border-foreground/30 transition-colors">
+                          <span key={i} className="px-2.5 py-1 border border-border text-xs font-medium text-muted-foreground hover:border-border transition-colors">
                             {name}
                           </span>
                         );

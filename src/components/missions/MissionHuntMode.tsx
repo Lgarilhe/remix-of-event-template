@@ -12,7 +12,7 @@ interface MissionHuntModeProps {
 
 const HUNT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   draft: { label: 'Brouillon', color: 'bg-muted text-muted-foreground' },
-  published: { label: 'Publié', color: 'bg-brutal-accent text-background' },
+  published: { label: 'Publié', color: 'bg-accent text-background' },
   in_progress: { label: 'En cours', color: 'bg-blue-600 text-white' },
   filled: { label: 'Pourvu', color: 'bg-green-600 text-white' },
   cancelled: { label: 'Annulé', color: 'bg-red-600 text-white' },
@@ -29,7 +29,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
 
   if (!canPublish) {
     return (
-      <div className="border border-foreground/20 p-6 text-center">
+      <div className="border border-border p-6 text-center">
         <Lock className="w-6 h-6 text-muted-foreground mx-auto mb-3" />
         <p className="text-sm text-muted-foreground">
           Le mode chasse est réservé aux entreprises.
@@ -95,7 +95,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   };
 
   return (
-    <div className="border border-foreground/20 p-4 sm:p-6 space-y-5">
+    <div className="border border-border p-4 sm:p-6 space-y-5">
       {/* Toggle */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -112,8 +112,8 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           className={cn(
             "h-[34px] px-5 text-xs font-bold uppercase tracking-wider border transition-colors",
             isEnabled
-              ? "bg-foreground text-background border-foreground"
-              : "bg-background text-foreground border-foreground/30 hover:border-foreground"
+              ? "bg-foreground text-background border-border"
+              : "bg-background text-foreground border-border hover:border-border"
           )}
         >
           {isEnabled ? 'Activé' : 'Désactivé'}
@@ -145,7 +145,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 onChange={(e) => setBounty(Number(e.target.value))}
                 min={5}
                 max={30}
-                className="w-full h-[34px] px-3 text-sm border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors"
+                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -158,7 +158,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 onChange={(e) => setMaxRecruiters(Number(e.target.value))}
                 min={1}
                 max={10}
-                className="w-full h-[34px] px-3 text-sm border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors"
+                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -169,26 +169,25 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                className="w-full h-[34px] px-3 text-sm border border-foreground/30 bg-background text-foreground focus:border-foreground focus:outline-none transition-colors"
+                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-2 border-t border-foreground/10">
+          <div className="flex items-center gap-2 pt-2 border-t border-border">
             {huntStatus === 'draft' ? (
               <button
                 onClick={handlePublish}
-                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background group"
+                className="relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background group"
               >
                 <Globe className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Publier sur la marketplace</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             ) : huntStatus === 'published' ? (
               <button
                 onClick={handleUnpublish}
-                className="flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-foreground/30 bg-background text-foreground hover:border-foreground transition-colors"
+                className="flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
               >
                 Retirer de la marketplace
               </button>

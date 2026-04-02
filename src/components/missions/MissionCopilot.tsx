@@ -149,7 +149,7 @@ export const MissionCopilot = ({ project, activeTab, onTabChange }: MissionCopil
   if (!suggestion || dismissed) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-foreground bg-foreground text-background px-4 py-2.5">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-foreground text-background px-4 py-2.5">
       <div className="max-w-[1600px] mx-auto flex items-center gap-3">
         <span className="text-xs shrink-0">{suggestion.icon}</span>
         <span className="text-xs font-medium uppercase tracking-wider flex-1 min-w-0 truncate">
