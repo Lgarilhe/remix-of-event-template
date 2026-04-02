@@ -494,7 +494,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 onClick={generateMessage}
                 disabled={loading}
                 size="lg"
-                className="flex-1 h-12 bg-foreground hover:bg-foreground/90 text-background font-bold rounded-lg border border-border shadow-sm transition-all uppercase tracking-wide text-sm"
+                className="flex-1 h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg shadow-sm transition-all text-sm"
               >
                 {loading ? (
                   <>
