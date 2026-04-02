@@ -917,10 +917,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     const container = messagesContainerRef.current;
     if (container) {
       requestAnimationFrame(() => {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: smooth ? 'smooth' : 'instant',
-        });
+        try {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: smooth ? 'smooth' : 'auto',
+          });
+        } catch {
+          container.scrollTop = container.scrollHeight;
+        }
       });
     }
   }, []);
