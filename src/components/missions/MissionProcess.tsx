@@ -678,7 +678,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
                     key={key}
                     onClick={() => initializeFromTemplate(tpl.steps)}
                     disabled={isAdding}
-                    className="border border-border p-3 text-left hover:border-border hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))] transition-all disabled:opacity-50"
+                    className="border border-border p-3 text-left hover:border-border hover:shadow-sm transition-all disabled:opacity-50"
                   >
                     <div className="flex items-center gap-1.5 mb-1">
                       <FileText className="w-3 h-3 text-muted-foreground" />

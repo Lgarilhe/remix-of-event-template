@@ -73,8 +73,8 @@ const BrutalButton = ({
       relative group inline-flex items-center gap-2 h-12 px-7 text-[13px] font-semibold uppercase tracking-wider
       border-2 border-border transition-all duration-200
       ${variant === 'primary'
-        ? 'bg-foreground text-background hover:shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))]'
-        : 'bg-background text-foreground hover:shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))]'
+        ? 'bg-foreground text-background hover:shadow-md'
+        : 'bg-background text-foreground hover:shadow-md'
       }
       ${className}
     `}
@@ -210,7 +210,7 @@ const SkalrLanding = () => {
               transition={{ duration: 0.5 }}
               className="mb-8"
             >
-              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]">
+              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-sm">
                 <span className="w-2 h-2 bg-accent" />
                 Plateforme de recrutement
               </span>
@@ -258,7 +258,7 @@ const SkalrLanding = () => {
               transition={{ duration: 0.8, delay: 0.4 }}
               className="max-w-3xl mx-auto"
             >
-              <div className="border-2 border-border shadow-[6px_6px_0px_0px_hsl(var(--brutal-accent))] overflow-hidden bg-background">
+              <div className="border-2 border-border shadow-md overflow-hidden bg-background">
                 <img src={landingDashboard} alt="Skalr dashboard preview" className="w-full" />
               </div>
             </motion.div>
@@ -291,9 +291,9 @@ const SkalrLanding = () => {
                 viewport={{ once: true }}
                 className="relative"
               >
-                <div className="aspect-[4/3] border-2 border-border bg-gradient-to-br from-[hsl(var(--landing-sky-start))] to-[hsl(var(--landing-sky-end))] shadow-[6px_6px_0px_0px_hsl(var(--brutal-accent))]">
+                <div className="aspect-[4/3] border-2 border-border bg-gradient-to-br from-[hsl(var(--landing-sky-start))] to-[hsl(var(--landing-sky-end))] shadow-md">
                   <div className="absolute bottom-6 left-6">
-                    <div className="bg-background border-2 border-border p-4 max-w-[280px] shadow-[3px_3px_0px_0px_hsl(var(--foreground))]">
+                    <div className="bg-background border-2 border-border p-4 max-w-[280px] shadow-sm">
                       <span className="inline-block px-2 py-0.5 bg-[hsl(var(--landing-accent-yellow))] text-xs font-bold uppercase tracking-wider mb-2">
                         Match IA
                       </span>
@@ -315,7 +315,7 @@ const SkalrLanding = () => {
                     transition={{ delay: i * 0.08 }}
                     className="flex items-start gap-4 py-6 border-b border-border last:border-b-0 group"
                   >
-                    <div className="w-10 h-10 border-2 border-border flex items-center justify-center shrink-0 bg-background group-hover:bg-accent group-hover:shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all">
+                    <div className="w-10 h-10 border-2 border-border flex items-center justify-center shrink-0 bg-background group-hover:bg-accent group-hover:shadow-sm transition-all">
                       <feature.icon className="h-4 w-4 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -366,7 +366,7 @@ const SkalrLanding = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1 }}
-                  className="border-2 border-border bg-background p-6 hover:shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] transition-shadow"
+                  className="border-2 border-border bg-background p-6 hover:shadow-md transition-shadow"
                 >
                   <div className="w-8 h-8 border-2 border-border flex items-center justify-center mb-5 bg-accent">
                     <span className="text-xs font-bold text-foreground">{String(i + 1).padStart(2, '0')}</span>
@@ -404,7 +404,7 @@ const SkalrLanding = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.12 }}
-                  className="text-center py-14 px-6 border-2 border-border bg-background hover:shadow-[6px_6px_0px_0px_hsl(var(--brutal-accent))] transition-shadow"
+                  className="text-center py-14 px-6 border-2 border-border bg-background hover:shadow-md transition-shadow"
                 >
                   <span className="text-5xl md:text-6xl font-bold text-foreground tracking-tight block mb-3">
                     {stat.value}
@@ -544,7 +544,7 @@ const SkalrLanding = () => {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="relative w-full max-w-3xl h-[80vh] bg-background border-2 border-border shadow-[8px_8px_0px_0px_hsl(var(--brutal-accent))] overflow-hidden"
+                className="relative w-full max-w-3xl h-[80vh] bg-background border-2 border-border shadow-lg overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -573,7 +573,7 @@ const SkalrLanding = () => {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="relative w-full max-w-lg bg-background border-2 border-border shadow-[8px_8px_0px_0px_hsl(var(--brutal-accent))] overflow-hidden p-8"
+                className="relative w-full max-w-lg bg-background border-2 border-border shadow-lg overflow-hidden p-8"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button

@@ -330,7 +330,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             onKeyDown={handleKeyDown}
             placeholder="Le nom de votre société..."
             autoFocus
-            className="pl-11 pr-4 border-2 border-border focus:border-border focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
+            className="pl-11 pr-4 border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
           />
         </div>
         <Button
@@ -417,7 +417,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   onClick={() => selectCandidate(c.id)}
-                  className="w-full text-left border-2 border-border hover:border-border p-3 flex items-center gap-3 transition-all hover:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
+                  className="w-full text-left border-2 border-border hover:border-border p-3 flex items-center gap-3 transition-all hover:shadow-sm"
                 >
                   {c.logoUrl ? (
                     <img src={c.logoUrl} alt={c.name} className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />

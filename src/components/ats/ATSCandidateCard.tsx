@@ -55,8 +55,8 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       onClick={onClick}
       className={`
         bg-background border border-border p-3 cursor-pointer transition-all
-        hover:shadow-[3px_3px_0px_0px_hsl(var(--foreground))] hover:border-border
-        ${isDragging ? 'shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] border-border' : ''}
+        hover:shadow-sm hover:border-border
+        ${isDragging ? 'shadow-md border-border' : ''}
       `}
     >
       {/* Header */}

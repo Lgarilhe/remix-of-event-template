@@ -40,7 +40,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       ref={setNodeRef}
       className={`
         w-[280px] flex-shrink-0 border border-border bg-background transition-all duration-200
-        ${isOver ? 'border-border shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] scale-[1.01]' : ''}
+        ${isOver ? 'border-border shadow-md scale-[1.01]' : ''}
       `}
     >
       {/* Header */}

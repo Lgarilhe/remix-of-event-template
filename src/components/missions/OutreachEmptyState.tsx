@@ -95,7 +95,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
               onClick={opt.onClick}
               className={cn(
                 "relative group text-left border border-border bg-background p-4 transition-all duration-200",
-                "hover:shadow-[4px_4px_0px_0px_hsl(var(--foreground))]",
+                "hover:shadow-md",
                 "hover:-translate-x-0.5 hover:-translate-y-0.5",
               )}
             >

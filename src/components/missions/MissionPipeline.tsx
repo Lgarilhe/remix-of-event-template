@@ -62,8 +62,8 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
   return (
     <div className={cn(
       "bg-background border border-border p-2.5 cursor-grab transition-all",
-      "hover:border-border hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
-      isDragging && "shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] border-border"
+      "hover:border-border hover:shadow-sm",
+      isDragging && "shadow-sm border-border"
     )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -143,7 +143,7 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
       className={cn(
         "flex-shrink-0 border border-border bg-background transition-all",
         isDismissed ? "w-[200px]" : "w-[260px]",
-        isOver && "border-border shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))]"
+        isOver && "border-border shadow-sm"
       )}
     >
       <div className={cn(

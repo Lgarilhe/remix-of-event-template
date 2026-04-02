@@ -378,7 +378,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             return (
               <div
                 key={project.key}
-                className="bg-background border border-border p-5 sm:p-6 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
+                className="bg-background border border-border p-5 sm:p-6 shadow-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-sm transition-all cursor-pointer"
                 onClick={() => navigateToWorkspace(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">

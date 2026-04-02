@@ -193,7 +193,7 @@ export default function Marketplace() {
                 return (
                   <div
                     key={mission.id}
-                    className="border border-border bg-background hover:border-border hover:shadow-[3px_3px_0px_0px_hsl(var(--foreground))] transition-all"
+                    className="border border-border bg-background hover:border-border hover:shadow-sm transition-all"
                   >
                     <div className="p-4 space-y-3">
                       {/* Title + client */}

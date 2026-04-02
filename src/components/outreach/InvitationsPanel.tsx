@@ -330,7 +330,7 @@ export const InvitationsPanel: React.FC<InvitationsPanelProps> = ({
                   <article
                     key={invitation.id}
                     className={cn(
-                      'group border border-border bg-background transition-all duration-200 shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))]',
+                      'group border border-border bg-background transition-all duration-200 shadow-sm',
                       isSelected && 'border-border bg-accent/10',
                       isItemProcessing && 'opacity-60'
                     )}

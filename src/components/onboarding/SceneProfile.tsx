@@ -441,7 +441,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             autoFocus
-            className="border-2 border-border focus:border-border focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
+            className="border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
           />
         </div>
 
@@ -454,7 +454,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               placeholder="Recruteur Senior, DRH, Consultant..."
               value={jobTitle}
               onChange={(e) => setJobTitle(e.target.value)}
-              className="border-2 border-border focus:border-border focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11"
+              className="border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
             />
           </div>
         )}
@@ -470,7 +470,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               placeholder="https://linkedin.com/in/votre-profil"
               value={linkedinUrl}
               onChange={(e) => setLinkedinUrl(e.target.value)}
-              className="border-2 border-border focus:border-border focus:shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] transition-shadow text-sm h-11 flex-1"
+              className="border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11 flex-1"
             />
             <Button
               type="button"

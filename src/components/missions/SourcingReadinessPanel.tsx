@@ -88,7 +88,7 @@ const SourceCard: React.FC<{
     className={cn(
       'flex-1 text-left border p-4 transition-all group relative overflow-hidden',
       selected
-        ? 'border-accent bg-accent/5 shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))]'
+        ? 'border-accent bg-accent/5 shadow-md'
         : 'border-border bg-background hover:border-border',
     )}
   >
@@ -343,7 +343,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             className={cn(
               'w-full h-[48px] flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
               filtersReady
-                ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] hover:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]'
+                ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm active:shadow-none active:translate-x-[4px] active:translate-y-[4px]'
                 : 'border-border bg-foreground/5 text-muted-foreground cursor-not-allowed',
             )}
           >

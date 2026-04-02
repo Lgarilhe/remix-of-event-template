@@ -106,7 +106,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                       </div>
 
                       {/* Card */}
-                      <div className="bg-foreground/5 p-4 border border-transparent group-hover:border-border group-hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))] transition-all">
+                      <div className="bg-foreground/5 p-4 border border-transparent group-hover:border-border group-hover:shadow-sm transition-all">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 mb-1">
