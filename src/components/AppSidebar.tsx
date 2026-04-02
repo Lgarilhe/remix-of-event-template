@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Sparkles, Search } from 'lucide-react';
+import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Sparkles, Search, Sun, Moon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -51,6 +51,18 @@ export function AppSidebar() {
 
   const orgName = organization?.name || 'Skalr';
   const orgInitial = orgName.charAt(0).toUpperCase();
+
+  // Theme toggle
+  const [isDark, setIsDark] = React.useState(() => !document.documentElement.classList.contains('light'));
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    if (next) {
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+    }
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
@@ -194,6 +206,19 @@ export function AppSidebar() {
             {!collapsed && <span>{creditDisplay} crédits</span>}
           </button>
         )}
+
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className={cn(
+            "flex items-center rounded-lg text-xs font-medium transition-colors hover:bg-sidebar-accent/50 text-muted-foreground",
+            collapsed ? "h-8 w-8 justify-center mx-auto" : "w-full gap-2.5 px-3 py-2",
+          )}
+          aria-label={isDark ? "Passer en mode clair" : "Passer en mode sombre"}
+        >
+          {isDark ? <Sun className="h-4 w-4 shrink-0" strokeWidth={1.5} /> : <Moon className="h-4 w-4 shrink-0" strokeWidth={1.5} />}
+          {!collapsed && <span>{isDark ? 'Mode clair' : 'Mode sombre'}</span>}
+        </button>
 
         {/* Notifications */}
         <div className={cn("flex items-center", collapsed ? "justify-center" : "px-1")}>
