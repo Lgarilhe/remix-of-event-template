@@ -286,11 +286,25 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
 
   // ─── Database-specific filters (Base Konekt exclusive) ─────────────────
 
-  // Revenue range — Apollo expects bracket notation: revenue_range[min], revenue_range[max]
-  const dbRevenueMin = params.db_revenue_min as number | undefined;
-  const dbRevenueMax = params.db_revenue_max as number | undefined;
-  if (dbRevenueMin !== undefined) payload['revenue_range[min]'] = dbRevenueMin;
-  if (dbRevenueMax !== undefined) payload['revenue_range[max]'] = dbRevenueMax;
+  // Revenue range — Apollo expects numeric values: revenue_range[min], revenue_range[max]
+  // Frontend sends strings like "1M", "500K", "100M" — must parse to numbers
+  const parseRevenue = (val: unknown): number | undefined => {
+    if (val === undefined || val === null || val === '') return undefined;
+    const s = String(val).trim().toUpperCase();
+    const match = s.match(/^(\d+(?:\.\d+)?)\s*([KMB])?$/);
+    if (!match) {
+      // Try parsing as raw number
+      const n = Number(s);
+      return isNaN(n) ? undefined : n;
+    }
+    const num = parseFloat(match[1]);
+    const multipliers: Record<string, number> = { K: 1_000, M: 1_000_000, B: 1_000_000_000 };
+    return num * (multipliers[match[2]] || 1);
+  };
+  const revMin = parseRevenue(params.db_revenue_min);
+  const revMax = parseRevenue(params.db_revenue_max);
+  if (revMin !== undefined) payload['revenue_range[min]'] = revMin;
+  if (revMax !== undefined) payload['revenue_range[max]'] = revMax;
 
   // Funding stage
   const dbFundingStage = params.db_funding_stage as string | string[] | undefined;
@@ -336,16 +350,17 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   const headcount = params.company_headcount as string[] | undefined;
   if (headcount?.length) {
     // Map LinkedIn headcount codes to Apollo ranges
+    // Map LinkedIn headcount codes to Apollo ranges (must match COMPANY_HEADCOUNT_OPTIONS labels)
     const headcountMap: Record<string, string> = {
-      "A": "1,10",
-      "B": "11,20",
-      "C": "21,50",
-      "D": "51,100",
-      "E": "101,200",
-      "F": "201,500",
-      "G": "501,1000",
-      "H": "1001,5000",
-      "I": "5001,10000",
+      "A": "1,1",          // Auto-entrepreneur (1)
+      "B": "2,10",         // 2-10
+      "C": "11,50",        // 11-50
+      "D": "51,200",       // 51-200
+      "E": "201,500",      // 201-500
+      "F": "501,1000",     // 501-1000
+      "G": "1001,5000",    // 1001-5000
+      "H": "5001,10000",   // 5001-10000
+      "I": "10001,",       // 10001+ (open upper bound)
     };
     const ranges = headcount
       .map(code => headcountMap[code] || code)
@@ -577,15 +592,32 @@ Deno.serve(async (req) => {
 
       console.log("[database-search] Apollo payload:", JSON.stringify(apolloPayload));
 
-      const response = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache",
-          "X-Api-Key": apolloApiKey,
-        },
-        body: JSON.stringify(apolloPayload),
-      });
+      // Apollo API call with retry on 429 (rate limit)
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        response = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+            "X-Api-Key": apolloApiKey,
+          },
+          body: JSON.stringify(apolloPayload),
+        });
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.min(1000 * Math.pow(2, attempt), 8000);
+          console.warn(`[database-search] Apollo 429 rate limit, retrying in ${delay}ms (attempt ${attempt + 1}/3)`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        break; // Not a 429 — proceed with response
+      }
+
+      if (!response) {
+        return json({ success: false, error: "Apollo API unreachable after retries" });
+      }
 
       if (!response.ok) {
         const errText = await response.text();

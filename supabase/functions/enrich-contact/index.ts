@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       console.error("[enrich-contact] Apollo error:", apolloResponse.status, errText);
       return new Response(
         JSON.stringify({ success: false, error: `Apollo API error: ${apolloResponse.status}` }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

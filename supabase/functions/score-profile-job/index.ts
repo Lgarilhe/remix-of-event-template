@@ -1406,6 +1406,7 @@ async function setCachedScore(
   result: ScoringResult,
 ): Promise<void> {
   try {
+    // 1. Cache in match_scores (for fast lookup)
     await supabase.from("match_scores").upsert(
       {
         candidate_id: candidateId,
@@ -1417,6 +1418,28 @@ async function setCachedScore(
       },
       { onConflict: "candidate_id,job_id" },
     );
+
+    // 2. Also update job_candidate_status with scoring data (for pipeline view)
+    const status = result.finalScore >= 60 ? 'scored' : 'dismissed';
+    await supabase.from("job_candidate_status").update({
+      score: result.finalScore,
+      recommendation: result.recommendation,
+      scoring_details: {
+        summary: result.summary,
+        strengths: result.strengths,
+        concerns: result.concerns,
+        missingSkills: result.missingSkills,
+        matchedSkills: result.matchedSkills,
+        dimensions: result.dimensions,
+        confidenceScore: result.confidenceScore,
+        llmScore: result.llmScore,
+        weightedCriteriaScore: result.weightedCriteriaScore,
+        semanticScore: result.semanticScore,
+        hardFilterPassed: result.hardFilterPassed,
+      },
+      status,
+      updated_at: new Date().toISOString(),
+    }).eq('candidate_id', candidateId).eq('job_id', jobId);
   } catch (err) {
     console.error("[cache] Write error:", err);
   }
