@@ -22,7 +22,7 @@ interface WizardStep {
 interface WizardField {
   id: string;
   label: string;
-  type: 'chips' | 'range' | 'toggle' | 'select';
+  type: 'chips' | 'range' | 'toggle' | 'select' | 'text';
   value: string[];
   suggestions: string[];
   editable: boolean;
@@ -34,6 +34,10 @@ interface WizardField {
   /** For select fields */
   selectOptions?: { value: string; label: string }[];
   selectValue?: string;
+  /** For text fields */
+  textValue?: string;
+  textDirty?: boolean;
+  placeholder?: string;
   briefSource?: string; // Where this was derived from in the brief
 }
 
