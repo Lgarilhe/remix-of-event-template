@@ -702,6 +702,36 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               />
             )}
 
+            {/* Transition CTA: Go candidates ready for outreach */}
+            {(() => {
+              const goProfiles = Object.values(jobScores).filter(s => s.recommendation === 'go');
+              const goCount = goProfiles.length;
+              if (goCount > 0 && activeProject && !scoringInProgress) {
+                return (
+                  <div className="border border-success/30 bg-success/5 p-4 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-4 h-4 text-success" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground">
+                        {goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} Go
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Inscrivez-les dans une séquence d'outreach pour les contacter automatiquement.
+                      </p>
+                    </div>
+                    <SequenceEnrollButton
+                      selectedProfiles={filteredResults.filter(p => jobScores[p.public_identifier || p.provider_id || '']?.recommendation === 'go')}
+                      accountId={selectedAccount}
+                      selectedJob={selectedJob}
+                      onSuccess={onSequenceEnrollSuccess}
+                    />
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Contextual hint: after first search */}
             <AnimatePresence>
               {hasSearched && !hintSearchDismissed && !hasScoredProfiles && displayResults.length > 0 && (
