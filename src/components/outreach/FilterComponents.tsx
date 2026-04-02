@@ -34,7 +34,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
   activeFiltersPreview,
   bgColorClass = '',
 }) => (
-  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-foreground ${bgColorClass}`}>
+  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-border ${bgColorClass}`}>
     <CollapsibleTrigger className="flex flex-col items-start w-full p-4 hover:bg-muted/50 transition-colors">
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
@@ -55,7 +55,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
              <Badge 
               key={index} 
               variant="outline" 
-              className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-foreground font-normal"
+              className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-border font-normal"
             >
               {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
             </Badge>
@@ -63,7 +63,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
           {activeFiltersPreview.length > 5 && (
             <Badge 
               variant="outline" 
-              className="text-xs h-5 px-1.5 bg-foreground/5 text-foreground border-foreground/20 font-normal"
+              className="text-xs h-5 px-1.5 bg-foreground/5 text-foreground border-border font-normal"
             >
               +{activeFiltersPreview.length - 5}
             </Badge>
@@ -97,12 +97,12 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`border border-foreground bg-muted/30 p-2 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+  <div className={`border border-border bg-muted/30 p-2 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
       <span className="text-xs font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
       {badge !== undefined && badge > 0 && (
-        <Badge variant="outline" className="h-4 px-1 text-xs bg-foreground/10 text-foreground border-foreground/20">{badge}</Badge>
+        <Badge variant="outline" className="h-4 px-1 text-xs bg-foreground/10 text-foreground border-border">{badge}</Badge>
       )}
       {unsupported && (
         <TooltipProvider delayDuration={200}>
@@ -169,7 +169,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         )}
       </div>
       {options.length > 0 && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-background border border-foreground shadow-lg max-h-48 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 bg-background border border-border shadow-lg max-h-48 overflow-auto">
           {options.map((option, index) => (
             <button
               key={`${option.id}-${index}`}
@@ -284,7 +284,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
         return (
           <div 
             key={item.id} 
-            className="bg-muted/30 border border-foreground p-3"
+            className="bg-muted/30 border border-border p-3"
           >
             {/* Location name and remove button */}
             <div className="flex items-center justify-between mb-2">
@@ -325,7 +325,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
                 value={item.scope}
                 onValueChange={(val) => onUpdateScope(item.id, val as LocationScope)}
               >
-                <SelectTrigger className="h-7 flex-1 text-xs border border-foreground bg-background">
+                <SelectTrigger className="h-7 flex-1 text-xs border border-border bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
@@ -419,7 +419,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                 }`}
               >
                 <div className={`w-4 h-4 border flex items-center justify-center shrink-0 ${
-                  isSelected ? 'bg-foreground border-foreground' : 'border-foreground/30'
+                  isSelected ? 'bg-foreground border-border' : 'border-border'
                 }`}>
                   {isSelected && <Check className="w-3 h-3 text-background" />}
                 </div>

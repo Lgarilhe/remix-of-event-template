@@ -35,7 +35,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
       <div className="animate-fade-in">
         <button
           onClick={() => setCollapsed(false)}
-          className="w-full border border-foreground/10 px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors text-left"
+          className="w-full border border-border px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors text-left"
         >
           <PhaseCircle status="done" />
           <span className="text-xs text-muted-foreground">
@@ -50,7 +50,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
     <div className="animate-fade-in">
       <div
         className={cn(
-          "border border-foreground/10 overflow-hidden transition-shadow duration-300",
+          "border border-border overflow-hidden transition-shadow duration-300",
           isThinking && "shadow-[0_0_20px_-4px_hsl(var(--brutal-accent)/0.2)]"
         )}
       >
@@ -92,13 +92,13 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
         {/* Phase list */}
         {steps.length > 0 && (
-          <div className="border-t border-foreground/8 px-3.5 py-3 space-y-1">
+          <div className="border-t border-border/8 px-3.5 py-3 space-y-1">
             {steps.map((phase, i) => (
               <div
                 key={phase.id}
                 className={cn(
                   "flex items-center gap-2.5 py-1.5 px-2 transition-colors animate-fade-in",
-                  phase.status === 'active' && "bg-brutal-accent/5"
+                  phase.status === 'active' && "bg-accent/5"
                 )}
                 style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'backwards' }}
               >
@@ -135,9 +135,9 @@ function PhaseCircle({ status }: { status: 'pending' | 'active' | 'done' }) {
   if (status === 'active') {
     return (
       <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-brutal-accent/30" />
+        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-accent/30" />
         <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-transparent border-t-brutal-accent animate-spin" />
-        <span className="h-1.5 w-1.5 rounded-full bg-brutal-accent/60" />
+        <span className="h-1.5 w-1.5 rounded-full bg-accent/60" />
       </span>
     );
   }
@@ -145,7 +145,7 @@ function PhaseCircle({ status }: { status: 'pending' | 'active' | 'done' }) {
   // pending
   return (
     <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-      <span className="h-2.5 w-2.5 rounded-full border border-foreground/15" />
+      <span className="h-2.5 w-2.5 rounded-full border border-border" />
     </span>
   );
 }

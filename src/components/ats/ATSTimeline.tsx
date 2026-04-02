@@ -66,7 +66,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
 
   if (candidates.length === 0) {
     return (
-      <div className="bg-background border border-foreground p-12 text-center">
+      <div className="bg-background border border-border p-12 text-center">
         <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
         <p className="text-muted-foreground text-xs uppercase tracking-wider">Aucune activité à afficher</p>
       </div>
@@ -74,7 +74,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
   }
 
   return (
-    <div className="bg-background border border-foreground overflow-hidden">
+    <div className="bg-background border border-border overflow-hidden">
       <ScrollArea className="h-[600px]">
         <div className="p-4">
           {timelineGroups.map((group, groupIndex) => (
@@ -106,7 +106,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                       </div>
 
                       {/* Card */}
-                      <div className="bg-foreground/5 p-4 border border-transparent group-hover:border-foreground group-hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))] transition-all">
+                      <div className="bg-foreground/5 p-4 border border-transparent group-hover:border-border group-hover:shadow-[2px_2px_0px_0px_hsl(var(--foreground))] transition-all">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 mb-1">
@@ -127,13 +127,13 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                             )}
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-xs px-2 py-0.5 border border-foreground/30 uppercase tracking-wider font-medium">
+                              <span className="text-xs px-2 py-0.5 border border-border uppercase tracking-wider font-medium">
                                 {candidate.stage}
                               </span>
                               
                               {candidate.jobTitle && (
                                 <span
-                                  className={`text-xs px-2 py-0.5 border border-foreground/20 text-muted-foreground ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+                                  className={`text-xs px-2 py-0.5 border border-border text-muted-foreground ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-border hover:text-foreground transition-colors' : ''}`}
                                   onClick={(e) => {
                                     if (candidate.jobId && onJobClick) {
                                       e.stopPropagation();
@@ -146,7 +146,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               )}
 
                               {candidate.sequenceName && (
-                                <span className="text-xs px-2 py-0.5 border border-foreground/20 flex items-center gap-1 text-muted-foreground">
+                                <span className="text-xs px-2 py-0.5 border border-border flex items-center gap-1 text-muted-foreground">
                                   <GitBranch className="w-3 h-3" />
                                   {candidate.sequenceName}
                                 </span>

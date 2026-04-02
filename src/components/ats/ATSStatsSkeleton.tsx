@@ -7,7 +7,7 @@ export const ATSStatsSkeleton: React.FC = () => {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className={`flex items-center gap-2 px-3 py-2 border border-foreground bg-background ${i > 0 ? '-ml-px' : ''}`}
+          className={`flex items-center gap-2 px-3 py-2 border border-border bg-background ${i > 0 ? '-ml-px' : ''}`}
         >
           <Skeleton className="h-3.5 w-3.5 rounded-none" />
           <Skeleton className="h-4 w-8 rounded-none" />

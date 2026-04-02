@@ -220,7 +220,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-foreground rounded-none">
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-border rounded-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
              <GitBranch className="w-5 h-5 text-foreground" />
@@ -233,7 +233,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
         <div className="space-y-4">
           {/* Summary */}
-          <div className="p-4 bg-muted/50 border border-foreground/10 space-y-3">
+          <div className="p-4 bg-muted/50 border border-border space-y-3">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-foreground" />
               <span className="font-medium">{profiles.length} candidat(s)</span>
@@ -251,12 +251,12 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           </div>
 
           {/* Profiles preview */}
-          <ScrollArea className="h-[200px] sm:h-[240px] border border-foreground/10 bg-muted/30 p-1">
+          <ScrollArea className="h-[200px] sm:h-[240px] border border-border bg-muted/30 p-1">
             <div className="space-y-1.5">
               {profiles.map((profile) => (
                 <div
                   key={profile.id}
-                   className="flex items-center gap-3 p-2.5 bg-background border border-foreground/10"
+                   className="flex items-center gap-3 p-2.5 bg-background border border-border"
                  >
                   {profile.profile_picture_url ? (
                     <img
@@ -284,7 +284,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
           {/* Results */}
           {results && (
-            <div className="p-4 border border-foreground/10 space-y-2">
+            <div className="p-4 border border-border space-y-2">
               {results.success > 0 && (
                 <div className="flex items-center gap-2 text-foreground">
                   <CheckCircle className="w-4 h-4" />
@@ -309,7 +309,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={handleClose} className="border-foreground rounded-none">
+          <Button variant="outline" onClick={handleClose} className="border-border rounded-none">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
           {!results && (

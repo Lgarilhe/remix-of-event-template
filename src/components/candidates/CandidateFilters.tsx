@@ -59,7 +59,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
           placeholder="Rechercher..."
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-[200px] h-9 text-sm bg-background border-foreground"
+          className="pl-9 w-[200px] h-9 text-sm bg-background border-border"
         />
       </div>
 
@@ -68,7 +68,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.position[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, position: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[180px] h-9 text-sm bg-background border-foreground">
+        <SelectTrigger className="w-[180px] h-9 text-sm bg-background border-border">
           <SelectValue placeholder="Poste" />
         </SelectTrigger>
         <SelectContent className="bg-background z-50 max-h-[300px]">
@@ -84,7 +84,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.stage[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, stage: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[140px] h-9 text-sm bg-background border-foreground">
+        <SelectTrigger className="w-[140px] h-9 text-sm bg-background border-border">
           <SelectValue placeholder="Étape" />
         </SelectTrigger>
         <SelectContent className="bg-background z-50">
@@ -100,7 +100,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.entity[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, entity: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[120px] h-9 text-sm bg-background border-foreground">
+        <SelectTrigger className="w-[120px] h-9 text-sm bg-background border-border">
           <SelectValue placeholder="Entité" />
         </SelectTrigger>
         <SelectContent className="bg-background z-50">
@@ -116,7 +116,7 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
         value={filters.expertise[0] || 'all'}
         onValueChange={(value) => onFiltersChange({ ...filters, expertise: value === 'all' ? [] : [value] })}
       >
-        <SelectTrigger className="w-[150px] h-9 text-sm bg-background border-foreground">
+        <SelectTrigger className="w-[150px] h-9 text-sm bg-background border-border">
           <SelectValue placeholder="Expertise" />
         </SelectTrigger>
         <SelectContent className="bg-background z-50 max-h-[300px]">

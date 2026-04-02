@@ -94,13 +94,13 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
               transition={{ delay: 0.2 + idx * 0.08, duration: 0.3 }}
               onClick={opt.onClick}
               className={cn(
-                "relative group text-left border border-foreground bg-background p-4 transition-all duration-200",
+                "relative group text-left border border-border bg-background p-4 transition-all duration-200",
                 "hover:shadow-[4px_4px_0px_0px_hsl(var(--foreground))]",
                 "hover:-translate-x-0.5 hover:-translate-y-0.5",
               )}
             >
               {opt.recommended && (
-                <span className="absolute -top-2.5 right-2 flex items-center gap-1 px-2 py-0.5 bg-brutal-accent text-foreground text-xs font-bold uppercase tracking-wider border border-foreground">
+                <span className="absolute -top-2.5 right-2 flex items-center gap-1 px-2 py-0.5 bg-accent text-foreground text-xs font-bold uppercase tracking-wider border border-border">
                   <Crown className="w-2.5 h-2.5" />
                   Recommandé
                 </span>
@@ -119,7 +119,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
               </p>
 
               {/* Hover accent fill */}
-              <span className="absolute inset-0 bg-brutal-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
+              <span className="absolute inset-0 bg-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
             </motion.button>
           );
         })}

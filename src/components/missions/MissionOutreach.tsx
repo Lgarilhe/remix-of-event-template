@@ -79,7 +79,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   if (accountsLoading) {
     return (
-      <div className="bg-background border border-foreground border-t-0 p-6">
+      <div className="bg-background border border-border border-t-0 p-6">
         <BrutalLoader variant="default" rows={2} messages={['Chargement des comptes…']} />
       </div>
     );
@@ -91,7 +91,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   if (showEmptyState && enrollmentStats.total === 0) {
     return (
-      <div className="border border-foreground border-t-0 bg-background">
+      <div className="border border-border border-t-0 bg-background">
         <OutreachEmptyState
           goCount={goCount}
           onLinkedInMessage={() => {
@@ -112,7 +112,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   }
 
   return (
-    <div className="border border-foreground border-t-0 bg-background">
+    <div className="border border-border border-t-0 bg-background">
       {/* Contextual banner */}
       {enrollmentStats.total === 0 && (
         <MissionContextBanner
@@ -121,17 +121,17 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           description="Créez une séquence de messages personnalisés. L'IA adapte chaque message en fonction du profil et du poste."
           storageKey={`outreach-onboarding:${project.id}`}
           variant="info"
-          className="border-b border-foreground/10"
+          className="border-b border-border"
         />
       )}
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Compte:</span>
           <select
             value={selectedAccount || ''}
             onChange={(e) => setSelectedAccount(e.target.value || null)}
-            className="h-[30px] px-2 text-xs uppercase tracking-wider border border-foreground bg-background text-foreground font-medium"
+            className="h-[30px] px-2 text-xs uppercase tracking-wider border border-border bg-background text-foreground font-medium"
           >
             {accounts.map(a => (
               <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
@@ -142,7 +142,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
       {/* Enrollment stats */}
       {enrollmentStats.total > 0 && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 border-b border-foreground/10">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 border-b border-border">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">
             {enrollmentStats.total} inscrits
           </span>
@@ -167,7 +167,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
             key={sub.value}
             onClick={() => setOutreachTab(sub.value as 'sequences' | 'invitations')}
             className={cn(
-              "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+              "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
               idx > 0 && "border-l-0",
               outreachTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
@@ -175,7 +175,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
             <span className="relative z-10">{sub.emoji}</span>
             <span className="relative z-10">{sub.label}</span>
             {outreachTab !== sub.value && (
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             )}
           </button>
         ))}

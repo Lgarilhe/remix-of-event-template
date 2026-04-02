@@ -430,7 +430,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
   };
 
   return (
-    <div className="h-[calc(100vh-220px)] bg-background border border-foreground overflow-y-auto">
+    <div className="h-[calc(100vh-220px)] bg-background border border-border overflow-y-auto">
       {/* Reset AI Filters Button */}
       {hasAiFilters && (
         <div className="sticky top-0 z-10 bg-amber-50/90 backdrop-blur-sm border-b border-amber-200 px-4 py-2 flex items-center justify-between">
@@ -724,7 +724,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           <FilterGroup title="Filtres intelligents">
             <div className="space-y-2">
               {/* Exclude ESN/Consulting toggle */}
-              <label className="flex items-center justify-between px-2 py-1.5 border border-foreground/10 hover:border-foreground/30 cursor-pointer transition-colors">
+              <label className="flex items-center justify-between px-2 py-1.5 border border-border hover:border-border cursor-pointer transition-colors">
                 <span className="text-xs font-medium text-foreground uppercase tracking-wider">Exclure ESN / Consulting</span>
                 <input
                   type="checkbox"
@@ -750,8 +750,8 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
                       className={cn(
                         "px-2 py-1 text-xs font-bold uppercase tracking-wider border transition-colors",
                         (filters.company_category || '') === opt.key
-                          ? "bg-foreground text-background border-foreground"
-                          : "border-foreground/20 text-foreground hover:border-foreground"
+                          ? "bg-foreground text-background border-border"
+                          : "border-border text-foreground hover:border-border"
                       )}
                     >
                       {opt.label}

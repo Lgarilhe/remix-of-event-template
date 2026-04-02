@@ -36,7 +36,7 @@ function getFlag(flag: string) {
 
 const flagLevelClass = {
   error: 'border-destructive text-destructive bg-destructive/5',
-  warn: 'border-foreground/30 text-foreground/70 bg-muted',
+  warn: 'border-border text-foreground/70 bg-muted',
   info: 'border-primary/30 text-primary bg-primary/5',
 };
 
@@ -103,7 +103,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
             </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-foreground">
+        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-border">
           <TooltipBreakdown pct={pct} breakdown={breakdown} flags={flags} />
         </TooltipContent>
       </Tooltip>
@@ -127,7 +127,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
             </span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-foreground">
+        <TooltipContent side="left" className="max-w-xs p-3 rounded-none border-border">
           <TooltipBreakdown pct={pct} breakdown={breakdown} flags={flags} />
         </TooltipContent>
       </Tooltip>

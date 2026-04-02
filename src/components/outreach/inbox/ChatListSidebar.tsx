@@ -96,11 +96,11 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-full md:w-80 border-r border-foreground flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
+      "w-full md:w-80 border-r border-border flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Compact Header */}
-      <div className="p-2 border-b border-foreground space-y-1.5">
+      <div className="p-2 border-b border-border space-y-1.5">
         {/* Title + refresh */}
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground uppercase tracking-wide text-xs">Messages</h3>
@@ -122,7 +122,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             placeholder="Rechercher..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-8 h-7 text-xs border-foreground rounded-none"
+            className="pl-8 h-7 text-xs border-border rounded-none"
           />
         </div>
         
@@ -137,7 +137,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               key={tab.key}
               onClick={() => onSourceFilterChange(tab.key)}
               className={cn(
-                "flex-1 h-6 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors",
+                "flex-1 h-6 text-xs font-medium uppercase tracking-wider border border-border transition-colors",
                 index > 0 && "border-l-0",
                 sourceFilter === tab.key
                   ? "bg-foreground text-background"
@@ -160,7 +160,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               key={tab.key}
               onClick={() => onResponseFilterChange(tab.key)}
               className={cn(
-                "flex-1 h-6 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors flex items-center justify-center gap-0.5",
+                "flex-1 h-6 text-xs font-medium uppercase tracking-wider border border-border transition-colors flex items-center justify-center gap-0.5",
                 index > 0 && "border-l-0",
                 responseFilter === tab.key
                   ? "bg-foreground text-background"
@@ -193,8 +193,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 className={cn(
                   "flex-1 h-6 px-1.5 text-xs font-medium uppercase tracking-wider border transition-colors",
                   categoryFilter === 'all'
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-background text-foreground border-foreground/30 hover:border-foreground"
+                    ? "bg-foreground text-background border-border"
+                    : "bg-background text-foreground border-border hover:border-border"
                 )}
               >
                 Tous
@@ -206,8 +206,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                   className={cn(
                     "flex-1 h-6 px-1.5 text-xs font-medium border border-l-0 transition-colors",
                     categoryFilter === key
-                      ? cn("border-foreground", info.color)
-                      : "bg-background text-foreground border-foreground/30 hover:border-foreground"
+                      ? cn("border-border", info.color)
+                      : "bg-background text-foreground border-border hover:border-border"
                   )}
                 >
                   {info.emoji} {categoryCounts[key] || 0}
@@ -219,7 +219,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             <button
               onClick={() => onShowUnreadOnlyChange(!showUnreadOnly)}
               className={cn(
-                "w-full h-5 text-xs font-medium uppercase tracking-wider border border-foreground flex items-center justify-center gap-1 transition-colors",
+                "w-full h-5 text-xs font-medium uppercase tracking-wider border border-border flex items-center justify-center gap-1 transition-colors",
                 showUnreadOnly
                   ? "bg-foreground text-background"
                   : "bg-background text-foreground hover:bg-accent"
@@ -266,7 +266,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               <button
                 onClick={onLoadAllChats}
                 disabled={loadingAllChats}
-                className="mt-3 w-full h-7 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="mt-3 w-full h-7 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {loadingAllChats ? (
                   <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
@@ -296,7 +296,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 <button
                   onClick={onLoadAllChats}
                   disabled={loadingAllChats}
-                  className="w-full h-7 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full h-7 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loadingAllChats ? (
                     <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
@@ -311,7 +311,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 <button
                   onClick={onLoadMoreChats}
                   disabled={loadingMoreChats}
-                  className="w-full h-7 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground hover:bg-foreground hover:text-background transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full h-7 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:bg-foreground hover:text-background transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loadingMoreChats ? (
                     <><RefreshCw className="w-3 h-3 animate-spin" />Chargement...</>

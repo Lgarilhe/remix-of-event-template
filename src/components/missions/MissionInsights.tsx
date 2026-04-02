@@ -33,7 +33,7 @@ const MetricCard = ({ label, value, sublabel, color }: {
   sublabel: string;
   color: string;
 }) => (
-  <div className="border border-foreground p-4 text-center">
+  <div className="border border-border p-4 text-center">
     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
     <p className={cn("text-2xl font-bold", color)}>{value}</p>
     <p className="text-xs text-muted-foreground mt-0.5">{sublabel}</p>
@@ -231,11 +231,11 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
   };
 
   return (
-    <div className="bg-background border border-foreground border-t-0 p-3 sm:p-6 space-y-6">
+    <div className="bg-background border border-border border-t-0 p-3 sm:p-6 space-y-6">
       {hasData ? (
         <>
           {/* Section 1: Funnel */}
-          <div className="border border-foreground p-4 sm:p-6">
+          <div className="border border-border p-4 sm:p-6">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
               📊 Funnel de conversion
             </h3>
@@ -278,7 +278,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
           {/* Section 3: Recommandations */}
           {insights.length > 0 && (
-            <div className="border border-foreground p-4 sm:p-6">
+            <div className="border border-border p-4 sm:p-6">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
                 🤖 Recommandations
               </h3>
@@ -311,13 +311,13 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
           {/* Section 4: Timeline */}
           {recentActivity.length > 0 && (
-            <div className="border border-foreground p-4 sm:p-6">
+            <div className="border border-border p-4 sm:p-6">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
                 🕐 Activité récente
               </h3>
               <div className="space-y-2">
                 {recentActivity.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 py-1.5 border-b border-foreground/5 last:border-0">
+                  <div key={item.id} className="flex items-center gap-3 py-1.5 border-b border-border/5 last:border-0">
                     <span className={cn(
                       "w-2 h-2 rounded-full shrink-0",
                       item.status === 'shortlisted' ? "bg-purple-400" :

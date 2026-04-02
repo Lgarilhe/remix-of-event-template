@@ -54,7 +54,7 @@ function StatBlock({ value, label, highlight }: { value: number; label: string; 
   return (
     <div className={cn(
       "border p-3 text-center transition-colors",
-      highlight ? "border-foreground bg-foreground text-background" : "border-border bg-muted/30"
+      highlight ? "border-border bg-foreground text-background" : "border-border bg-muted/30"
     )}>
       <div className="text-xl font-bold tabular-nums">{value}</div>
       <div className="text-xs uppercase tracking-widest text-current opacity-60 mt-0.5">{label}</div>
@@ -102,7 +102,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-foreground">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-border">
         {/* Hero header */}
         <div className="bg-foreground text-background p-5 sm:p-6">
           <div className="flex items-start gap-4">
@@ -203,7 +203,7 @@ function DetailTab({ active, emoji, label, count, onClick }: { active: boolean; 
     <button
       onClick={onClick}
       className={cn(
-        "relative overflow-hidden flex items-center gap-1 h-[30px] px-2.5 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors group shrink-0",
+        "relative overflow-hidden flex items-center gap-1 h-[30px] px-2.5 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
         active ? "bg-foreground text-background" : "bg-background text-foreground"
       )}
     >
@@ -216,7 +216,7 @@ function DetailTab({ active, emoji, label, count, onClick }: { active: boolean; 
         )}>{count}</span>
       )}
       {!active && (
-        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+        <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
       )}
     </button>
   );
@@ -563,7 +563,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-foreground">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-border">
         {/* Hero header */}
         <div className="bg-foreground text-background p-5 sm:p-6">
           <div className="flex items-start gap-4">
@@ -609,7 +609,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
         </div>
 
         {/* Stats bar */}
-        <div className="grid grid-cols-4 gap-0 border-b border-foreground">
+        <div className="grid grid-cols-4 gap-0 border-b border-border">
           <div className="p-2.5 text-center border-r border-border">
             <div className="text-lg font-bold tabular-nums">{contact.shortlist_count}</div>
             <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Shortlists</div>
@@ -650,8 +650,8 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     className={cn(
                       "w-full h-10 flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-wider border-2 transition-all duration-200",
                       enrichment
-                        ? "border-border text-foreground hover:border-foreground hover:bg-muted/30"
-                        : "border-foreground bg-foreground text-background hover:bg-foreground/90"
+                        ? "border-border text-foreground hover:border-border hover:bg-muted/30"
+                        : "border-border bg-foreground text-background hover:bg-foreground/90"
                     )}
                   >
                     {enrichment ? <RefreshCw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
@@ -693,8 +693,8 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
                   {/* Generated message */}
                   {enrichment?.generated_message && (
-                    <div className="border-2 border-foreground">
-                      <div className="px-4 py-2.5 border-b border-foreground flex items-center justify-between bg-muted/20">
+                    <div className="border-2 border-border">
+                      <div className="px-4 py-2.5 border-b border-border flex items-center justify-between bg-muted/20">
                         <div className="flex items-center gap-2">
                           <span className="text-sm">{enrichment.message_type === 'sms' ? '📱' : '💬'}</span>
                           <span className="text-xs font-bold uppercase tracking-widest">
@@ -708,7 +708,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           onClick={handleCopy}
                           className={cn(
                             "h-7 px-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider border transition-all",
-                            copied ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground"
+                            copied ? "border-border bg-foreground text-background" : "border-border hover:border-border"
                           )}
                         >
                           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -758,7 +758,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           <div className="text-lg font-bold tabular-nums">{notes.length}</div>
                           <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Notes</div>
                         </div>
-                        <div className={cn("border-2 p-2.5 text-center", placements.length > 0 ? "border-foreground bg-foreground text-background" : "border-border")}>
+                        <div className={cn("border-2 p-2.5 text-center", placements.length > 0 ? "border-border bg-foreground text-background" : "border-border")}>
                           <div className="text-lg font-bold tabular-nums">{placements.length}</div>
                           <div className="text-[8px] uppercase tracking-widest opacity-60">Placements</div>
                         </div>
@@ -770,10 +770,10 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           <SectionHeader emoji="🏆" label="Placements réussis" count={placements.length} />
                           <div className="space-y-2">
                             {placements.map((p: any, i: number) => (
-                              <div key={i} className="border-2 border-foreground bg-foreground/5 p-3">
+                              <div key={i} className="border-2 border-border bg-foreground/5 p-3">
                                 <div className="flex items-center justify-between">
                                   <div className="text-xs font-bold">{p.name || 'Placement'}</div>
-                                  {p.status && <Badge variant="outline" className="text-[8px] uppercase tracking-widest border-foreground/30">{p.status}</Badge>}
+                                  {p.status && <Badge variant="outline" className="text-[8px] uppercase tracking-widest border-border">{p.status}</Badge>}
                                 </div>
                                 <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                                   {p.candidate_name && <span className="flex items-center gap-1"><UserCheck className="w-3 h-3" />{p.candidate_name}</span>}
@@ -853,7 +853,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                             <span className="flex-1 truncate font-medium">{c.name || 'Candidat inconnu'}</span>
                                             <span className={cn(
                                               "text-[8px] px-1.5 py-0.5 border uppercase tracking-wider shrink-0",
-                                              isPlaced ? "border-foreground bg-foreground text-background" :
+                                              isPlaced ? "border-border bg-foreground text-background" :
                                               isAdvanced ? "border-[hsl(var(--brutal-accent))] text-foreground bg-[hsl(var(--brutal-accent)/0.1)]" :
                                               "border-border text-muted-foreground"
                                             )}>{stage?.label || c.status || '?'}</span>
@@ -904,7 +904,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     <>
                       {/* Context: when was last interaction */}
                       {careerAnalysis.lastInteractionDate && (
-                        <div className="border-2 border-foreground bg-foreground text-background p-3 flex items-center gap-3">
+                        <div className="border-2 border-border bg-foreground text-background p-3 flex items-center gap-3">
                           <Clock className="w-5 h-5 shrink-0 text-[hsl(var(--brutal-accent))]" />
                           <div>
                             <div className="text-xs uppercase tracking-widest text-background/50">Dernier échange avec Skalr</div>
@@ -926,7 +926,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       {evolutions.map((evo, i) => (
                         <div key={i} className={cn(
                           "border-2 p-4 space-y-1.5",
-                          evo.type === 'positive' ? "border-foreground bg-[hsl(var(--brutal-accent)/0.06)]" :
+                          evo.type === 'positive' ? "border-border bg-[hsl(var(--brutal-accent)/0.06)]" :
                           evo.type === 'negative' ? "border-destructive/40 bg-destructive/5" :
                           "border-border"
                         )}>
@@ -995,7 +995,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                 )}>
                                   <div className={cn(
                                     "-ml-[11px] w-5 h-5 flex items-center justify-center text-[8px] shrink-0 border",
-                                    isCurrent ? "bg-foreground text-background border-foreground" :
+                                    isCurrent ? "bg-foreground text-background border-border" :
                                     wasActiveAtLastInteraction ? "bg-[hsl(var(--brutal-accent))] text-foreground border-[hsl(var(--brutal-accent))]" :
                                     "bg-background text-muted-foreground border-border"
                                   )}>
@@ -1039,7 +1039,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       </div>
                       {/* Top recruiter highlight */}
                       {recruiterStats.length > 0 && (
-                        <div className="border-2 border-foreground bg-foreground text-background p-4 flex items-center gap-3">
+                        <div className="border-2 border-border bg-foreground text-background p-4 flex items-center gap-3">
                           <div className="h-12 w-12 border-2 border-background/30 flex items-center justify-center text-sm font-bold uppercase shrink-0">
                             {recruiterStats[0].name.split(' ').map(w => w[0]).join('').slice(0, 2)}
                           </div>
@@ -1132,7 +1132,7 @@ function StatPill({ icon, value, label, highlight }: { icon: React.ReactNode; va
   return (
     <div className={cn(
       "flex items-center gap-1.5 px-2 py-1 border text-xs font-medium shrink-0",
-      highlight ? "border-foreground bg-foreground text-background" : "border-border bg-background text-foreground"
+      highlight ? "border-border bg-foreground text-background" : "border-border bg-background text-foreground"
     )}>
       {icon}
       <span className="font-bold tabular-nums">{value}</span>
@@ -1171,8 +1171,8 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           className={cn(
             "relative overflow-hidden h-9 px-3 flex items-center gap-1.5 border text-xs font-medium uppercase tracking-wider shrink-0 transition-colors group",
             showMore || activeFilterCount > 0
-              ? "border-foreground bg-foreground text-background"
-              : "border-border text-foreground hover:border-foreground"
+              ? "border-border bg-foreground text-background"
+              : "border-border text-foreground hover:border-border"
           )}
         >
           <span className="relative z-10">Filtres</span>
@@ -1180,7 +1180,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
             <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
           )}
           {!showMore && activeFilterCount === 0 && (
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           )}
         </button>
       </div>
@@ -1261,8 +1261,8 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                 className={cn(
                   "h-7 px-2.5 text-xs font-medium border transition-colors",
                   filters.has_placements === opt.value
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border text-foreground hover:border-foreground"
+                    ? "border-border bg-foreground text-background"
+                    : "border-border text-foreground hover:border-border"
                 )}
               >
                 {opt.label}
@@ -1287,8 +1287,8 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                   className={cn(
                     "h-7 px-2.5 text-xs font-medium border transition-colors",
                     filters.contact_type === opt.value
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border text-foreground hover:border-foreground"
+                      ? "border-border bg-foreground text-background"
+                      : "border-border text-foreground hover:border-border"
                   )}
                 >
                   {opt.label}
@@ -1341,7 +1341,7 @@ function CompanyCard({ company, index, onClick }: { company: VivierCompany; inde
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
       onClick={onClick}
-      className="w-full text-left border border-foreground bg-card hover:bg-muted/30 transition-all duration-150 group"
+      className="w-full text-left border border-border bg-card hover:bg-muted/30 transition-all duration-150 group"
     >
       {/* Top section */}
       <div className="p-3 sm:p-4 space-y-2.5">
@@ -1406,7 +1406,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
       onClick={onClick}
-      className="w-full text-left border border-foreground bg-card hover:bg-muted/30 transition-all duration-150 group"
+      className="w-full text-left border border-border bg-card hover:bg-muted/30 transition-all duration-150 group"
     >
       <div className="p-3 sm:p-4 space-y-2.5">
         <div className="flex items-start gap-3">
@@ -1461,7 +1461,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
         {/* Status badges + stats */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
           {enrichment?.generated_message && (
-            <div className="flex items-center gap-1 px-2 py-1 border border-foreground bg-foreground text-background text-xs font-medium shrink-0">
+            <div className="flex items-center gap-1 px-2 py-1 border border-border bg-foreground text-background text-xs font-medium shrink-0">
               {enrichment.message_type === 'sms' ? '📱' : '💬'} Message prêt
             </div>
           )}
@@ -1520,7 +1520,7 @@ function CompaniesView() {
           ))}
         </div>
       ) : companies.length === 0 ? (
-        <div className="border border-foreground p-12 text-center">
+        <div className="border border-border p-12 text-center">
           <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <Building2 className="w-7 h-7" />
           </div>
@@ -1592,7 +1592,7 @@ function ContactsView() {
         <button
           onClick={() => handleEnrichAll(false)}
           disabled={isEnriching || contacts.length === 0}
-          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-foreground bg-foreground text-background text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border bg-foreground text-background text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
         >
           <Sparkles className="w-3 h-3 relative z-10" />
           <span className="relative z-10">{isEnriching ? 'Enrichissement…' : 'Enrichir'}</span>
@@ -1601,11 +1601,11 @@ function ContactsView() {
           <button
             onClick={() => handleEnrichAll(true)}
             disabled={isEnriching || contacts.length === 0}
-            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-foreground border-l-0 text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border border-l-0 text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
           >
             <RefreshCw className="w-3 h-3 relative z-10" />
             <span className="relative z-10 hidden sm:inline">Ré-enrichir</span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         )}
         {enrichments.size > 0 && (
@@ -1617,9 +1617,9 @@ function ContactsView() {
                   key={f}
                   onClick={() => setEnrichFilter(f)}
                   className={cn(
-                    "h-8 px-3 text-xs font-medium uppercase tracking-wider border border-foreground shrink-0 transition-colors",
+                    "h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border shrink-0 transition-colors",
                     idx === 0 ? "border-l-0 sm:ml-2 sm:border-l" : "border-l-0",
-                    enrichFilter === f ? "bg-brutal-accent text-foreground" : "bg-background text-foreground hover:bg-muted"
+                    enrichFilter === f ? "bg-accent text-foreground" : "bg-background text-foreground hover:bg-muted"
                   )}
                 >
                   {labels[f]}
@@ -1664,7 +1664,7 @@ function ContactsView() {
           ))}
         </div>
       ) : filteredContacts.length === 0 ? (
-        <div className="border border-foreground p-12 text-center">
+        <div className="border border-border p-12 text-center">
           <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <Users className="w-7 h-7" />
           </div>
@@ -1717,17 +1717,17 @@ export function VivierList() {
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
               className={cn(
-                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group shrink-0",
+                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
                 index > 0 && "border-l-0",
                 isActive
-                  ? "bg-brutal-accent text-foreground"
+                  ? "bg-accent text-foreground"
                   : "bg-background text-foreground"
               )}
             >
               <span className="text-sm relative z-10">{tab.emoji}</span>
               <span className="relative z-10">{tab.label}</span>
               {!isActive && (
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               )}
             </button>
           );

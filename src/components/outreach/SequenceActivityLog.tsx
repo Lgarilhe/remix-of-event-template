@@ -97,9 +97,9 @@ const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; c
 const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   scheduled: { label: 'Planifié', icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-info text-info-foreground border-info' },
   sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'bg-success text-success-foreground border-success' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-foreground/20' },
+  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-border' },
   failed: { label: 'Échoué', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-foreground/20' },
+  cancelled: { label: 'Annulé', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-border' },
   replied: { label: 'Répondu', icon: <MessageSquare className="w-3.5 h-3.5" />, className: 'bg-purple-500 text-white border-purple-600' },
 };
 
@@ -325,8 +325,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-none border-l border-foreground">
-        <SheetHeader className="p-6 pb-4 border-b border-foreground">
+        <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-none border-l border-border">
+        <SheetHeader className="p-6 pb-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
             <Activity className="w-5 h-5" />
             Journal d'activité
@@ -336,19 +336,19 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         <div className="p-4 space-y-4">
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
-            <div className="p-2.5 sm:p-3 border border-foreground text-center">
+            <div className="p-2.5 sm:p-3 border border-border text-center">
               <div className="text-lg sm:text-xl font-bold text-info-foreground">{stats.scheduled}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
             </div>
-            <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center bg-amber-400/10">
+            <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center bg-amber-400/10">
               <div className="text-lg sm:text-xl font-bold text-destructive">{stats.pending}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
             </div>
-            <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
+            <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
               <div className="text-lg sm:text-xl font-bold text-success-foreground">{stats.sent}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
             </div>
-            <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
+            <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
               <div className="text-lg sm:text-xl font-bold text-destructive">{stats.failed}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
             </div>
@@ -362,12 +362,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-background border-foreground rounded-none"
+                className="pl-9 bg-background border-border rounded-none"
               />
             </div>
             <div className="flex gap-2">
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-foreground rounded-none">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-none">
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
@@ -379,7 +379,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 </SelectContent>
               </Select>
               <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-foreground rounded-none">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-none">
                   <SelectValue placeholder="Période" />
                 </SelectTrigger>
                 <SelectContent>
@@ -389,7 +389,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                   <SelectItem value="upcoming">À venir</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" className="shrink-0 border-foreground rounded-none" onClick={fetchExecutions} disabled={loading}>
+              <Button variant="outline" size="icon" className="shrink-0 border-border rounded-none" onClick={fetchExecutions} disabled={loading}>
                 <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
               </Button>
             </div>
@@ -440,7 +440,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                         onOpenChange={() => toggleExpanded(exec.id)}
                       >
                         <div className={cn(
-                          "border border-foreground rounded-none overflow-hidden transition-colors",
+                          "border border-border rounded-none overflow-hidden transition-colors",
                           isOverdue && "border-warning bg-warning/5",
                           exec.status === 'failed' && "border-destructive bg-destructive/5",
                         )}>
@@ -496,7 +496,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           </CollapsibleTrigger>
 
                           <CollapsibleContent>
-                            <div className="px-3 pb-3 pt-2 space-y-2 border-t border-foreground bg-muted/30">
+                            <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border bg-muted/30">
                               {/* Error message */}
                               {hasError && (
                                 <div className="p-2.5 bg-destructive/10 border border-destructive rounded-none text-sm">
@@ -512,7 +512,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 
                               {/* Message preview */}
                               {hasMessage && (
-                                <div className="p-3 bg-background border border-foreground rounded-none mt-2">
+                                <div className="p-3 bg-background border border-border rounded-none mt-2">
                                   {(exec.final_subject || exec.step?.subject_template) && (
                                     <div className="text-xs text-muted-foreground mb-2 pb-2 border-b">
                                       <span className="font-medium">Objet :</span>{' '}

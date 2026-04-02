@@ -104,7 +104,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   if (!isAdmin) return null;
 
   return (
-    <div className="border border-foreground bg-background">
+    <div className="border border-border bg-background">
       {/* Header bar */}
       <div className="bg-foreground text-background px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     ) : (
                       <div className="flex items-center gap-2">
                         <Select value={selectedLinkedInId} onValueChange={setSelectedLinkedInId}>
-                          <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-foreground">
+                          <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-border">
                             <SelectValue placeholder="Associer un compte LinkedIn…" />
                           </SelectTrigger>
                           <SelectContent>
@@ -221,9 +221,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           onClick={() => handleLinkLinkedIn(member)}
                           disabled={!selectedLinkedInId || isLinking}
                           className={cn(
-                            "h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-foreground transition-colors",
+                            "h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-border transition-colors",
                             selectedLinkedInId
-                              ? "bg-brutal-accent text-foreground hover:opacity-90"
+                              ? "bg-accent text-foreground hover:opacity-90"
                               : "bg-muted text-muted-foreground cursor-not-allowed"
                           )}
                         >
@@ -258,7 +258,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                     <div className="flex items-center gap-2">
                       <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                        <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-foreground">
+                        <SelectTrigger className="h-8 text-xs flex-1 rounded-none border-border">
                           <SelectValue placeholder="Sélectionner un poste…" />
                         </SelectTrigger>
                         <SelectContent>
@@ -275,9 +275,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         onClick={() => handleAssignJob(member)}
                         disabled={!selectedJobId || isAssigning}
                         className={cn(
-                          "h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-foreground transition-colors",
+                          "h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-border transition-colors",
                           selectedJobId
-                            ? "bg-brutal-accent text-foreground hover:opacity-90"
+                            ? "bg-accent text-foreground hover:opacity-90"
                             : "bg-muted text-muted-foreground cursor-not-allowed"
                         )}
                       >
@@ -299,7 +299,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                       {!isEditingQ && (
                         <button
                           onClick={() => startEditingQuotas(member.user_id)}
-                          className="text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground border-b border-dotted border-muted-foreground hover:border-foreground transition-colors"
+                          className="text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground border-b border-dotted border-muted-foreground hover:border-border transition-colors"
                         >
                           Modifier
                         </button>
@@ -325,7 +325,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                   type="number"
                                   min={0}
                                   max={max}
-                                  className="h-6 w-16 text-xs text-right rounded-none border-foreground px-1.5"
+                                  className="h-6 w-16 text-xs text-right rounded-none border-border px-1.5"
                                   value={value}
                                   onChange={e => setEditingQuotas(prev => ({
                                     ...prev,
@@ -343,7 +343,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                               <div
                                 className={cn(
                                   "h-full transition-all duration-300",
-                                  pct >= 80 ? "bg-brutal-accent" : "bg-foreground/40"
+                                  pct >= 80 ? "bg-accent" : "bg-foreground/40"
                                 )}
                                 style={{ width: `${pct}%` }}
                               />
@@ -369,7 +369,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             delete next[member.user_id];
                             return next;
                           })}
-                          className="h-8 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground border border-border hover:border-foreground transition-colors"
+                          className="h-8 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground border border-border hover:border-border transition-colors"
                         >
                           Annuler
                         </button>

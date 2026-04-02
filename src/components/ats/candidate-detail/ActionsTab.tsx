@@ -49,7 +49,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onOpenAgent}
-            className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+            className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
           >
             <Brain className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
             <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Résumé IA</p>
@@ -57,7 +57,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
           </button>
           <button
             onClick={onOpenAgent}
-            className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+            className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
           >
             <FileText className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
             <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
@@ -65,7 +65,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
           </button>
           <button
             onClick={() => { window.location.href = '/missions?tab=messages'; }}
-            className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+            className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
           >
             <Send className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
             <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Messagerie</p>
@@ -74,7 +74,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
           {candidateLinkedin && (
             <button
               onClick={() => { window.location.href = `/missions?tab=search&score=${encodeURIComponent(candidateLinkedin)}`; }}
-              className="border border-foreground/10 hover:border-foreground/40 p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
+              className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
             >
               <Target className="w-4 h-4 text-muted-foreground group-hover:text-brutal-accent transition-colors" />
               <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Scoring</p>
@@ -95,18 +95,18 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
         </div>
 
         {showNewReminder && (
-          <div className="space-y-2 mb-4 p-3 border border-foreground/15 bg-foreground/[0.02]">
+          <div className="space-y-2 mb-4 p-3 border border-border bg-foreground/[0.02]">
             <Input
               value={newReminderTitle}
               onChange={(e) => setNewReminderTitle(e.target.value)}
               placeholder="Titre du rappel..."
-              className="rounded-none border-foreground/30 h-8 text-sm"
+              className="rounded-none border-border h-8 text-sm"
             />
             <Input
               type="datetime-local"
               value={newReminderDate}
               onChange={(e) => setNewReminderDate(e.target.value)}
-              className="rounded-none border-foreground/30 h-8 text-sm"
+              className="rounded-none border-border h-8 text-sm"
             />
             <button onClick={handleAdd} disabled={addingReminder || !newReminderTitle.trim() || !newReminderDate}
               className="w-full h-8 bg-foreground text-background text-xs font-bold uppercase tracking-wider disabled:opacity-50">
@@ -122,7 +122,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
             {reminders.map(r => (
               <div key={r.id} className={cn(
                 "group flex items-start gap-3 p-3 border transition-colors",
-                r.completed_at ? 'border-foreground/10 opacity-50' : 'border-foreground/20'
+                r.completed_at ? 'border-border opacity-50' : 'border-border'
               )}>
                 <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">

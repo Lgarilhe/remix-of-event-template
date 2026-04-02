@@ -197,17 +197,17 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   if (accountsLoading) {
     return (
-      <div className="bg-background border border-foreground border-t-0 p-6">
+      <div className="bg-background border border-border border-t-0 p-6">
         <BrutalLoader variant="default" rows={2} messages={['Chargement des comptes…']} />
       </div>
     );
   }
 
   return (
-    <div className="border border-foreground border-t-0 bg-background">
+    <div className="border border-border border-t-0 bg-background">
       {/* Brief → Filters prompt */}
       {showBriefToFiltersPrompt && (
-        <div className="border-b border-foreground bg-brutal-accent/10 p-4">
+        <div className="border-b border-border bg-accent/10 p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-black uppercase tracking-wider text-foreground mb-0.5">
@@ -221,7 +221,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
               onClick={handleGenerateFilters}
               disabled={isGeneratingFilters}
               className={cn(
-                "shrink-0 flex items-center gap-2 h-[36px] px-5 text-xs font-bold uppercase tracking-wider border border-foreground transition-colors",
+                "shrink-0 flex items-center gap-2 h-[36px] px-5 text-xs font-bold uppercase tracking-wider border border-border transition-colors",
                 isGeneratingFilters
                   ? "bg-muted text-muted-foreground"
                   : "bg-foreground text-background hover:bg-foreground/90"
@@ -238,7 +238,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       )}
       {/* AI Suggestions chips */}
       {hasSuggestions && (
-        <div className="border-b border-foreground/10 px-4 py-3 space-y-2">
+        <div className="border-b border-border px-4 py-3 space-y-2">
           <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">
             Affiner les filtres
           </p>
@@ -257,7 +257,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
                 <button
                   key={item}
                   onClick={() => handleAddSuggestion(group.key, item)}
-                  className="group flex items-center gap-1 h-[24px] px-2 text-xs font-medium border border-foreground/20 bg-background text-foreground hover:border-foreground hover:bg-foreground hover:text-background transition-colors"
+                  className="group flex items-center gap-1 h-[24px] px-2 text-xs font-medium border border-border bg-background text-foreground hover:border-border hover:bg-foreground hover:text-background transition-colors"
                 >
                   <Plus className="w-2.5 h-2.5 text-brutal-accent group-hover:text-background" />
                   {item}

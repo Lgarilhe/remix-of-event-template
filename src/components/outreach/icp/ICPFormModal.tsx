@@ -74,10 +74,10 @@ function TagInput({
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           placeholder={placeholder}
-          className="h-8 text-sm border-foreground/20 focus:border-foreground"
+          className="h-8 text-sm border-border focus:border-border"
         />
         {showSuggestions && filteredSuggestions.length > 0 && (
-          <div className="absolute z-50 mt-1 w-full bg-background border border-foreground/20 shadow-lg max-h-32 overflow-y-auto">
+          <div className="absolute z-50 mt-1 w-full bg-background border border-border shadow-lg max-h-32 overflow-y-auto">
             {filteredSuggestions.map(s => (
               <button
                 key={s}
@@ -94,7 +94,7 @@ function TagInput({
       {values.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {values.map(tag => (
-            <Badge key={tag} variant="outline" className="text-xs border-foreground/30 gap-1 pr-1">
+            <Badge key={tag} variant="outline" className="text-xs border-border gap-1 pr-1">
               {tag}
               <button type="button" onClick={() => removeTag(tag)} className="hover:text-destructive">
                 <X className="w-3 h-3" />
@@ -130,8 +130,8 @@ function ChipSelect({
             className={cn(
               "px-2.5 py-1 text-xs border transition-colors",
               values.includes(option)
-                ? "bg-foreground text-background border-foreground"
-                : "bg-background text-foreground border-foreground/20 hover:border-foreground/50"
+                ? "bg-foreground text-background border-border"
+                : "bg-background text-foreground border-border hover:border-border"
             )}
           >
             {option}
@@ -160,7 +160,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-foreground">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto border-border">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg uppercase tracking-wide">
             <Target className="w-5 h-5" />
@@ -177,14 +177,14 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Ex: Startup SaaS B2B Series A"
-                className="h-9 border-foreground/20 focus:border-foreground"
+                className="h-9 border-border focus:border-border"
                 required
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium uppercase tracking-wider">Type de cible</label>
               <Select value={targetType} onValueChange={(v: any) => setTargetType(v)}>
-                <SelectTrigger className="h-9 border-foreground/20">
+                <SelectTrigger className="h-9 border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -202,11 +202,11 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Décrivez votre cible idéale en quelques mots..."
-              className="min-h-[60px] text-sm border-foreground/20 focus:border-foreground resize-none"
+              className="min-h-[60px] text-sm border-border focus:border-border resize-none"
             />
           </div>
 
-          <div className="border-t border-foreground/10 pt-4">
+          <div className="border-t border-border pt-4">
             <h3 className="text-xs font-bold uppercase tracking-wider mb-4 text-muted-foreground">Critères de ciblage</h3>
 
             <div className="space-y-5">
@@ -285,7 +285,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
                     min={0}
                     value={criteria.experience_range?.min ?? ''}
                     onChange={e => updateCriteria('experience_range', { ...criteria.experience_range, min: e.target.value ? Number(e.target.value) : undefined })}
-                    className="h-8 text-sm border-foreground/20"
+                    className="h-8 text-sm border-border"
                     placeholder="0"
                   />
                 </div>
@@ -298,7 +298,7 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
                     min={0}
                     value={criteria.experience_range?.max ?? ''}
                     onChange={e => updateCriteria('experience_range', { ...criteria.experience_range, max: e.target.value ? Number(e.target.value) : undefined })}
-                    className="h-8 text-sm border-foreground/20"
+                    className="h-8 text-sm border-border"
                     placeholder="15"
                   />
                 </div>
@@ -322,8 +322,8 @@ export function ICPFormModal({ open, onClose, onSave, initialData, saving }: ICP
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-foreground/10">
-            <Button type="button" variant="outline" onClick={onClose} className="border-foreground/20">
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <Button type="button" variant="outline" onClick={onClose} className="border-border">
               Annuler
             </Button>
             <Button

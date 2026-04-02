@@ -85,8 +85,8 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
       <button
         onClick={onClick}
         className={cn(
-          "w-full p-3 flex items-start gap-3 text-left hover:bg-brutal-accent/10 transition-colors",
-          isSelected && "bg-brutal-accent/15 border-l-2 border-l-foreground",
+          "w-full p-3 flex items-start gap-3 text-left hover:bg-accent/10 transition-colors",
+          isSelected && "bg-accent/15 border-l-2 border-l-foreground",
           unread && !isSelected && "bg-muted/50"
         )}
       >
@@ -173,7 +173,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               e.stopPropagation();
               setShowDeleteConfirm(true);
             }}
-            className="h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/30 hover:bg-destructive/80 transition-colors"
+            className="h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-border hover:bg-destructive/80 transition-colors"
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -181,7 +181,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
         {/* Category tag */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="h-6 w-6 flex items-center justify-center bg-background border border-foreground/30 hover:bg-muted transition-colors">
+            <button className="h-6 w-6 flex items-center justify-center bg-background border border-border hover:bg-muted transition-colors">
               <Tag className="w-3 h-3" />
             </button>
           </DropdownMenuTrigger>

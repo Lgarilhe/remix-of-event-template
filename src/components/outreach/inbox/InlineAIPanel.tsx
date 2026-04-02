@@ -185,15 +185,15 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
   const qualQuestions = analysis?.qualificationQuestions || [];
 
   return (
-    <div className="border-t-2 border-foreground bg-background">
+    <div className="border-t-2 border-border bg-background">
       {/* Tab bar */}
-      <div className="flex items-center border-b border-foreground/20">
+      <div className="flex items-center border-b border-border">
         <button
           onClick={() => setActiveSection('suggestions')}
           className={cn(
             "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
             activeSection === 'suggestions'
-              ? "border-foreground text-foreground"
+              ? "border-border text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
@@ -210,7 +210,7 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           className={cn(
             "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
             activeSection === 'jobs'
-              ? "border-foreground text-foreground"
+              ? "border-border text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
@@ -339,10 +339,10 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
                     <button
                       key={i}
                       className={cn(
-                        "w-full flex items-start gap-2.5 p-2.5 border text-left transition-colors hover:bg-brutal-accent/10",
+                        "w-full flex items-start gap-2.5 p-2.5 border text-left transition-colors hover:bg-accent/10",
                         job.recommendation === 'go' && "border-emerald-500/50",
                         job.recommendation === 'maybe' && "border-amber-500/50",
-                        job.recommendation === 'skip' && "border-foreground/20"
+                        job.recommendation === 'skip' && "border-border"
                       )}
                       onClick={() => onAddToPipeline?.(job.jobId, job.jobTitle)}
                     >

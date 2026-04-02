@@ -11,10 +11,10 @@ import {
 
 export const ATSTableSkeleton: React.FC = () => {
   return (
-    <div className="bg-background border border-foreground overflow-hidden">
+    <div className="bg-background border border-border overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow className="bg-foreground/5 border-b border-foreground">
+          <TableRow className="bg-foreground/5 border-b border-border">
             <TableHead className="w-[250px]"><Skeleton className="h-4 w-20 rounded-none" /></TableHead>
             <TableHead><Skeleton className="h-4 w-16 rounded-none" /></TableHead>
             <TableHead><Skeleton className="h-4 w-16 rounded-none" /></TableHead>
@@ -25,7 +25,7 @@ export const ATSTableSkeleton: React.FC = () => {
         </TableHeader>
         <TableBody>
           {Array.from({ length: 10 }).map((_, i) => (
-            <TableRow key={i} className="border-b border-foreground/10">
+            <TableRow key={i} className="border-b border-border">
               <TableCell>
                 <div className="space-y-1.5">
                   <Skeleton className="h-4 w-32 rounded-none" />

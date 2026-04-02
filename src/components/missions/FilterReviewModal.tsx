@@ -169,7 +169,7 @@ const ChipInput: React.FC<{
   };
 
   return (
-    <div className="inline-flex items-center border-2 border-dashed border-foreground/20 hover:border-foreground/40 transition-colors">
+    <div className="inline-flex items-center border-2 border-dashed border-border hover:border-border transition-colors">
       <input
         ref={inputRef}
         value={value}
@@ -211,7 +211,7 @@ const EditableChip: React.FC<{
 
   if (editing) {
     return (
-      <span className="inline-flex items-center border-2 border-foreground bg-foreground/5">
+      <span className="inline-flex items-center border-2 border-border bg-foreground/5">
         <input
           ref={inputRef}
           value={editValue}
@@ -228,7 +228,7 @@ const EditableChip: React.FC<{
   }
 
   return (
-    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-foreground/20 text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-foreground/40 transition-colors cursor-default">
+    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-border text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-border transition-colors cursor-default">
       <span className="max-w-[200px] truncate">{value}</span>
       <button
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
@@ -353,14 +353,14 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
 
           {/* Panel */}
           <motion.div
-            className="relative w-full sm:max-w-lg max-h-[85dvh] flex flex-col bg-background border-2 border-foreground sm:mx-4 overflow-hidden"
+            className="relative w-full sm:max-w-lg max-h-[85dvh] flex flex-col bg-background border-2 border-border sm:mx-4 overflow-hidden"
             initial={{ y: '100%', opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
           >
             {/* ── Header ── */}
-            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground/[0.02]">
+            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-border bg-foreground/[0.02]">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-foreground flex items-center justify-center">
                   <SlidersHorizontal className="w-4 h-4 text-background" />
@@ -372,7 +372,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
               </div>
               <button
                 onClick={() => onOpenChange(false)}
-                className="w-8 h-8 flex items-center justify-center border-2 border-foreground/20 hover:border-foreground transition-colors"
+                className="w-8 h-8 flex items-center justify-center border-2 border-border hover:border-border transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -380,7 +380,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
 
             {/* ── Strategy summary ── */}
             {analysis.search_rationale && (
-              <div className="shrink-0 px-4 py-3 border-b-2 border-foreground/15 bg-brutal-accent/10">
+              <div className="shrink-0 px-4 py-3 border-b-2 border-border bg-accent/10">
                 <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-1">
                   <Sparkle className="w-3 h-3 inline mr-1" />
                   Stratégie IA
@@ -397,7 +397,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                     key={section.id}
                     className={cn(
                       "border-2 transition-all",
-                      section.enabled ? "border-foreground" : "border-foreground/15 opacity-50"
+                      section.enabled ? "border-border" : "border-border opacity-50"
                     )}
                   >
                     {/* Section header */}
@@ -410,8 +410,8 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                       <div className={cn(
                         "w-5 h-5 border-2 flex items-center justify-center shrink-0 text-xs font-black transition-colors",
                         section.enabled
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-background text-foreground/30 border-foreground/30"
+                          ? "bg-foreground text-background border-border"
+                          : "bg-background text-foreground/30 border-border"
                       )}>
                         {section.enabled ? '✓' : ''}
                       </div>
@@ -446,7 +446,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                             section.chips.map((chip, i) => (
                               <span
                                 key={`${chip}-${i}`}
-                                className="group inline-flex items-center gap-1 px-2 py-1 border-2 border-foreground/20 text-xs font-bold uppercase tracking-wider text-foreground/80 cursor-default"
+                                className="group inline-flex items-center gap-1 px-2 py-1 border-2 border-border text-xs font-bold uppercase tracking-wider text-foreground/80 cursor-default"
                               >
                                 <span className="max-w-[200px] truncate">{chip}</span>
                                 <button
@@ -462,7 +462,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
 
                         {/* AI Suggestions */}
                         {section.suggestions && section.suggestions.length > 0 && (
-                          <div className="pt-1.5 border-t border-foreground/10">
+                          <div className="pt-1.5 border-t border-border">
                             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                               <Sparkle className="w-2.5 h-2.5" />
                               Suggestions IA
@@ -472,7 +472,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                                 <button
                                   key={`sug-${suggestion}-${i}`}
                                   onClick={() => addChip(section.id, suggestion)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-foreground/15 text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-foreground/40 hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
+                                  className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-border text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-border hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
                                 >
                                   <Plus className="w-2.5 h-2.5" />
                                   <span>{suggestion}</span>
@@ -493,12 +493,12 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
             </div>
 
             {/* ── Footer ── */}
-            <div className="shrink-0 border-t-2 border-foreground p-4 flex items-center gap-2 bg-background">
+            <div className="shrink-0 border-t-2 border-border p-4 flex items-center gap-2 bg-background">
               {onRegenerate && (
                 <button
                   onClick={onRegenerate}
                   disabled={isLoading}
-                  className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
+                  className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-border bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
                 >
                   Regénérer
                 </button>
@@ -507,7 +507,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 onClick={handleAccept}
                 disabled={isLoading || enabledCount === 0}
                 className={cn(
-                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground group transition-colors",
+                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-border group transition-colors",
                   enabledCount > 0
                     ? "bg-foreground text-background"
                     : "bg-muted text-muted-foreground cursor-not-allowed"
@@ -516,7 +516,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 <Play className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Lancer le sourcing</span>
                 {enabledCount > 0 && (
-                  <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                  <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                 )}
               </button>
             </div>

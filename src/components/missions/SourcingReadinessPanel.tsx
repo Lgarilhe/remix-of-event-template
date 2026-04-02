@@ -55,7 +55,7 @@ const CheckItem: React.FC<{
     transition={{ delay, duration: 0.3 }}
     className={cn(
       'flex items-center gap-2.5 py-2 px-3 transition-colors',
-      highlight ? 'bg-brutal-accent/5' : '',
+      highlight ? 'bg-accent/5' : '',
       status === 'ok' && !highlight && 'opacity-60',
     )}
   >
@@ -88,22 +88,22 @@ const SourceCard: React.FC<{
     className={cn(
       'flex-1 text-left border p-4 transition-all group relative overflow-hidden',
       selected
-        ? 'border-brutal-accent bg-brutal-accent/5 shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))]'
-        : 'border-foreground/15 bg-background hover:border-foreground/30',
+        ? 'border-accent bg-accent/5 shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))]'
+        : 'border-border bg-background hover:border-border',
     )}
   >
     {selected && (
       <motion.div
         layoutId="source-selected-indicator"
-        className="absolute top-0 left-0 w-full h-0.5 bg-brutal-accent"
+        className="absolute top-0 left-0 w-full h-0.5 bg-accent"
       />
     )}
     <div className="flex items-start gap-3">
       <div className={cn(
         'w-10 h-10 flex items-center justify-center border shrink-0',
         selected
-          ? 'bg-brutal-accent/10 border-brutal-accent/30'
-          : 'bg-foreground/5 border-foreground/15',
+          ? 'bg-accent/10 border-accent/30'
+          : 'bg-foreground/5 border-border',
       )}>
         {icon}
       </div>
@@ -121,7 +121,7 @@ const StatusBadge: React.FC<{ status: CheckStatus; label: string }> = ({ status,
   <span className={cn(
     'inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider px-2 py-0.5 border',
     status === 'ok' && 'text-accent border-accent/30 bg-accent/10',
-    status === 'warning' && 'text-brutal-accent border-brutal-accent/30 bg-brutal-accent/10',
+    status === 'warning' && 'text-brutal-accent border-accent/30 bg-accent/10',
     status === 'error' && 'text-destructive border-destructive/30 bg-destructive/10',
   )}>
     {statusIcon[status]}
@@ -223,7 +223,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
         <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
           Vérifications
         </h3>
-        <div className="border border-foreground/10 divide-y divide-foreground/5">
+        <div className="border border-border divide-y divide-foreground/5">
           <CheckItem
             status={briefStatus}
             label={`Brief complété (${brief.filled}/${brief.total} champs)`}
@@ -319,7 +319,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
               transition={{ duration: 0.3 }}
               className="overflow-hidden"
             >
-              <div className="border border-foreground/10 p-4 bg-muted/20">
+              <div className="border border-border p-4 bg-muted/20">
                 <p className="text-xs text-muted-foreground text-center">
                   Utilisez le panneau de filtres à gauche pour configurer manuellement votre recherche.
                 </p>
@@ -343,8 +343,8 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             className={cn(
               'w-full h-[48px] flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
               filtersReady
-                ? 'border-foreground bg-foreground text-background hover:bg-foreground/90 shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] hover:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]'
-                : 'border-foreground/20 bg-foreground/5 text-muted-foreground cursor-not-allowed',
+                ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] hover:shadow-[2px_2px_0px_0px_hsl(var(--brutal-accent))] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]'
+                : 'border-border bg-foreground/5 text-muted-foreground cursor-not-allowed',
             )}
           >
             <Search className="w-5 h-5" />

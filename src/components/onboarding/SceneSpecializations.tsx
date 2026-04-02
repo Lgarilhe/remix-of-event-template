@@ -79,8 +79,8 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
               onClick={() => toggle(spec.value)}
               className={`px-3 py-1.5 text-xs font-semibold border-2 transition-all duration-200 ${
                 active
-                  ? 'border-foreground text-foreground'
-                  : 'border-foreground/15 text-muted-foreground hover:border-foreground/30'
+                  ? 'border-border text-foreground'
+                  : 'border-border text-muted-foreground hover:border-border'
               }`}
               style={
                 active
@@ -110,7 +110,7 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
         </Button>
         <Button
           onClick={() => onSubmit(Array.from(selected))}
-          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />

@@ -119,7 +119,7 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, isOwn
     <div className="space-y-4">
       {/* Logo display + actions */}
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 border border-foreground/10 bg-muted flex items-center justify-center overflow-hidden shrink-0">
+        <div className="w-16 h-16 border border-border bg-muted flex items-center justify-center overflow-hidden shrink-0">
           {effectiveLogo ? (
             <img
               src={effectiveLogo}

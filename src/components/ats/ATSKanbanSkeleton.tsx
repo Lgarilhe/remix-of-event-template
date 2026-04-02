@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 const SkeletonCard: React.FC = () => (
-  <div className="bg-background border border-foreground/20 p-3 space-y-2">
+  <div className="bg-background border border-border p-3 space-y-2">
     <div className="flex items-start gap-2">
       <div className="flex-1 space-y-1.5">
         <Skeleton className="h-4 w-3/4 rounded-none" />
@@ -18,8 +18,8 @@ const SkeletonCard: React.FC = () => (
 );
 
 const SkeletonColumn: React.FC<{ cardCount: number }> = ({ cardCount }) => (
-  <div className="w-[280px] flex-shrink-0 border border-foreground/30">
-    <div className="p-3 border-b border-foreground/20 bg-foreground/5">
+  <div className="w-[280px] flex-shrink-0 border border-border">
+    <div className="p-3 border-b border-border bg-foreground/5">
       <div className="flex items-center justify-between">
         <Skeleton className="h-4 w-24 rounded-none" />
         <Skeleton className="h-5 w-8 rounded-none" />

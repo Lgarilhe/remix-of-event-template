@@ -117,7 +117,7 @@ export const AuthSheet: React.FC<AuthSheetProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-brutal-accent text-foreground font-medium py-3 px-6 uppercase text-sm border border-border hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-accent text-foreground font-medium py-3 px-6 uppercase text-sm border border-border hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Chargement...' : isSignUp ? 'Créer un compte' : 'Connexion'}
             </button>

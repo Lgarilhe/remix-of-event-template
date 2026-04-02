@@ -148,7 +148,7 @@ export default function ClientPortal() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-6 h-6 border-2 border-foreground/20 border-t-foreground animate-spin" />
+          <div className="w-6 h-6 border-2 border-border border-t-foreground animate-spin" />
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Chargement du portail client...</p>
         </div>
       </div>
@@ -177,7 +177,7 @@ export default function ClientPortal() {
       <SEOHead title={`Portail client — ${data.client_name} | Skalr`} description="Suivez vos missions de recrutement" />
 
       {/* Header */}
-      <header className="border-b-2 border-foreground bg-background sticky top-0 z-10">
+      <header className="border-b-2 border-border bg-background sticky top-0 z-10">
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {data.org_logo && (
@@ -203,16 +203,16 @@ export default function ClientPortal() {
       {/* Content */}
       <main className="max-w-[1200px] mx-auto px-4 sm:px-6 py-6 space-y-6">
         {data.projects.length === 0 ? (
-          <div className="border border-dashed border-foreground/20 p-12 text-center">
+          <div className="border border-dashed border-border p-12 text-center">
             <Users className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
             <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Aucune mission en cours</h3>
             <p className="text-xs text-muted-foreground">Votre recruteur n'a pas encore partagé de missions avec vous.</p>
           </div>
         ) : (
           data.projects.map(project => (
-            <div key={project.id} className="border border-foreground/20">
+            <div key={project.id} className="border border-border">
               {/* Project header */}
-              <div className="px-4 py-3 bg-foreground/5 border-b border-foreground/20 flex items-center justify-between">
+              <div className="px-4 py-3 bg-foreground/5 border-b border-border flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">{project.name}</h2>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">
@@ -253,7 +253,7 @@ export default function ClientPortal() {
                         </div>
 
                         {/* Stage */}
-                        <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-foreground/20 text-foreground shrink-0">
+                        <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-foreground shrink-0">
                           {candidate.pipeline_stage || 'Nouveau'}
                         </span>
 
@@ -294,7 +294,7 @@ export default function ClientPortal() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-foreground/10 py-6 text-center">
+      <footer className="border-t border-border py-6 text-center">
         <p className="text-xs text-muted-foreground uppercase tracking-wider">
           Portail propulsé par Skalr
         </p>

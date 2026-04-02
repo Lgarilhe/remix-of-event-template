@@ -34,8 +34,8 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
   const llmDims = dimensions.filter((d: any) => d.weight === 0);
 
   return (
-    <div className="relative border border-foreground/10 p-3 space-y-3">
-      {scoring.score > 80 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brutal-accent" />}
+    <div className="relative border border-border p-3 space-y-3">
+      {scoring.score > 80 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -118,7 +118,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
                 {llmDims.map((dim: any) => {
                   const cfg = DIMENSION_LABELS[dim.key] || { label: dim.key, icon: <Brain className="w-3 h-3" /> };
                   return (
-                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-foreground/10 text-xs">
+                    <div key={dim.key} className="flex items-center gap-1.5 px-2 py-1 border border-border text-xs">
                       {cfg.icon}
                       <span className="text-muted-foreground">{cfg.label}</span>
                       <span className={cn("font-bold",
@@ -212,7 +212,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
 
           {/* Salary */}
           {details.salary_analysis && (
-            <div className="pt-2 border-t border-foreground/10 text-xs text-muted-foreground">
+            <div className="pt-2 border-t border-border text-xs text-muted-foreground">
               💰 {details.salary_analysis.status === 'adequate' ? 'Salaire adéquat' :
                   details.salary_analysis.status === 'too_low' ? 'Salaire potentiellement bas' :
                   details.salary_analysis.status === 'too_high' ? 'Salaire potentiellement élevé' : 'Analyse salariale'}
@@ -222,7 +222,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
 
           {/* LLM Score */}
           {details.llmScore != null && (
-            <div className="pt-2 border-t border-foreground/10 flex items-center gap-2 text-xs">
+            <div className="pt-2 border-t border-border flex items-center gap-2 text-xs">
               <Brain className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-muted-foreground">Score LLM :</span>
               <span className={cn("font-bold",

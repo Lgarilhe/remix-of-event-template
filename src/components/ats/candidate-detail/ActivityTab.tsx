@@ -12,8 +12,8 @@ const ACTIVITY_TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: strin
   sequence_enrolled: { icon: <GitBranch className="w-3 h-3" />, color: 'bg-foreground text-background' },
   sequence_step: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground/80 text-background' },
   inmail_sent: { icon: <Send className="w-3 h-3" />, color: 'bg-foreground text-background' },
-  qualification_scheduled: { icon: <Calendar className="w-3 h-3" />, color: 'bg-brutal-accent text-foreground' },
-  qualification_verdict: { icon: <Award className="w-3 h-3" />, color: 'bg-brutal-accent text-foreground' },
+  qualification_scheduled: { icon: <Calendar className="w-3 h-3" />, color: 'bg-accent text-foreground' },
+  qualification_verdict: { icon: <Award className="w-3 h-3" />, color: 'bg-accent text-foreground' },
   shortlist_added: { icon: <FileText className="w-3 h-3" />, color: 'bg-foreground text-background' },
   appointment: { icon: <Calendar className="w-3 h-3" />, color: 'bg-foreground text-background' },
 };

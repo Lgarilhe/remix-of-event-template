@@ -27,8 +27,8 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
   const maxReplyRate = Math.max(...withRates.map(r => r.replyRate));
 
   return (
-    <div className="border border-foreground bg-background">
-      <div className="px-3 py-2 border-b border-foreground bg-muted flex items-center gap-2">
+    <div className="border border-border bg-background">
+      <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
         <FlaskConical className="w-3.5 h-3.5 text-foreground" />
         <span className="text-xs font-bold text-foreground uppercase tracking-widest">
           Résultats A/B Test
@@ -37,7 +37,7 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-foreground/20">
+            <tr className="border-b border-border">
               <th className="text-left p-2 font-bold uppercase tracking-wider text-muted-foreground">Variante</th>
               <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Envoyés</th>
               <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Ouverts</th>
@@ -50,11 +50,11 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
             {withRates.map(r => {
               const isWinner = r.replyRate === maxReplyRate && r.replyRate > 0 && withRates.length > 1;
               return (
-                <tr key={r.variant} className="border-b border-foreground/10 last:border-b-0">
+                <tr key={r.variant} className="border-b border-border last:border-b-0">
                   <td className="p-2 font-medium text-foreground flex items-center gap-1.5">
                     Variante {r.variant}
                     {isWinner && (
-                      <Badge className="bg-brutal-accent text-foreground text-[9px] px-1 py-0 h-4 rounded-none">
+                      <Badge className="bg-accent text-foreground text-[9px] px-1 py-0 h-4 rounded-none">
                         <Star className="w-2.5 h-2.5 mr-0.5" />
                         Gagnant
                       </Badge>

@@ -253,7 +253,7 @@ const Auth = () => {
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 minLength={6}
-                className="border-foreground text-foreground"
+                className="border-border text-foreground"
               />
             </div>
           ) : (
@@ -265,7 +265,7 @@ const Auth = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="border-foreground text-foreground"
+                  className="border-border text-foreground"
                 />
               </div>
               {!isForgotPassword && (
@@ -276,7 +276,7 @@ const Auth = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="border-foreground text-foreground"
+                    className="border-border text-foreground"
                   />
                 </div>
               )}
@@ -285,19 +285,19 @@ const Auth = () => {
           <button
             type="submit"
             disabled={loading}
-            className="relative overflow-hidden w-full h-[44px] bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
+            className="relative overflow-hidden w-full h-[44px] bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
           >
             <span className="relative z-10">
               {loading ? 'Chargement...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Connexion' : 'Inscription'}
             </span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
         </form>
         {!isResettingPassword && !isForgotPassword && (
           <>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-foreground/20" />
+                <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">ou</span>
@@ -306,7 +306,7 @@ const Auth = () => {
             <Button
               type="button"
               variant="outline"
-              className="w-full border-foreground text-foreground"
+              className="w-full border-border text-foreground"
               onClick={async () => {
                 const { error } = await lovable.auth.signInWithOAuth('google', {
                   redirect_uri: getAuthRedirectUrl(),

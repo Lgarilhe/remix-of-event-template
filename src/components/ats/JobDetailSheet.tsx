@@ -65,12 +65,12 @@ type TabKey = typeof TABS[number]['key'];
 
 /* ─── status badge color ─── */
 function statusColor(status: string | null) {
-  if (!status) return 'border-foreground/20 text-muted-foreground';
+  if (!status) return 'border-border text-muted-foreground';
   const s = status.toLowerCase();
   if (['active', 'open', 'en cours'].includes(s)) return 'border-green-500 text-green-700 bg-green-50';
   if (['closed', 'fermé', 'pourvu'].includes(s)) return 'border-red-400 text-red-600 bg-red-50';
   if (['paused', 'pause'].includes(s)) return 'border-amber-400 text-amber-600 bg-amber-50';
-  return 'border-foreground/20 text-muted-foreground';
+  return 'border-border text-muted-foreground';
 }
 
 export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProps) {
@@ -211,9 +211,9 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="sm:w-[540px] sm:max-w-[540px] w-full p-0 border-l-2 border-foreground flex flex-col">
+        <SheetContent side="right" className="sm:w-[540px] sm:max-w-[540px] w-full p-0 border-l-2 border-border flex flex-col">
           {/* Header */}
-          <div className="shrink-0 border-b-2 border-foreground p-4">
+          <div className="shrink-0 border-b-2 border-border p-4">
             <SheetHeader className="space-y-0">
               <SheetTitle className="sr-only">Détail du poste</SheetTitle>
             </SheetHeader>
@@ -252,7 +252,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                   </div>
                   {jobInfo?.calendlyLink && (
                     <a href={jobInfo.calendlyLink} target="_blank" rel="noopener noreferrer"
-                      className="h-7 px-2.5 flex items-center gap-1 border border-foreground text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors shrink-0">
+                      className="h-7 px-2.5 flex items-center gap-1 border border-border text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors shrink-0">
                       <CalendarDays className="w-3 h-3" /> Calendly
                     </a>
                   )}
@@ -263,7 +263,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                   {TABS.map((t, i) => (
                     <button key={t.key} onClick={() => setTab(t.key)}
                       className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-foreground transition-colors",
+                        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-border transition-colors",
                         i > 0 && "border-l-0",
                         tab === t.key
                           ? "bg-foreground text-background"
@@ -354,7 +354,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {infoGrid.length > 0 && (
         <div className="grid grid-cols-2 gap-2">
           {infoGrid.map(item => (
-            <div key={item.label} className="border border-foreground/10 p-2.5">
+            <div key={item.label} className="border border-border p-2.5">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{item.label}</p>
               <p className="text-[12px] text-foreground font-medium">{item.value}</p>
             </div>
@@ -368,7 +368,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Stack technique</p>
           <div className="flex flex-wrap gap-1.5">
             {jobInfo.stack.map((s, i) => (
-              <span key={i} className="px-2 py-0.5 border border-foreground/15 text-xs font-medium">{s}</span>
+              <span key={i} className="px-2 py-0.5 border border-border text-xs font-medium">{s}</span>
             ))}
           </div>
         </div>
@@ -407,7 +407,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
               const display = Array.isArray(value) ? (value as string[]).join(', ') : String(value);
               if (display.length > 100) return null;
               return (
-                <span key={key} className="px-2 py-1 border border-foreground/15 text-xs text-muted-foreground">
+                <span key={key} className="px-2 py-1 border border-border text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">{key}:</span> {display}
                 </span>
               );
@@ -464,14 +464,14 @@ function CandidatsTab({
       {/* Stage counters */}
       <div className="flex flex-wrap gap-1.5">
         {stageEntries.map(([stage, count]) => (
-          <span key={stage} className="text-xs px-2 py-0.5 border border-foreground/20 font-medium">
+          <span key={stage} className="text-xs px-2 py-0.5 border border-border font-medium">
             {count} {stage}
           </span>
         ))}
       </div>
 
       {/* Candidate list */}
-      <div className="border border-foreground divide-y divide-foreground/10">
+      <div className="border border-border divide-y divide-foreground/10">
         {candidates.map(candidate => (
           <button
             key={candidate.id}
@@ -484,7 +484,7 @@ function CandidatsTab({
                 {candidate.score != null && (
                   <span className={cn(
                     "text-xs font-bold px-1 py-0.5 border shrink-0",
-                    candidate.score >= 70 ? 'border-foreground bg-brutal-accent' : candidate.score >= 40 ? 'border-foreground/50' : 'border-destructive text-destructive'
+                    candidate.score >= 70 ? 'border-border bg-accent' : candidate.score >= 40 ? 'border-border' : 'border-destructive text-destructive'
                   )}>
                     {candidate.score}%
                   </span>
@@ -494,7 +494,7 @@ function CandidatsTab({
                 <p className="text-xs text-muted-foreground truncate">{candidate.headline}</p>
               )}
             </div>
-            <span className="text-xs px-1.5 py-0.5 border border-foreground/20 uppercase tracking-wider font-medium shrink-0">
+            <span className="text-xs px-1.5 py-0.5 border border-border uppercase tracking-wider font-medium shrink-0">
               {candidate.stage}
             </span>
             <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -531,7 +531,7 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
       {sequences.map(seq => {
         const responseRate = seq.sentCount > 0 ? Math.round((seq.repliedCount / seq.sentCount) * 100) : 0;
         return (
-          <div key={seq.id} className="border border-foreground p-3">
+          <div key={seq.id} className="border border-border p-3">
             <p className="text-[12px] font-bold uppercase tracking-wider text-foreground mb-2">{seq.name}</p>
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
@@ -573,15 +573,15 @@ function IATab({
       {/* Analyze button */}
       <button
         onClick={() => jobId && openAgent(jobId)}
-        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border-2 border-foreground text-foreground text-xs font-bold uppercase tracking-wider group"
+        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border-2 border-border text-foreground text-xs font-bold uppercase tracking-wider group"
       >
         <Brain className="w-4 h-4 relative z-10" />
         <span className="relative z-10">Analyser ce poste avec l'Agent</span>
-        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+        <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
       </button>
 
       {/* RAG context */}
-      <div className="border border-foreground p-3">
+      <div className="border border-border p-3">
         <div className="flex items-center gap-2 mb-2">
           <Database className="w-4 h-4 text-foreground" />
           <p className="text-xs font-bold uppercase tracking-wider text-foreground">Contexte RAG</p>
@@ -596,7 +596,7 @@ function IATab({
       </div>
 
       {/* Score summary */}
-      <div className="border border-foreground p-3">
+      <div className="border border-border p-3">
         <div className="flex items-center gap-2 mb-2">
           <BarChart3 className="w-4 h-4 text-foreground" />
           <p className="text-xs font-bold uppercase tracking-wider text-foreground">Scoring candidats</p>

@@ -97,7 +97,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
   const scenario = SCENARIOS.find(s => s.key === selectedScenario);
 
   return (
-    <div className="border border-foreground/20 p-4 space-y-4">
+    <div className="border border-border p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -124,7 +124,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
           "flex items-center gap-2 px-3 py-2 text-xs border",
           hasHeadset
             ? "border-amber-400/50 bg-amber-50/30 text-amber-700"
-            : "border-foreground/10 text-muted-foreground"
+            : "border-border text-muted-foreground"
         )}>
           {hasHeadset ? (
             <>
@@ -151,8 +151,8 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
               className={cn(
                 "flex items-start gap-2 p-3 text-left border transition-all",
                 selectedScenario === s.key
-                  ? "border-foreground bg-foreground/5"
-                  : "border-foreground/15 hover:border-foreground/40"
+                  ? "border-border bg-foreground/5"
+                  : "border-border hover:border-border"
               )}
             >
               <s.icon className="w-4 h-4 text-foreground shrink-0 mt-0.5" />
@@ -185,7 +185,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
             {scenario.steps.map((step, i) => (
               <div key={i} className={cn(
                 "flex items-start gap-2 px-3 py-2 text-xs",
-                step.important ? "border border-foreground/20 bg-foreground/5 font-medium text-foreground" : "text-muted-foreground"
+                step.important ? "border border-border bg-foreground/5 font-medium text-foreground" : "text-muted-foreground"
               )}>
                 <span className="shrink-0 w-4 text-center font-bold text-foreground">{i + 1}</span>
                 {step.text}
@@ -194,7 +194,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
           </div>
 
           {scenario.alternative && (
-            <div className="px-3 py-2 border border-dashed border-foreground/15 text-xs text-muted-foreground">
+            <div className="px-3 py-2 border border-dashed border-border text-xs text-muted-foreground">
               <p className="font-bold text-foreground mb-0.5">{scenario.alternativeTitle}</p>
               {scenario.alternative}
             </div>
@@ -207,10 +207,10 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
                 setAcknowledged(true);
                 onReady();
               }}
-              className="relative overflow-hidden w-full h-[36px] bg-foreground text-background border border-foreground text-xs font-bold uppercase tracking-wider group"
+              className="relative overflow-hidden w-full h-[36px] bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group"
             >
               <span className="relative z-10">J'ai compris — lancer le coaching</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
           )}
         </div>
@@ -220,7 +220,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
       {!scenario && onReady && (
         <button
           onClick={onReady}
-          className="w-full h-[34px] text-xs font-bold uppercase tracking-wider border border-foreground/20 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+          className="w-full h-[34px] text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
         >
           Passer — je connais ma config
         </button>

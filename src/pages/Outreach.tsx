@@ -37,7 +37,7 @@ export default function Outreach() {
             </h1>
           </div>
 
-          <div className="bg-background border border-foreground p-3 sm:p-6 overflow-hidden">
+          <div className="bg-background border border-border p-3 sm:p-6 overflow-hidden">
             <ProjectsList />
           </div>
         </div>

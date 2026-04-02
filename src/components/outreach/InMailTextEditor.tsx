@@ -205,7 +205,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   return (
     <div className="space-y-2">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 p-1 bg-muted/50 border border-foreground/20">
+      <div className="flex items-center gap-1 p-1 bg-muted/50 border border-border">
         <TooltipProvider delayDuration={200}>
           {/* Formatting buttons */}
           <Tooltip>

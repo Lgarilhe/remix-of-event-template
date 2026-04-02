@@ -54,7 +54,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="border border-foreground bg-background px-3 py-2 text-xs font-mono">
+    <div className="border border-border bg-background px-3 py-2 text-xs font-mono">
       <p className="font-medium mb-0.5">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} className="text-muted-foreground">
@@ -75,8 +75,8 @@ function Section({ title, subtitle, icon: Icon, children, action, className }: {
   className?: string;
 }) {
   return (
-    <div className={cn("border border-foreground bg-background", className)}>
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-foreground">
+    <div className={cn("border border-border bg-background", className)}>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
         <div className="flex items-center gap-2">
           <Icon className="w-3.5 h-3.5" />
           <h3 className="text-xs uppercase tracking-wider font-bold">{title}</h3>
@@ -266,7 +266,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
     <div className="space-y-4">
       {/* ─── Period selector ─── */}
       <div className="flex items-center justify-end mb-2">
-        <div className="flex gap-0 border border-foreground">
+        <div className="flex gap-0 border border-border">
           {([7, 30, 90] as const).map((p, i) => (
             <button
               key={p}
@@ -276,7 +276,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                 period === p
                   ? "bg-foreground text-background"
                   : "text-muted-foreground hover:text-foreground",
-                i > 0 && "border-l border-foreground",
+                i > 0 && "border-l border-border",
               )}
             >
               {p}j
@@ -301,12 +301,12 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
               <div
                 key={kpi.label}
                 className={cn(
-                  "border border-foreground p-3 sm:p-4 flex flex-col gap-1",
+                  "border border-border p-3 sm:p-4 flex flex-col gap-1",
                   i > 0 && "sm:border-l-0",
                   i % 2 !== 0 && "max-sm:border-l-0",
                   i >= 2 && "max-sm:border-t-0",
                   i >= 3 && "max-sm:border-t-0 sm:border-t-0 lg:border-t",
-                  kpi.accent ? "bg-brutal-accent/10" : "bg-background",
+                  kpi.accent ? "bg-accent/10" : "bg-background",
                 )}
               >
                 <div className="flex items-center gap-1.5">
@@ -376,7 +376,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
           <Section title="Pipeline" icon={TrendingUp} className={cn("lg:border-r-0", urgentCandidates.length === 0 ? "" : "border-t-0")}>
             <div className="p-4">
               {/* Visual pipeline bar */}
-              <div className="flex h-8 mb-4 border border-foreground overflow-hidden relative z-10">
+              <div className="flex h-8 mb-4 border border-border overflow-hidden relative z-10">
                 {funnelData.filter(d => d.count > 0).map((d) => {
                   const pct = funnelTotal > 0 ? (d.count / funnelTotal) * 100 : 0;
                   return (
@@ -400,7 +400,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
               <div className="flex flex-wrap gap-x-4 gap-y-1 relative z-10">
                 {funnelData.map(d => (
                   <div key={d.name} className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 border border-foreground/30" style={{ backgroundColor: d.fill }} />
+                    <div className="w-2 h-2 border border-border" style={{ backgroundColor: d.fill }} />
                     <span className="text-xs text-muted-foreground">{d.name}</span>
                     <span className="text-xs font-bold font-mono">{d.count}</span>
                   </div>
@@ -483,7 +483,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                       return (
                         <div key={s.name} className="flex items-center gap-2">
                           <div
-                            className="w-2.5 h-2.5 shrink-0 border border-foreground/30"
+                            className="w-2.5 h-2.5 shrink-0 border border-border"
                             style={{ backgroundColor: SOURCE_COLORS[i % SOURCE_COLORS.length] }}
                           />
                           <div className="flex-1 min-w-0">
@@ -564,8 +564,8 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                         <div className={cn(
                           "w-5 h-5 flex items-center justify-center shrink-0 border",
                           msg.type === 'inmail'
-                            ? "bg-brutal-accent/15 border-brutal-accent/40"
-                            : "bg-foreground/5 border-foreground/20"
+                            ? "bg-accent/15 border-accent/40"
+                            : "bg-foreground/5 border-border"
                         )}>
                           {msg.type === 'inmail' ? (
                             <Mail className="w-2.5 h-2.5" />
@@ -587,7 +587,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                         {/* Status / Toggle */}
                         {hasContent ? (
                           <div className={cn(
-                            "w-5 h-5 flex items-center justify-center shrink-0 border border-foreground/20 transition-transform",
+                            "w-5 h-5 flex items-center justify-center shrink-0 border border-border transition-transform",
                             isExpanded && "rotate-180"
                           )}>
                             <ArrowRight className="w-2.5 h-2.5 rotate-90" />
@@ -667,11 +667,11 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                     onClick={() => onCandidateClick?.(c)}
                   >
                     <div
-                      className="w-2 h-2 shrink-0 border border-foreground/20"
+                      className="w-2 h-2 shrink-0 border border-border"
                       style={{ backgroundColor: STAGE_COLORS[c.stage] || 'hsl(var(--muted))' }}
                     />
                     <span className="text-xs font-medium truncate flex-1 min-w-0">{c.name}</span>
-                    <span className="text-xs uppercase tracking-wider px-1.5 py-0.5 border border-foreground/15 text-muted-foreground whitespace-nowrap">
+                    <span className="text-xs uppercase tracking-wider px-1.5 py-0.5 border border-border text-muted-foreground whitespace-nowrap">
                       {c.stage}
                     </span>
                     <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
@@ -710,7 +710,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-foreground">
+                <tr className="border-b border-border">
                    <th className="text-left px-4 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Poste</th>
                   <th className="text-center px-3 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Contactés</th>
                   <th className="text-center px-3 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Réponses</th>
@@ -733,7 +733,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                       <td className="text-center px-3 py-2.5">
                         <span className={cn(
                           "font-mono font-bold px-1.5 py-0.5 text-xs",
-                          rate >= 30 ? "bg-brutal-accent/20 text-foreground" : rate >= 15 ? "bg-muted" : "text-muted-foreground"
+                          rate >= 30 ? "bg-accent/20 text-foreground" : rate >= 15 ? "bg-muted" : "text-muted-foreground"
                         )}>
                           {rate}%
                         </span>
@@ -773,7 +773,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
         ) : (
           <>
             {/* Global KPI strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-0 border-b border-foreground">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-0 border-b border-border">
               {[
                 { label: 'Inscrits', value: acceptanceStats.global.totalEnrolled, icon: Users },
                 { label: 'Connectés', value: acceptanceStats.global.connected, icon: UserCheck },
@@ -787,10 +787,10 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                     key={kpi.label}
                     className={cn(
                       "p-3 flex flex-col gap-1",
-                      i > 0 && "sm:border-l border-foreground",
-                      i % 2 !== 0 && "max-sm:border-l border-foreground",
-                      i >= 2 && "max-sm:border-t border-foreground",
-                      (kpi as any).accent ? "bg-brutal-accent/10" : "",
+                      i > 0 && "sm:border-l border-border",
+                      i % 2 !== 0 && "max-sm:border-l border-border",
+                      i >= 2 && "max-sm:border-t border-border",
+                      (kpi as any).accent ? "bg-accent/10" : "",
                     )}
                   >
                     <div className="flex items-center gap-1.5">
@@ -808,7 +808,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-foreground">
+                    <tr className="border-b border-border">
                       <th className="text-left px-4 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Consultant</th>
                       <th className="text-center px-3 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Inscrits</th>
                       <th className="text-center px-3 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Connectés</th>
@@ -828,7 +828,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                         <td className="text-center px-3 py-2.5">
                           <span className={cn(
                             "font-mono font-bold px-1.5 py-0.5 text-xs",
-                            consultant.acceptanceRate >= 40 ? "bg-brutal-accent/20 text-foreground" : consultant.acceptanceRate >= 20 ? "bg-muted" : "text-muted-foreground"
+                            consultant.acceptanceRate >= 40 ? "bg-accent/20 text-foreground" : consultant.acceptanceRate >= 20 ? "bg-muted" : "text-muted-foreground"
                           )}>
                             {consultant.acceptanceRate}%
                           </span>
@@ -848,7 +848,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
         title="Taux de réponse"
         icon={MessageCircle}
         action={
-          <div className="flex items-center gap-0 border border-foreground">
+          <div className="flex items-center gap-0 border border-border">
             {(['all', 'sequences', 'inmails'] as const).map(view => (
               <button
                 key={view}
@@ -858,7 +858,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                   responseView === view
                     ? "bg-foreground text-background"
                     : "text-muted-foreground hover:text-foreground",
-                  view !== 'all' && "border-l border-foreground",
+                  view !== 'all' && "border-l border-border",
                 )}
               >
                 {view === 'all' ? 'Tous' : view === 'sequences' ? 'Séquences' : 'InMails'}
@@ -882,7 +882,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
           return (
             <div className="p-4">
               {/* Main KPIs */}
-              <div className="grid grid-cols-3 gap-0 border border-foreground">
+              <div className="grid grid-cols-3 gap-0 border border-border">
                 {[
                   { label: 'Contactés', value: viewData.sent },
                   { label: 'Réponses', value: viewData.replied },
@@ -890,8 +890,8 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                 ].map((kpi, i) => (
                   <div key={kpi.label} className={cn(
                     "p-3 flex flex-col gap-0.5",
-                    i > 0 && "border-l border-foreground",
-                    (kpi as any).accent && "bg-brutal-accent/10",
+                    i > 0 && "border-l border-border",
+                    (kpi as any).accent && "bg-accent/10",
                   )}>
                     <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{kpi.label}</span>
                     <span className="text-xl font-bold font-mono">{kpi.value}</span>
@@ -901,14 +901,14 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
 
               {/* Breakdown when "Tous" is selected */}
               {showBreakdown && (
-                <div className="grid grid-cols-2 gap-0 mt-3 border border-foreground">
+                <div className="grid grid-cols-2 gap-0 mt-3 border border-border">
                   {[
                     { label: 'Séquences', sent: responseRates.sequences.sent, replied: responseRates.sequences.replied, rate: responseRates.sequences.rate, icon: Zap },
                     { label: 'InMails', sent: responseRates.inmails.sent, replied: responseRates.inmails.replied, rate: responseRates.inmails.rate, icon: Mail },
                   ].map((channel, i) => {
                     const Icon = channel.icon;
                     return (
-                      <div key={channel.label} className={cn("p-3", i > 0 && "border-l border-foreground")}>
+                      <div key={channel.label} className={cn("p-3", i > 0 && "border-l border-border")}>
                         <div className="flex items-center gap-1.5 mb-2">
                           <Icon className="w-3 h-3 text-muted-foreground" />
                           <span className="text-xs uppercase tracking-wider font-bold">{channel.label}</span>
@@ -941,7 +941,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
         ) : (
           <div className="p-4">
             {/* Summary KPIs */}
-            <div className="grid grid-cols-3 gap-0 mb-4 border border-foreground">
+            <div className="grid grid-cols-3 gap-0 mb-4 border border-border">
               {(() => {
                 const totalSent = dailyInvites.reduce((s, d) => s + d.invitesSent, 0);
                 const totalAccepted = dailyInvites.reduce((s, d) => s + d.invitesAccepted, 0);
@@ -951,7 +951,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                   { label: 'Acceptées', value: totalAccepted },
                   { label: 'Taux', value: `${rate}%` },
                 ].map((kpi, i) => (
-                  <div key={kpi.label} className={cn("p-3 flex flex-col gap-0.5", i > 0 && "border-l border-foreground")}>
+                  <div key={kpi.label} className={cn("p-3 flex flex-col gap-0.5", i > 0 && "border-l border-border")}>
                     <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{kpi.label}</span>
                     <span className="text-lg font-bold font-mono">{kpi.value}</span>
                   </div>
@@ -997,7 +997,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-foreground">
+                <tr className="border-b border-border">
                   <th className="text-left px-4 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Transition</th>
                   <th className="text-center px-3 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Entrée</th>
                   <th className="text-center px-3 py-2 text-xs uppercase tracking-wider font-bold text-muted-foreground">Sortie</th>
@@ -1052,7 +1052,7 @@ function ConversionRows({ candidates, stages }: { candidates: ATSCandidate[]; st
         <td className="text-center px-3 py-2">
           <span className={cn(
             "font-mono font-bold px-1.5 py-0.5 text-xs",
-            rate >= 50 ? "bg-brutal-accent/20 text-foreground" : rate >= 25 ? "bg-muted" : "text-muted-foreground"
+            rate >= 50 ? "bg-accent/20 text-foreground" : rate >= 25 ? "bg-muted" : "text-muted-foreground"
           )}>
             {rate}%
           </span>

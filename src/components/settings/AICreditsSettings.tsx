@@ -204,9 +204,9 @@ export const AICreditsSettings = () => {
                 disabled={!!buyingPack}
                 className={cn(
                   "relative flex flex-col items-center p-4 border-2 rounded-md transition-all text-center",
-                  "hover:border-foreground hover:shadow-[2px_2px_0_0_hsl(var(--foreground))]",
+                  "hover:border-border hover:shadow-[2px_2px_0_0_hsl(var(--foreground))]",
                   "disabled:opacity-50 disabled:cursor-not-allowed",
-                  pack.badge ? "border-foreground" : "border-border"
+                  pack.badge ? "border-border" : "border-border"
                 )}
               >
                 {pack.badge && (

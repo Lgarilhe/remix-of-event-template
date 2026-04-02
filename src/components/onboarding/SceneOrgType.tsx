@@ -70,8 +70,8 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
                 w-full text-left p-3.5 border-2 transition-all duration-200
                 flex items-start gap-3
                 ${isSelected
-                  ? 'border-foreground bg-foreground/[0.03]'
-                  : 'border-foreground/15 hover:border-foreground/30'}
+                  ? 'border-border bg-foreground/[0.03]'
+                  : 'border-border hover:border-border'}
               `}
               style={isSelected ? { boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' } : {}}
             >
@@ -116,7 +116,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         <Button
           onClick={() => selected && onSelect(selected)}
           disabled={!selected}
-          className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />

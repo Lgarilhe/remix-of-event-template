@@ -286,19 +286,19 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               placeholder="Rechercher un poste, client, compétence..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 border-foreground rounded-none"
+              className="pl-10 border-border rounded-none"
             />
           </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-foreground bg-background text-foreground group shrink-0">
+              <button className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-border bg-background text-foreground group shrink-0">
                 <Filter className="w-3.5 h-3.5 relative z-10" />
                 <span className="hidden sm:inline relative z-10">{statusFilter ? statusConfig[statusFilter as keyof typeof statusConfig].label : 'Tous'}</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="border-foreground">
+            <DropdownMenuContent className="border-border">
               <DropdownMenuItem onClick={() => setStatusFilter(null)}>
                 Tous les statuts
               </DropdownMenuItem>
@@ -319,10 +319,10 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               setCreateInitialTab('import');
               setShowCreateModal(true);
             }}
-            className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-foreground bg-background text-foreground shrink-0 group"
+            className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-border bg-background text-foreground shrink-0 group"
           >
             <span className="relative z-10">📥 Importer</span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <button
             onClick={() => {
@@ -335,7 +335,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               setCreateInitialTab(undefined);
               setShowCreateModal(true);
             }}
-            className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-foreground border-l-0 bg-foreground text-background shrink-0 group"
+            className="relative overflow-hidden flex items-center gap-2 h-9 px-4 text-xs font-semibold border border-border border-l-0 bg-foreground text-background shrink-0 group"
           >
             <Plus className="w-3.5 h-3.5 relative z-10" />
             <span className="relative z-10">Nouveau projet</span>
@@ -353,7 +353,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
       {sortedProjects.length === 0 ? (
         <div>
           {searchQuery || statusFilter ? (
-            <div className="bg-background border border-foreground p-12 text-center">
+            <div className="bg-background border border-border p-12 text-center">
               <div className="h-16 w-16 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
                 <FolderOpen className="w-8 h-8" />
               </div>
@@ -378,7 +378,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             return (
               <div
                 key={project.key}
-                className="bg-background border border-foreground p-5 sm:p-6 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
+                className="bg-background border border-border p-5 sm:p-6 shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))] transition-all cursor-pointer"
                 onClick={() => navigateToWorkspace(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -447,7 +447,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                         {project.skills.slice(0, 5).map((skill) => (
                           <span
                             key={skill}
-                            className="px-2 py-0.5 bg-muted text-muted-foreground text-xs border border-foreground/10"
+                            className="px-2 py-0.5 bg-muted text-muted-foreground text-xs border border-border"
                           >
                             {skill}
                           </span>
@@ -463,13 +463,13 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                     {/* Progression badges */}
                     {(stats.total > 0 || hasSourcingProject) && (
                       <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs">
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-xs font-medium">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-border text-xs font-medium">
                           {stats.total} sourcés
                         </span>
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-xs font-medium">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-border text-xs font-medium">
                           {stats.messaged} contactés
                         </span>
-                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-foreground/10 text-xs font-medium">
+                        <span className="px-2 py-0.5 bg-muted text-muted-foreground border border-border text-xs font-medium">
                           {stats.shortlisted} réponses
                         </span>
                         {stats.shortlisted > 0 && stats.messaged > 0 && (
@@ -482,14 +482,14 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-foreground/5 w-full sm:w-auto">
+                  <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/5 w-full sm:w-auto">
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           navigateToWorkspace(project, 'sourcing');
                         }}
-                        className="relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-semibold border border-foreground bg-foreground text-background group"
+                        className="relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-semibold border border-border bg-foreground text-background group"
                       >
                         <ArrowRight className="w-3 h-3 relative z-10" />
                         <span className="relative z-10">Ouvrir</span>
@@ -556,7 +556,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                   const insight = computeCardInsight(project, stats);
                   if (!insight) return null;
                   return (
-                    <div className="mt-3 pt-2.5 border-t border-foreground/10 flex items-center gap-2">
+                    <div className="mt-3 pt-2.5 border-t border-border flex items-center gap-2">
                       <span className="text-xs shrink-0">{insight.icon}</span>
                       <span className="text-xs text-muted-foreground truncate">
                         {insight.text}

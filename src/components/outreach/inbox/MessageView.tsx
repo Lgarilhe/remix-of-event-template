@@ -225,7 +225,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Chat Header */}
-      <div className="p-2 md:p-3 border-b border-foreground flex items-center gap-2 md:gap-3 bg-background shrink-0">
+      <div className="p-2 md:p-3 border-b border-border flex items-center gap-2 md:gap-3 bg-background shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -266,8 +266,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
             className={cn(
               "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border group shrink-0",
               aiPanelOpen
-                ? "bg-brutal-accent text-foreground border-foreground"
-                : "bg-foreground text-background border-foreground"
+                ? "bg-accent text-foreground border-border"
+                : "bg-foreground text-background border-border"
             )}
             onClick={() => setAiPanelOpen(!aiPanelOpen)}
           >
@@ -276,7 +276,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <span className="hidden md:inline">IA</span>
             </span>
             {!aiPanelOpen && (
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             )}
           </button>
         )}
@@ -285,7 +285,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         <button
           className={cn(
             "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border bg-background text-foreground group shrink-0 flex items-center",
-            calendlyLink ? "border-foreground/20" : "border-foreground/10 opacity-70"
+            calendlyLink ? "border-border" : "border-border opacity-70"
           )}
           onClick={onScheduleCall}
           title={calendlyLink ? "Insérer le lien Calendly" : "Configurer un lien Calendly dans le projet"}
@@ -294,7 +294,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <CalendarPlus className="w-3.5 h-3.5" />
             <span className="hidden md:inline">RDV</span>
           </span>
-          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
         </button>
 
         {selectedChat.attendees?.[0]?.profile_url && (
@@ -302,13 +302,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
             href={selectedChat.attendees[0].profile_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-foreground/20 bg-background text-foreground group shrink-0 flex items-center"
+            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group shrink-0 flex items-center"
           >
             <span className="relative z-10 flex items-center gap-1">
               <User className="w-3 h-3" />
               <span className="hidden md:inline">Profil</span>
             </span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </a>
         )}
       </div>
@@ -358,7 +358,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         "px-4 py-2.5",
                         msg.is_sender
                           ? "bg-foreground text-background"
-                          : "bg-muted text-foreground border border-foreground"
+                          : "bg-muted text-foreground border border-border"
                       )}
                     >
                       <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
@@ -386,7 +386,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
                     {/* Reaction bar for received messages */}
                     {!msg.is_sender && onAddReaction && msg.id != null && (
-                      <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background/90 backdrop-blur-sm border border-foreground/20 px-1 py-0.5 shadow-md">
+                      <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background/90 backdrop-blur-sm border border-border px-1 py-0.5 shadow-md">
                         {REACTION_EMOJIS.map(emoji => (
                           <button
                             key={emoji}
@@ -412,7 +412,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     {!!msg.is_sender && onDeleteMessage && msg.id != null && (
                       <button
                         onClick={() => setDeleteMsgConfirm(msg.id)}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-foreground/20 shadow-md hover:bg-destructive/80"
+                        className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-border shadow-md hover:bg-destructive/80"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -444,7 +444,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         <div className="px-3 pt-2">
           <button
             onClick={() => setAiPanelOpen(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs uppercase tracking-wider font-medium border border-foreground bg-brutal-accent/10 hover:bg-brutal-accent/20 transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 text-xs uppercase tracking-wider font-medium border border-border bg-accent/10 hover:bg-accent/20 transition-colors"
           >
             <Sparkles className="w-3 h-3" />
             {replySuggestions.length} suggestions IA
@@ -453,7 +453,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       )}
 
       {/* Separator before input */}
-      <div className="border-t border-foreground" />
+      <div className="border-t border-border" />
 
       {/* Message Input */}
       <div className="px-3 pb-3">
@@ -475,7 +475,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <button
             onClick={onSendMessage}
             disabled={sending || !newMessage.trim()}
-            className="relative overflow-hidden h-10 w-10 bg-foreground text-background border border-foreground flex items-center justify-center mb-[2px] disabled:opacity-50 disabled:pointer-events-none group"
+            className="relative overflow-hidden h-10 w-10 bg-foreground text-background border border-border flex items-center justify-center mb-[2px] disabled:opacity-50 disabled:pointer-events-none group"
           >
             {sending ? (
               <Loader2 className="w-4 h-4 animate-spin relative z-10" />

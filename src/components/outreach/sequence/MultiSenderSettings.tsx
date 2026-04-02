@@ -182,7 +182,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             variant="outline"
             size="sm"
             onClick={() => setShowPickerModal(true)}
-            className="w-full border-dashed border-foreground/20 h-9"
+            className="w-full border-dashed border-border h-9"
           >
             <Plus className="w-3.5 h-3.5 mr-1.5" />
             Ajouter un sender
@@ -205,7 +205,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
 
           {/* Team member picker modal */}
           <Dialog open={showPickerModal} onOpenChange={setShowPickerModal}>
-            <DialogContent className="max-w-md bg-background border-foreground/20 rounded-none p-0 gap-0">
+            <DialogContent className="max-w-md bg-background border-border rounded-none p-0 gap-0">
               <DialogHeader className="px-5 pt-5 pb-4 border-b border-border">
                 <DialogTitle className="flex items-center gap-2.5 text-base">
                   <div className="w-8 h-8 bg-muted flex items-center justify-center">
@@ -217,7 +217,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
               <div className="max-h-80 overflow-y-auto">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="w-5 h-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-border border-t-foreground rounded-full animate-spin" />
                   </div>
                 ) : teamMembers.length === 0 ? (
                   <div className="py-12 text-center">

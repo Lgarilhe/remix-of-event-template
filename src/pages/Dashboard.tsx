@@ -35,7 +35,7 @@ export default function Dashboard() {
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
               {orgType && (
-                <span className="text-xs text-muted-foreground border border-foreground/20 px-2 py-0.5 font-medium hidden sm:inline">
+                <span className="text-xs text-muted-foreground border border-border px-2 py-0.5 font-medium hidden sm:inline">
                   {getOrgTypeEmoji(orgType)} {getOrgTypeLabel(orgType)}
                 </span>
               )}
@@ -54,11 +54,11 @@ export default function Dashboard() {
             <button
               onClick={refetch}
               disabled={loading}
-              className="relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-foreground text-foreground text-xs font-semibold group disabled:opacity-30"
+              className="relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-border text-foreground text-xs font-semibold group disabled:opacity-30"
             >
               <RefreshCw className={`w-3.5 h-3.5 relative z-10 ${loading ? 'animate-spin' : ''}`} />
               <span className="relative z-10">Actualiser</span>
-              <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+              <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
             </button>
           </div>
 
@@ -66,7 +66,7 @@ export default function Dashboard() {
           {loading && candidates.length === 0 ? (
             <ATSStatsSkeleton />
           ) : candidates.length === 0 ? (
-            <div className="border-2 border-foreground bg-background p-6 sm:p-8">
+            <div className="border-2 border-border bg-background p-6 sm:p-8">
               <div className="flex items-start gap-4">
                 <div className="text-4xl">👋</div>
                 <div>
@@ -77,24 +77,24 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-                <a href="/missions" className="group border border-foreground p-5 hover:bg-brutal-accent transition-colors">
+                <a href="/missions" className="group border border-border p-5 hover:bg-accent transition-colors">
                   <div className="text-2xl mb-2">📂</div>
                   <div className="text-xs font-bold">1. Créer une mission</div>
                   <p className="text-xs text-muted-foreground mt-1">Ajoutez votre premier poste à pourvoir</p>
                 </a>
-                <a href="/missions?tab=search" className="group border border-foreground p-5 hover:bg-brutal-accent transition-colors">
+                <a href="/missions?tab=search" className="group border border-border p-5 hover:bg-accent transition-colors">
                   <div className="text-2xl mb-2">🔍</div>
                   <div className="text-xs font-bold">2. Sourcer des candidats</div>
                   <p className="text-xs text-muted-foreground mt-1">Lancez une recherche LinkedIn</p>
                 </a>
-                <a href="/settings?tab=connectors" className="group border border-foreground p-5 hover:bg-brutal-accent transition-colors">
+                <a href="/settings?tab=connectors" className="group border border-border p-5 hover:bg-accent transition-colors">
                   <div className="text-2xl mb-2">🔌</div>
                   <div className="text-xs font-bold">3. Connecter vos outils</div>
                   <p className="text-xs text-muted-foreground mt-1">Notion, Airtable, Aircall...</p>
                 </a>
               </div>
               <p className="text-xs text-muted-foreground mt-4 text-center">
-                Astuce : appuyez sur <kbd className="px-1.5 py-0.5 border border-foreground text-foreground font-mono">{isMac ? '⌘K' : 'Ctrl+K'}</kbd> à tout moment pour ouvrir le copilot IA
+                Astuce : appuyez sur <kbd className="px-1.5 py-0.5 border border-border text-foreground font-mono">{isMac ? '⌘K' : 'Ctrl+K'}</kbd> à tout moment pour ouvrir le copilot IA
               </p>
             </div>
           ) : (

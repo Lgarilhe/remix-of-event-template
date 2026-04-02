@@ -33,8 +33,8 @@ function FAQItem({ item }: { item: typeof FAQS[0] }) {
   return (
     <div
       className={cn(
-        'border border-foreground/10 transition-colors',
-        open ? 'border-foreground' : 'hover:border-foreground'
+        'border border-border transition-colors',
+        open ? 'border-border' : 'hover:border-border'
       )}
     >
       <button
@@ -50,7 +50,7 @@ function FAQItem({ item }: { item: typeof FAQS[0] }) {
         />
       </button>
       {open && (
-        <div className="px-4 pb-4 text-sm text-muted-foreground leading-relaxed border-t border-foreground/10 pt-3">
+        <div className="px-4 pb-4 text-sm text-muted-foreground leading-relaxed border-t border-border pt-3">
           {item.a}
         </div>
       )}
@@ -94,14 +94,14 @@ const Pricing = () => {
         <div className="text-center mb-12 sm:mb-16">
           {/* Badge */}
           <div
-            className="inline-flex items-center gap-1.5 px-3.5 py-1 border border-foreground/10 mb-6"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1 border border-border mb-6"
             style={{
               opacity: mounted ? 1 : 0,
               transform: mounted ? 'translateY(0)' : 'translateY(20px)',
               transition: 'opacity 0.6s ease, transform 0.6s ease',
             }}
           >
-            <span className="w-1.5 h-1.5 bg-brutal-accent shrink-0" />
+            <span className="w-1.5 h-1.5 bg-accent shrink-0" />
             <span className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
               Tarifs transparents
             </span>
@@ -151,7 +151,7 @@ const Pricing = () => {
             <div
               onClick={() => setYearly(!yearly)}
               className={cn(
-                'relative w-14 h-7 border-2 border-foreground cursor-pointer transition-colors',
+                'relative w-14 h-7 border-2 border-border cursor-pointer transition-colors',
                 yearly && 'bg-foreground'
               )}
             >
@@ -159,8 +159,8 @@ const Pricing = () => {
                 className={cn(
                   'absolute top-[2px] left-[2px] w-5 h-5 transition-transform duration-200',
                   yearly
-                    ? 'translate-x-7 bg-brutal-accent'
-                    : 'bg-background border border-foreground/10'
+                    ? 'translate-x-7 bg-accent'
+                    : 'bg-background border border-border'
                 )}
               />
             </div>
@@ -194,7 +194,7 @@ const Pricing = () => {
                       'relative flex flex-col flex-1 border-2 transition-all duration-200 group',
                       isPopular
                         ? 'border-[hsl(var(--skalr-purple))] bg-muted/30 z-10'
-                        : 'border-foreground',
+                        : 'border-border',
                       // collapse shared borders
                       i > 0 && 'md:-ml-[2px]',
                       // mobile: collapse top borders
@@ -292,7 +292,7 @@ const Pricing = () => {
                             <span
                               className={cn(
                                 'w-4 h-4 mt-0.5 shrink-0 flex items-center justify-center border',
-                                isPopular ? 'border-[hsl(var(--skalr-purple))]' : 'border-foreground/15'
+                                isPopular ? 'border-[hsl(var(--skalr-purple))]' : 'border-border'
                               )}
                             >
                               <Check
@@ -320,10 +320,10 @@ const Pricing = () => {
                         className={cn(
                           'w-full h-12 text-xs uppercase tracking-[0.14em] font-bold border-2 transition-all active:translate-y-[1px]',
                           isCurrent
-                            ? 'border-foreground/10 text-muted-foreground cursor-default bg-transparent'
+                            ? 'border-border text-muted-foreground cursor-default bg-transparent'
                             : isPopular
                               ? 'skalr-gradient-bg text-white border-transparent hover:brightness-110'
-                              : 'border-foreground bg-transparent text-foreground hover:bg-foreground hover:text-background'
+                              : 'border-border bg-transparent text-foreground hover:bg-foreground hover:text-background'
                         )}
                       >
                         {isCurrent
@@ -351,14 +351,14 @@ const Pricing = () => {
                 }}
               >
                 <h2 className="text-xs uppercase tracking-[0.18em] font-bold text-muted-foreground mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-brutal-accent" />
+                  <span className="w-2 h-2 bg-accent" />
                   Comparatif détaillé
                 </h2>
 
-                <div className="border-2 border-foreground overflow-x-auto">
+                <div className="border-2 border-border overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-foreground/10">
+                      <tr className="border-b border-border">
                         <th className="text-left p-3 text-xs uppercase tracking-[0.1em] text-muted-foreground font-bold">
                           Fonctionnalité
                         </th>
@@ -380,7 +380,7 @@ const Pricing = () => {
                         <tr
                           key={row.key}
                           className={cn(
-                            ri < COMPARISON_ROWS.length - 1 && 'border-b border-foreground/10'
+                            ri < COMPARISON_ROWS.length - 1 && 'border-b border-border'
                           )}
                         >
                           <td className="p-3 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">
@@ -423,7 +423,7 @@ const Pricing = () => {
           }}
         >
           <h2 className="text-xs uppercase tracking-[0.18em] font-bold text-muted-foreground mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 bg-brutal-accent" />
+            <span className="w-2 h-2 bg-accent" />
             Questions fréquentes
           </h2>
 

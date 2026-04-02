@@ -116,7 +116,7 @@ const statusConfig: Record<string, { label: string; icon: React.ReactNode; class
   cancelled: {
     label: 'Annulée',
     icon: <XCircle className="w-3 h-3" />,
-    className: 'bg-muted text-muted-foreground border border-foreground/20'
+    className: 'bg-muted text-muted-foreground border border-border'
   },
   booked: {
     label: 'RDV pris',
@@ -163,13 +163,13 @@ const formatErrorMessage = (error: string | null): string => {
 };
 
 const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10 border-dashed' },
+  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border border-dashed' },
   scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-info/10 text-info-foreground border-info/30' },
   executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
   sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10' },
+  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border' },
   failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-foreground/10' },
+  cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border' },
 };
 
 interface SequenceStep {
@@ -423,7 +423,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-none border-l border-foreground">
+      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-none border-l border-border">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2 uppercase tracking-wide">
             <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center">
@@ -436,7 +436,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         <div className="mt-6 space-y-4">
           {/* Process now button - always show if there are pending tasks */}
           {pendingExecutions.length > 0 && (
-            <div className="p-3 bg-background border border-foreground">
+            <div className="p-3 bg-background border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-foreground">
                   <AlertCircle className="w-4 h-4" />
@@ -447,7 +447,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 <button
                   onClick={processSequencesNow}
                   disabled={processingSequences}
-                  className="relative overflow-hidden h-[30px] px-4 bg-foreground text-background border border-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
+                  className="relative overflow-hidden h-[30px] px-4 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
                 >
                   <span className="relative z-10 flex items-center gap-1.5">
                     {processingSequences ? (
@@ -463,12 +463,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-0 border border-foreground">
-            <div className="p-3 text-center border-r border-foreground">
+          <div className="grid grid-cols-3 gap-0 border border-border">
+            <div className="p-3 text-center border-r border-border">
               <div className="text-xl font-bold text-foreground">{activeCount}</div>
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Actifs</div>
             </div>
-            <div className="p-3 text-center border-r border-foreground">
+            <div className="p-3 text-center border-r border-border">
               <div className="text-xl font-bold text-foreground">{pausedCount}</div>
               <div className="text-xs text-muted-foreground uppercase tracking-wider">En pause</div>
             </div>
@@ -497,7 +497,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               placeholder="Rechercher un candidat…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 text-xs border-foreground rounded-none"
+              className="pl-8 h-8 text-xs border-border rounded-none"
             />
           </div>
 
@@ -533,9 +533,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                       open={isExpanded}
                       onOpenChange={() => toggleExpanded(enrollment.id)}
                     >
-                      <div className="border border-foreground">
+                      <div className="border border-border">
                         {/* Header - always visible */}
-                        <div className="p-3 bg-background hover:bg-brutal-accent/10 group">
+                        <div className="p-3 bg-background hover:bg-accent/10 group">
                           <div className="flex items-start gap-2 w-full">
                             <CollapsibleTrigger className="flex items-start gap-2 flex-1 min-w-0 text-left">
                               <div className="mt-0.5 shrink-0">
@@ -619,13 +619,13 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 <Button 
                                   variant="outline" 
                                   size="icon"
-                                  className="h-8 w-8 shrink-0 border-foreground rounded-none"
+                                  className="h-8 w-8 shrink-0 border-border rounded-none"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[3000] bg-background border-foreground rounded-none">
+                              <DropdownMenuContent align="end" className="z-[3000] bg-background border-border rounded-none">
                                 {enrollment.status === 'active' ? (
                                   <DropdownMenuItem 
                                     onClick={() => stopEnrollment(enrollment.id)}
@@ -662,7 +662,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                         {/* Expanded content - Full workflow timeline */}
                         <CollapsibleContent>
-                          <div className="border-t border-foreground bg-muted p-3">
+                          <div className="border-t border-border bg-muted p-3">
                             {allSteps.length === 0 ? (
                               <p className="text-xs text-muted-foreground text-center py-2">
                                 Aucune étape dans la séquence
@@ -696,8 +696,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       className={cn(
                                         "flex items-start gap-3 p-2.5 border transition-colors",
                                         isFailed && "bg-destructive/5 border-destructive/30",
-                                        isChannelSkip && "bg-muted/50 border-foreground/5 opacity-60",
-                                        isSkipped && !isChannelSkip && "bg-muted border-foreground/10",
+                                        isChannelSkip && "bg-muted/50 border-border/5 opacity-60",
+                                        isSkipped && !isChannelSkip && "bg-muted border-border",
                                         !isFailed && !isSkipped && execStatus.className
                                       )}
                                     >
@@ -774,7 +774,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
                                         {/* Message preview if executed/sent */}
                                         {(exec?.status === 'executed' || exec?.status === 'sent') && exec.final_message && (
-                                          <div className="mt-2 p-2 bg-background border border-foreground/10 text-xs text-muted-foreground">
+                                          <div className="mt-2 p-2 bg-background border border-border text-xs text-muted-foreground">
                                             {exec.final_subject && (
                                               <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
                                                 {exec.final_subject}

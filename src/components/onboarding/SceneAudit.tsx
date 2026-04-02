@@ -246,7 +246,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                   >
                     <div
                       className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
-                        s.done ? 'border-transparent text-foreground' : 'border-foreground/20 text-muted-foreground'
+                        s.done ? 'border-transparent text-foreground' : 'border-border text-muted-foreground'
                       }`}
                       style={s.done ? { background: 'hsl(var(--brutal-accent))' } : {}}
                     >
@@ -267,7 +267,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                   key={b.id}
                   initial={{ opacity: 0, y: 8, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="bg-muted/60 border border-foreground/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
+                  className="bg-muted/60 border border-border/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
                 >
                   {b.text}
                 </motion.div>
@@ -289,12 +289,12 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               Impossible d'analyser votre marque employeur pour le moment. Vous pouvez passer cette étape et y revenir plus tard.
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
-              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
                 <ArrowLeft className="w-4 h-4" /> Retour
               </Button>
               <Button
                 onClick={onNext}
-                className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
                 style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Passer
@@ -314,7 +314,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           >
             {/* Score card */}
             <div
-              className="border-2 border-foreground/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
+              className="border-2 border-border/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--brutal-accent))' }}
             >
               <img src={analyticsIcon} alt="" aria-hidden="true" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
@@ -356,7 +356,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 <div className="flex items-center gap-2 mb-1 justify-center sm:justify-start flex-wrap">
                   <h3 className="font-semibold text-base sm:text-lg">Score Marque Employeur</h3>
                   <span
-                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border"
                     style={{ background: overallScore >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
                   >
                     {overallScore >= 70 ? 'Bon' : 'À améliorer'}
@@ -375,7 +375,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 const isExpanded = expandedCat === cat.id;
                 const pct = (cat.score / cat.maxScore) * 100;
                 return (
-                  <div key={cat.id} className="border border-foreground/10 overflow-hidden">
+                  <div key={cat.id} className="border border-border overflow-hidden">
                     <button
                       onClick={() => setExpandedCat(isExpanded ? null : cat.id)}
                       className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors"
@@ -410,7 +410,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                           transition={{ duration: 0.2 }}
                           className="overflow-hidden"
                         >
-                          <div className="px-3 pb-3 pt-0 space-y-1.5 border-t border-foreground/5 mt-0 pt-2">
+                          <div className="px-3 pb-3 pt-0 space-y-1.5 border-t border-border/5 mt-0 pt-2">
                             {cat.findings.map((f, i) => (
                               <div key={i} className="flex items-start gap-2 text-xs text-foreground/70">
                                 <div className="w-1 h-1 mt-1.5 bg-foreground/30 shrink-0" />
@@ -428,11 +428,11 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Quick wins */}
             {quickWins.length > 0 && (
-              <div className="border border-foreground/10 p-4 space-y-3">
+              <div className="border border-border p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
                   <span
-                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-foreground"
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border"
                     style={{ background: 'hsl(var(--landing-accent-yellow))' }}
                   >
                     Quick wins
@@ -449,7 +449,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Skalr insight card */}
             <div
-              className="border-2 border-foreground/15 p-4"
+              className="border-2 border-border p-4"
               style={{
                 background: 'linear-gradient(135deg, hsl(var(--skalr-purple) / 0.04), hsl(var(--skalr-pink) / 0.04))',
               }}
@@ -464,12 +464,12 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Navigation */}
             <div className="flex items-center justify-between pt-1">
-              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-foreground/20 text-sm">
+              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
                 <ArrowLeft className="w-4 h-4" /> Retour
               </Button>
               <Button
                 onClick={onNext}
-                className="gap-2 border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
                 style={{ boxShadow: '3px 3px 0px 0px hsl(var(--brutal-accent))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Continuer

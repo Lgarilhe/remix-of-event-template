@@ -46,14 +46,14 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
   return (
     <div
       ref={setNodeRef}
-      className={`w-[300px] flex-shrink-0 border border-foreground p-3 transition-all duration-200 bg-background ${
+      className={`w-[300px] flex-shrink-0 border border-border p-3 transition-all duration-200 bg-background ${
         isOver ? 'ring-2 ring-foreground/30 shadow-lg bg-muted/20' : ''
       }`}
     >
       {/* Stage header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <h3 className="font-semibold text-foreground uppercase tracking-wide text-sm">{stage.label}</h3>
-        <span className="text-sm text-foreground font-bold bg-muted px-2 py-0.5 border border-foreground/20">
+        <span className="text-sm text-foreground font-bold bg-muted px-2 py-0.5 border border-border">
           {entries.length}
         </span>
       </div>
@@ -62,7 +62,7 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
       <div className="space-y-2 min-h-[100px]">
         {entries.length === 0 ? (
           <div className={`text-center py-8 text-muted-foreground text-sm border-2 border-dashed transition-colors ${
-            isOver ? 'border-foreground/40 bg-muted/30 text-foreground' : 'border-foreground/10'
+            isOver ? 'border-border bg-muted/30 text-foreground' : 'border-border'
           }`}>
             {isOver ? 'Déposer ici' : 'Aucun candidat'}
           </div>

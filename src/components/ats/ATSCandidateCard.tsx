@@ -54,9 +54,9 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
     <div
       onClick={onClick}
       className={`
-        bg-background border border-foreground/20 p-3 cursor-pointer transition-all
-        hover:shadow-[3px_3px_0px_0px_hsl(var(--foreground))] hover:border-foreground
-        ${isDragging ? 'shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] border-foreground' : ''}
+        bg-background border border-border p-3 cursor-pointer transition-all
+        hover:shadow-[3px_3px_0px_0px_hsl(var(--foreground))] hover:border-border
+        ${isDragging ? 'shadow-[4px_4px_0px_0px_hsl(var(--brutal-accent))] border-border' : ''}
       `}
     >
       {/* Header */}
@@ -76,8 +76,8 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         <div className="flex items-center gap-1 flex-shrink-0">
           {candidate.score != null && (
             <span className={`text-xs font-bold px-1.5 py-0.5 border ${
-              candidate.score >= 70 ? 'border-foreground bg-brutal-accent text-foreground' : 
-              candidate.score >= 40 ? 'border-foreground/50 bg-background text-foreground' : 'border-destructive text-destructive'
+              candidate.score >= 70 ? 'border-border bg-accent text-foreground' : 
+              candidate.score >= 40 ? 'border-border bg-background text-foreground' : 'border-destructive text-destructive'
             }`}>
               {candidate.score}%
             </span>
@@ -96,7 +96,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
       {/* Source & Job & Outreach Status */}
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <span className="text-xs px-1.5 py-0.5 border border-foreground/30 bg-foreground/5 flex items-center gap-1 uppercase tracking-wider font-medium text-foreground">
+        <span className="text-xs px-1.5 py-0.5 border border-border bg-foreground/5 flex items-center gap-1 uppercase tracking-wider font-medium text-foreground">
           {sourceConfig.icon}
           {sourceConfig.label}
         </span>
@@ -122,7 +122,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
         {candidate.jobTitle && (
           <span
-            className={`text-xs px-1.5 py-0.5 border border-foreground/20 bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-foreground hover:text-foreground transition-colors' : ''}`}
+            className={`text-xs px-1.5 py-0.5 border border-border bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-border hover:text-foreground transition-colors' : ''}`}
             onClick={(e) => {
               if (candidate.jobId && onJobClick) {
                 e.stopPropagation();
@@ -143,7 +143,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           <GitBranch className="w-3 h-3" />
           {candidate.sequenceName}
           {candidate.sequenceStatus && (
-            <span className="border border-foreground/20 px-1 py-0 text-[8px] uppercase tracking-wider">
+            <span className="border border-border px-1 py-0 text-[8px] uppercase tracking-wider">
               {candidate.sequenceStatus}
             </span>
           )}
@@ -154,12 +154,12 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {(candidate.tags || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {(candidate.tags || []).slice(0, 3).map(tag => (
-            <span key={tag} className="text-xs px-1.5 py-0 bg-brutal-accent/20 text-foreground border border-brutal-accent/40 font-medium">
+            <span key={tag} className="text-xs px-1.5 py-0 bg-accent/20 text-foreground border border-accent/40 font-medium">
               {tag}
             </span>
           ))}
           {(candidate.tags || []).length > 3 && (
-            <span className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
+            <span className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-border">
               +{(candidate.tags || []).length - 3}
             </span>
           )}
@@ -180,13 +180,13 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           {candidate.expertise.slice(0, 3).map(skill => (
             <span 
               key={skill} 
-              className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10"
+              className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-border"
             >
               {skill}
             </span>
           ))}
           {candidate.expertise.length > 3 && (
-            <span className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-foreground/10">
+            <span className="text-xs px-1.5 py-0 bg-foreground/5 text-muted-foreground border border-border">
               +{candidate.expertise.length - 3}
             </span>
           )}

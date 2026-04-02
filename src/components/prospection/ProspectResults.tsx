@@ -121,14 +121,14 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.4) }}
-      className="group relative border border-foreground bg-card hover:bg-muted/30 transition-all duration-200"
+      className="group relative border border-border bg-card hover:bg-muted/30 transition-all duration-200"
       style={{ wordBreak: 'break-word' }}
     >
       <div className="p-3 sm:p-4">
         <div className="relative flex items-start gap-3 sm:gap-4 min-w-0 w-full">
           {/* Avatar */}
           <div className="relative shrink-0 hidden sm:block">
-            <Avatar className="w-12 h-12 border border-foreground">
+            <Avatar className="w-12 h-12 border border-border">
               <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
               <AvatarFallback className="bg-muted text-foreground text-sm font-semibold">
                 {initials}
@@ -149,7 +149,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
                   {/* Mobile avatar */}
                   <div className="relative shrink-0 sm:hidden">
-                    <Avatar className="w-8 h-8 border border-foreground">
+                    <Avatar className="w-8 h-8 border border-border">
                       <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" onError={fallbackToNextAvatar} />
                       <AvatarFallback className="bg-muted text-foreground text-xs font-medium">
                         {initials}
@@ -299,7 +299,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
-          className="border-t border-foreground/20 px-4 py-3 sm:ml-[60px] space-y-3"
+          className="border-t border-border px-4 py-3 sm:ml-[60px] space-y-3"
         >
           {prospect.experience && prospect.experience.length > 0 && (
             <div>
@@ -355,9 +355,9 @@ interface ProspectResultsProps {
 
 export function ProspectResults({ results, searching }: ProspectResultsProps) {
   return (
-    <div className="border border-foreground bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
+    <div className="border border-border bg-card flex w-full max-w-full min-w-0 flex-col lg:h-full overflow-hidden">
       {/* HEADER */}
-       <div className="flex items-center gap-3 px-4 py-3 border-b border-foreground shrink-0 min-w-0">
+       <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0 min-w-0">
          <div className="flex items-center gap-2">
            <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center">
              <Search className="w-4 h-4" />

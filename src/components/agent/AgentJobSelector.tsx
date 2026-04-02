@@ -32,16 +32,16 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
                 className={cn(
                   "w-full text-left px-3 py-2.5 transition-all duration-150 flex items-center gap-3 border-2",
                   isSelected
-                    ? "border-foreground bg-foreground/[0.03] shadow-[3px_3px_0_0_hsl(var(--brutal-accent)/0.3)]"
-                    : "border-transparent hover:border-foreground/15"
+                    ? "border-border bg-foreground/[0.03] shadow-[3px_3px_0_0_hsl(var(--brutal-accent)/0.3)]"
+                    : "border-transparent hover:border-border"
                 )}
               >
                 {/* Checkmark */}
                 <div className={cn(
                   "h-5 w-5 flex items-center justify-center shrink-0 transition-all duration-150 border-2",
                   isSelected
-                    ? "bg-foreground border-foreground text-background"
-                    : "border-foreground/20"
+                    ? "bg-foreground border-border text-background"
+                    : "border-border"
                 )}>
                   {isSelected && (
                     <Check className="w-3 h-3 animate-scale-in" />
@@ -76,15 +76,15 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
       </div>
 
       {/* Launch button — pinned bottom */}
-      <div className="shrink-0 px-4 py-3 border-t border-foreground/10">
+      <div className="shrink-0 px-4 py-3 border-t border-border">
         <button
           onClick={onLaunch}
           disabled={!selectedJob}
           className={cn(
             "w-full h-11 text-xs font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
             selectedJob
-              ? "border-foreground bg-foreground text-background hover:shadow-[4px_4px_0_0_hsl(var(--brutal-accent)/0.5)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-              : "border-foreground/15 text-muted-foreground/40 cursor-not-allowed"
+              ? "border-border bg-foreground text-background hover:shadow-[4px_4px_0_0_hsl(var(--brutal-accent)/0.5)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+              : "border-border text-muted-foreground/40 cursor-not-allowed"
           )}
         >
           Lancer l'agent

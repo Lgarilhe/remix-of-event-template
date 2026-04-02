@@ -25,7 +25,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
   if (compact) {
     return (
       <div
-        className="bg-background border border-foreground p-3 hover:shadow-md transition-shadow cursor-pointer"
+        className="bg-background border border-border p-3 hover:shadow-md transition-shadow cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-start justify-between gap-2">
@@ -49,7 +49,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
         </div>
 
         {isExpanded && (
-          <div className="mt-3 pt-3 border-t border-foreground/20 space-y-2">
+          <div className="mt-3 pt-3 border-t border-border space-y-2">
             {candidate?.email && (
               <a
                 href={`mailto:${candidate.email}`}
@@ -102,7 +102,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
 
   // Full card for list view
   return (
-    <div className="bg-background border border-foreground p-4 hover:shadow-md transition-shadow">
+    <div className="bg-background border border-border p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
@@ -110,7 +110,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
               {candidate?.name || entry.name}
             </h3>
             {entry.stage && (
-              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground border border-foreground/10">
+              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground border border-border">
                 {entry.stage}
               </span>
             )}
@@ -175,7 +175,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
       </div>
 
       {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-foreground/20">
+        <div className="mt-4 pt-4 border-t border-border">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             {entry.preQualifDate && (
               <div>

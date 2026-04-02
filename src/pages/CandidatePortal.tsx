@@ -170,7 +170,7 @@ export default function CandidatePortal() {
         {/* ===== HEADER / BRANDING ===== */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-          className="border border-foreground bg-background p-6 sm:p-8 mb-6"
+          className="border border-border bg-background p-6 sm:p-8 mb-6"
         >
           <div className="flex items-center gap-3 mb-5">
             {data.company_logo_url ? (
@@ -210,7 +210,7 @@ export default function CandidatePortal() {
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Progression</span>
               <span className="text-xs font-bold text-foreground">{progressPercent}%</span>
             </div>
-            <div className="w-full h-2 bg-muted/30 border border-foreground/10">
+            <div className="w-full h-2 bg-muted/30 border border-border">
               <motion.div 
                 initial={{ width: 0 }} animate={{ width: `${progressPercent}%` }} 
                 transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -225,7 +225,7 @@ export default function CandidatePortal() {
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
           className="grid grid-cols-2 gap-3 mb-6"
         >
-          <div className="border border-foreground/20 bg-background p-4">
+          <div className="border border-border bg-background p-4">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Étape actuelle depuis</span>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-black text-foreground">{daysSinceStageUpdate}</span>
@@ -235,7 +235,7 @@ export default function CandidatePortal() {
               {stageUpdatedDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
             </span>
           </div>
-          <div className="border border-foreground/20 bg-background p-4">
+          <div className="border border-border bg-background p-4">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1">Prochaine étape dans</span>
             {daysRemaining !== null ? (
               <>
@@ -256,9 +256,9 @@ export default function CandidatePortal() {
         {/* ===== PROGRESS TIMELINE ===== */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}
-          className="border border-foreground bg-background mb-6"
+          className="border border-border bg-background mb-6"
         >
-          <div className="px-4 py-2.5 border-b border-foreground bg-foreground text-background">
+          <div className="px-4 py-2.5 border-b border-border bg-foreground text-background">
             <span className="text-xs font-bold uppercase tracking-wider">
               Avancement du processus
             </span>
@@ -283,8 +283,8 @@ export default function CandidatePortal() {
                   <div className="flex flex-col items-center">
                     <div className={cn(
                       "w-8 h-8 flex items-center justify-center border-2 shrink-0 transition-all",
-                      isPast && "bg-foreground border-foreground text-background",
-                      isCurrent && "bg-brutal-accent border-foreground text-foreground scale-110",
+                      isPast && "bg-foreground border-border text-background",
+                      isCurrent && "bg-accent border-border text-foreground scale-110",
                       isFuture && "bg-muted/30 border-border text-muted-foreground"
                     )}>
                       <Icon className="w-4 h-4" />
@@ -306,7 +306,7 @@ export default function CandidatePortal() {
                       {stage.label}
                     </span>
                     {isCurrent && (
-                      <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-brutal-accent border border-foreground font-bold uppercase tracking-wider animate-pulse">
+                      <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-accent border border-border font-bold uppercase tracking-wider animate-pulse">
                         En cours
                       </span>
                     )}
@@ -332,7 +332,7 @@ export default function CandidatePortal() {
         {data.next_steps && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}
-            className="border border-foreground bg-background p-4 mb-6"
+            className="border border-border bg-background p-4 mb-6"
           >
             <div className="flex items-center gap-2 mb-2">
               <ArrowRight className="w-4 h-4 text-foreground" />
@@ -346,9 +346,9 @@ export default function CandidatePortal() {
         {documents.length > 0 && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.35 }}
-            className="border border-foreground bg-background mb-6"
+            className="border border-border bg-background mb-6"
           >
-            <div className="px-4 py-2.5 border-b border-foreground">
+            <div className="px-4 py-2.5 border-b border-border">
               <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5" /> Documents & Ressources
               </span>
@@ -376,9 +376,9 @@ export default function CandidatePortal() {
         {/* ===== FAQ ===== */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.4 }}
-          className="border border-foreground bg-background mb-6"
+          className="border border-border bg-background mb-6"
         >
-          <div className="px-4 py-2.5 border-b border-foreground">
+          <div className="px-4 py-2.5 border-b border-border">
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
               <HelpCircle className="w-3.5 h-3.5" /> Questions fréquentes
             </span>
@@ -391,7 +391,7 @@ export default function CandidatePortal() {
         {/* ===== RECRUITER CONTACT ===== */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.45 }}
-          className="border border-foreground bg-foreground text-background p-5 mb-8"
+          className="border border-border bg-foreground text-background p-5 mb-8"
         >
           <span className="text-xs font-bold uppercase tracking-wider text-background/60 block mb-3">
             Votre recruteur

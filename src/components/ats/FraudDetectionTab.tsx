@@ -83,10 +83,10 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
         <div className="flex items-center gap-2 mt-4">
           <button
             onClick={runAnalysis}
-            className="relative overflow-hidden h-[34px] px-6 border border-foreground text-foreground text-xs font-medium uppercase tracking-wider group"
+            className="relative overflow-hidden h-[34px] px-6 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10">Lancer l'analyse</span>
-            <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+            <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </button>
           <CreditCostBadge actionId="screen_candidate" />
           <ModelPicker actionId="screen_candidate" value={selectedModel} onChange={setSelectedModel} compact />
@@ -118,7 +118,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
   return (
     <div className="space-y-4">
       {/* Trust Score */}
-      <div className="border border-foreground bg-background p-4 flex items-center gap-4">
+      <div className="border border-border bg-background p-4 flex items-center gap-4">
         <ScoreIcon className={cn("w-10 h-10 shrink-0", scoreColor)} />
         <div className="flex-1">
           <div className="flex items-baseline gap-2">
@@ -145,7 +145,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
 
       {/* Anomalies List */}
       {result.anomalies.length > 0 && (
-        <div className="border border-foreground bg-background divide-y divide-border">
+        <div className="border border-border bg-background divide-y divide-border">
           {result.anomalies.map((anomaly, i) => {
             const cat = CATEGORY_CONFIG[anomaly.category];
             const sev = SEVERITY_CONFIG[anomaly.severity];

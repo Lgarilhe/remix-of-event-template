@@ -87,10 +87,10 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
   );
 
   return (
-    <div className="bg-background border border-foreground overflow-hidden">
+    <div className="bg-background border border-border overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow className="bg-foreground/5 border-b border-foreground">
+          <TableRow className="bg-foreground/5 border-b border-border">
             <TableHead className="w-[250px]"><SortButton label="Candidat" sortKeyVal="name" /></TableHead>
             <TableHead className="w-[120px]"><SortButton label="Étape" sortKeyVal="stage" /></TableHead>
             <TableHead className="w-[100px]"><SortButton label="Source" sortKeyVal="source" /></TableHead>
@@ -105,7 +105,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           {sortedCandidates.map(candidate => (
             <TableRow 
               key={candidate.id} 
-              className="cursor-pointer hover:bg-brutal-accent/20 border-b border-foreground/10 transition-colors"
+              className="cursor-pointer hover:bg-accent/20 border-b border-border transition-colors"
               onClick={() => onCandidateClick(candidate)}
             >
               <TableCell>
@@ -128,7 +128,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </div>
               </TableCell>
               <TableCell>
-                <span className="text-xs px-2 py-0.5 border border-foreground/30 bg-foreground/5 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
+                <span className="text-xs px-2 py-0.5 border border-border bg-foreground/5 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
                   {candidate.stage}
                   {(() => {
                     const GUIDE_TIMES: Record<string, number> = { 'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5, 'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7 };
@@ -140,7 +140,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </span>
               </TableCell>
               <TableCell>
-                <span className="text-xs px-2 py-0.5 border border-foreground/20 flex items-center gap-1 w-fit uppercase tracking-wider">
+                <span className="text-xs px-2 py-0.5 border border-border flex items-center gap-1 w-fit uppercase tracking-wider">
                   {SOURCE_ICONS[candidate.source]}
                   {SOURCE_LABELS[candidate.source]}
                 </span>
@@ -182,8 +182,8 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               <TableCell>
                 {candidate.score != null ? (
                   <span className={`text-xs font-bold px-1.5 py-0.5 border ${
-                    candidate.score >= 70 ? 'border-foreground bg-brutal-accent text-foreground' : 
-                    candidate.score >= 40 ? 'border-foreground/50 text-foreground' : 'border-destructive text-destructive'
+                    candidate.score >= 70 ? 'border-border bg-accent text-foreground' : 
+                    candidate.score >= 40 ? 'border-border text-foreground' : 'border-destructive text-destructive'
                   }`}>
                     {candidate.score}%
                   </span>
@@ -195,7 +195,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 <div className="flex items-center gap-1">
                   {candidate.linkedin && (
                     <button
-                      className="h-7 w-7 flex items-center justify-center border border-foreground/20 hover:bg-brutal-accent transition-colors"
+                      className="h-7 w-7 flex items-center justify-center border border-border hover:bg-accent transition-colors"
                       onClick={(e) => { e.stopPropagation(); window.open(candidate.linkedin!, '_blank'); }}
                     >
                       <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
@@ -203,7 +203,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                   )}
                   {candidate.email && (
                     <button
-                      className="h-7 w-7 flex items-center justify-center border border-foreground/20 hover:bg-brutal-accent transition-colors"
+                      className="h-7 w-7 flex items-center justify-center border border-border hover:bg-accent transition-colors"
                       onClick={(e) => { e.stopPropagation(); window.open(`mailto:${candidate.email}`, '_blank'); }}
                     >
                       <Mail className="w-4 h-4" />

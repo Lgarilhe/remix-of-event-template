@@ -464,11 +464,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-foreground" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-x-auto overflow-y-hidden rounded-none border-l border-border" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           {/* ─── NAV + ACCENT BAR ─── */}
-          <div className="h-1.5 w-full bg-brutal-accent shrink-0" />
+          <div className="h-1.5 w-full bg-accent shrink-0" />
           {(onNavigatePrev || onNavigateNext) && (
-            <div className="flex items-center justify-between px-3 sm:px-6 py-1.5 bg-muted/30 border-b border-foreground/10 shrink-0">
+            <div className="flex items-center justify-between px-3 sm:px-6 py-1.5 bg-muted/30 border-b border-border shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -505,11 +505,11 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
           )}
           {/* ─── HEADER ─── */}
-          <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-foreground shrink-0">
+          <SheetHeader className="px-3 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 bg-background border-b border-border shrink-0">
             <div className="flex items-start gap-3 sm:gap-4">
-               <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border border-foreground shrink-0 rounded-none">
+               <Avatar className="w-12 h-12 sm:w-16 sm:h-16 border border-border shrink-0 rounded-none">
                 <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-brutal-accent text-foreground text-base sm:text-xl font-bold rounded-none">
+                <AvatarFallback className="bg-accent text-foreground text-base sm:text-xl font-bold rounded-none">
                   {initials || '?'}
                 </AvatarFallback>
               </Avatar>
@@ -556,7 +556,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* ─── CONTACT INFO ─── */}
               {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-foreground/10 pt-2">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
                   {contactInfo.emails.map((email) => (
                     <Badge
                       key={email}
@@ -583,13 +583,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             </div>
 
             {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-1 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-foreground/20 overflow-x-auto no-scrollbar" data-no-swipe>
+            <div className="flex items-center gap-1 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-border overflow-x-auto no-scrollbar" data-no-swipe>
               {selectedJob && onScoreProfile && !jobScore && (
                 <Button
                   size="sm"
                   onClick={handleScore}
                   disabled={isScoring}
-                  className="h-7 gap-1 text-xs rounded-none border border-foreground bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1 text-xs rounded-none border border-border bg-foreground text-background hover:bg-foreground/90 px-2 uppercase tracking-wider font-bold shrink-0"
                 >
                   {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
                   {isScoring ? '…' : 'Score'}
@@ -609,7 +609,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <Button
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-7 gap-1 text-xs rounded-none border border-foreground bg-brutal-accent text-foreground hover:bg-brutal-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
+                  className="h-7 gap-1 text-xs rounded-none border border-border bg-accent text-foreground hover:bg-accent/80 px-2 uppercase tracking-wider font-bold shrink-0"
                 >
                   <PenLine className="w-3 h-3" />
                   Msg
@@ -644,7 +644,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               {profileUrl && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-7 h-7 border border-foreground/30 hover:border-foreground hover:bg-muted transition-colors shrink-0">
+                    <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-7 h-7 border border-border hover:border-border hover:bg-muted transition-colors shrink-0">
                       <img src={linkedinLogo} alt="LinkedIn" className="w-3.5 h-3.5" />
                     </a>
                   </TooltipTrigger>
@@ -659,7 +659,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             <div className="p-2 sm:p-6 space-y-3 sm:space-y-5 min-w-0 max-w-full">
               {/* Job Score */}
               {jobScore && (
-                <details open className="border border-foreground bg-background group">
+                <details open className="border border-border bg-background group">
                   <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
                     <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Scoring</h3>
                     <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold group-open:hidden">Voir</span>
@@ -674,14 +674,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* Airtable History Panel — always show if we have data or are loading */}
               {(historyPanelLoading || hasHistory) && (
-                <div className="border border-foreground overflow-hidden bg-background">
+                <div className="border border-border overflow-hidden bg-background">
                   <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
                 </div>
               )}
 
               {/* Aircall History */}
               {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
-                <div className="border border-foreground overflow-hidden bg-background p-3 sm:p-4">
+                <div className="border border-border overflow-hidden bg-background p-3 sm:p-4">
                   <AircallHistoryPanel
                     calls={aircallHistory.calls}
                     loading={aircallHistory.loading}
@@ -693,7 +693,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* À propos */}
               {displayProfile.summary && (
-                <details className="border border-foreground bg-background group">
+                <details className="border border-border bg-background group">
                   <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
                     <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">À propos</h3>
                     <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
@@ -706,7 +706,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* Loading indicator for pool profile enrichment */}
               {isEnriching && (
-                <div className="flex items-center gap-2 p-3 border border-foreground bg-muted/30 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 p-3 border border-border bg-muted/30 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Chargement du profil complet…
                 </div>

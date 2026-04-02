@@ -505,26 +505,26 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         className="fixed inset-0 z-50 bg-background flex flex-col"
       >
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-4 sm:px-8 py-4 border-b border-foreground">
+        <div className="flex items-center justify-between px-4 sm:px-8 py-4 border-b border-border">
           <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
             Nouvelle mission
           </h2>
           <button
             onClick={() => onOpenChange(false)}
-            className="h-8 w-8 flex items-center justify-center border border-foreground bg-background text-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            className="h-8 w-8 flex items-center justify-center border border-border bg-background text-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex border-b border-foreground">
+        <div className="flex border-b border-border">
           {TABS.map(tab => (
             <button
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
               className={cn(
-                "flex-1 h-[42px] text-xs sm:text-xs font-medium uppercase tracking-wider transition-colors border-r border-foreground last:border-r-0",
+                "flex-1 h-[42px] text-xs sm:text-xs font-medium uppercase tracking-wider transition-colors border-r border-border last:border-r-0",
                 activeTab === tab.value
                   ? "bg-foreground text-background"
                   : "bg-background text-foreground hover:bg-muted"
@@ -568,7 +568,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         onChange={(e) => setBriefText(e.target.value)}
                         placeholder={"Collez ici la fiche de poste, le brief client, ou une URL de page carrières...\n\nExemple :\nRecherche d'un Lead Developer React/Node.js à Paris, 5+ ans d'expérience, télétravail partiel, salaire 60-75K€..."}
                         rows={10}
-                        className="border-foreground rounded-none resize-none"
+                        className="border-border rounded-none resize-none"
                         autoFocus
                       />
                       <div className="flex items-center justify-between">
@@ -583,14 +583,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
-                        className="border border-foreground p-3 bg-muted flex items-center justify-between gap-3"
+                        className="border border-border p-3 bg-muted flex items-center justify-between gap-3"
                       >
                         <p className="text-xs text-foreground">
                           🔗 URL de page carrières détectée. Voulez-vous importer les postes depuis cette page ?
                         </p>
                         <button
                           onClick={handleAcceptUrlSuggestion}
-                          className="shrink-0 h-[28px] px-3 text-xs font-medium uppercase tracking-wider border border-foreground bg-foreground text-background"
+                          className="shrink-0 h-[28px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background"
                         >
                           Importer
                         </button>
@@ -600,13 +600,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     <button
                       onClick={handleBriefAnalyze}
                       disabled={!briefText.trim() || briefText.trim().length < 20 || briefAnalyzing}
-                      className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
+                      className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
                     >
                       <span className="relative z-10 flex items-center justify-center gap-2">
                         {briefAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : '🤖'}
                         {briefAnalyzing ? 'Analyse en cours...' : 'Analyser avec l\'IA'}
                       </span>
-                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
                   </>
                 ) : (
@@ -629,7 +629,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <Input
                           value={briefName}
                           onChange={(e) => setBriefName(e.target.value)}
-                          className="border-foreground rounded-none h-[34px] text-sm"
+                          className="border-border rounded-none h-[34px] text-sm"
                           placeholder="Ex: Lead DevOps — Numspot"
                         />
                       </div>
@@ -638,7 +638,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <Input
                           value={briefClientName}
                           onChange={(e) => setBriefClientName(e.target.value)}
-                          className="border-foreground rounded-none h-[34px] text-sm"
+                          className="border-border rounded-none h-[34px] text-sm"
                           placeholder="Ex: Numspot"
                         />
                       </div>
@@ -646,7 +646,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                     {/* Stratégie */}
                     {briefAnalysis.analysis.search_rationale && (
-                      <div className="border-l-4 border-brutal-accent p-4 bg-muted/20">
+                      <div className="border-l-4 border-accent p-4 bg-muted/20">
                         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">🎯 Stratégie</p>
                         <p className="text-sm text-foreground">{briefAnalysis.analysis.search_rationale}</p>
                       </div>
@@ -671,7 +671,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <div className="flex flex-wrap gap-1.5">
                           <span className="text-xs text-muted-foreground uppercase tracking-wider mr-1 self-center">Skills:</span>
                           {briefAnalysis.filters.skills_keywords.map((skill: string, i: number) => (
-                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-xs font-medium uppercase tracking-wider">
+                            <span key={i} className="px-2 py-0.5 border border-border text-foreground text-xs font-medium uppercase tracking-wider">
                               {skill}
                             </span>
                           ))}
@@ -680,7 +680,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground uppercase tracking-wider">Expérience:</span>
-                        <span className="px-2 py-0.5 border border-foreground/30 text-foreground text-xs font-medium">
+                        <span className="px-2 py-0.5 border border-border text-foreground text-xs font-medium">
                           {briefAnalysis.filters.years_of_experience_min ?? '?'} - {briefAnalysis.filters.years_of_experience_max ?? '?'} ans
                         </span>
                         {briefAnalysis.analysis.experience_rationale && (
@@ -694,7 +694,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground uppercase tracking-wider">Zone:</span>
                           {briefAnalysis.filters.location_keywords.map((loc: string, i: number) => (
-                            <span key={i} className="px-2 py-0.5 border border-foreground/30 text-foreground text-xs font-medium">
+                            <span key={i} className="px-2 py-0.5 border border-border text-foreground text-xs font-medium">
                               {loc}
                             </span>
                           ))}
@@ -705,7 +705,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <div className="flex flex-wrap gap-1.5">
                           <span className="text-xs text-muted-foreground uppercase tracking-wider mr-1 self-center">Domaines:</span>
                           {briefAnalysis.analysis.domain_expertise.map((d, i) => (
-                            <span key={i} className="px-2 py-0.5 border border-foreground/10 bg-muted text-muted-foreground text-xs font-medium uppercase tracking-wider">
+                            <span key={i} className="px-2 py-0.5 border border-border bg-muted text-muted-foreground text-xs font-medium uppercase tracking-wider">
                               {d}
                             </span>
                           ))}
@@ -717,7 +717,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     {briefAnalysis.filters.keywords && (
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">🔍 Boolean généré</p>
-                        <code className="block text-xs text-foreground/80 bg-muted p-3 border border-foreground/10 break-all">
+                        <code className="block text-xs text-foreground/80 bg-muted p-3 border border-border break-all">
                           {briefAnalysis.filters.keywords}
                         </code>
                         {briefAnalysis.analysis.keyword_rationale && (
@@ -733,7 +733,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={handleBriefCreate}
                         disabled={isCreating}
-                        className="relative overflow-hidden flex-1 h-[42px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 group"
+                        className="relative overflow-hidden flex-1 h-[42px] text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-40 group"
                       >
                         <span className="relative z-10 flex items-center justify-center gap-2">
                           {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : '🚀'}
@@ -742,10 +742,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       </button>
                       <button
                         onClick={() => { setBriefAnalysis(null); }}
-                        className="relative overflow-hidden h-[42px] px-4 text-xs font-bold uppercase tracking-wider border border-foreground bg-background text-foreground group"
+                        className="relative overflow-hidden h-[42px] px-4 text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground group"
                       >
                         <span className="relative z-10">Modifier</span>
-                        <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                        <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                       </button>
                     </div>
                   </>
@@ -777,7 +777,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={() => setInputMode('name')}
                         className={cn(
-                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-foreground transition-colors",
+                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-border transition-colors",
                           inputMode === 'name' ? "bg-foreground text-background" : "bg-background text-foreground"
                         )}
                       >
@@ -786,7 +786,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={() => setInputMode('url')}
                         className={cn(
-                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-foreground border-l-0 transition-colors",
+                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-border border-l-0 transition-colors",
                           inputMode === 'url' ? "bg-foreground text-background" : "bg-background text-foreground"
                         )}
                       >
@@ -802,7 +802,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                           onChange={(e) => setCompanyName(e.target.value)}
                           onKeyDown={handleImportKeyDown}
                           placeholder="Ex: Datadog, OVHcloud, Scaleway..."
-                          className="border-foreground rounded-none h-11"
+                          className="border-border rounded-none h-11"
                           autoFocus
                         />
                       </div>
@@ -814,7 +814,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                           onChange={(e) => setDirectUrl(e.target.value)}
                           onKeyDown={handleImportKeyDown}
                           placeholder="Ex: https://www.welcometothejungle.com/fr/companies/datadog/jobs"
-                          className="border-foreground rounded-none h-11"
+                          className="border-border rounded-none h-11"
                           autoFocus
                         />
                         {detectedImportSource && directUrl.length > 10 && (
@@ -829,10 +829,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     <button
                       onClick={() => startScan()}
                       disabled={inputMode === 'name' ? !companyName.trim() : !directUrl.trim()}
-                      className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
+                      className="relative overflow-hidden w-full h-[42px] text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
                     >
                       <span className="relative z-10 flex items-center justify-center gap-2">🔍 Scanner</span>
-                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
                   </motion.div>
                 )}
@@ -856,7 +856,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         {bubbles.map(bubble => (
                           <motion.div key={bubble.id} initial={{ opacity: 0, x: -20, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} className="flex items-start gap-2">
                             <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs shrink-0 mt-0.5">🤖</div>
-                            <div className="border border-foreground bg-muted px-3 py-2 text-sm text-foreground">{bubble.text}</div>
+                            <div className="border border-border bg-muted px-3 py-2 text-sm text-foreground">{bubble.text}</div>
                           </motion.div>
                         ))}
                       </AnimatePresence>
@@ -869,19 +869,19 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 {importPhase === 'results' && importResult && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                     {importResult.openRoles.length === 0 ? (
-                      <div className="border border-foreground p-8 text-center">
+                      <div className="border border-border p-8 text-center">
                         <div className="text-3xl mb-3">🤷</div>
                         <p className="text-sm text-muted-foreground mb-4">Aucun poste ouvert détecté pour cette entreprise.</p>
-                        <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-6 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group">
+                        <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-6 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
                           <span className="relative z-10">← Nouvelle recherche</span>
-                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                         </button>
                       </div>
                     ) : (
                       <div className="flex flex-col lg:flex-row gap-6">
                         {/* Left column: Company info */}
                         <div className="lg:w-[280px] shrink-0">
-                          <div className="border border-foreground p-4 space-y-4">
+                          <div className="border border-border p-4 space-y-4">
                             <div className="flex items-center gap-3">
                               {importResult.logoUrl ? (
                                 <img src={importResult.logoUrl} alt={importResult.name} className="w-12 h-12 object-contain border border-muted" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -906,7 +906,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Sources</div>
                                 <div className="flex flex-wrap gap-1">
                                   {importResult.sourcesUsed.map(src => (
-                                    <span key={src} className="text-xs uppercase tracking-wider font-medium border border-foreground px-2 py-0.5 text-foreground">{src}</span>
+                                    <span key={src} className="text-xs uppercase tracking-wider font-medium border border-border px-2 py-0.5 text-foreground">{src}</span>
                                   ))}
                                 </div>
                               </div>
@@ -923,18 +923,18 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                         {/* Right column: Roles list */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between border border-foreground border-b-0 px-4 py-2.5 bg-muted">
+                          <div className="flex items-center justify-between border border-border border-b-0 px-4 py-2.5 bg-muted">
                             <button onClick={toggleAll} className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-foreground hover:opacity-70 transition-opacity">
-                              <Checkbox checked={selectedRoles.size === importResult.openRoles.length} className="border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-background" onCheckedChange={toggleAll} />
+                              <Checkbox checked={selectedRoles.size === importResult.openRoles.length} className="border-border data-[state=checked]:bg-foreground data-[state=checked]:text-background" onCheckedChange={toggleAll} />
                               Tout sélectionner
                             </button>
                             <span className="text-xs text-muted-foreground uppercase tracking-wider">{selectedRoles.size}/{importResult.openRoles.length}</span>
                           </div>
-                          <div className="border border-foreground max-h-[400px] overflow-y-auto">
+                          <div className="border border-border max-h-[400px] overflow-y-auto">
                             {hasDepartments ? (
                               groupedRoles.map((group, gi) => (
                                 <div key={group.department}>
-                                  <div className={cn("px-4 py-2 bg-secondary text-xs font-bold uppercase tracking-wider text-secondary-foreground flex items-center gap-2", gi > 0 && "border-t border-foreground")}>
+                                  <div className={cn("px-4 py-2 bg-secondary text-xs font-bold uppercase tracking-wider text-secondary-foreground flex items-center gap-2", gi > 0 && "border-t border-border")}>
                                     <Briefcase className="w-3 h-3" /> {group.department}
                                     <span className="text-muted-foreground font-normal ml-auto">{group.roles.length}</span>
                                   </div>
@@ -975,7 +975,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                 <form onSubmit={handleManualSubmit} className="space-y-5 max-w-lg mx-auto">
                   {/* Link to job toggle */}
-                  <div className="flex items-center justify-between p-4 bg-muted border border-foreground">
+                  <div className="flex items-center justify-between p-4 bg-muted border border-border">
                     <div className="flex items-center gap-3">
                       <Briefcase className="w-5 h-5 text-foreground" />
                       <div>
@@ -993,7 +993,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <Label>Poste associé</Label>
                       <Popover open={jobPopoverOpen} onOpenChange={setJobPopoverOpen}>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" className="w-full justify-between font-normal border-foreground rounded-none">
+                          <Button variant="outline" role="combobox" className="w-full justify-between font-normal border-border rounded-none">
                             {selectedJob ? (
                               <span className="truncate">{selectedJob.title}{selectedJob.client?.name ? ` @ ${selectedJob.client.name}` : ''}</span>
                             ) : (
@@ -1040,28 +1040,28 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                   <div className="space-y-2">
                     <Label htmlFor="name">Nom du projet</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={selectedJob?.title || "Ex: Développeurs Senior Paris"} className="border-foreground rounded-none" />
+                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={selectedJob?.title || "Ex: Développeurs Senior Paris"} className="border-border rounded-none" />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="description">Description (optionnel)</Label>
-                    <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Notes sur ce projet de sourcing..." rows={3} className="border-foreground rounded-none" />
+                    <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Notes sur ce projet de sourcing..." rows={3} className="border-border rounded-none" />
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => onOpenChange(false)} className="h-[38px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground hover:bg-muted transition-colors">
+                    <button type="button" onClick={() => onOpenChange(false)} className="h-[38px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:bg-muted transition-colors">
                       Annuler
                     </button>
                     <button
                       type="submit"
                       disabled={isCreating || (linkToJob && !selectedJobId)}
-                      className="relative overflow-hidden flex-1 h-[38px] text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
+                      className="relative overflow-hidden flex-1 h-[38px] text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
                     >
                       <span className="relative z-10 flex items-center justify-center gap-2">
                         {isCreating && <Loader2 className="w-4 h-4 animate-spin" />}
                         Créer le projet
                       </span>
-                      <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                      <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                     </button>
                   </div>
                 </form>
@@ -1072,14 +1072,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
         {/* ── Footer for import results ── */}
         {activeTab === 'import' && importPhase === 'results' && importResult && importResult.openRoles.length > 0 && (
-          <div className="border-t border-foreground px-4 sm:px-8 py-4 flex items-center justify-between gap-3">
+          <div className="border-t border-border px-4 sm:px-8 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <button onClick={() => onOpenChange(false)} className="h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground hover:bg-muted transition-colors">
+              <button onClick={() => onOpenChange(false)} className="h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:bg-muted transition-colors">
                 Annuler
               </button>
-              <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground bg-background text-foreground group">
+              <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
                 <span className="relative z-10">← Nouvelle recherche</span>
-                <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               </button>
             </div>
             <div className="flex items-center gap-4">
@@ -1089,7 +1089,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               <button
                 onClick={handleImport}
                 disabled={selectedRoles.size === 0 || importing}
-                className="relative overflow-hidden h-[38px] px-6 text-xs font-bold uppercase tracking-wider border border-foreground bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
+                className="relative overflow-hidden h-[38px] px-6 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-40 disabled:cursor-not-allowed group"
               >
                 <span className="relative z-10 flex items-center gap-2">
                   {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -1118,7 +1118,7 @@ const RoleRow = React.memo(({ role, selected, onToggle, showDepartment }: {
       selected ? "bg-muted" : "bg-background hover:bg-muted/50"
     )}
   >
-    <Checkbox checked={selected} className="border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-background shrink-0" />
+    <Checkbox checked={selected} className="border-border data-[state=checked]:bg-foreground data-[state=checked]:text-background shrink-0" />
     <div className="flex-1 min-w-0">
       <div className="text-sm font-semibold text-foreground truncate">{role.title}</div>
       <div className="flex items-center gap-3 mt-0.5 flex-wrap">

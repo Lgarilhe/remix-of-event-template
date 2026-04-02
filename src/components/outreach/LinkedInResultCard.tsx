@@ -190,7 +190,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-background border border-foreground transition-all max-w-full cursor-pointer group shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))]`}
+      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-[3px_3px_0px_0px_hsl(var(--brutal-accent))] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_hsl(var(--brutal-accent))]`}
       style={{ wordBreak: 'break-word' }}
       onClick={(e) => {
         if (showScoringOverlay) return;
@@ -201,7 +201,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
     >
       {/* High score indicator — left accent bar */}
       {hasHighScore && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brutal-accent" />
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
       )}
 
       {/* Score flash overlay */}
@@ -377,7 +377,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 border border-foreground/15 text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
+                    <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
                       {companyType.label}
                     </span>
                   )}

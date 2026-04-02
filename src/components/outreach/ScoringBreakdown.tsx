@@ -32,7 +32,7 @@ const DimensionRow: React.FC<{ label: string; score: number; weight: number }> =
         <div
           className={cn(
             "h-full rounded-full transition-all duration-700 ease-out",
-            score >= 70 ? "bg-brutal-accent" : score >= 40 ? "bg-brutal-accent/40" : "bg-destructive/50"
+            score >= 70 ? "bg-accent" : score >= 40 ? "bg-accent/40" : "bg-destructive/50"
           )}
           style={{ width: `${score}%` }}
         />
@@ -146,7 +146,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
                     className={cn(
                       "flex items-center gap-1 px-2 py-1 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px",
                       activeTab === tab.id
-                        ? "border-foreground text-foreground"
+                        ? "border-border text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground/70"
                     )}
                   >
@@ -168,7 +168,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
 
           {/* Skip reason */}
           {details.skipReason && (
-            <div className="flex items-start gap-2 text-xs text-foreground bg-muted px-2.5 py-1.5 border border-foreground/10">
+            <div className="flex items-start gap-2 text-xs text-foreground bg-muted px-2.5 py-1.5 border border-border">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-destructive" />
               <span className="font-medium">{details.skipReason}</span>
             </div>

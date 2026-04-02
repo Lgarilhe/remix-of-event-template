@@ -63,7 +63,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
   }
 
   return (
-    <div className="border-t border-foreground/20">
+    <div className="border-t border-border">
       <div className="p-3 space-y-2">
         {/* Airtable Header */}
         {data && (data.candidate || hasAirtableHistory) && (
@@ -221,7 +221,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         {/* Notion Shortlists */}
         {allNotionShortlists.length > 0 && (
           <>
-            <div className="flex items-center gap-2 pt-2 border-t border-foreground/10">
+            <div className="flex items-center gap-2 pt-2 border-t border-border">
               <img src={notionLogo} alt="Notion" className="w-4 h-4 object-contain" />
               <span className="text-xs font-semibold text-foreground">Historique Notion</span>
             </div>

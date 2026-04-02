@@ -173,14 +173,14 @@ export default function Candidates() {
       <div className="py-6 pb-8 sm:pb-12">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Deprecation banner */}
-          <div className="mb-4 border border-foreground bg-brutal-accent/30 px-4 py-2.5 flex items-center gap-2 text-xs uppercase tracking-wider font-medium">
+          <div className="mb-4 border border-border bg-accent/30 px-4 py-2.5 flex items-center gap-2 text-xs uppercase tracking-wider font-medium">
             <span>ℹ️</span>
             <span>Cette vue est aussi accessible depuis <a href="/pipeline?view=shortlist" className="underline font-bold">Pipeline → Shortlist Client</a></span>
           </div>
           {/* Header */}
           <div className="mb-4 sm:mb-8">
             <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
-              <div className="h-8 w-8 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-foreground">
+              <div className="h-8 w-8 sm:h-10 sm:w-10 bg-foreground text-background flex items-center justify-center border border-border">
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <h1 className="text-xl sm:text-3xl font-bold text-foreground uppercase tracking-tight">Candidats</h1>
@@ -207,15 +207,15 @@ export default function Candidates() {
                         key={tab.value}
                         onClick={() => setActiveTab(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-foreground transition-colors duration-200 group",
+                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group",
                           index > 0 && "border-l-0",
-                          isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
+                          isActive ? "bg-accent text-foreground" : "bg-background text-foreground"
                         )}
                       >
                         <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
                         {!isActive && (
-                          <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
+                          <span className="absolute inset-0 bg-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                         )}
                       </button>
                     );

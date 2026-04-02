@@ -386,7 +386,7 @@ export const InteractiveFlowDiagram: React.FC<InteractiveFlowDiagramProps> = ({
               <Connector />
               <button
                 onClick={() => onAddStep()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 hover:bg-muted/30 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/30 transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 Ajouter une étape
