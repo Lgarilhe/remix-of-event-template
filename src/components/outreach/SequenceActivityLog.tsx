@@ -337,19 +337,19 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
             <div className="p-2.5 sm:p-3 border border-foreground text-center">
-              <div className="text-lg sm:text-xl font-bold text-blue-600">{stats.scheduled}</div>
+              <div className="text-lg sm:text-xl font-bold text-info-foreground">{stats.scheduled}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
             </div>
             <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center bg-amber-400/10">
-              <div className="text-lg sm:text-xl font-bold text-red-600">{stats.pending}</div>
+              <div className="text-lg sm:text-xl font-bold text-destructive">{stats.pending}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
             </div>
             <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
-              <div className="text-lg sm:text-xl font-bold text-emerald-600">{stats.sent}</div>
+              <div className="text-lg sm:text-xl font-bold text-success-foreground">{stats.sent}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
             </div>
             <div className="p-2.5 sm:p-3 border border-foreground border-l-0 text-center">
-              <div className="text-lg sm:text-xl font-bold text-red-500">{stats.failed}</div>
+              <div className="text-lg sm:text-xl font-bold text-destructive">{stats.failed}</div>
               <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
             </div>
           </div>
@@ -552,7 +552,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleCancelExecution(exec.id);
@@ -573,7 +573,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                 </div>
                                 {exec.executed_at && (
                                   <div className="flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3 text-green-600" />
+                                    <CheckCircle2 className="w-3 h-3 text-success-foreground" />
                                     <span>Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}</span>
                                   </div>
                                 )}

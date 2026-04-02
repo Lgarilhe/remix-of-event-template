@@ -96,27 +96,27 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
     const date = parseISO(dueAt);
     
     if (isPast(date) && !isToday(date)) {
-      return { label: 'En retard', className: 'bg-red-100 text-red-700' };
+      return { label: 'En retard', className: 'bg-destructive/10 text-destructive' };
     }
     if (isToday(date)) {
-      return { label: "Aujourd'hui", className: 'bg-amber-100 text-amber-700' };
+      return { label: "Aujourd'hui", className: 'bg-warning/10 text-warning' };
     }
     if (isTomorrow(date)) {
-      return { label: 'Demain', className: 'bg-blue-100 text-blue-700' };
+      return { label: 'Demain', className: 'bg-info/10 text-info' };
     }
-    return { 
-      label: format(date, 'd MMM', { locale: fr }), 
-      className: 'bg-gray-100 text-gray-700' 
+    return {
+      label: format(date, 'd MMM', { locale: fr }),
+      className: 'bg-muted text-foreground'
     };
   };
 
   return (
-    <div className="w-80 bg-white rounded-xl border border-[#1A1A1A]/10 flex-shrink-0 overflow-hidden">
+    <div className="w-80 bg-background rounded-xl border border-border flex-shrink-0 overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-[#1A1A1A]/10 flex items-center justify-between">
+      <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Bell className="w-5 h-5 text-amber-500" />
-          <h3 className="font-semibold text-[#1A1A1A]">Rappels</h3>
+          <Bell className="w-5 h-5 text-warning" />
+          <h3 className="font-semibold text-foreground">Rappels</h3>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose}>
           <X className="w-4 h-4" />
@@ -124,13 +124,13 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
       </div>
 
       {/* Filters */}
-      <div className="px-4 py-2 border-b border-[#1A1A1A]/10">
+      <div className="px-4 py-2 border-b border-border">
         <label className="flex items-center gap-2 cursor-pointer">
           <Checkbox 
             checked={showCompleted}
             onCheckedChange={(checked) => setShowCompleted(!!checked)}
           />
-          <span className="text-sm text-[#1A1A1A]/70">Afficher terminés</span>
+          <span className="text-sm text-muted-foreground">Afficher terminés</span>
         </label>
       </div>
 
@@ -138,7 +138,7 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
       <ScrollArea className="h-[500px]">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-[#1A1A1A]/40" />
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : reminders.length === 0 ? (
           <div className="text-center py-12 px-4">
@@ -160,7 +160,7 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
                     p-3 rounded-lg border transition-all cursor-pointer
                     ${isCompleted 
                       ? 'bg-gray-50 border-gray-200 opacity-60' 
-                      : 'bg-white border-[#1A1A1A]/10 hover:border-[#1A1A1A]/20'
+                      : 'bg-white border-border hover:border-[#1A1A1A]/20'
                     }
                   `}
                   onClick={() => onReminderClick(reminder.candidate_id)}
