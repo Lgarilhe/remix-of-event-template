@@ -8,6 +8,33 @@ import { getActiveOrganizationId } from '@/lib/orgContext';
 
 const TIMEOUT_MS = 55_000;
 
+type EdgeResponsePayload = Record<string, unknown> | null;
+
+async function readEdgeResponse(response: Response): Promise<{
+  payload: EdgeResponsePayload;
+  text: string;
+}> {
+  const text = await response.text();
+  const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+
+  if (!text.trim()) {
+    return { payload: null, text: '' };
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { payload: parsed as Record<string, unknown>, text };
+      }
+    } catch {
+      // Fall back to raw text below.
+    }
+  }
+
+  return { payload: null, text };
+}
+
 /** Translate technical errors into French user-facing messages */
 function humanizeError(err: Error | string): string {
   const msg = typeof err === 'string' ? err : err.message || '';
@@ -40,22 +67,18 @@ async function extractEdgeFunctionError(err: unknown): Promise<string> {
 
   if (context instanceof Response) {
     try {
-      const payload = await context.clone().json();
+      const { payload, text } = await readEdgeResponse(context.clone());
       if (typeof payload?.error === 'string' && payload.error.trim()) {
         return payload.error;
       }
       if (typeof payload?.message === 'string' && payload.message.trim()) {
         return payload.message;
       }
-    } catch {
-      try {
-        const text = await context.clone().text();
-        if (text.trim()) {
-          return text;
-        }
-      } catch {
-        // noop
+      if (text.trim()) {
+        return text;
       }
+    } catch {
+      // noop
     }
   }
 
@@ -75,26 +98,44 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
   }
 
   try {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS);
+    const abortController = new AbortController();
+    const timer = window.setTimeout(() => abortController.abort(), TIMEOUT_MS);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify(enrichedBody),
+      signal: abortController.signal,
     });
 
-    const { data, error } = await Promise.race([
-      supabase.functions.invoke(functionName, {
-        body: enrichedBody,
-      }),
-      timeoutPromise,
-    ]);
+    clearTimeout(timer);
 
-    if (timer) clearTimeout(timer);
+    const { payload, text } = await readEdgeResponse(response);
 
-    if (error) {
-      const friendlyMsg = await extractEdgeFunctionError(error);
+    if (!response.ok) {
+      const rawMessage =
+        (typeof payload?.error === 'string' && payload.error.trim())
+          ? payload.error
+          : (typeof payload?.message === 'string' && payload.message.trim())
+            ? payload.message
+            : text.trim() || `HTTP ${response.status}`;
+
+      const friendlyMsg = humanizeError(rawMessage);
       return { data: { success: false, error: friendlyMsg } as any, error: new Error(friendlyMsg) };
     }
 
-    return { data: data as T & { success?: boolean; error?: string }, error: null };
+    return {
+      data: ((payload ?? ({ success: true } satisfies { success: boolean })) as T & { success?: boolean; error?: string }),
+      error: null,
+    };
   } catch (e: any) {
     const friendlyMsg = await extractEdgeFunctionError(e);
     console.error(`[invokeEdgeFunction] ${functionName} failed:`, e);
