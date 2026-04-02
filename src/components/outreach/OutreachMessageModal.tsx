@@ -523,7 +523,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             <div className="space-y-4">
               {/* Subject line */}
               <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Objet
                 </label>
                 <Input
