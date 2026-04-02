@@ -139,14 +139,14 @@ const Settings = () => {
                   key={tab.value}
                   onClick={() => setActiveTab(tab.value)}
                   className={cn(
-                    "relative px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] whitespace-nowrap flex items-center gap-2 border-r border-border last:border-r-0 overflow-hidden group transition-colors",
+                    "relative px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] whitespace-nowrap flex items-center gap-2 border-r border-border last:border-r-0 overflow-hidden group transition-colors",
                     isActive
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain relative z-10" />
-                  <span className="relative z-10 hidden sm:inline">{tab.label}</span>
+                  <span className="relative z-10 text-[10px] sm:text-xs">{tab.label}</span>
                 </button>
               );
             })}
