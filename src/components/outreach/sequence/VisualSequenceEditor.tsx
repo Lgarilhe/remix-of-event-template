@@ -33,21 +33,21 @@ interface PendingBranch {
 }
 
 const ACTIONS = [
-  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-emerald-50 text-emerald-600', description: 'Demande de connexion' },
-  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-blue-50 text-blue-600', description: 'InMail payant' },
-  { value: 'email', label: 'Email', icon: Mail, color: 'bg-violet-50 text-violet-600', description: 'Envoyer un email' },
-  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-sky-50 text-sky-600', description: 'Visiter le profil' },
-  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-orange-50 text-orange-600', description: 'Si connecté' },
-  { value: 'smart_message', label: 'Smart Message', icon: Sparkles, color: 'bg-purple-50 text-purple-600', description: 'Personnalisé par IA' },
-  { value: 'whatsapp_message', label: 'WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-50 text-green-600', description: 'Si numéro dispo' },
+  { value: 'connection_request', label: 'Invitation LinkedIn', icon: UserPlus, color: 'bg-success/10 text-success', description: 'Demande de connexion' },
+  { value: 'inmail', label: 'InMail', icon: Mail, color: 'bg-info/10 text-info', description: 'InMail payant' },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-brand-purple/10 text-brand-purple', description: 'Envoyer un email' },
+  { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-info/10 text-info', description: 'Visiter le profil' },
+  { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-warning/10 text-warning', description: 'Si connecté' },
+  { value: 'smart_message', label: 'Smart Message', icon: Sparkles, color: 'bg-brand-purple/10 text-brand-purple', description: 'Personnalisé par IA' },
+  { value: 'whatsapp_message', label: 'WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-500/10 text-green-500', description: 'Si numéro dispo' },
 ];
 
 const TRIGGERS = [
-  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-indigo-50 text-indigo-600', description: 'Route par degré' },
-  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-amber-50 text-amber-600', description: 'Pause acceptation' },
-  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-amber-50 text-amber-600', description: 'Pause réponse' },
-  { value: 'wait_profile_visit', label: 'Attendre visite', icon: Eye, color: 'bg-amber-50 text-amber-600', description: 'Pause visite' },
-  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-rose-50 text-rose-600', description: 'Si/Sinon' },
+  { value: 'check_connection', label: 'Vérifier connexion', icon: GitBranch, color: 'bg-info/10 text-info', description: 'Route par degré' },
+  { value: 'wait_connection', label: 'Attendre connexion', icon: Timer, color: 'bg-warning/10 text-warning', description: 'Pause acceptation' },
+  { value: 'wait_reply', label: 'Attendre réponse', icon: MessageSquare, color: 'bg-warning/10 text-warning', description: 'Pause réponse' },
+  { value: 'wait_profile_visit', label: 'Attendre visite', icon: Eye, color: 'bg-warning/10 text-warning', description: 'Pause visite' },
+  { value: 'condition_branch', label: 'Branchement', icon: GitBranch, color: 'bg-destructive/10 text-destructive', description: 'Si/Sinon' },
 ];
 
 const ALL_STEP_TYPES = [...ACTIONS, ...TRIGGERS];
@@ -235,9 +235,9 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
                   {pendingBranch && (
                     <div className={cn(
                       "px-3 py-2 rounded-md text-xs font-medium flex items-center gap-2",
-                      pendingBranch.branch === 'true' 
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60" 
-                        : "bg-orange-50 text-orange-700 border border-orange-200/60"
+                      pendingBranch.branch === 'true'
+                        ? "bg-success/10 text-success border border-success/30"
+                        : "bg-warning/10 text-warning border border-warning/30"
                     )}>
                       <GitBranch className="w-3.5 h-3.5" />
                       {pendingBranch.branch === 'true' ? "Connecté (1er degré)" : "Non connecté (2e/3e)"}

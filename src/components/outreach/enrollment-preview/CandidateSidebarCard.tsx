@@ -144,7 +144,7 @@ function ChannelBadge({ available, label, tooltipMissing }: { available: boolean
   const badge = (
     <span className={cn(
       "text-[8px] px-1 py-0.5 rounded border",
-      available ? "border-emerald-300 text-emerald-600 bg-emerald-50" : "border-muted text-muted-foreground bg-muted/30"
+      available ? "border-emerald-500/30 text-emerald-400 bg-success/10" : "border-muted text-muted-foreground bg-muted/30"
     )}>
       {available ? '✓' : '✗'} {label}
     </span>

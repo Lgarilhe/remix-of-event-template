@@ -145,7 +145,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                 </div>
                 <div className="text-right">
                   <span className={`text-sm font-bold tabular-nums ${
-                    b.severity === 'critical' ? 'text-destructive' : 'text-yellow-600 dark:text-yellow-400'
+                    b.severity === 'critical' ? 'text-destructive' : 'text-yellow-400'
                   }`}>
                     ~{b.avgDays}j
                   </span>

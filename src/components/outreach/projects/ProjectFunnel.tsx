@@ -52,7 +52,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       pct: shortlistedPct,
       icon: UserCheck,
       color: '#8B5CF6', // violet-500
-      bgLight: 'bg-violet-50',
+      bgLight: 'bg-brand-purple/10',
     },
   ];
 

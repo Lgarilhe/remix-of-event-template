@@ -17,18 +17,18 @@ const STEP_ICONS: Record<string, React.ElementType | null> = {
 };
 
 const STEP_STYLES: Record<string, { bg: string; iconBg: string; border: string; accent: string }> = {
-  inmail:             { bg: 'bg-blue-50/80 dark:bg-blue-950/30',    iconBg: 'bg-blue-500 text-white',    border: 'border-blue-200 dark:border-blue-800/50',    accent: 'shadow-blue-200/40' },
-  connection_request: { bg: 'bg-emerald-50/80 dark:bg-emerald-950/30', iconBg: 'bg-emerald-500 text-white', border: 'border-emerald-200 dark:border-emerald-800/50', accent: 'shadow-emerald-200/40' },
-  profile_visit:      { bg: 'bg-sky-50/80 dark:bg-sky-950/30',     iconBg: 'bg-sky-500 text-white',     border: 'border-sky-200 dark:border-sky-800/50',     accent: 'shadow-sky-200/40' },
-  message:            { bg: 'bg-orange-50/80 dark:bg-orange-950/30',  iconBg: 'bg-orange-500 text-white',  border: 'border-orange-200 dark:border-orange-800/50',  accent: 'shadow-orange-200/40' },
-  smart_message:      { bg: 'bg-purple-50/80 dark:bg-purple-950/30',  iconBg: 'bg-purple-500 text-white',  border: 'border-purple-200 dark:border-purple-800/50',  accent: 'shadow-purple-200/40' },
-  whatsapp_message:   { bg: 'bg-green-50/80 dark:bg-green-950/30',   iconBg: 'bg-green-500 text-white',   border: 'border-green-200 dark:border-green-800/50',   accent: 'shadow-green-200/40' },
-  email:              { bg: 'bg-violet-50/80 dark:bg-violet-950/30',  iconBg: 'bg-violet-500 text-white',  border: 'border-violet-200 dark:border-violet-800/50',  accent: 'shadow-violet-200/40' },
-  wait_connection:    { bg: 'bg-amber-50/80 dark:bg-amber-950/30',   iconBg: 'bg-amber-500 text-white',   border: 'border-amber-200 dark:border-amber-800/50',   accent: 'shadow-amber-200/40' },
-  wait_reply:         { bg: 'bg-amber-50/80 dark:bg-amber-950/30',   iconBg: 'bg-amber-500 text-white',   border: 'border-amber-200 dark:border-amber-800/50',   accent: 'shadow-amber-200/40' },
-  wait_profile_visit: { bg: 'bg-amber-50/80 dark:bg-amber-950/30',   iconBg: 'bg-amber-500 text-white',   border: 'border-amber-200 dark:border-amber-800/50',   accent: 'shadow-amber-200/40' },
-  condition_branch:   { bg: 'bg-rose-50/80 dark:bg-rose-950/30',    iconBg: 'bg-rose-500 text-white',    border: 'border-rose-200 dark:border-rose-800/50',    accent: 'shadow-rose-200/40' },
-  check_connection:   { bg: 'bg-indigo-50/80 dark:bg-indigo-950/30', iconBg: 'bg-indigo-500 text-white',  border: 'border-indigo-200 dark:border-indigo-800/50', accent: 'shadow-indigo-200/40' },
+  inmail:             { bg: 'bg-info/10',            iconBg: 'bg-blue-500 text-white',    border: 'border-info/30',            accent: 'shadow-info/20' },
+  connection_request: { bg: 'bg-success/10',         iconBg: 'bg-emerald-500 text-white', border: 'border-success/30',         accent: 'shadow-success/20' },
+  profile_visit:      { bg: 'bg-info/10',            iconBg: 'bg-sky-500 text-white',     border: 'border-info/30',            accent: 'shadow-info/20' },
+  message:            { bg: 'bg-warning/10',         iconBg: 'bg-orange-500 text-white',  border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  smart_message:      { bg: 'bg-brand-purple/10',    iconBg: 'bg-purple-500 text-white',  border: 'border-brand-purple/30',    accent: 'shadow-brand-purple/20' },
+  whatsapp_message:   { bg: 'bg-green-500/10',       iconBg: 'bg-green-500 text-white',   border: 'border-green-500/30',       accent: 'shadow-green-500/20' },
+  email:              { bg: 'bg-brand-purple/10',     iconBg: 'bg-violet-500 text-white',  border: 'border-brand-purple/30',    accent: 'shadow-brand-purple/20' },
+  wait_connection:    { bg: 'bg-warning/10',         iconBg: 'bg-amber-500 text-white',   border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  wait_reply:         { bg: 'bg-warning/10',         iconBg: 'bg-amber-500 text-white',   border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  wait_profile_visit: { bg: 'bg-warning/10',         iconBg: 'bg-amber-500 text-white',   border: 'border-warning/30',         accent: 'shadow-warning/20' },
+  condition_branch:   { bg: 'bg-destructive/10',     iconBg: 'bg-rose-500 text-white',    border: 'border-destructive/30',     accent: 'shadow-destructive/20' },
+  check_connection:   { bg: 'bg-info/10',            iconBg: 'bg-indigo-500 text-white',  border: 'border-info/30',            accent: 'shadow-info/20' },
 };
 
 const STEP_LABELS: Record<string, string> = {

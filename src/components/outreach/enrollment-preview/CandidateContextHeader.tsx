@@ -97,7 +97,7 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
           </div>
         )}
         {isOpenToWork && (
-          <Badge className="text-[10px] h-5 bg-emerald-50 text-emerald-700 border-emerald-200">
+          <Badge className="text-[10px] h-5 bg-success/10 text-emerald-400 border-emerald-500/30">
             🟢 Open to work
           </Badge>
         )}

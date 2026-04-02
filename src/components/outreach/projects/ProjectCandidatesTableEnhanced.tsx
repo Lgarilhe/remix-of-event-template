@@ -371,7 +371,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
               size="sm" 
               variant="outline"
               onClick={() => bulkUpdateStatus('shortlisted')}
-              className="gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+              className="gap-1.5 text-purple-400 border-purple-800 hover:bg-brand-purple/10"
             >
               <UserCheck className="w-3.5 h-3.5" />
               Shortlister
