@@ -487,7 +487,14 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
             patch.exclude_consulting = field.toggleValue ?? false;
             break;
           case 'keywords':
-            patch.keywords = field.value[0] || '';
+            // Only overwrite if user explicitly edited the text field
+            if (field.textDirty) {
+              patch.keywords = field.textValue ?? '';
+            } else if (field.type === 'chips') {
+              // Legacy fallback for the "advanced" step chips-based keywords
+              patch.keywords = field.value[0] || '';
+            }
+            // If not dirty and text type → preserve currentFilters.keywords (don't include in patch)
             break;
         }
       }
