@@ -79,7 +79,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           variant="ghost"
           size="sm"
           onClick={onOpenMessage}
-          className={`text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 ${compact ? buttonSize : 'h-8 px-2 gap-1'}`}
+          className={`text-emerald-400 hover:text-emerald-300 hover:bg-success/10 ${compact ? buttonSize : 'h-8 px-2 gap-1'}`}
           title="Générer un message d'approche"
         >
           <PenLine className={iconSize} />
@@ -93,7 +93,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         size="sm"
         onClick={onAiAnalysis}
         disabled={isAnalyzing}
-        className={`text-purple-600 hover:text-purple-700 hover:bg-purple-50 ${buttonSize}`}
+        className={`text-purple-400 hover:text-purple-300 hover:bg-brand-purple/10 ${buttonSize}`}
         title="Analyse IA du profil"
       >
         {isAnalyzing ? <Loader2 className={`${iconSize} animate-spin`} /> : <Bot className={iconSize} />}
@@ -134,7 +134,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
               variant="ghost"
               size="sm"
               onClick={onFindSimilar}
-              className={`text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 ${buttonSize}`}
+              className={`text-indigo-400 hover:text-indigo-300 hover:bg-brand-purple/10 ${buttonSize}`}
             >
               <Users className={iconSize} />
             </Button>
@@ -183,7 +183,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
               variant="ghost"
               size="sm"
               onClick={onArchive}
-              className={`text-muted-foreground hover:text-orange-600 hover:bg-orange-50 ${buttonSize}`}
+              className={`text-muted-foreground hover:text-orange-400 hover:bg-warning/10 ${buttonSize}`}
             >
               <Archive className={iconSize} />
             </Button>

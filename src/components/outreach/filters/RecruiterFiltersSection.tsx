@@ -43,7 +43,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={activeFiltersPreview}
-      bgColorClass="bg-rose-50/40"
+      bgColorClass="bg-destructive/5"
     >
       {/* Open to Work */}
       <FilterGroup
