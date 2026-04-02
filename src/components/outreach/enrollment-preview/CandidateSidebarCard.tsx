@@ -51,7 +51,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         {profile.profile_picture_url ? (
           <img
             src={profile.profile_picture_url}
-            alt=""
+            alt={profile.name || 'Photo de profil'}
             className="w-8 h-8 rounded-full object-cover shrink-0"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />

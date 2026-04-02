@@ -72,9 +72,9 @@ interface ProjectCandidatesTableEnhancedProps {
 }
 
 const statusConfig = {
-  untreated: { label: 'Non traité', className: 'bg-gray-100 text-gray-600' },
-  messaged: { label: 'Contacté', className: 'bg-green-100 text-green-700' },
-  dismissed: { label: 'Écarté', className: 'bg-red-100 text-red-600' },
+  untreated: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
+  messaged: { label: 'Contacté', className: 'bg-success/10 text-success-foreground' },
+  dismissed: { label: 'Écarté', className: 'bg-destructive/10 text-destructive' },
   shortlisted: { label: 'Shortlisté', className: 'bg-purple-100 text-purple-700' },
 };
 
@@ -314,8 +314,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
 
   if (candidates.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+      <div className="text-center py-12 text-muted-foreground">
+        <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
         <p className="font-medium">Aucun candidat dans ce projet</p>
         <p className="text-sm mt-1">
           Lancez une recherche et ajoutez des candidats depuis les résultats
@@ -329,7 +329,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       {/* Filters & Actions bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Rechercher un candidat..."
             value={searchQuery}
@@ -362,8 +362,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
 
       {/* Bulk actions bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <span className="text-sm font-medium text-blue-700">
+        <div className="flex items-center gap-3 p-3 bg-info/10 border border-info/20 rounded-lg">
+          <span className="text-sm font-medium text-info-foreground">
             {selectedIds.size} sélectionné(s)
           </span>
           <div className="flex gap-2 ml-auto">
@@ -380,7 +380,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
               size="sm" 
               variant="outline"
               onClick={() => bulkUpdateStatus('dismissed')}
-              className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+              className="gap-1.5 text-destructive border-destructive/20 hover:bg-destructive/10"
             >
               <UserX className="w-3.5 h-3.5" />
               Écarter
@@ -422,7 +422,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
               return (
                 <TableRow 
                   key={candidate.id} 
-                  className={`group ${isSelected ? 'bg-blue-50/50' : ''}`}
+                  className={`group ${isSelected ? 'bg-info/5' : ''}`}
                 >
                   <TableCell>
                     <Checkbox 

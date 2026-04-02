@@ -68,7 +68,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         {/* Airtable Header */}
         {data && (data.candidate || hasAirtableHistory) && (
           <div className="flex items-center gap-2">
-            <img src={airtableLogo} alt="" className="w-4 h-4" />
+            <img src={airtableLogo} alt="Airtable" className="w-4 h-4" />
             <span className="text-xs font-semibold text-foreground">Historique Airtable</span>
             {data.candidate?.status && (
               <Badge variant="outline" className="text-xs h-4 px-1.5">
@@ -222,7 +222,7 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
         {allNotionShortlists.length > 0 && (
           <>
             <div className="flex items-center gap-2 pt-2 border-t border-foreground/10">
-              <img src={notionLogo} alt="" className="w-4 h-4 object-contain" />
+              <img src={notionLogo} alt="Notion" className="w-4 h-4 object-contain" />
               <span className="text-xs font-semibold text-foreground">Historique Notion</span>
             </div>
             <HistorySection
@@ -323,7 +323,7 @@ const CompactHistory: React.FC<{ data: CandidateHistoryData | null; notionShortl
     const date = getMostRecentDate(notionShortlists.map(s => s.createdAt));
     items.push(
       <Badge key="notion-shortlists" variant="outline" className="border-gray-300 bg-gray-50 text-gray-700 text-xs px-1.5 py-0 h-4 gap-0.5">
-        <img src={notionLogo} alt="" className="w-2.5 h-2.5 object-contain" />
+        <img src={notionLogo} alt="Notion" className="w-2.5 h-2.5 object-contain" />
         {notionShortlists.length} shortlist{notionShortlists.length > 1 ? 's' : ''} Notion
         {date && <span className="opacity-70">· {date}</span>}
       </Badge>

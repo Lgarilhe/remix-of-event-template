@@ -280,7 +280,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                 {selectedJob.client?.website ? (
                   <img
                     src={`https://www.google.com/s2/favicons?domain=${new URL(selectedJob.client.website.startsWith('http') ? selectedJob.client.website : 'https://' + selectedJob.client.website).hostname}&sz=32`}
-                    alt=""
+                    alt={selectedJob.client?.name || ''}
                     className="w-4 h-4 shrink-0"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
@@ -370,7 +370,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                       ) : faviconUrl ? (
                         <img
                           src={faviconUrl}
-                          alt=""
+                          alt={job.client?.name || ''}
                           className="w-4 h-4 shrink-0"
                           onError={(e) => { 
                             const el = e.target as HTMLImageElement;

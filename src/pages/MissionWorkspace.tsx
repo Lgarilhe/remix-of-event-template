@@ -23,9 +23,9 @@ import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 // ── Status config ──
 
 const statusConfig: Record<SourcingProject['status'], { label: string; dotColor: string; icon: typeof Play }> = {
-  active: { label: 'Actif', dotColor: 'bg-emerald-500', icon: Play },
-  paused: { label: 'En pause', dotColor: 'bg-amber-500', icon: Pause },
-  completed: { label: 'Terminé', dotColor: 'bg-blue-500', icon: CheckCircle },
+  active: { label: 'Actif', dotColor: 'bg-success', icon: Play },
+  paused: { label: 'En pause', dotColor: 'bg-warning', icon: Pause },
+  completed: { label: 'Terminé', dotColor: 'bg-info', icon: CheckCircle },
   archived: { label: 'Archivé', dotColor: 'bg-muted-foreground', icon: Archive },
 };
 

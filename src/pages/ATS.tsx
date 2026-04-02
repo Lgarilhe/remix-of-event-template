@@ -197,7 +197,7 @@ export default function ATS() {
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2 min-w-0">
               <div className="h-8 w-8 flex items-center justify-center shrink-0">
-                <img src={iconAts3d} alt="" className="w-8 h-8 object-contain" />
+                <img src={iconAts3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
               {isFetching && !loading && (
@@ -258,7 +258,7 @@ export default function ATS() {
                           isActive ? "bg-brutal-accent text-foreground" : "bg-background text-foreground"
                         )}
                       >
-                        <img src={tab.icon3d} alt="" className="w-5 h-5 object-contain shrink-0 relative z-10" />
+                        <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
                         {!isActive && (
                           <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
@@ -291,7 +291,7 @@ export default function ATS() {
                   <div className="flex-1 min-w-0">
                     {!loading && candidates.length === 0 ? (
                       <EmptyState
-                        icon={<img src={iconAts3d} alt="" className="w-7 h-7 object-contain" />}
+                        icon={<img src={iconAts3d} alt="" aria-hidden="true" className="w-7 h-7 object-contain" />}
                         title="Aucun candidat dans l'ATS"
                         description="Les candidats apparaîtront ici automatiquement lorsque vous les contacterez via Outreach ou les ajouterez manuellement."
                         actionLabel="Aller sur Outreach"

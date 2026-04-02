@@ -2,10 +2,10 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Play, Sparkle, MapPin, Briefcase, GraduationCap, Buildings,
-  UserCircle, Plus, PencilSimple, Check, ArrowRight, ArrowLeft,
-  Globe, FunnelSimple, Lightning, Target
-} from '@phosphor-icons/react';
+  X, Play, Sparkle, MapPin, Briefcase, GraduationCap, Building2,
+  CircleUser, Plus, Pencil, Check, ArrowRight, ArrowLeft,
+  Globe, Filter, Zap, Crosshair
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
 import type { LinkedInFiltersState } from '@/components/outreach/types';
@@ -120,7 +120,7 @@ function buildStepsFromBrief(
 
   steps.push({
     id: 'profile',
-    icon: UserCircle,
+    icon: CircleUser,
     label: 'Profil cible',
     description: 'Définir le poste, la séniorité et l\'expérience recherchés',
     fields: roleFields,
@@ -159,7 +159,7 @@ function buildStepsFromBrief(
 
     steps.push({
       id: 'skills',
-      icon: Lightning,
+      icon: Zap,
       label: 'Compétences',
       description: 'Compétences techniques et fonctionnelles recherchées',
       fields,
@@ -256,7 +256,7 @@ function buildStepsFromBrief(
 
     steps.push({
       id: 'company',
-      icon: Buildings,
+      icon: Building2,
       label: 'Entreprise',
       description: 'Cibler les bonnes entreprises et secteurs',
       fields,
@@ -267,7 +267,7 @@ function buildStepsFromBrief(
   if (steps.length < 2) {
     steps.push({
       id: 'advanced',
-      icon: FunnelSimple,
+      icon: Filter,
       label: 'Filtres avancés',
       description: 'Affiner avec des critères supplémentaires',
       fields: [{
@@ -301,7 +301,7 @@ const ChipInput: React.FC<{ onAdd: (value: string) => void; placeholder?: string
         className="h-7 w-[120px] px-2 text-xs font-bold uppercase tracking-wider bg-transparent text-foreground placeholder:text-foreground/30 outline-none"
       />
       <button onClick={submit} className="h-7 w-7 flex items-center justify-center text-foreground/40 hover:text-foreground transition-colors">
-        <Plus className="w-3 h-3" weight="bold" />
+        <Plus className="w-3 h-3" />
       </button>
     </div>
   );
@@ -329,7 +329,7 @@ const EditableChip: React.FC<{ value: string; onEdit: (newValue: string) => void
           onBlur={confirm}
           className="h-7 w-[140px] px-2 text-xs font-bold uppercase tracking-wider bg-transparent text-foreground outline-none" />
         <button onClick={confirm} className="h-7 w-6 flex items-center justify-center text-foreground/60 hover:text-foreground">
-          <Check className="w-3 h-3" weight="bold" />
+          <Check className="w-3 h-3" />
         </button>
       </span>
     );
@@ -339,10 +339,10 @@ const EditableChip: React.FC<{ value: string; onEdit: (newValue: string) => void
     <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-foreground/20 text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-foreground/40 transition-colors cursor-default">
       <span className="max-w-[200px] truncate">{value}</span>
       <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="w-3.5 h-3.5 flex items-center justify-center text-foreground/20 hover:text-foreground transition-colors">
-        <PencilSimple className="w-2.5 h-2.5" weight="bold" />
+        <Pencil className="w-2.5 h-2.5" />
       </button>
       <button onClick={e => { e.stopPropagation(); onRemove(); }} className="w-3.5 h-3.5 flex items-center justify-center text-foreground/20 hover:text-destructive transition-colors">
-        <X className="w-2.5 h-2.5" weight="bold" />
+        <X className="w-2.5 h-2.5" />
       </button>
     </span>
   );
@@ -533,7 +533,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
             <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground/[0.02]">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-foreground flex items-center justify-center">
-                  <Target className="w-4 h-4 text-background" weight="bold" />
+                  <Crosshair className="w-4 h-4 text-background" />
                 </div>
                 <div>
                   <h2 className="text-xs font-black uppercase tracking-wider text-foreground">Wizard filtres</h2>
@@ -546,7 +546,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                 onClick={() => onOpenChange(false)}
                 className="w-8 h-8 flex items-center justify-center border-2 border-foreground/20 hover:border-foreground transition-colors"
               >
-                <X className="w-4 h-4" weight="bold" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -570,9 +570,9 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                     )}
                   >
                     {isDone ? (
-                      <Check className="w-3 h-3" weight="bold" />
+                      <Check className="w-3 h-3" />
                     ) : (
-                      <StepIcon className="w-3.5 h-3.5" weight={isActive ? 'fill' : 'duotone'} />
+                      <StepIcon className="w-3.5 h-3.5" />
                     )}
                     <span className="hidden sm:inline">{s.label}</span>
                   </button>
@@ -604,7 +604,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                           </span>
                           {field.briefSource && (
                             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                              <Sparkle className="w-2.5 h-2.5" weight="fill" />
+                              <Sparkle className="w-2.5 h-2.5" />
                               {field.briefSource}
                             </span>
                           )}
@@ -647,7 +647,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                             {field.suggestions.length > 0 && (
                               <div className="pt-1.5 border-t border-foreground/10">
                                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
-                                  <Sparkle className="w-2.5 h-2.5" weight="fill" />
+                                  <Sparkle className="w-2.5 h-2.5" />
                                   Suggestions
                                 </p>
                                 <div className="flex flex-wrap gap-1.5">
@@ -724,7 +724,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                   onClick={() => setCurrentStep(p => p - 1)}
                   className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-background text-foreground hover:bg-foreground/[0.04] transition-colors flex items-center gap-1.5"
                 >
-                  <ArrowLeft className="w-3 h-3" weight="bold" />
+                  <ArrowLeft className="w-3 h-3" />
                   Retour
                 </button>
               )}
@@ -740,7 +740,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                   onClick={handleApply}
                   className="relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background group transition-colors"
                 >
-                  <Play className="w-3.5 h-3.5 relative z-10" weight="fill" />
+                  <Play className="w-3.5 h-3.5 relative z-10" />
                   <span className="relative z-10">Appliquer & chercher</span>
                   <span className="absolute inset-0 bg-brutal-accent translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                 </button>
@@ -750,7 +750,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                   className="flex items-center gap-1.5 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 transition-colors"
                 >
                   Suivant
-                  <ArrowRight className="w-3 h-3" weight="bold" />
+                  <ArrowRight className="w-3 h-3" />
                 </button>
               )}
             </div>

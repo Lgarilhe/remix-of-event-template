@@ -47,17 +47,17 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
     switch (status?.toLowerCase()) {
       case 'ouvert':
       case 'open':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-success/10 text-success border-success/20';
       case 'en cours':
       case 'in progress':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-info/10 text-info border-info/20';
       case 'fermé':
       case 'closed':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-foreground border-border';
       case 'urgent':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-destructive/10 text-destructive border-destructive/20';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-muted text-foreground border-border';
     }
   };
 
@@ -65,13 +65,13 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
     switch (priority?.toLowerCase()) {
       case 'haute':
       case 'high':
-        return <span className="w-2 h-2 rounded-full bg-red-500" />;
+        return <span className="w-2 h-2 rounded-full bg-destructive" />;
       case 'moyenne':
       case 'medium':
-        return <span className="w-2 h-2 rounded-full bg-yellow-500" />;
+        return <span className="w-2 h-2 rounded-full bg-warning" />;
       case 'basse':
       case 'low':
-        return <span className="w-2 h-2 rounded-full bg-green-500" />;
+        return <span className="w-2 h-2 rounded-full bg-success" />;
       default:
         return null;
     }
@@ -80,7 +80,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
   const salary = formatSalary(job.salaryMin, job.salaryMax);
 
   return (
-    <div className="bg-white border border-black hover:shadow-lg transition-shadow">
+    <div className="bg-background border border-black hover:shadow-lg transition-shadow">
       {/* Main content */}
       <div 
         className="p-6 cursor-pointer"
@@ -91,17 +91,17 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2">
               {getPriorityIndicator(job.priority)}
-              <h3 className="text-xl font-medium text-[#1A1A1A] truncate">
+              <h3 className="text-xl font-medium text-foreground truncate">
                 {job.title || 'Poste sans titre'}
               </h3>
               {isNewJob() && (
-                <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wide bg-emerald-500 text-white rounded-sm animate-pulse">
+                <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wide bg-success text-success-foreground rounded-sm animate-pulse">
                   Nouveau
                 </span>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 text-sm text-[#1A1A1A]/60">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               {job.client?.name && (
                 <span className="flex items-center gap-1.5">
                   <Building2 className="w-4 h-4" />
@@ -139,8 +139,8 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                 }}
                 className={`p-2 transition-colors ${
                   isFavorite 
-                    ? 'text-red-500 hover:text-red-600' 
-                    : 'text-[#1A1A1A]/30 hover:text-red-400'
+                    ? 'text-destructive hover:text-destructive/80'
+                    : 'text-muted-foreground hover:text-destructive/60'
                 }`}
                 aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
               >
@@ -152,7 +152,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                 {job.status}
               </span>
             )}
-            <button className="p-2 text-[#1A1A1A]/40 hover:text-[#1A1A1A] transition-colors">
+            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
               {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
           </div>
@@ -160,18 +160,18 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
 
         {/* Recruitment Pipeline Progress */}
         {job.candidateCounts && (
-          <div className="mt-4 pt-4 border-t border-[#1A1A1A]/10">
+          <div className="mt-4 pt-4 border-t border-border">
             {/* Total count header */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5 text-sm">
-                <Users className="w-4 h-4 text-[#1A1A1A]/50" />
+                <Users className="w-4 h-4 text-muted-foreground" />
                 {job.candidateCounts.total > 0 ? (
                   <>
-                    <span className="font-medium text-[#1A1A1A]">{job.candidateCounts.total}</span>
-                    <span className="text-[#1A1A1A]/50">candidat{job.candidateCounts.total > 1 ? 's' : ''} en cours</span>
+                    <span className="font-medium text-foreground">{job.candidateCounts.total}</span>
+                    <span className="text-muted-foreground">candidat{job.candidateCounts.total > 1 ? 's' : ''} en cours</span>
                   </>
                 ) : (
-                  <span className="text-[#1A1A1A]/40 italic">Aucun candidat</span>
+                  <span className="text-muted-foreground italic">Aucun candidat</span>
                 )}
               </div>
             </div>
@@ -180,63 +180,63 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             <div className="flex items-center gap-1">
               {/* CV Stage */}
               <div className="flex-1 group relative">
-                <div className="h-2 bg-gray-100 rounded-l-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gray-400 transition-all duration-700 ease-out"
+                <div className="h-2 bg-muted rounded-l-full overflow-hidden">
+                  <div
+                    className="h-full bg-muted-foreground transition-all duration-700 ease-out"
                     style={{ width: isAnimated && job.candidateCounts.cv > 0 ? '100%' : '0%' }}
                   />
                 </div>
                 <div className="mt-1.5 flex items-center justify-center gap-1">
-                  <FileText className="w-3 h-3 text-gray-500" />
-                  <span className={`text-xs font-medium ${job.candidateCounts.cv > 0 ? 'text-gray-700' : 'text-gray-400'}`}>
+                  <FileText className="w-3 h-3 text-muted-foreground" />
+                  <span className={`text-xs font-medium ${job.candidateCounts.cv > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {job.candidateCounts.cv}
                   </span>
                 </div>
-                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-foreground text-background text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                   CV / Pré-qualif
                 </span>
               </div>
 
               {/* Arrow */}
-              <div className="text-[#1A1A1A]/20 flex-shrink-0">→</div>
+              <div className="text-foreground/20 flex-shrink-0">→</div>
 
               {/* ITW Stage */}
               <div className="flex-1 group relative">
-                <div className="h-2 bg-yellow-50 overflow-hidden">
-                  <div 
-                    className="h-full bg-yellow-400 transition-all duration-700 ease-out delay-150"
+                <div className="h-2 bg-warning/10 overflow-hidden">
+                  <div
+                    className="h-full bg-warning transition-all duration-700 ease-out delay-150"
                     style={{ width: isAnimated && job.candidateCounts.itw > 0 ? '100%' : '0%' }}
                   />
                 </div>
                 <div className="mt-1.5 flex items-center justify-center gap-1">
-                  <MessageSquare className="w-3 h-3 text-yellow-600" />
-                  <span className={`text-xs font-medium ${job.candidateCounts.itw > 0 ? 'text-yellow-700' : 'text-yellow-400'}`}>
+                  <MessageSquare className="w-3 h-3 text-warning" />
+                  <span className={`text-xs font-medium ${job.candidateCounts.itw > 0 ? 'text-warning' : 'text-warning/40'}`}>
                     {job.candidateCounts.itw}
                   </span>
                 </div>
-                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-foreground text-background text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                   Entretiens
                 </span>
               </div>
 
               {/* Arrow */}
-              <div className="text-[#1A1A1A]/20 flex-shrink-0">→</div>
+              <div className="text-foreground/20 flex-shrink-0">→</div>
 
               {/* Offre Stage */}
               <div className="flex-1 group relative">
-                <div className="h-2 bg-blue-50 rounded-r-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-700 ease-out delay-300"
+                <div className="h-2 bg-info/10 rounded-r-full overflow-hidden">
+                  <div
+                    className="h-full bg-info transition-all duration-700 ease-out delay-300"
                     style={{ width: isAnimated && job.candidateCounts.offre > 0 ? '100%' : '0%' }}
                   />
                 </div>
                 <div className="mt-1.5 flex items-center justify-center gap-1">
-                  <Gift className="w-3 h-3 text-blue-600" />
-                  <span className={`text-xs font-medium ${job.candidateCounts.offre > 0 ? 'text-blue-700' : 'text-blue-400'}`}>
+                  <Gift className="w-3 h-3 text-info" />
+                  <span className={`text-xs font-medium ${job.candidateCounts.offre > 0 ? 'text-info' : 'text-info/40'}`}>
                     {job.candidateCounts.offre}
                   </span>
                 </div>
-                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-foreground text-background text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                   Offre
                 </span>
               </div>
@@ -247,7 +247,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
         {/* Tags */}
         <div className="flex flex-wrap gap-2 mt-4">
           {job.seniority && (
-            <span className="px-2 py-1 bg-[#F5F5F5] text-[#1A1A1A] text-xs">
+            <span className="px-2 py-1 bg-muted text-foreground text-xs">
               {job.seniority}
             </span>
           )}
@@ -268,7 +268,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             );
           })}
           {job.skills?.length > 4 && (
-            <span className="px-2 py-1 text-[#1A1A1A]/40 text-xs">
+            <span className="px-2 py-1 text-muted-foreground text-xs">
               +{job.skills.length - 4}
             </span>
           )}
@@ -277,21 +277,21 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="border-t border-[#1A1A1A]/10 p-6 bg-[#FAFAFA]">
+        <div className="border-t border-border p-6 bg-[#FAFAFA]">
           {/* Key info bar */}
-          <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-[#1A1A1A]/10">
+          <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-border">
             {job.xpMin !== null && job.xpMin !== undefined && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Expérience:</span>
-                <span className="text-sm text-[#1A1A1A]">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Expérience:</span>
+                <span className="text-sm text-foreground">
                   {job.xpMin}{job.xpMax ? `-${job.xpMax}` : '+'} ans
                 </span>
               </div>
             )}
             {(job.salaryMin || job.salaryMax) && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Salaire:</span>
-                <span className="text-sm text-[#1A1A1A]">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Salaire:</span>
+                <span className="text-sm text-foreground">
                   {job.salaryMin && job.salaryMax 
                     ? `${(job.salaryMin / 1000).toFixed(0)}k€ - ${(job.salaryMax / 1000).toFixed(0)}k€`
                     : job.salaryMin 
@@ -303,20 +303,20 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             )}
             {job.tjm && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">TJM:</span>
-                <span className="text-sm text-[#1A1A1A]">{job.tjm}€/jour</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">TJM:</span>
+                <span className="text-sm text-foreground">{job.tjm}€/jour</span>
               </div>
             )}
             {job.startDate && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Démarrage:</span>
-                <span className="text-sm text-[#1A1A1A]">{new Date(job.startDate).toLocaleDateString('fr-FR')}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Démarrage:</span>
+                <span className="text-sm text-foreground">{new Date(job.startDate).toLocaleDateString('fr-FR')}</span>
               </div>
             )}
             {job.remote && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60">Remote:</span>
-                <span className="text-sm text-[#1A1A1A]">{job.remote}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Remote:</span>
+                <span className="text-sm text-foreground">{job.remote}</span>
               </div>
             )}
           </div>
@@ -325,10 +325,10 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Description */}
             {job.description && (
               <div className="md:col-span-2">
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   À propos du poste
                 </h4>
-                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap leading-relaxed">
+                <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
                   {job.description}
                 </p>
               </div>
@@ -337,10 +337,10 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Requirements / Must-have */}
             {job.requirements && (
               <div className="md:col-span-2">
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   🔴 Critères essentiels
                 </h4>
-                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap bg-red-50 p-4 border-l-4 border-red-400">
+                <p className="text-sm text-foreground whitespace-pre-wrap bg-destructive/5 p-4 border-l-4 border-destructive/40">
                   {job.requirements}
                 </p>
               </div>
@@ -349,10 +349,10 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Interview Process */}
             {job.interviewProcess && (
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   Process d'entretien
                 </h4>
-                <p className="text-sm text-[#1A1A1A] whitespace-pre-wrap">
+                <p className="text-sm text-foreground whitespace-pre-wrap">
                   {job.interviewProcess}
                 </p>
               </div>
@@ -361,10 +361,10 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Team Info */}
             {job.teamInfo && (
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   L'équipe
                 </h4>
-                <p className="text-sm text-[#1A1A1A]">
+                <p className="text-sm text-foreground">
                   {job.teamInfo}
                 </p>
               </div>
@@ -373,7 +373,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* All skills */}
             {job.skills?.length > 0 && (
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   Stack technique / Compétences
                 </h4>
                 <div className="flex flex-wrap gap-2">
@@ -395,16 +395,16 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Company details */}
             {job.client && (
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   L'entreprise
                 </h4>
                 <div className="space-y-2">
-                  <p className="font-medium text-[#1A1A1A]">{job.client.name}</p>
+                  <p className="font-medium text-foreground">{job.client.name}</p>
                   {job.client.sector && (
-                    <p className="text-sm text-[#1A1A1A]/60">Secteur: {job.client.sector}</p>
+                    <p className="text-sm text-muted-foreground">Secteur: {job.client.sector}</p>
                   )}
                   {job.client.size && (
-                    <p className="text-sm text-[#1A1A1A]/60">Taille: {job.client.size} employés</p>
+                    <p className="text-sm text-muted-foreground">Taille: {job.client.size} employés</p>
                   )}
                   <div className="flex gap-3 mt-3">
                     {job.client.website && (
@@ -435,7 +435,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
             {/* Accompagnement type */}
             {job.accompagnement?.length > 0 && (
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-3">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
                   Type d'accompagnement
                 </h4>
                 <div className="flex flex-wrap gap-2">
@@ -451,7 +451,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
 
           {/* External link if available */}
           {job.jobUrl && (
-            <div className="mt-6 pt-4 border-t border-[#1A1A1A]/10">
+            <div className="mt-6 pt-4 border-t border-border">
               <a 
                 href={job.jobUrl}
                 target="_blank"
@@ -464,7 +464,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
           )}
 
           {/* Action button */}
-          <div className="mt-6 pt-6 border-t border-[#1A1A1A]/10">
+          <div className="mt-6 pt-6 border-t border-border">
             <button 
               onClick={(e) => {
                 e.stopPropagation();

@@ -101,7 +101,7 @@ export const MyLinkedInAccount = () => {
           <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
             <div className="flex items-center gap-3">
               {(myAccount as any).profile_picture_url ? (
-                <img src={(myAccount as any).profile_picture_url} alt="" className="w-10 h-10 rounded-full" />
+                <img src={(myAccount as any).profile_picture_url} alt={(myAccount as any).name || myMapping.linkedin_account_name || 'Photo de profil'} className="w-10 h-10 rounded-full" />
               ) : (
                 <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
                   <img src={linkedinLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />

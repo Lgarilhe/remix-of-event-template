@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
-import { X, Loader2, Send, CheckCircle } from 'lucide-react';
+import { Loader2, Send, CheckCircle } from 'lucide-react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Job } from '@/types/jobs';
 import { toast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 interface ApplicationModalProps {
   job: Job;
@@ -76,145 +83,127 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      
-      {/* Modal */}
-      <div className="relative bg-white w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto border border-black">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg p-0 gap-0">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-black p-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-medium text-[#1A1A1A]">Postuler</h2>
-            <p className="text-sm text-[#1A1A1A]/60 mt-0.5">
-              {job.title || 'Sans titre'} {job.client?.name && `• ${job.client.name}`}
-            </p>
-          </div>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-[#F5F5F5] transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        <DialogHeader className="sticky top-0 bg-background border-b p-4">
+          <DialogTitle className="text-lg font-medium">Postuler</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground mt-0.5">
+            {job.title || 'Sans titre'} {job.client?.name && `• ${job.client.name}`}
+          </DialogDescription>
+        </DialogHeader>
 
         {/* Content */}
         {isSuccess ? (
           <div className="p-8 text-center">
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-[#1A1A1A]">Candidature envoyée !</h3>
-            <p className="text-[#1A1A1A]/60 mt-2">
+            <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
+            <h3 className="text-xl font-medium">Candidature envoyée !</h3>
+            <p className="text-muted-foreground mt-2">
               Nous avons bien reçu votre candidature et reviendrons vers vous rapidement.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            {/* Name */}
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label htmlFor="app-name" className="block text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
                 Nom complet *
               </label>
               <input
+                id="app-name"
                 type="text"
                 name="name"
                 required
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="Jean Dupont"
-                className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
               />
             </div>
 
-            {/* Email */}
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label htmlFor="app-email" className="block text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
                 Email *
               </label>
               <input
+                id="app-email"
                 type="email"
                 name="email"
                 required
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="jean.dupont@email.com"
-                className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
               />
             </div>
 
-            {/* Phone */}
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label htmlFor="app-phone" className="block text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
                 Téléphone
               </label>
               <input
+                id="app-phone"
                 type="tel"
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
                 placeholder="+33 6 12 34 56 78"
-                className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
               />
             </div>
 
-            {/* LinkedIn */}
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label htmlFor="app-linkedin" className="block text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
                 Profil LinkedIn
               </label>
               <input
+                id="app-linkedin"
                 type="url"
                 name="linkedin"
                 value={formData.linkedin}
                 onChange={handleChange}
                 placeholder="https://linkedin.com/in/jeandupont"
-                className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
               />
             </div>
 
-            {/* CV URL */}
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label htmlFor="app-cv" className="block text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
                 Lien vers votre CV
               </label>
               <input
+                id="app-cv"
                 type="url"
                 name="cvUrl"
                 value={formData.cvUrl}
                 onChange={handleChange}
                 placeholder="https://drive.google.com/..."
-                className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors"
               />
-              <p className="text-xs text-[#1A1A1A]/40 mt-1">
+              <p className="text-xs text-muted-foreground/60 mt-1">
                 Google Drive, Dropbox, ou autre lien public
               </p>
             </div>
 
-            {/* Message */}
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wide text-[#1A1A1A]/60 mb-1.5">
+              <label htmlFor="app-message" className="block text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
                 Message de motivation
               </label>
               <textarea
+                id="app-message"
                 name="message"
                 value={formData.message}
                 onChange={handleChange}
                 rows={4}
                 placeholder="Présentez-vous brièvement et expliquez votre motivation pour ce poste..."
-                className="w-full px-4 py-2.5 border border-[#1A1A1A]/20 focus:border-[#1A1A1A] focus:outline-none transition-colors resize-none"
+                className="w-full px-4 py-2.5 border border-input bg-background focus:border-foreground focus:outline-none transition-colors resize-none"
               />
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 bg-[#1A1A1A] text-white text-sm font-medium uppercase tracking-wide hover:bg-[#1A1A1A]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3 bg-primary text-primary-foreground text-sm font-medium uppercase tracking-wide hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
                 <>
@@ -230,7 +219,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ job, isOpen,
             </button>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };

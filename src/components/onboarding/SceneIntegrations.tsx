@@ -119,6 +119,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
       <motion.img
         src={integrationsIcon}
         alt=""
+        aria-hidden="true"
         className="mx-auto w-16 h-16 drop-shadow-md"
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}

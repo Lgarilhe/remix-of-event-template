@@ -49,7 +49,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
         transition={{ type: 'spring', stiffness: 200, damping: 18 }}
         className="relative flex items-center justify-center"
       >
-        <img src={trophyImg} alt="" className="w-20 h-20 object-contain relative z-10" />
+        <img src={trophyImg} alt="" aria-hidden="true" className="w-20 h-20 object-contain relative z-10" />
         <svg
           width="100"
           height="100"

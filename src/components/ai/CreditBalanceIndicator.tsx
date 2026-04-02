@@ -26,17 +26,19 @@ export const CreditBalanceIndicator = () => {
         <TooltipTrigger asChild>
           <button
             onClick={() => navigate('/settings?tab=credits')}
+            aria-live="polite"
+            aria-label={`Crédits IA : ${creditsRemaining}`}
             className={cn(
               "relative overflow-hidden h-[34px] px-2.5 flex items-center gap-1.5 text-xs font-medium border border-foreground leading-none transition-colors",
               isOut && "bg-destructive/10 border-destructive text-destructive",
-              isLow && !isOut && "bg-amber-500/10 border-amber-500 text-amber-700",
+              isLow && !isOut && "bg-warning/10 border-warning text-warning-foreground",
               !isLow && !isOut && "glass text-foreground"
             )}
           >
             <Sparkles className={cn(
               "w-3.5 h-3.5 shrink-0",
               isOut && "text-destructive",
-              isLow && !isOut && "text-amber-500",
+              isLow && !isOut && "text-warning",
               !isLow && !isOut && "text-muted-foreground"
             )} />
             <NumberTicker value={creditsRemaining} className="font-bold" />
@@ -51,7 +53,7 @@ export const CreditBalanceIndicator = () => {
               <p className="text-muted-foreground">Top-up : {topupCredits.toLocaleString()}</p>
             )}
             {isOut && <p className="text-destructive font-medium">Plus de crédits disponibles</p>}
-            {isLow && !isOut && <p className="text-amber-600 font-medium">Crédits bientôt épuisés</p>}
+            {isLow && !isOut && <p className="text-warning font-medium">Crédits bientôt épuisés</p>}
           </div>
         </TooltipContent>
       </Tooltip>

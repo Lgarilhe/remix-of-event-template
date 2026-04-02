@@ -99,6 +99,28 @@ export default {
   			},
   			brutal: {
   				accent: 'hsl(var(--brutal-accent))'
+  			},
+  			success: {
+  				DEFAULT: 'hsl(var(--status-success))',
+  				foreground: 'hsl(var(--status-success-foreground))',
+  				muted: 'hsl(var(--status-success-muted))',
+  			},
+  			warning: {
+  				DEFAULT: 'hsl(var(--status-warning))',
+  				foreground: 'hsl(var(--status-warning-foreground))',
+  				muted: 'hsl(var(--status-warning-muted))',
+  			},
+  			info: {
+  				DEFAULT: 'hsl(var(--status-info))',
+  				foreground: 'hsl(var(--status-info-foreground))',
+  				muted: 'hsl(var(--status-info-muted))',
+  			},
+  			brand: {
+  				purple: 'hsl(var(--skalr-purple))',
+  				pink: 'hsl(var(--skalr-pink))',
+  				blue: 'hsl(var(--skalr-blue))',
+  				cyan: 'hsl(var(--skalr-cyan))',
+  				green: 'hsl(var(--skalr-green))',
   			}
   		},
   		borderRadius: {

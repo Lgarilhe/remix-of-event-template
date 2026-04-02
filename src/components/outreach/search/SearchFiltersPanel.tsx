@@ -1,5 +1,4 @@
 import React, { useState, useCallback } from 'react';
-import { Target } from '@phosphor-icons/react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
@@ -19,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, Loader2, AlertTriangle, Lock, Pencil } from 'lucide-react';
+import { Search, Loader2, AlertTriangle, Lock, Pencil, Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SearchFiltersPanelProps {
@@ -196,9 +195,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                 {selectedAccountData && (
                   <div className="flex items-center gap-2">
                     {selectedAccountData.profile_picture_url && (
-                      <img 
-                        src={selectedAccountData.profile_picture_url} 
-                        alt="" 
+                      <img
+                        src={selectedAccountData.profile_picture_url}
+                        alt={selectedAccountData.name || selectedAccountData.identifier || 'Photo de profil'}
                         className="w-5 h-5 rounded-none object-cover shrink-0"
                       />
                     )}
@@ -212,9 +211,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
                 <SelectItem key={account.id} value={account.id}>
                   <div className="flex items-center gap-2">
                     {account.profile_picture_url && (
-                      <img 
-                        src={account.profile_picture_url} 
-                        alt="" 
+                      <img
+                        src={account.profile_picture_url}
+                        alt={account.name || account.identifier || 'Photo de profil'}
                         className="w-5 h-5 rounded-none object-cover"
                       />
                     )}
@@ -333,7 +332,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               onClick={onOpenFilterWizard}
               className="flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-foreground bg-foreground text-background hover:bg-foreground/90 transition-colors"
             >
-              <Target className="w-3 h-3" weight="bold" />
+              <Crosshair className="w-3 h-3" />
               Wizard filtres
             </button>
           )}

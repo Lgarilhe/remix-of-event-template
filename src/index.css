@@ -62,6 +62,11 @@ All colors MUST be HSL.
     --status-info: 217 91% 60%;
     --status-info-foreground: 0 0% 100%;
 
+    /* Status muted backgrounds */
+    --status-success-muted: 142 71% 95%;
+    --status-warning-muted: 45 93% 95%;
+    --status-info-muted: 217 91% 95%;
+
     /* Brutal accent */
     --brutal-accent: 297 100% 73%;
     --chart-1: 41 22.2% 64.6%;
@@ -138,16 +143,30 @@ All colors MUST be HSL.
 
     --status-success: 142 71% 45%;
     --status-success-foreground: 0 0% 100%;
+    --status-success-muted: 142 71% 20%;
     --status-warning: 45 93% 47%;
     --status-warning-foreground: 0 0% 10%;
+    --status-warning-muted: 45 93% 20%;
     --status-info: 217 91% 60%;
     --status-info-foreground: 0 0% 100%;
+    --status-info-muted: 217 91% 20%;
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+  }
+
+  /* Global focus-visible for all interactive elements */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Skip-to-content link */
+  .skip-to-content {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium;
   }
 
   html,

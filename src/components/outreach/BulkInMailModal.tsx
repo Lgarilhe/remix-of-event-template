@@ -462,15 +462,15 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     switch (status) {
       case 'pending':
       case 'scheduled':
-        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><Clock className="w-3 h-3 mr-1" />Planifié</Badge>;
+        return <Badge variant="outline" className="bg-info/10 text-info-foreground border-info/20"><Clock className="w-3 h-3 mr-1" />Planifié</Badge>;
       case 'sending':
-        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Envoi...</Badge>;
+        return <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Envoi...</Badge>;
       case 'sent':
-        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200"><CheckCircle className="w-3 h-3 mr-1" />Envoyé</Badge>;
+        return <Badge variant="outline" className="bg-success/10 text-success-foreground border-success/20"><CheckCircle className="w-3 h-3 mr-1" />Envoyé</Badge>;
       case 'failed':
-        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200"><XCircle className="w-3 h-3 mr-1" />Échoué</Badge>;
+        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20"><XCircle className="w-3 h-3 mr-1" />Échoué</Badge>;
       case 'cancelled':
-        return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200"><XCircle className="w-3 h-3 mr-1" />Annulé</Badge>;
+        return <Badge variant="outline" className="bg-muted text-muted-foreground border-border"><XCircle className="w-3 h-3 mr-1" />Annulé</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -483,7 +483,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
         {/* Clean header */}
-        <div className="px-6 py-4 border-b bg-white shrink-0">
+        <div className="px-6 py-4 border-b bg-background shrink-0">
           <DialogHeader className="space-y-1">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <div className="w-8 h-8 rounded-lg bg-[#0077B5] flex items-center justify-center">
@@ -499,12 +499,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'compose' | 'queue')} className="flex-1 overflow-hidden flex flex-col">
           <div className="px-6 pt-4 shrink-0">
-            <TabsList className="w-full bg-gray-100/80 p-1 h-10">
-              <TabsTrigger value="compose" className="flex-1 gap-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <TabsList className="w-full bg-muted/80 p-1 h-10">
+              <TabsTrigger value="compose" className="flex-1 gap-2 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <PenLine className="w-3.5 h-3.5" />
                 Composer ({readyCount}/{recipients.length})
               </TabsTrigger>
-              <TabsTrigger value="queue" className="flex-1 gap-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              <TabsTrigger value="queue" className="flex-1 gap-2 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm">
                 <Clock className="w-3.5 h-3.5" />
                 File d'attente {totalInQueue > 0 && `(${totalInQueue})`}
               </TabsTrigger>
@@ -517,9 +517,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               // No job selected
               <div className="flex-1 flex items-center justify-center py-12">
                 <div className="text-center">
-                  <Sparkles className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                  <h3 className="font-medium text-gray-900 mb-1">Sélectionnez un poste</h3>
-                  <p className="text-sm text-gray-500 max-w-xs">
+                  <Sparkles className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                  <h3 className="font-medium text-foreground mb-1">Sélectionnez un poste</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs">
                     Pour générer des messages personnalisés, sélectionnez d'abord un poste.
                   </p>
                 </div>
@@ -528,7 +528,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               // Generation setup - clean design
               <div className="space-y-5 pt-4">
                 {/* Context row: Job + Recipients + Credits - compact */}
-                <div className="flex items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                <div className="flex items-center justify-between gap-4 pb-4 border-b border-border">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs font-medium truncate max-w-[180px]">
@@ -546,11 +546,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   <div className="flex items-center gap-2 shrink-0">
                     <div className={cn(
                       "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
-                      !hasEnoughCredits 
-                        ? "bg-red-100 text-red-700" 
+                      !hasEnoughCredits
+                        ? "bg-destructive/10 text-destructive"
                         : isNearLimit
-                        ? "bg-amber-100 text-amber-700"
-                        : "bg-emerald-100 text-emerald-700"
+                        ? "bg-warning/10 text-warning-foreground"
+                        : "bg-success/10 text-success-foreground"
                     )}>
                       <Mail className="w-3 h-3" />
                       {recruiterCredits} crédits
@@ -569,7 +569,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                 {/* Error message for credits if needed */}
                 {!hasEnoughCredits && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
                     <span>Crédits insuffisants ({recruiterCredits} restants, {creditsNeeded} requis)</span>
                   </div>
@@ -579,7 +579,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                   {/* Sender name */}
                   <div>
-                    <Label htmlFor="senderName" className="text-xs font-medium text-gray-600 mb-1.5 block">
+                    <Label htmlFor="senderName" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                       Ton prénom (signature)
                     </Label>
                     <Input
@@ -593,7 +593,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   
                   {/* Tone selector */}
                   <div>
-                    <Label className="text-xs font-medium text-gray-600 mb-1.5 block">Ton</Label>
+                    <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Ton</Label>
                     <div className="flex gap-1.5">
                       {[
                         { value: 'professional', label: 'Pro', emoji: '👔' },
@@ -624,7 +624,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   className={cn(
                     "w-full h-11",
                     !hasEnoughCredits 
-                      ? "bg-gray-300 cursor-not-allowed"
+                      ? "bg-muted cursor-not-allowed"
                       : "bg-[#0077B5] hover:bg-[#005E93]"
                   )}
                 >
@@ -645,7 +645,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                 {/* Progress bar */}
                 {isGenerating && (
-                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                     <div 
                       className="bg-[#0077B5] h-full transition-all duration-300"
                       style={{ width: `${((generatingIndex + 1) / recipients.length) * 100}%` }}
@@ -654,7 +654,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 )}
 
                 {/* Info text - subtle */}
-                <p className="text-xs text-gray-400 text-center">
+                <p className="text-xs text-muted-foreground text-center">
                   Envoi entre 8h-19h ({userTimezone.split('/')[1] || userTimezone}) • Délai 2-5 min entre chaque
                 </p>
               </div>
@@ -688,16 +688,16 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                 {/* Current recipient info - clean */}
                 {currentRecipient && (
-                  <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  <div className="flex items-center justify-between py-3 border-b border-border">
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-gray-900 text-sm">{currentRecipient.name}</div>
-                      <div className="text-xs text-gray-500 truncate max-w-[350px]">
+                      <div className="font-medium text-foreground text-sm">{currentRecipient.name}</div>
+                      <div className="text-xs text-muted-foreground truncate max-w-[350px]">
                         {currentRecipient.headline}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {currentMessage?.isEdited && (
-                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                        <span className="text-xs text-warning-foreground flex items-center gap-1">
                           <Edit2 className="w-3 h-3" />
                           modifié
                         </span>
@@ -718,7 +718,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 {/* Message editor - clean */}
                 <div className="flex-1 overflow-auto space-y-3 pt-3">
                   <div>
-                    <Label htmlFor="subject" className="text-xs font-medium text-gray-600">Objet</Label>
+                    <Label htmlFor="subject" className="text-xs font-medium text-muted-foreground">Objet</Label>
                     <Input
                       id="subject"
                       value={editingSubject}
@@ -730,7 +730,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <Label htmlFor="message" className="text-xs font-medium text-gray-600">Message</Label>
+                      <Label htmlFor="message" className="text-xs font-medium text-muted-foreground">Message</Label>
                       {currentMessage && (
                         editingSubject !== currentMessage.subject || 
                         editingMessage !== currentMessage.message
@@ -739,7 +739,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                           size="sm"
                           variant="ghost"
                           onClick={handleSaveEdit}
-                          className="text-emerald-600 hover:text-emerald-700 h-7 text-xs"
+                          className="text-success-foreground hover:text-success-foreground/80 h-7 text-xs"
                         >
                           <Check className="w-3 h-3 mr-1" />
                           Sauvegarder
@@ -758,14 +758,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                   {/* Personalization points - subtle */}
                   {currentMessage?.personalizationPoints && currentMessage.personalizationPoints.length > 0 && (
-                    <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
-                      <span className="font-medium text-gray-600 flex items-center gap-1 mb-1">
+                    <div className="text-xs text-muted-foreground pt-2 border-t border-border">
+                      <span className="font-medium text-muted-foreground flex items-center gap-1 mb-1">
                         <Sparkles className="w-3 h-3" />
                         Points de personnalisation
                       </span>
                       <div className="flex flex-wrap gap-1">
                         {currentMessage.personalizationPoints.map((point, i) => (
-                          <span key={i} className="bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                          <span key={i} className="bg-muted px-2 py-0.5 rounded text-muted-foreground">
                             {point}
                           </span>
                         ))}
@@ -775,7 +775,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 </div>
 
                 {/* Quick navigation dots */}
-                <div className="flex justify-center gap-1 py-2 border-t border-gray-100">
+                <div className="flex justify-center gap-1 py-2 border-t border-border">
                   {recipients.slice(0, 15).map((r, i) => (
                     <button
                       key={r.id}
@@ -793,13 +793,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                         i === currentRecipientIndex 
                           ? "bg-[#0077B5] scale-125" 
                           : generatedMessages[r.id] 
-                            ? "bg-emerald-400"
-                            : "bg-gray-200"
+                            ? "bg-success"
+                            : "bg-muted"
                       )}
                     />
                   ))}
                   {recipients.length > 15 && (
-                    <span className="text-xs text-gray-400 ml-1">+{recipients.length - 15}</span>
+                    <span className="text-xs text-muted-foreground ml-1">+{recipients.length - 15}</span>
                   )}
                 </div>
               </div>
@@ -810,26 +810,26 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           <TabsContent value="queue" className="flex-1 overflow-hidden flex flex-col px-6 pb-6 mt-0">
             {/* Queue Stats - compact */}
             {queueStats && (
-              <div className="grid grid-cols-5 gap-2 text-center py-3 border-b border-gray-100 mb-3">
+              <div className="grid grid-cols-5 gap-2 text-center py-3 border-b border-border mb-3">
                 <div>
-                  <div className="text-lg font-semibold text-blue-600">{queueStats.scheduled}</div>
-                  <div className="text-xs text-gray-500 uppercase">Planifiés</div>
+                  <div className="text-lg font-semibold text-info-foreground">{queueStats.scheduled}</div>
+                  <div className="text-xs text-muted-foreground uppercase">Planifiés</div>
                 </div>
                 <div>
-                  <div className="text-lg font-semibold text-amber-500">{queueStats.sending}</div>
-                  <div className="text-xs text-gray-500 uppercase">En cours</div>
+                  <div className="text-lg font-semibold text-warning-foreground">{queueStats.sending}</div>
+                  <div className="text-xs text-muted-foreground uppercase">En cours</div>
                 </div>
                 <div>
-                  <div className="text-lg font-semibold text-emerald-600">{queueStats.sent}</div>
-                  <div className="text-xs text-gray-500 uppercase">Envoyés</div>
+                  <div className="text-lg font-semibold text-success-foreground">{queueStats.sent}</div>
+                  <div className="text-xs text-muted-foreground uppercase">Envoyés</div>
                 </div>
                 <div>
-                  <div className="text-lg font-semibold text-red-500">{queueStats.failed}</div>
-                  <div className="text-xs text-gray-500 uppercase">Échoués</div>
+                  <div className="text-lg font-semibold text-destructive">{queueStats.failed}</div>
+                  <div className="text-xs text-muted-foreground uppercase">Échoués</div>
                 </div>
                 <div>
-                  <div className="text-lg font-semibold text-gray-400">{queueStats.cancelled}</div>
-                  <div className="text-xs text-gray-500 uppercase">Annulés</div>
+                  <div className="text-lg font-semibold text-muted-foreground">{queueStats.cancelled}</div>
+                  <div className="text-xs text-muted-foreground uppercase">Annulés</div>
                 </div>
               </div>
             )}
@@ -838,24 +838,24 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             <ScrollArea className="flex-1">
               <div className="space-y-2">
                 {queueItems.length === 0 ? (
-                  <div className="text-center py-10 text-gray-400">
+                  <div className="text-center py-10 text-muted-foreground">
                     <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     <p className="text-sm">Aucun InMail en file d'attente</p>
                   </div>
                 ) : (
                   queueItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-gray-900 truncate">{item.recipient_name || 'Inconnu'}</div>
-                        <div className="text-xs text-gray-500 truncate">{item.subject}</div>
+                        <div className="font-medium text-sm text-foreground truncate">{item.recipient_name || 'Inconnu'}</div>
+                        <div className="text-xs text-muted-foreground truncate">{item.subject}</div>
                         {item.scheduled_at && ['pending', 'scheduled'].includes(item.status) && (
-                          <div className="text-xs text-blue-600 flex items-center gap-1 mt-1">
+                          <div className="text-xs text-info-foreground flex items-center gap-1 mt-1">
                             <Calendar className="w-3 h-3" />
                             {formatScheduledTime(item.scheduled_at)}
                           </div>
                         )}
                         {item.error_message && (
-                          <div className="text-xs text-red-500 mt-1">{item.error_message}</div>
+                          <div className="text-xs text-destructive mt-1">{item.error_message}</div>
                         )}
                       </div>
                       {getStatusBadge(item.status)}
@@ -870,7 +870,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 variant="ghost" 
                 size="sm"
                 onClick={handleCancelPending}
-                className="text-red-500 hover:text-red-600 hover:bg-red-50 mt-3"
+                className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 mt-3"
               >
                 Annuler les envois en attente
               </Button>
@@ -879,8 +879,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         </Tabs>
 
         {/* Footer - clean */}
-        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2 shrink-0">
-          <Button variant="ghost" onClick={onClose} className="text-gray-600">
+        <div className="px-6 py-4 border-t bg-muted flex justify-end gap-2 shrink-0">
+          <Button variant="ghost" onClick={onClose} className="text-muted-foreground">
             Fermer
           </Button>
           
