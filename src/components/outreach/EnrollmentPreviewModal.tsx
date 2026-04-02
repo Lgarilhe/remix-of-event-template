@@ -865,18 +865,18 @@ function MessageStepCard({
   onEditMessage: (field: 'subject' | 'message', value: string) => void;
   onGenerate: () => void;
 }) {
-  const colorClass = CHANNEL_COLORS[step.actionType] || 'bg-muted/30 text-foreground border-border/50';
+  const colors = CHANNEL_COLORS[step.actionType] || { header: 'text-foreground', border: 'border-border' };
 
   return (
-    <div className={cn("rounded-lg border overflow-hidden", colorClass)}>
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-current/10">
+    <div className={cn("rounded-lg border overflow-hidden bg-card", colors.border)}>
+      <div className={cn("flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30", colors.header)}>
         <div className="flex items-center gap-1.5">
           <Icon className="w-3.5 h-3.5" />
           <span className="text-[11px] font-semibold">{ACTION_LABELS[step.actionType]}</span>
           <span className="text-[10px] opacity-60">#{index + 1}</span>
         </div>
         {step.useAiPersonalization && (
-          <Badge className="text-[9px] h-4 px-1.5 bg-current/10 text-current border-0 gap-0.5">
+          <Badge className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-0 gap-0.5">
             <Sparkles className="w-2.5 h-2.5" /> IA
           </Badge>
         )}
@@ -888,12 +888,12 @@ function MessageStepCard({
         <div className="ml-auto flex items-center gap-1">
           {preview?.isGenerated && (
             <>
-              <button onClick={onRegenerate} className="p-1 rounded hover:bg-current/10 transition-colors" title="Regénérer">
+              <button onClick={onRegenerate} className="p-1 rounded hover:bg-muted transition-colors" title="Regénérer">
                 <RefreshCw className="w-3 h-3" />
               </button>
               <button
                 onClick={onToggleEdit}
-                className={cn("p-1 rounded transition-colors", isEditing ? "bg-current/15" : "hover:bg-current/10")}
+                className={cn("p-1 rounded transition-colors", isEditing ? "bg-muted" : "hover:bg-muted")}
                 title={isEditing ? "Voir" : "Modifier"}
               >
                 <Pencil className="w-3 h-3" />
