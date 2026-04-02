@@ -461,8 +461,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     onClick={() => setTone(t.value as Tone)}
                     className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-lg transition-all ${
                       tone === t.value 
-                        ? 'bg-foreground text-background border-border hover:bg-foreground/90' 
-                        : 'border-border hover:border-border hover:bg-muted/50'
+                        ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90' 
+                        : 'border-border hover:bg-muted/50'
                     }`}
                   >
                     <span className="mr-1">{t.icon}</span>
