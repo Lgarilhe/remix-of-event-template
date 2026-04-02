@@ -258,7 +258,19 @@ export function useLinkedInSearch({
 
   // Load filters from active project's filters_snapshot
   const filtersSnapshotRef = useRef<string | null>(null);
+  // Track whether cache was hydrated so we skip snapshot reload on remount
+  const cacheHydratedRef = useRef(false);
   useEffect(() => {
+    // If cache was just hydrated, the in-memory filters are more recent than DB — skip
+    if (cacheHydratedRef.current) {
+      cacheHydratedRef.current = false;
+      // Still set the ref so future snapshot changes are detected
+      const savedFilters = activeProject?.filters_snapshot;
+      if (savedFilters) {
+        filtersSnapshotRef.current = savedFilters.last_manual_edit || savedFilters.generated_at || JSON.stringify(savedFilters).slice(0, 100);
+      }
+      return;
+    }
     if (!activeProject) return;
     const savedFilters = activeProject.filters_snapshot;
     if (!savedFilters || Object.keys(savedFilters).length === 0) return;
@@ -421,6 +433,34 @@ export function useLinkedInSearch({
   useEffect(() => {
     initialFilterLoadRef.current = true;
   }, [activeProject?.id]);
+
+  // Ref to hold the latest filters for flush-on-unmount
+  const latestFiltersForSaveRef = useRef(filters);
+  useEffect(() => { latestFiltersForSaveRef.current = filters; }, [filters]);
+
+  const flushFilterSave = useCallback(() => {
+    if (!filterSaveTimerRef.current || !activeProject?.id) return;
+    clearTimeout(filterSaveTimerRef.current);
+    filterSaveTimerRef.current = null;
+    const currentFilters = latestFiltersForSaveRef.current;
+    if (JSON.stringify(currentFilters) === JSON.stringify(INITIAL_FILTERS)) return;
+    const ts = new Date().toISOString();
+    filtersSnapshotRef.current = ts;
+    const currentSnapshot = (activeProject.filters_snapshot || {}) as Record<string, any>;
+    updateProject({
+      id: activeProject.id,
+      filters_snapshot: {
+        ...currentSnapshot,
+        ...currentFilters,
+        last_manual_edit: ts,
+      },
+    });
+  }, [activeProject?.id, activeProject?.filters_snapshot, updateProject]);
+
+  // Flush pending save on unmount so filters are never lost
+  useEffect(() => {
+    return () => { flushFilterSave(); };
+  }, [flushFilterSave]);
 
   useEffect(() => {
     // Skip the first render (initial load from filters_snapshot)
@@ -590,5 +630,8 @@ export function useLinkedInSearch({
     // Project
     activeProject,
     onProjectChange,
+    
+    // Cache coordination
+    cacheHydratedRef,
   };
 }

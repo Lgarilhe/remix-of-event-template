@@ -232,6 +232,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (!cached) return;
 
     skipNextCacheWriteRef.current = true;
+    // Signal the hook that cache was hydrated so it skips stale DB snapshot reload
+    search.cacheHydratedRef.current = true;
     search.setFilters(cached.filters);
     search.filtersRef.current = cached.filters;
     search.setResults(cached.results);
