@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Shield, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,12 +56,12 @@ export function getEffectiveDelay(): { min: number; max: number } {
 }
 
 const FIELDS = [
-  { key: 'invitations' as const, label: 'Invitations / jour', default: LINKEDIN_LIMITS.INVITATIONS.recruiter, max: 40, help: 'Réel : ~150-200/semaine Recruiter. Safe : 30/jour' },
-  { key: 'messages' as const, label: 'Messages / jour', default: LINKEDIN_LIMITS.MESSAGES.recruiter, max: 150, help: 'Pas de limite officielle. Safe : 100/jour' },
-  { key: 'inmailDaily' as const, label: 'InMails / jour', default: LINKEDIN_LIMITS.INMAIL_DAILY.recruiter, max: 1000, help: 'Recruiter : 150 crédits/mois + Open Profiles illimités. Hard cap : 1000/jour' },
-  { key: 'profileVisits' as const, label: 'Visites profils / jour', default: LINKEDIN_LIMITS.PROFILE_VISITS.recruiter, max: 1000, help: 'SN/Recruiter : 1000/jour via interface dédiée' },
-  { key: 'minDelayMs' as const, label: 'Délai min entre actions (sec)', default: LINKEDIN_LIMITS.MIN_DELAY_MS / 1000, max: 300, help: 'LinkedIn détecte les patterns < 10s', isDelay: true },
-  { key: 'maxDelayMs' as const, label: 'Délai max entre actions (sec)', default: LINKEDIN_LIMITS.MAX_DELAY_MS / 1000, max: 600, help: 'Varier les délais simule un comportement humain', isDelay: true },
+  { key: 'invitations' as const, label: 'Invitations / jour', default: LINKEDIN_LIMITS.INVITATIONS.recruiter, min: 0, max: 40, step: 1, help: 'Réel : ~150-200/semaine Recruiter. Safe : 30/jour' },
+  { key: 'messages' as const, label: 'Messages / jour', default: LINKEDIN_LIMITS.MESSAGES.recruiter, min: 0, max: 150, step: 5, help: 'Pas de limite officielle. Safe : 100/jour' },
+  { key: 'inmailDaily' as const, label: 'InMails / jour', default: LINKEDIN_LIMITS.INMAIL_DAILY.recruiter, min: 0, max: 1000, step: 10, help: 'Recruiter : 150 crédits/mois + Open Profiles illimités' },
+  { key: 'profileVisits' as const, label: 'Visites profils / jour', default: LINKEDIN_LIMITS.PROFILE_VISITS.recruiter, min: 0, max: 1000, step: 10, help: 'SN/Recruiter : 1000/jour via interface dédiée' },
+  { key: 'minDelayMs' as const, label: 'Délai min entre actions (sec)', default: LINKEDIN_LIMITS.MIN_DELAY_MS / 1000, min: 5, max: 300, step: 5, help: 'LinkedIn détecte les patterns < 10s', isDelay: true },
+  { key: 'maxDelayMs' as const, label: 'Délai max entre actions (sec)', default: LINKEDIN_LIMITS.MAX_DELAY_MS / 1000, min: 10, max: 600, step: 5, help: 'Varier les délais simule un comportement humain', isDelay: true },
 ];
 
 export const LinkedInQuotaSettings = () => {
@@ -72,15 +72,13 @@ export const LinkedInQuotaSettings = () => {
     setOverrides(getQuotaOverrides());
   }, []);
 
-  const handleChange = (key: keyof QuotaOverrides, value: string) => {
-    const num = parseInt(value);
-    if (isNaN(num) || num < 0) return;
-    setOverrides((prev) => ({ ...prev, [key]: num }));
+  const handleChange = (key: keyof QuotaOverrides, value: number) => {
+    if (value < 0) return;
+    setOverrides((prev) => ({ ...prev, [key]: value }));
     setDirty(true);
   };
 
   const handleSave = () => {
-    // Convert delay seconds back to ms for storage
     const toSave = { ...overrides };
     if (toSave.minDelayMs !== undefined) toSave.minDelayMs = toSave.minDelayMs * 1000;
     if (toSave.maxDelayMs !== undefined) toSave.maxDelayMs = toSave.maxDelayMs * 1000;
@@ -103,7 +101,6 @@ export const LinkedInQuotaSettings = () => {
   const getValue = (key: keyof QuotaOverrides, defaultVal: number, isDelay?: boolean) => {
     const raw = overrides[key];
     if (raw !== undefined) {
-      // If stored as ms but displaying as seconds
       if (isDelay && raw > 1000) return Math.round(raw / 1000);
       return raw;
     }
@@ -121,25 +118,31 @@ export const LinkedInQuotaSettings = () => {
           Ajustez les limites quotidiennes. Les valeurs par défaut sont conservatrices pour protéger votre compte LinkedIn.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {FIELDS.map((field) => (
+      <CardContent className="space-y-5">
+        {FIELDS.map((field) => {
+          const currentValue = getValue(field.key, field.default, field.isDelay);
+          return (
             <div key={field.key}>
-              <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-1">
-                {field.label}
-              </label>
-              <Input
-                type="number"
-                min={0}
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  {field.label}
+                </label>
+                <span className="text-sm font-mono font-semibold text-foreground tabular-nums min-w-[3ch] text-right">
+                  {currentValue}
+                </span>
+              </div>
+              <Slider
+                value={[currentValue]}
+                onValueChange={([v]) => handleChange(field.key, v)}
+                min={field.min}
                 max={field.max}
-                value={getValue(field.key, field.default, field.isDelay)}
-                onChange={(e) => handleChange(field.key, e.target.value)}
-                className="h-8 text-sm"
+                step={field.step}
+                className="w-full"
               />
-              <p className="text-xs text-muted-foreground mt-0.5">{field.help} (max: {field.max})</p>
+              <p className="text-xs text-muted-foreground mt-1">{field.help} (max: {field.max})</p>
             </div>
-          ))}
-        </div>
+          );
+        })}
 
         <div className="flex gap-2 pt-2">
           <Button
