@@ -447,7 +447,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 <button
                   onClick={processSequencesNow}
                   disabled={processingSequences}
-                  className="relative overflow-hidden h-[30px] px-4 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
+                  className="relative overflow-hidden h-8 px-4 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
                 >
                   <span className="relative z-10 flex items-center gap-1.5">
                     {processingSequences ? (
@@ -482,7 +482,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           {activeCount > 0 && (
             <button 
               onClick={bulkStopActive}
-              className="w-full relative overflow-hidden h-[34px] px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
+              className="w-full relative overflow-hidden h-9 px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
             >
               <StopCircle className="w-3.5 h-3.5" />
               <span>Arrêter toutes les séquences actives ({activeCount})</span>

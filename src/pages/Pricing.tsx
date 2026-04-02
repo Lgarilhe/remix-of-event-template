@@ -102,7 +102,7 @@ const Pricing = () => {
             }}
           >
             <span className="w-1.5 h-1.5 bg-accent shrink-0" />
-            <span className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Tarifs transparents
             </span>
           </div>
@@ -167,7 +167,7 @@ const Pricing = () => {
 
             <span className={cn('text-xs font-bold uppercase tracking-wider flex items-center gap-2', yearly ? 'text-foreground' : 'text-muted-foreground')}>
               Annuel
-              <span className="px-1.5 py-0.5 text-xs font-black skalr-gradient-bg text-white leading-none">
+              <span className="px-1.5 py-0.5 text-xs font-bold skalr-gradient-bg text-white leading-none">
                 -20%
               </span>
             </span>
@@ -234,7 +234,7 @@ const Pricing = () => {
                     {/* Popular badge */}
                     {isPopular && (
                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-                        <span className="px-3 py-1 text-xs uppercase tracking-[0.14em] font-black bg-[hsl(var(--skalr-purple))] text-white">
+                        <span className="px-3 py-1 text-xs uppercase tracking-wider font-bold bg-[hsl(var(--skalr-purple))] text-white">
                           Populaire
                         </span>
                       </div>
@@ -243,7 +243,7 @@ const Pricing = () => {
                     <div className="p-5 sm:p-6 flex flex-col flex-1">
                       {/* Plan name */}
                       <div className="mb-4">
-                        <h3 className="text-xs uppercase tracking-[0.18em] font-bold text-muted-foreground mb-1">
+                        <h3 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-1">
                           {plan.name}
                         </h3>
                         <p className="text-xs text-muted-foreground/70 leading-relaxed">
@@ -318,7 +318,7 @@ const Pricing = () => {
                           }
                         }}
                         className={cn(
-                          'w-full h-12 text-xs uppercase tracking-[0.14em] font-bold border-2 transition-all active:translate-y-[1px]',
+                          'w-full h-12 text-xs uppercase tracking-wider font-bold border-2 transition-all active:translate-y-[1px]',
                           isCurrent
                             ? 'border-border text-muted-foreground cursor-default bg-transparent'
                             : isPopular
@@ -350,7 +350,7 @@ const Pricing = () => {
                   transitionDelay: '500ms',
                 }}
               >
-                <h2 className="text-xs uppercase tracking-[0.18em] font-bold text-muted-foreground mb-4 flex items-center gap-2">
+                <h2 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-4 flex items-center gap-2">
                   <span className="w-2 h-2 bg-accent" />
                   Comparatif détaillé
                 </h2>
@@ -359,14 +359,14 @@ const Pricing = () => {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">
-                        <th className="text-left p-3 text-xs uppercase tracking-[0.1em] text-muted-foreground font-bold">
+                        <th className="text-left p-3 text-xs uppercase tracking-wider text-muted-foreground font-bold">
                           Fonctionnalité
                         </th>
                         {plans.map((plan) => (
                           <th
                             key={plan.id}
                             className={cn(
-                              'p-3 text-center text-xs uppercase tracking-[0.1em] font-bold',
+                              'p-3 text-center text-xs uppercase tracking-wider font-bold',
                               plan.id === 'pro' ? 'text-[hsl(var(--skalr-purple))]' : 'text-muted-foreground'
                             )}
                           >
@@ -383,7 +383,7 @@ const Pricing = () => {
                             ri < COMPARISON_ROWS.length - 1 && 'border-b border-border'
                           )}
                         >
-                          <td className="p-3 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                          <td className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                             {row.label}
                           </td>
                           {plans.map((plan) => {
@@ -422,7 +422,7 @@ const Pricing = () => {
             transitionDelay: '700ms',
           }}
         >
-          <h2 className="text-xs uppercase tracking-[0.18em] font-bold text-muted-foreground mb-4 flex items-center gap-2">
+          <h2 className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-4 flex items-center gap-2">
             <span className="w-2 h-2 bg-accent" />
             Questions fréquentes
           </h2>

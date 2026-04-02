@@ -283,7 +283,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
           {/* Avatar - separate column on desktop only */}
           <div className="relative shrink-0 hidden sm:block">
-            <Avatar className="w-14 h-14 border-2 border-border shadow-md">
+            <Avatar className="w-14 h-14 border border-border shadow-md">
               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials || '?'}

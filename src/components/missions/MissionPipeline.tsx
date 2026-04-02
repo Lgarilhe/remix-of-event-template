@@ -97,12 +97,12 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <ExternalLink className="w-2.5 h-2.5" /> LinkedIn
+            <ExternalLink className="w-3 h-3" /> LinkedIn
           </a>
         )}
         {timeInStage && (
           <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5 ml-auto">
-            <Clock className="w-2.5 h-2.5" /> {timeInStage}
+            <Clock className="w-3 h-3" /> {timeInStage}
           </span>
         )}
       </div>
@@ -276,7 +276,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const totalCandidates = stats?.total || candidates.length;
 
   return (
-    <div className="bg-background border border-border border-t-0 p-3 sm:p-6">
+    <div className="bg-background border border-border p-4 sm:p-6">
       {/* Stats bar */}
       {totalCandidates > 0 && (
         <div className="mb-4">
@@ -340,7 +340,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('table')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border group",
+              "flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border group",
               viewMode === 'table' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >
@@ -349,7 +349,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('kanban')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border border-l-0 group",
+              "flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border border-l-0 group",
               viewMode === 'kanban' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >

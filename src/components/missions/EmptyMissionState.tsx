@@ -366,7 +366,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
             whileTap={{ scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             className={cn(
-              "relative w-full text-left border-2 border-border p-7 sm:p-9 overflow-hidden h-full",
+              "relative w-full text-left border border-border p-7 sm:p-9 overflow-hidden h-full",
               "bg-gradient-to-br from-[hsl(var(--accent))] via-transparent to-[hsl(var(--accent))]",
               "focus-visible:outline-none group"
             )}
@@ -425,7 +425,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               {/* Icon with animated ring */}
               <div className="relative w-14 h-14 mb-6">
                 <motion.div
-                  className="absolute inset-0 border-2 border-accent/30"
+                  className="absolute inset-0 border border-accent/30"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 20, repeat: Infinity, ease: 'linear' as const }}
                   style={{ borderRadius: '30% 70% 70% 30% / 30% 30% 70% 70%' }}
@@ -471,7 +471,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
 
               {/* CTA */}
               <ShimmerButton
-                className="w-full h-[48px] text-xs pointer-events-none"
+                className="w-full h-12 text-xs pointer-events-none"
                 shimmerDuration="1.5s"
                 tabIndex={-1}
               >
@@ -547,7 +547,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               </ul>
 
               {/* CTA outline */}
-              <div className="relative overflow-hidden w-full h-[48px] text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground flex items-center justify-center gap-2 group/btn">
+              <div className="relative overflow-hidden w-full h-12 text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground flex items-center justify-center gap-2 group/btn">
                 <span className="relative z-10 flex items-center gap-2">
                   <Pencil className="w-3.5 h-3.5" />
                   Création manuelle

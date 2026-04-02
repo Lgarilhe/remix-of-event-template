@@ -192,7 +192,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           06 — Votre équipe
@@ -217,7 +217,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           onClick={startScan}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="border-2 border-border p-4 flex items-center gap-4 text-left hover:border-border transition-colors w-full"
+          className="border border-border p-4 flex items-center gap-4 text-left hover:border-border transition-colors w-full"
         >
           <img src={linkedinLogo} alt="LinkedIn" className="w-10 h-10 object-contain shrink-0" />
           <div className="flex-1 min-w-0">
@@ -240,7 +240,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="border-2 border-border p-6 flex flex-col items-center gap-3"
+            className="border border-border p-6 flex flex-col items-center gap-3"
           >
             <motion.img
               src={linkedinLogo}
@@ -326,11 +326,11 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             placeholder="collegue@entreprise.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="flex-1 min-w-0 border-2 border-border text-sm h-10"
+            className="flex-1 min-w-0 border border-border text-sm h-10"
           />
           <div className="flex gap-2 w-full sm:w-auto">
             <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="w-24 text-xs border-2 border-border h-10">
+              <SelectTrigger className="w-24 text-xs border border-border h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -343,7 +343,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               type="submit"
               size="icon"
               disabled={isInviting || !email.trim()}
-              className="h-10 w-10 border-2 border-border bg-foreground text-background hover:bg-foreground/90 shrink-0"
+              className="h-10 w-10 border border-border bg-foreground text-background hover:bg-foreground/90 shrink-0"
               style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
             >
               {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -366,13 +366,13 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       {/* Navigation */}
       <div className="flex flex-col items-end gap-1 pt-2">
         <div className="flex items-center justify-between w-full">
-          <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
+          <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
             <ArrowLeft className="w-4 h-4" /> Retour
           </Button>
           <Button
             onClick={handleFinish}
             disabled={isSending}
-            className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
             style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}

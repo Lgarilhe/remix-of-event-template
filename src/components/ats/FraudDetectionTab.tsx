@@ -83,7 +83,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
         <div className="flex items-center gap-2 mt-4">
           <button
             onClick={runAnalysis}
-            className="relative overflow-hidden h-[34px] px-6 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
+            className="relative overflow-hidden h-9 px-6 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10">Lancer l'analyse</span>
           </button>

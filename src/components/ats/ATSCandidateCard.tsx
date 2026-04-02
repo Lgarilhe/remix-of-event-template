@@ -62,7 +62,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
-          <h4 className="font-medium text-foreground truncate text-sm uppercase tracking-tight">
+          <h4 className="font-medium text-foreground truncate text-sm uppercase">
             {candidate.name}
           </h4>
           {candidate.headline && (

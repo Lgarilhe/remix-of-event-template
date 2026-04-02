@@ -35,31 +35,31 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
         <>
           {candidateStatus.status === 'messaged' && (
             <Badge className="bg-info text-info-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
-              <MessageSquare className="w-2.5 h-2.5" />
+              <MessageSquare className="w-3 h-3" />
               <span className="hidden sm:inline">Contacté</span>
             </Badge>
           )}
           {candidateStatus.status === 'replied' && (
             <Badge className="bg-success text-success-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
-              <CheckCircle2 className="w-2.5 h-2.5" />
+              <CheckCircle2 className="w-3 h-3" />
               <span className="hidden sm:inline">Répondu</span>
             </Badge>
           )}
           {candidateStatus.status === 'shortlisted' && (
             <Badge className="bg-warning text-warning-foreground text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
-              <Star className="w-2.5 h-2.5" />
+              <Star className="w-3 h-3" />
               <span className="hidden sm:inline">Shortlist</span>
             </Badge>
           )}
           {candidateStatus.status === 'scored' && !jobScore && (
             <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-brand-purple border-brand-purple/30 bg-brand-purple/10">
-              <Target className="w-2.5 h-2.5" />
+              <Target className="w-3 h-3" />
               {candidateStatus.score && <span>{candidateStatus.score}%</span>}
             </Badge>
           )}
           {candidateStatus.status === 'dismissed' && (
             <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0 text-warning border-warning/30 bg-warning/10">
-              <Archive className="w-2.5 h-2.5" />
+              <Archive className="w-3 h-3" />
               <span className="hidden sm:inline">Archivé</span>
             </Badge>
           )}
@@ -67,13 +67,13 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
       )}
       {profile.premium && (
         <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-warning border-warning/30 bg-warning/10 shrink-0">
-          <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 fill-warning" />
+          <Star className="w-3 h-3 mr-0.5 fill-warning" />
           <span className="hidden sm:inline">Premium</span>
         </Badge>
       )}
       {profile.open_to_work && (
         <Badge className="bg-success text-success-foreground text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 gap-0.5 shrink-0">
-          <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+          <Zap className="w-3 h-3" />
           <span className="hidden sm:inline">Open to Work</span>
           <span className="sm:hidden">OTW</span>
         </Badge>
@@ -99,7 +99,7 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
               ({airtableMatch.status})
             </span>
           )}
-          {historyLoading && <Loader2 className="w-2.5 h-2.5 animate-spin shrink-0" />}
+          {historyLoading && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
           {historyData && (
             <>
               <span className="sm:hidden font-bold shrink-0">

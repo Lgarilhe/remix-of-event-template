@@ -248,7 +248,7 @@ export default function ATS() {
                         key={tab.value}
                         onClick={() => setActiveView(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
+                          "relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
                           index > 0 && "border-l-0",
                           isActive ? "bg-accent text-foreground" : "bg-background text-foreground"
                         )}
@@ -272,7 +272,7 @@ export default function ATS() {
                   <p className="text-destructive">{error}</p>
                   <button
                     onClick={refetch}
-                    className="relative overflow-hidden h-[34px] px-6 mt-4 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
+                    className="relative overflow-hidden h-9 px-6 mt-4 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
                   >
                     <span className="relative z-10">Réessayer</span>
                   </button>
@@ -353,7 +353,7 @@ export default function ATS() {
                                       key={tab.value}
                                       onClick={() => setShortlistViewMode(tab.value)}
                                       className={cn(
-                                        "relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group",
+                                        "relative overflow-hidden flex items-center gap-1.5 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group",
                                         index > 0 && "border-l-0",
                                         shortlistViewMode === tab.value ? "bg-accent text-foreground" : "bg-background text-foreground"
                                       )}

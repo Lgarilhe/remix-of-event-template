@@ -330,7 +330,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           {onOpenFilterWizard && (
             <button
               onClick={onOpenFilterWizard}
-              className="flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
+              className="flex items-center gap-1.5 h-8 px-3 text-[10px] font-black uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
             >
               <Crosshair className="w-3 h-3" />
               Wizard filtres

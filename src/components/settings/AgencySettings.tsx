@@ -84,7 +84,7 @@ export const AgencySettings: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-5 h-5 border-2 border-border border-t-foreground animate-spin" />
+        <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
       </div>
     );
   }
@@ -138,7 +138,7 @@ export const AgencySettings: React.FC = () => {
                 onClick={() => handleToggle(key)}
                 disabled={!isOwner || saving}
                 className={cn(
-                  "h-[30px] px-4 text-xs font-bold uppercase tracking-wider border transition-colors shrink-0 ml-4",
+                  "h-8 px-4 text-xs font-bold uppercase tracking-wider border transition-colors shrink-0 ml-4",
                   perms[key]
                     ? "bg-foreground text-background border-border"
                     : "bg-background text-muted-foreground border-border",

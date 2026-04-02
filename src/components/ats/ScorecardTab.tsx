@@ -610,17 +610,17 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 }
                 navigate(`/ats/scorecard/${candidate.candidateId}?coaching=1`);
               }}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-destructive text-destructive text-xs font-medium uppercase tracking-wider group -ml-px">
+              className="relative overflow-hidden h-8 px-2 sm:px-3 flex items-center gap-1.5 border border-destructive text-destructive text-xs font-medium uppercase tracking-wider group -ml-px">
               <Mic className="w-3 h-3" />
               <span className="hidden sm:inline">Coaching Live</span>
             </button>
             <button onClick={handleGenerate} disabled={generating}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
+              className="relative overflow-hidden h-8 px-2 sm:px-3 flex items-center gap-1.5 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 -ml-px">
               {generating ? <Loader2 className="w-3 h-3 animate-spin relative z-10" /> : <RotateCcw className="w-3 h-3 relative z-10" />}
               <span className="relative z-10 hidden sm:inline">Régénérer</span>
             </button>
             <button onClick={handleSave} disabled={saving}
-              className="relative overflow-hidden h-[30px] px-2 sm:px-3 flex items-center gap-1.5 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
+              className="relative overflow-hidden h-8 px-2 sm:px-3 flex items-center gap-1.5 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
               <span className="hidden sm:inline">Sauvegarder</span>
             </button>
@@ -754,7 +754,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           const totalC = activeEval.criteria.length;
 
           return (
-            <div className="border-2 border-border relative">
+            <div className="border border-border relative">
               {/* Card header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-foreground/[0.03]">
                 <div className="flex items-center gap-2 min-w-0">
@@ -827,7 +827,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
                 {/* Notes */}
                 <Textarea value={comment} onChange={e => handleComment(criterion.id, e.target.value)}
-                  placeholder="Notes rapides..." className="text-xs min-h-[50px] rounded-lg border-2 border-border focus:border-border resize-none py-1.5 px-2" />
+                  placeholder="Notes rapides..." className="text-xs min-h-[50px] rounded-lg border border-border focus:border-border resize-none py-1.5 px-2" />
               </div>
 
               {/* Navigation arrows */}

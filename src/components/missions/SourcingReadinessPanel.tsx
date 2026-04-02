@@ -274,7 +274,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             <ShimmerButton
               onClick={onAutoFill}
               disabled={autoFillLoading || brief.filled < 3}
-              className="w-full h-[44px] text-xs"
+              className="w-full h-11 text-xs"
               shimmerDuration="1.5s"
             >
               {autoFillLoading ? (
@@ -341,7 +341,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             onClick={onSearch}
             disabled={!filtersReady}
             className={cn(
-              'w-full h-[48px] flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
+              'w-full h-12 flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
               filtersReady
                 ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm'
                 : 'border-border bg-accent/50 text-muted-foreground cursor-not-allowed',

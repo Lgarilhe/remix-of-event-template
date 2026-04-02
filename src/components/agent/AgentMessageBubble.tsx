@@ -227,7 +227,7 @@ function StepCard({ current, total, title, question }: {
           {current}
         </div>
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Étape {current} sur {total}
           </p>
           <p className="text-sm font-semibold text-foreground">{title}</p>
@@ -277,7 +277,7 @@ function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
       style={{ borderLeft: '3px solid hsl(var(--skalr-purple))' }}
     >
       <p
-        className="text-xs font-bold uppercase tracking-[0.12em] mb-2.5"
+        className="text-xs font-bold uppercase tracking-wider mb-2.5"
         style={{ color: 'hsl(var(--skalr-purple))' }}
       >
         Résumé du poste
@@ -438,9 +438,9 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
   }
 
   return (
-    <div className="border-2 border-border overflow-hidden">
+    <div className="border border-border overflow-hidden">
       <div className="px-3.5 py-3 flex items-center justify-between border-b border-border">
-        <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">
+        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
           Plan de recherche
         </span>
         {/* LinkedIn count badge */}
@@ -453,7 +453,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
             <span className="text-xs text-muted-foreground/40">—</span>
           ) : estimatedCount !== null ? (
             <span className={cn(
-              "px-2 py-0.5 text-xs font-bold uppercase tracking-[0.1em] border-2 tabular-nums",
+              "px-2 py-0.5 text-xs font-bold uppercase tracking-wider border-2 tabular-nums",
               estimatedCount > 100
                 ? "border-success/30 text-success bg-success/5"
                 : estimatedCount > 20
@@ -473,7 +473,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
             <div key={i} className="flex items-start gap-3">
               <span className="h-1.5 w-1.5 bg-foreground/30 shrink-0 mt-[7px]" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{item.label}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{item.label}</p>
                 <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
               </div>
             </div>
@@ -485,17 +485,17 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
       {(locationKeywords.length > 0 || filters.calculated_experience_min != null || stopConditions.target_go_profiles) && (
         <div className="border-t border-border px-3.5 py-2.5 flex flex-wrap gap-1.5">
           {locationKeywords.length > 0 && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-border text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider border border-border text-foreground/60">
               {locationKeywords.join(', ')}
             </span>
           )}
           {filters.calculated_experience_min != null && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-border text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider border border-border text-foreground/60">
               {filters.calculated_experience_min}–{filters.calculated_experience_max} ans
             </span>
           )}
           {stopConditions.target_go_profiles && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-[0.1em] border border-border text-foreground/60">
+            <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider border border-border text-foreground/60">
               {stopConditions.target_go_profiles} profils Go
             </span>
           )}

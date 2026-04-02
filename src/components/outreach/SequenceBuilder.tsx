@@ -847,7 +847,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         const { availableActions, availableTriggers } = getAvailableStepTypes(sequence.steps);
         const hasNoOptions = availableActions.length === 0 && availableTriggers.length === 0;
         return (
-          <div className={cn("mt-4 p-5 border-2 border-dashed rounded-lg", sequence.steps.length === 0 ? "border-border bg-muted/20" : "border-border bg-muted/10")}>
+          <div className={cn("mt-4 p-5 border border-dashed rounded-lg", sequence.steps.length === 0 ? "border-border bg-muted/20" : "border-border bg-muted/10")}>
             <div className="flex items-center justify-between mb-4">
               <span className="font-medium text-sm">{sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}</span>
               {sequence.steps.length > 0 && (

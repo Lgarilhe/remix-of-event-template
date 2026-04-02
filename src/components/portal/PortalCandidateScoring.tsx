@@ -172,7 +172,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
           <button
             onClick={handleSubmit}
             disabled={submitting || Object.keys(ratings).length === 0}
-            className="relative overflow-hidden w-full h-[34px] bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group disabled:opacity-50"
+            className="relative overflow-hidden w-full h-9 bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group disabled:opacity-50"
           >
             <span className="relative z-10 flex items-center justify-center gap-1.5">
               {submitting ? 'Envoi...' : <><Send className="w-3 h-3" /> Envoyer mon évaluation</>}

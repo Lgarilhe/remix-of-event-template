@@ -447,7 +447,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
   const filtersPanel = (
     <div className="space-y-3">
       {/* Search bar + ICP at top */}
-      <div className="border-2 border-border bg-background p-3 space-y-3">
+      <div className="border border-border bg-background p-3 space-y-3">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-foreground text-background flex items-center justify-center shrink-0">
             <Search className="w-3.5 h-3.5" />

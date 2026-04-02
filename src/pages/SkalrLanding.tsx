@@ -210,7 +210,7 @@ const SkalrLanding = () => {
               transition={{ duration: 0.5 }}
               className="mb-8"
             >
-              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-sm">
+              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-sm">
                 <span className="w-2 h-2 bg-accent" />
                 Plateforme de recrutement
               </span>
@@ -274,7 +274,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-4 block">
                 Fonctionnalités
               </span>
               <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground leading-[1.1]">
@@ -388,7 +388,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-4 block">
                 Résultats
               </span>
               <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground">
@@ -425,7 +425,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center"
             >
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-background/60 mb-6 block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-background/60 mb-6 block">
                 Témoignage
               </span>
               <blockquote className="font-editorial text-2xl sm:text-3xl md:text-4xl leading-[1.3] text-background mb-8">

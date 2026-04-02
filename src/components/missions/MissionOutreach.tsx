@@ -79,7 +79,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   if (accountsLoading) {
     return (
-      <div className="bg-background border border-border border-t-0 p-6">
+      <div className="bg-background border border-border p-6">
         <BrutalLoader variant="default" rows={2} messages={['Chargement des comptes…']} />
       </div>
     );
@@ -91,7 +91,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   if (showEmptyState && enrollmentStats.total === 0) {
     return (
-      <div className="border border-border border-t-0 bg-background">
+      <div className="border border-border bg-background">
         <OutreachEmptyState
           goCount={goCount}
           onLinkedInMessage={() => {
@@ -112,7 +112,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   }
 
   return (
-    <div className="border border-border border-t-0 bg-background">
+    <div className="border border-border bg-background">
       {/* Contextual banner */}
       {enrollmentStats.total === 0 && (
         <MissionContextBanner
@@ -131,7 +131,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           <select
             value={selectedAccount || ''}
             onChange={(e) => setSelectedAccount(e.target.value || null)}
-            className="h-[30px] px-2 text-xs uppercase tracking-wider border border-border bg-background text-foreground font-medium"
+            className="h-8 px-2 text-xs uppercase tracking-wider border border-border bg-background text-foreground font-medium"
           >
             {accounts.map(a => (
               <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
@@ -167,7 +167,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
             key={sub.value}
             onClick={() => setOutreachTab(sub.value as 'sequences' | 'invitations')}
             className={cn(
-              "relative overflow-hidden flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
+              "relative overflow-hidden flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
               idx > 0 && "border-l-0",
               outreachTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
             )}

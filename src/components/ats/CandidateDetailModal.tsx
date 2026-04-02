@@ -496,7 +496,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
               style={{ animationDuration: '2s' }}
             >
               <User className="w-5 h-5" />
-              <span className="absolute inset-0 rounded-full border-2 border-border animate-ping" style={{ animationDuration: '3s' }} />
+              <span className="absolute inset-0 rounded-full border border-border animate-ping" style={{ animationDuration: '3s' }} />
             </button>
 
             {/* RIGHT: Compact profile sidebar (desktop) */}

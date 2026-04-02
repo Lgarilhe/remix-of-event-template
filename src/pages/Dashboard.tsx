@@ -48,7 +48,7 @@ export default function Dashboard() {
           {loading && candidates.length === 0 ? (
             <ATSStatsSkeleton />
           ) : candidates.length === 0 ? (
-            <div className="border-2 border-border bg-background p-6 sm:p-8">
+            <div className="border border-border bg-background p-6 sm:p-8">
               <div className="flex items-start gap-4">
                 <div className="text-4xl">👋</div>
                 <div>

@@ -59,7 +59,7 @@ export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspac
         >
           <Button
             onClick={onCreateWorkspace}
-            className="flex-1 gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            className="flex-1 gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
             style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
           >
             Créer mon espace <ArrowRight className="w-4 h-4" />
@@ -67,7 +67,7 @@ export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspac
           <Button
             onClick={onSkip}
             variant="outline"
-            className="flex-1 gap-2 border-2 border-border text-sm"
+            className="flex-1 gap-2 border border-border text-sm"
           >
             <Clock className="w-4 h-4" /> Plus tard
           </Button>

@@ -227,7 +227,7 @@ export const ConnectorSettings = () => {
         <CardContent className="space-y-6">
           {CATEGORY_ORDER.filter(cat => groupedAvailable[cat]?.length).map(cat => (
             <div key={cat}>
-              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground mb-3 border-b border-border pb-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 border-b border-border pb-1.5">
                 {CATEGORY_LABELS[cat] || cat.toUpperCase()}
               </h3>
               <div className="space-y-2">

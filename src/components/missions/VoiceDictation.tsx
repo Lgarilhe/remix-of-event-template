@@ -167,7 +167,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
             onClick={startRecording}
             disabled={isConnecting}
             className={cn(
-              "relative overflow-hidden flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-border group",
+              "relative overflow-hidden flex items-center gap-2 h-9 px-5 text-xs font-medium uppercase tracking-wider border border-border group",
               isConnecting ? "bg-muted text-muted-foreground" : "bg-foreground text-background"
             )}
           >
@@ -187,7 +187,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
           <div className="flex items-center gap-3">
             <button
               onClick={stopRecording}
-              className="flex items-center gap-2 h-[34px] px-5 text-xs font-medium uppercase tracking-wider border border-red-600 bg-red-600 text-white"
+              className="flex items-center gap-2 h-9 px-5 text-xs font-medium uppercase tracking-wider border border-red-600 bg-red-600 text-white"
             >
               <Square className="w-3 h-3" />
               Arrêter

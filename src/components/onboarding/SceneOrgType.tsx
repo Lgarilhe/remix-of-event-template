@@ -39,7 +39,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           01 — Votre activité
@@ -116,7 +116,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         <Button
           onClick={() => selected && onSelect(selected)}
           disabled={!selected}
-          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />

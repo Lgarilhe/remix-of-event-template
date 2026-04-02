@@ -203,7 +203,7 @@ function DetailTab({ active, emoji, label, count, onClick }: { active: boolean; 
     <button
       onClick={onClick}
       className={cn(
-        "relative overflow-hidden flex items-center gap-1 h-[30px] px-2.5 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
+        "relative overflow-hidden flex items-center gap-1 h-8 px-2.5 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
         active ? "bg-foreground text-background" : "bg-background text-foreground"
       )}
     >
@@ -690,7 +690,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
                   {/* Generated message */}
                   {enrichment?.generated_message && (
-                    <div className="border-2 border-border">
+                    <div className="border border-border">
                       <div className="px-4 py-2.5 border-b border-border flex items-center justify-between bg-muted/20">
                         <div className="flex items-center gap-2">
                           <span className="text-sm">{enrichment.message_type === 'sms' ? '📱' : '💬'}</span>
@@ -755,7 +755,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           <div className="text-lg font-bold tabular-nums">{notes.length}</div>
                           <div className="text-[8px] uppercase tracking-widest text-muted-foreground">Notes</div>
                         </div>
-                        <div className={cn("border-2 p-2.5 text-center", placements.length > 0 ? "border-border bg-foreground text-background" : "border-border")}>
+                        <div className={cn("border p-2.5 text-center", placements.length > 0 ? "border-border bg-foreground text-background" : "border-border")}>
                           <div className="text-lg font-bold tabular-nums">{placements.length}</div>
                           <div className="text-[8px] uppercase tracking-widest opacity-60">Placements</div>
                         </div>
@@ -767,7 +767,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           <SectionHeader emoji="🏆" label="Placements réussis" count={placements.length} />
                           <div className="space-y-2">
                             {placements.map((p: any, i: number) => (
-                              <div key={i} className="border-2 border-border bg-accent/50 p-3">
+                              <div key={i} className="border border-border bg-accent/50 p-3">
                                 <div className="flex items-center justify-between">
                                   <div className="text-xs font-bold">{p.name || 'Placement'}</div>
                                   {p.status && <Badge variant="outline" className="text-[8px] uppercase tracking-widest border-border">{p.status}</Badge>}
@@ -901,7 +901,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     <>
                       {/* Context: when was last interaction */}
                       {careerAnalysis.lastInteractionDate && (
-                        <div className="border-2 border-border bg-foreground text-background p-3 flex items-center gap-3">
+                        <div className="border border-border bg-foreground text-background p-3 flex items-center gap-3">
                           <Clock className="w-5 h-5 shrink-0 text-[hsl(var(--primary))]" />
                           <div>
                             <div className="text-xs uppercase tracking-widest text-background/50">Dernier échange avec Skalr</div>
@@ -1036,7 +1036,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       </div>
                       {/* Top recruiter highlight */}
                       {recruiterStats.length > 0 && (
-                        <div className="border-2 border-border bg-foreground text-background p-4 flex items-center gap-3">
+                        <div className="border border-border bg-foreground text-background p-4 flex items-center gap-3">
                           <div className="h-12 w-12 border-2 border-background/30 flex items-center justify-center text-sm font-bold uppercase shrink-0">
                             {recruiterStats[0].name.split(' ').map(w => w[0]).join('').slice(0, 2)}
                           </div>
@@ -1710,7 +1710,7 @@ export function VivierList() {
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
               className={cn(
-                "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
+                "relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
                 index > 0 && "border-l-0",
                 isActive
                   ? "bg-accent text-foreground"

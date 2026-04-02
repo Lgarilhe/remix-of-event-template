@@ -39,7 +39,7 @@ function BrutalSpinner({ size = 40 }: { size?: number }) {
     <div className="relative" style={{ width: s, height: s }}>
       {/* Outer — slow CCW */}
       <div
-        className="absolute inset-0 border-2 border-border animate-[spin_4s_linear_infinite_reverse]"
+        className="absolute inset-0 border border-border animate-[spin_4s_linear_infinite_reverse]"
       />
       {/* Mid — medium CW with accent */}
       <div
@@ -117,7 +117,7 @@ export const BrutalLoader: React.FC<BrutalLoaderProps> = ({
       {/* Rotating text */}
       <p
         className={cn(
-          'text-xs text-muted-foreground/70 uppercase tracking-[0.14em] font-medium transition-opacity duration-300 ease-out mb-8',
+          'text-xs text-muted-foreground/70 uppercase tracking-wider font-medium transition-opacity duration-300 ease-out mb-8',
           fade ? 'opacity-100' : 'opacity-0'
         )}
       >

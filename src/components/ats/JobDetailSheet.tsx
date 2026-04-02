@@ -573,7 +573,7 @@ function IATab({
       {/* Analyze button */}
       <button
         onClick={() => jobId && openAgent(jobId)}
-        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border-2 border-border text-foreground text-xs font-bold uppercase tracking-wider group"
+        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border border-border text-foreground text-xs font-bold uppercase tracking-wider group"
       >
         <Brain className="w-4 h-4 relative z-10" />
         <span className="relative z-10">Analyser ce poste avec l'Agent</span>

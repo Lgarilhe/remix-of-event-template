@@ -232,7 +232,7 @@ const Auth = () => {
       />
       <div className="w-full max-w-md space-y-8">
         <div>
-          <h2 className="text-2xl sm:text-4xl font-normal text-foreground tracking-[-0.02em] uppercase">
+          <h2 className="text-2xl sm:text-4xl font-normal text-foreground uppercase">
             {isResettingPassword ? 'Nouveau mot de passe' : isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Connexion' : 'Inscription'}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -285,7 +285,7 @@ const Auth = () => {
           <button
             type="submit"
             disabled={loading}
-            className="relative overflow-hidden w-full h-[44px] bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
+            className="relative overflow-hidden w-full h-11 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
           >
             <span className="relative z-10">
               {loading ? 'Chargement...' : isResettingPassword ? 'Mettre à jour' : isForgotPassword ? 'Envoyer le lien' : isLogin ? 'Connexion' : 'Inscription'}

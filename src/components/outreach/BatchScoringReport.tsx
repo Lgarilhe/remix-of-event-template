@@ -113,7 +113,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[540px] max-h-[85dvh] p-0 gap-0 border-2 border-border overflow-hidden bg-background">
+      <DialogContent className="sm:max-w-[540px] max-h-[85dvh] p-0 gap-0 border border-border overflow-hidden bg-background">
         <DialogHeader className="sr-only">
           <DialogTitle>Rapport de scoring</DialogTitle>
           <DialogDescription>Résultats du scoring IA des profils</DialogDescription>

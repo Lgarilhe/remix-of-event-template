@@ -231,7 +231,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
   };
 
   return (
-    <div className="bg-background border border-border border-t-0 p-3 sm:p-6 space-y-6">
+    <div className="bg-background border border-border p-4 sm:p-6 space-y-6">
       {hasData ? (
         <>
           {/* Section 1: Funnel */}
