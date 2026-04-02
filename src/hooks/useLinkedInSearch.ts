@@ -273,7 +273,9 @@ export function useLinkedInSearch({
       const { last_manual_edit, generated_at, suggestions, skills_keywords, location_keywords, years_of_experience_min, years_of_experience_max, ...uiFilters } = savedFilters;
       // Mark as initial load so the save effect skips this change
       initialFilterLoadRef.current = true;
-      setFilters({ ...INITIAL_FILTERS, ...uiFilters });
+      // Don't restore api from snapshot — it must match the current search source toggle
+      const { api: _savedApi, ...safeUiFilters } = uiFilters as any;
+      setFilters({ ...INITIAL_FILTERS, ...safeUiFilters });
       return;
     }
 
