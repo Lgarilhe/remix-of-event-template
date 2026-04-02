@@ -903,7 +903,7 @@ function MessageStepCard({
         </div>
       </div>
 
-      <div className="px-3 py-3 bg-background/80">
+      <div className="px-3 py-3">
         {preview?.isGenerating ? (
           <div className="space-y-2">
             <Skeleton className="h-4 w-3/4" />
