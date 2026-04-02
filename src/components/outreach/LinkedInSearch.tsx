@@ -4,7 +4,6 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
-import { FilterWizard } from '@/components/missions/FilterWizard';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
@@ -715,44 +714,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [search.results.length, search.hasSearched]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const wizardOpenTimeoutRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (wizardOpenTimeoutRef.current !== null) {
-        window.clearTimeout(wizardOpenTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Get job details and suggestions from active project for the wizard
-  const wizardJobDetails = (activeProject?.job_details || {}) as import('@/types/jobDetails').JobDetails;
-  const wizardSuggestions = (activeProject?.filters_snapshot as any)?.suggestions || null;
-
-  const handleOpenFilterWizard = useCallback(() => {
-    if (wizardOpenTimeoutRef.current !== null) {
-      window.clearTimeout(wizardOpenTimeoutRef.current);
-      wizardOpenTimeoutRef.current = null;
-    }
-
-    if (filtersOpen) {
-      setFiltersOpen(false);
-      wizardOpenTimeoutRef.current = window.setTimeout(() => {
-        setWizardOpen(true);
-        wizardOpenTimeoutRef.current = null;
-      }, 320);
-      return;
-    }
-
-    setWizardOpen(true);
-  }, [filtersOpen]);
-
-  const handleWizardApply = useCallback((patch: Partial<LinkedInFiltersState>) => {
-    search.setFilters(prev => ({ ...prev, ...patch }));
-    // Trigger search after applying
-    queueMicrotask(() => handleSearch(false));
-  }, [search.setFilters, handleSearch]);
+  // AI suggestions from filters_snapshot
+  const aiSuggestions = (activeProject?.filters_snapshot as any)?.suggestions || null;
 
   const filtersPanel = (
     <SearchFiltersPanel
@@ -817,22 +781,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onDeleteHistoryEntry={searchHistory.deleteEntry}
       scoringInstructions={scoringInstructions}
       onScoringInstructionsChange={setScoringInstructions}
-      onOpenFilterWizard={activeProject ? handleOpenFilterWizard : undefined}
+      suggestions={activeProject ? aiSuggestions : null}
     />
   );
 
   return (
     <>
-      {activeProject && (
-        <FilterWizard
-          open={wizardOpen}
-          onOpenChange={setWizardOpen}
-          jobDetails={wizardJobDetails}
-          currentFilters={search.filters}
-          suggestions={wizardSuggestions}
-          onApply={handleWizardApply}
-        />
-      )}
     <div className="w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
       {/* Filters bar — always visible */}
       <AppliedFiltersBar
