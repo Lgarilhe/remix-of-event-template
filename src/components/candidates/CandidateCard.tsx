@@ -41,7 +41,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
           </div>
           {entry.entity && (
             <span className={`text-xs px-2 py-0.5 ${
-              entry.entity === 'Skalr' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
+              entry.entity === 'Skalr' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
             }`}>
               {entry.entity}
             </span>
@@ -75,7 +75,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
                 href={candidate.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700"
+                className="flex items-center gap-2 text-xs text-info hover:text-info/80"
                 onClick={e => e.stopPropagation()}
               >
                 <Linkedin className="w-3 h-3" />
@@ -116,7 +116,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
             )}
             {entry.entity && (
               <span className={`text-xs px-2 py-1 ${
-                entry.entity === 'Skalr' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
+                entry.entity === 'Skalr' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
               }`}>
                 {entry.entity}
               </span>
@@ -157,7 +157,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
                 href={candidate.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                className="flex items-center gap-1 text-info hover:text-info/80"
               >
                 <Linkedin className="w-4 h-4" />
                 LinkedIn

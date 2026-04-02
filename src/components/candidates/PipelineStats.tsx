@@ -26,28 +26,28 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ data, stages }) =>
           <p className="text-2xl font-bold text-foreground">{totalCandidates}</p>
         </div>
         
-        <div className="p-3 border border-foreground border-l-0 bg-blue-50/50">
+        <div className="p-3 border border-foreground border-l-0 bg-info/5">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-blue-600" />
-            <span className="text-xs text-blue-600 font-medium uppercase tracking-wider">En cours</span>
+            <TrendingUp className="w-4 h-4 text-info" />
+            <span className="text-xs text-info font-medium uppercase tracking-wider">En cours</span>
           </div>
-          <p className="text-2xl font-bold text-blue-700">{inProgressCount}</p>
+          <p className="text-2xl font-bold text-info">{inProgressCount}</p>
         </div>
-        
-        <div className="p-3 border border-foreground border-l-0 bg-green-50/50">
+
+        <div className="p-3 border border-foreground border-l-0 bg-success/5">
           <div className="flex items-center gap-2 mb-1">
-            <Award className="w-4 h-4 text-green-600" />
-            <span className="text-xs text-green-600 font-medium uppercase tracking-wider">Gagnés</span>
+            <Award className="w-4 h-4 text-success" />
+            <span className="text-xs text-success font-medium uppercase tracking-wider">Gagnés</span>
           </div>
-          <p className="text-2xl font-bold text-green-700">{wonCount}</p>
+          <p className="text-2xl font-bold text-success">{wonCount}</p>
         </div>
-        
-        <div className="p-3 border border-foreground border-l-0 bg-red-50/50">
+
+        <div className="p-3 border border-foreground border-l-0 bg-destructive/5">
           <div className="flex items-center gap-2 mb-1">
-            <XCircle className="w-4 h-4 text-red-600" />
-            <span className="text-xs text-red-600 font-medium uppercase tracking-wider">Perdus</span>
+            <XCircle className="w-4 h-4 text-destructive" />
+            <span className="text-xs text-destructive font-medium uppercase tracking-wider">Perdus</span>
           </div>
-          <p className="text-2xl font-bold text-red-700">{lostCount}</p>
+          <p className="text-2xl font-bold text-destructive">{lostCount}</p>
         </div>
       </div>
 
@@ -56,11 +56,11 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ data, stages }) =>
         <span className="text-xs text-muted-foreground uppercase tracking-wider">Conversion:</span>
         <div className="flex-1 h-1.5 bg-muted overflow-hidden max-w-[200px] border border-foreground/10">
           <div 
-            className="h-full bg-green-500 transition-all duration-500"
+            className="h-full bg-success transition-all duration-500"
             style={{ width: `${conversionRate}%` }}
           />
         </div>
-        <span className="text-sm font-bold text-green-600">{conversionRate}%</span>
+        <span className="text-sm font-bold text-success">{conversionRate}%</span>
       </div>
     </div>
   );
