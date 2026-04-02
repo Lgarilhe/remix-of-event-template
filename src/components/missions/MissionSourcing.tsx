@@ -6,7 +6,7 @@ import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { countBriefFields } from '@/lib/missionUtils';
-import { Sparkles, Loader2, Plus, X } from 'lucide-react';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
