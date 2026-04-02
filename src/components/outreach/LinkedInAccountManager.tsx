@@ -309,7 +309,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                       <img src={linkedInLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                     </div>
                     <div>
-                      <p className="font-medium text-[#1A1A1A]">{account.name || account.identifier}</p>
+                      <p className="font-medium text-foreground">{account.name || account.identifier}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex items-center gap-1 text-xs">
                           {account.status === 'OK' ? (
@@ -553,7 +553,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                     onChange={(e) => setUserAgent(e.target.value)}
                     placeholder="Mozilla/5.0..."
                   />
-                  <p className="text-xs text-[#1A1A1A]/50">
+                  <p className="text-xs text-muted-foreground">
                     Recommandé pour éviter les déconnexions
                   </p>
                 </div>

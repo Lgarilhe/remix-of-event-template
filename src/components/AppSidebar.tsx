@@ -7,6 +7,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useAICredits } from '@/hooks/useAICredits';
+import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
 import {
   Sidebar,
   SidebarContent,
@@ -48,7 +49,8 @@ export function AppSidebar() {
     ? `${Math.round(creditsRemaining / 1000)}k`
     : creditsRemaining.toLocaleString();
 
-  const orgInitial = organization?.name?.charAt(0)?.toUpperCase() || 'S';
+  const orgName = organization?.name || 'Skalr';
+  const orgInitial = orgName.charAt(0).toUpperCase();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
@@ -60,7 +62,7 @@ export function AppSidebar() {
           </div>
           {!collapsed && (
             <span className="text-[15px] font-semibold tracking-tight text-sidebar-foreground truncate">
-              {organization?.name || 'Skalr'}
+              {orgName}
             </span>
           )}
         </Link>
@@ -176,7 +178,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter className="border-t border-border px-3 py-3 space-y-1">
+      <SidebarFooter className="border-t border-border px-3 py-3 space-y-2">
         {/* AI Credits */}
         {!creditsLoading && (
           <button
@@ -184,7 +186,7 @@ export function AppSidebar() {
             className={cn(
               "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
               "hover:bg-sidebar-accent/50",
-              isOut ? "text-destructive" : isLow ? "text-status-warning" : "text-muted-foreground",
+              isOut ? "text-destructive" : isLow ? "text-warning" : "text-muted-foreground",
             )}
           >
             <Sparkles className="h-4 w-4 shrink-0" strokeWidth={1.5} />
@@ -197,28 +199,36 @@ export function AppSidebar() {
           <NotificationDropdown />
         </div>
 
-        {/* Settings + Org + Sign out */}
+        {/* Bottom bar: Skalr logo + org name + settings + logout (like Qonto) */}
         <div className={cn(
-          "flex items-center gap-2 px-3 py-2 rounded-lg",
-          collapsed && "flex-col gap-1 px-0"
+          "flex items-center gap-2 pt-2",
+          collapsed ? "flex-col" : "px-1"
         )}>
-          {!collapsed && organization?.name && (
-            <span className="text-xs text-muted-foreground truncate flex-1">{organization.name}</span>
+          {/* Skalr logo */}
+          <img
+            src={skalrLogo}
+            alt="Skalr"
+            className="h-6 w-6 shrink-0 object-contain"
+          />
+          {!collapsed && (
+            <>
+              <span className="text-xs text-muted-foreground truncate flex-1">{orgName}</span>
+              <button
+                onClick={() => { navigate('/settings'); setOpenMobile(false); }}
+                className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
+                aria-label="Paramètres"
+              >
+                <Settings className="h-4 w-4" strokeWidth={1.5} />
+              </button>
+              <button
+                onClick={async () => { await supabase.auth.signOut(); }}
+                className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
+                aria-label="Déconnexion"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={1.5} />
+              </button>
+            </>
           )}
-          <button
-            onClick={() => { navigate('/settings'); setOpenMobile(false); }}
-            className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
-            title="Paramètres"
-          >
-            <Settings className="h-4 w-4" strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={async () => { await supabase.auth.signOut(); }}
-            className="text-muted-foreground hover:text-sidebar-foreground transition-colors shrink-0 p-1 rounded-lg hover:bg-sidebar-accent/50"
-            title="Déconnexion"
-          >
-            <LogOut className="h-4 w-4" strokeWidth={1.5} />
-          </button>
         </div>
       </SidebarFooter>
     </Sidebar>
