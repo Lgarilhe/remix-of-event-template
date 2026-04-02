@@ -52,6 +52,20 @@ function buildStepsFromBrief(
   // Step 1: Poste / Profil cible (always shown)
   const roleFields: WizardField[] = [];
 
+  // Keywords (Boolean search) — first field, pre-filled from current filters
+  roleFields.push({
+    id: 'keywords',
+    label: 'Recherche Boolean',
+    type: 'text',
+    value: [],
+    suggestions: [],
+    editable: true,
+    textValue: currentFilters.keywords || '',
+    textDirty: false,
+    placeholder: 'Ex: Python AND (Django OR Flask) NOT junior',
+    briefSource: currentFilters.keywords ? 'Filtres IA' : undefined,
+  });
+
   // Job title
   const existingTitles = currentFilters.role.map(r => r.keywords);
   const titleSuggestions = suggestions?.alt_titles?.filter(
