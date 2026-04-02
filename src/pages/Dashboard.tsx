@@ -8,7 +8,7 @@ import { useATSData, ATS_STAGES, ATSCandidate } from '@/hooks/useATSData';
 import { useOrganization } from '@/hooks/useOrganization';
 import { getOrgTypeLabel, getOrgTypeEmoji } from '@/lib/featureGates';
 import { RefreshCw } from 'lucide-react';
-import iconDashboard3d from '@/assets/icon-dashboard-3d.webp';
+
 
 export default function Dashboard() {
   const { candidates, loading, isFetching, isFromCache, refetch, handleStageChange, handleTagsChange } = useATSData();
