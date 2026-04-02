@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel } from './search/SearchFiltersPanel';
@@ -50,6 +50,7 @@ interface MissionSearchCacheEntry {
   selectedProfiles: string[];
   showPoolView: boolean;
   scoredSortBy: ScoredSortBy;
+  searchSource: 'linkedin' | 'database';
   scrollTop: number;
   scoringInstructions: string;
 }
@@ -212,10 +213,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       selectedProfiles: Array.from(search.selectedProfiles),
       showPoolView,
       scoredSortBy,
+      searchSource,
       scrollTop: scrollTop ?? scrollAreaRef.current?.scrollTop ?? missionSearchCache.get(missionCacheKey)?.scrollTop ?? 0,
       scoringInstructions,
     });
-  }, [missionCacheKey, search.filters, search.results, search.hasSearched, search.total, search.cursor, search.hasMoreResults, search.selectedJob, search.jobScores, search.sortByScore, search.statusFilter, search.showDismissed, search.selectedProfiles, showPoolView, scoredSortBy, scoringInstructions]);
+  }, [missionCacheKey, search.filters, search.results, search.hasSearched, search.total, search.cursor, search.hasMoreResults, search.selectedJob, search.jobScores, search.sortByScore, search.statusFilter, search.showDismissed, search.selectedProfiles, showPoolView, scoredSortBy, searchSource, scoringInstructions]);
 
   useEffect(() => {
     hydratedCacheKeyRef.current = null;
@@ -223,7 +225,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     skipNextCacheWriteRef.current = false;
   }, [missionCacheKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!missionCacheKey || hydratedCacheKeyRef.current === missionCacheKey) return;
 
     const cached = missionSearchCache.get(missionCacheKey);
@@ -232,8 +234,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (!cached) return;
 
     skipNextCacheWriteRef.current = true;
-    // Signal the hook that cache was hydrated so it skips stale DB snapshot reload
+    // Mark cache hydration before passive effects run so stale DB snapshot doesn't overwrite it
     search.cacheHydratedRef.current = true;
+    setSearchSource(cached.searchSource ?? initialSearchSource);
     search.setFilters(cached.filters);
     search.filtersRef.current = cached.filters;
     search.setResults(cached.results);
@@ -253,9 +256,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setShowPoolView(cached.hasSearched ? cached.showPoolView : false);
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
-  }, [missionCacheKey, search]);
+  }, [missionCacheKey, search, activeProject, initialSearchSource]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!missionCacheKey || hydratedCacheKeyRef.current !== missionCacheKey) return;
     if (skipNextCacheWriteRef.current) {
       skipNextCacheWriteRef.current = false;
