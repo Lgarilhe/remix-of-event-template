@@ -16,7 +16,7 @@ interface MissionSourcingProps {
   project: SourcingProject;
 }
 
-const getSourcingTabStorageKey = (projectId: string) => `mission-sourcing-tab:${projectId}`;
+
 
 // ── Main component ──
 
