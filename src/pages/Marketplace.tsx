@@ -130,7 +130,7 @@ export default function Marketplace() {
             <div className="flex items-center gap-3">
               <Target className="w-6 h-6 text-foreground" />
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">Marketplace</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Marketplace</h1>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">
                   {filtered.length} mission{filtered.length > 1 ? 's' : ''} en mode chasse
                 </p>

@@ -198,7 +198,7 @@ export default function ATS() {
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <AnimatedFunnel size={32} speed={0.8} />
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Pipeline</h1>
               {isFetching && !loading && (
                 <span className="text-xs text-blue-600 border border-blue-300 px-1.5 py-0.5 uppercase tracking-wider font-medium animate-pulse hidden sm:inline">
                   Sync...
