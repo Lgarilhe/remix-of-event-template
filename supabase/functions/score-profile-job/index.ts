@@ -572,8 +572,33 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
     }
   }
 
-  // 4. Must-have is now evaluated by the main LLM call (merged for efficiency)
-  // No separate AI call here — saves 1 API call per profile.
+  // 4. Must-have basic keyword check (safety net when LLM is skipped/fails)
+  // The main LLM call evaluates must-have in detail, but if LLM is unavailable,
+  // this basic check catches obvious mismatches using keyword presence.
+  if (job.mustHave && job.mustHave.trim().length > 0) {
+    const mustHaveTerms = job.mustHave.toLowerCase()
+      .split(/[,;+&]/)
+      .map(t => t.trim())
+      .filter(t => t.length >= 3);
+
+    if (mustHaveTerms.length > 0) {
+      const profileText = [
+        profile.headline || '',
+        profile.summary || '',
+        ...(profile.skills || []).map((s: any) => typeof s === 'string' ? s : s.name || ''),
+        ...(profile.workExperience || []).map((w: any) => `${w.title || ''} ${w.description || ''}`),
+      ].join(' ').toLowerCase();
+
+      // Check if at least ONE must-have term is found anywhere in the profile
+      const anyMatch = mustHaveTerms.some(term => profileText.includes(term));
+      if (!anyMatch) {
+        return {
+          passed: false,
+          reason: `Must-have non détecté dans le profil: "${job.mustHave.slice(0, 100)}" (vérification par mots-clés)`,
+        };
+      }
+    }
+  }
 
   return { passed: true };
 }
@@ -2160,9 +2185,18 @@ Deno.serve(async (req) => {
         llmSkippedCount++;
       }
 
-      const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
-      const recommendation = getRecommendation(finalScore);
+      let finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
       const confidenceScore = weighted.confidenceScore;
+
+      // Penalize incomplete profiles: reduce score proportionally to missing data
+      // A profile with 3/5 missing data points gets a 20% penalty (60% confidence → -20%)
+      if (weighted.dataCompleteness === 'minimal') {
+        finalScore = Math.round(finalScore * 0.8); // -20% for minimal data
+      } else if (weighted.dataCompleteness === 'partial') {
+        finalScore = Math.round(finalScore * 0.9); // -10% for partial data
+      }
+
+      const recommendation = getRecommendation(finalScore);
 
       const result: ScoringResult = {
         profile_id: ps.profile.id,
@@ -2230,7 +2264,7 @@ Deno.serve(async (req) => {
         const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
         if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(supabase as any, {
+          const settleResult = await settleCredits(supabase as any, {
             organizationId: orgId,
             userId,
             aiAction: aiParams.aiAction,
@@ -2238,7 +2272,10 @@ Deno.serve(async (req) => {
             tokensInput: totalTokensInput,
             tokensOutput: totalTokensOutput,
             description: aiParams.description,
-          }).catch((err) => console.warn("[score-profile-job] settle-credits error:", err));
+          });
+          if (!settleResult?.success) {
+            console.error(`[score-profile-job] ⚠️ CREDIT SETTLEMENT FAILED: ${totalTokensInput}in+${totalTokensOutput}out tokens NOT deducted for org ${orgId}`);
+          }
         }
       } catch (e) { console.warn("[score-profile-job] settle skipped:", e); }
     }
