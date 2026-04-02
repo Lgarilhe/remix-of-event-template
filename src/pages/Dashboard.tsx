@@ -8,7 +8,7 @@ import { useATSData, ATS_STAGES, ATSCandidate } from '@/hooks/useATSData';
 import { useOrganization } from '@/hooks/useOrganization';
 import { getOrgTypeLabel, getOrgTypeEmoji } from '@/lib/featureGates';
 import { RefreshCw } from 'lucide-react';
-
+import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 
 export default function Dashboard() {
   const { candidates, loading, isFetching, isFromCache, refetch, handleStageChange, handleTagsChange } = useATSData();
