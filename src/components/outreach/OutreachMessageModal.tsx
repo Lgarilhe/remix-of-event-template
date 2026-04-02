@@ -405,107 +405,85 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-xl border border-border shadow-lg">
-        {/* Header */}
-        <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-background">
-          <DialogHeader className="space-y-1.5">
-            <DialogTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-foreground">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <MessageSquare className="w-4 h-4 text-primary" />
-              </div>
-              <span className="truncate">Message pour {fullName}</span>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-xl border border-border shadow-lg bg-background">
+        {/* ── Header ── */}
+        <div className="px-4 sm:px-6 pt-5 pb-3 border-b border-border">
+          <DialogHeader className="space-y-0.5">
+            <DialogTitle className="text-base sm:text-lg font-bold text-foreground leading-tight">
+              Message pour {fullName}
             </DialogTitle>
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground pl-[42px]">
-              <span className="font-medium text-foreground/80">{job.title}</span>
-              {job.client?.name && (
-                <>
-                  <span className="text-muted-foreground/40">·</span>
-                  <span>{job.client.name}</span>
-                </>
-              )}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground/70">{job.title}</span>
+              {job.client?.name && <span className="text-muted-foreground/40"> · {job.client.name}</span>}
+            </p>
           </DialogHeader>
         </div>
 
-        <div className="p-4 sm:p-6 space-y-5">
-          {/* Configuration row */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
-            {/* Sender name */}
+        <div className="p-4 sm:p-6 space-y-4">
+          {/* ── Config row ── */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Ton</label>
+              <div className="flex gap-1">
+                {[
+                  { value: 'professional', label: 'Professionnel', short: 'Pro', icon: '👔' },
+                  { value: 'casual', label: 'Décontracté', short: 'Cool', icon: '💬' },
+                  { value: 'enthusiastic', label: 'Enthousiaste', short: 'Enthousiaste', icon: '⚡' },
+                ].map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setTone(t.value as Tone)}
+                    className={`h-8 px-2.5 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 ${
+                      tone === t.value
+                        ? 'bg-foreground text-background border-foreground'
+                        : 'bg-background text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground'
+                    }`}
+                  >
+                    <span>{t.icon}</span>
+                    <span className="hidden sm:inline">{t.label}</span>
+                    <span className="sm:hidden">{t.short}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="shrink-0">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Signature
-              </label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Signature</label>
               <Input
                 value={senderName}
                 onChange={(e) => handleSenderNameChange(e.target.value)}
                 placeholder="Prénom"
-                className="w-full sm:w-32 h-9 text-sm rounded-lg border-border focus:border-border"
+                className="w-full sm:w-28 h-8 text-sm rounded-md"
               />
-            </div>
-
-            {/* Tone selector */}
-            <div className="flex-1">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Ton
-              </label>
-              <div className="flex gap-1.5">
-                {[
-                  { value: 'professional', label: 'Pro', icon: '👔' },
-                  { value: 'casual', label: 'Décontracté', icon: '💬' },
-                  { value: 'enthusiastic', label: 'Enthousiaste', icon: '⚡' },
-                ].map((t) => (
-                  <Button
-                    key={t.value}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setTone(t.value as Tone)}
-                    className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-lg transition-all ${
-                      tone === t.value 
-                        ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90' 
-                        : 'border-border hover:bg-muted/50'
-                    }`}
-                  >
-                    <span className="mr-1">{t.icon}</span>
-                    <span className="hidden sm:inline">{t.label}</span>
-                  </Button>
-                ))}
-              </div>
             </div>
           </div>
 
-          {/* Custom instructions (optional) */}
+          {/* ── Instructions ── */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Instructions supplémentaires <span className="font-normal text-muted-foreground/60">(optionnel)</span>
+              Instructions <span className="text-muted-foreground/40">(optionnel)</span>
             </label>
             <textarea
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
-              placeholder="Ex: Mentionne son article récent sur le DDD, propose un call mardi, insiste sur le full remote..."
+              placeholder="Ex: Mentionne son article récent, propose un call mardi…"
               rows={2}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-muted/20 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
 
-          {/* Generate button */}
+          {/* ── Generate CTA ── */}
           {!hasGenerated && (
             <div className="flex items-center gap-2">
               <Button
                 onClick={generateMessage}
                 disabled={loading}
-                size="lg"
-                className="flex-1 h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg shadow-sm transition-all text-sm"
+                className="flex-1 h-10 bg-foreground hover:bg-foreground/90 text-background font-medium rounded-md shadow-sm text-sm"
               >
                 {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Génération en cours...
-                  </>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Génération…</>
                 ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Générer le message
-                  </>
+                  <><Sparkles className="w-4 h-4 mr-2" />Générer le message</>
                 )}
               </Button>
               <ModelPicker
@@ -518,47 +496,40 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             </div>
           )}
 
-          {/* Generated content */}
+          {/* ── Generated content ── */}
           {hasGenerated && (
             <div className="space-y-4">
-              {/* Subject line */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Objet
-                </label>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Objet</label>
                 <Input
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Objet du message..."
-                  className="h-10 font-medium rounded-lg border-border focus:border-border"
+                  placeholder="Objet du message…"
+                  className="h-9 font-medium rounded-md"
                 />
               </div>
 
-              {/* Message body */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Message
-                </label>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Message</label>
                 <InMailTextEditor
                   value={message}
                   onChange={setMessage}
-                  placeholder="Le message d'approche..."
+                  placeholder="Le message d'approche…"
                   minHeight="180px"
                   maxCharacters={1900}
                 />
               </div>
 
-              {/* Personalization points */}
               {personalizationPoints.length > 0 && (
-                <div className="bg-muted/30 p-3 rounded-lg border border-border">
-                  <div className="flex items-center gap-2 text-muted-foreground font-medium text-xs mb-2">
-                    <Lightbulb className="w-3.5 h-3.5 text-primary" />
+                <div className="bg-muted/20 rounded-md p-3 border border-border">
+                  <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5" />
                     Points de personnalisation
-                  </div>
-                  <ul className="space-y-1">
+                  </p>
+                  <ul className="space-y-0.5">
                     {personalizationPoints.map((point, i) => (
-                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                        <span className="text-foreground/30 mt-0.5 shrink-0">▪</span>
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                        <span className="text-foreground/20 mt-0.5 shrink-0">•</span>
                         {point}
                       </li>
                     ))}
@@ -566,76 +537,43 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 </div>
               )}
 
-              {/* Actions footer */}
-              <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-border">
-                {/* Send button */}
+              {/* ── Footer actions ── */}
+              <div className="flex items-center gap-2 pt-3 border-t border-border">
                 {canSendDirectly && (
                   <Button
                     onClick={handleSendMessage}
                     disabled={sending || messageSent}
-                    size="lg"
-                    className={`flex-1 h-11 font-semibold rounded-lg border transition-all text-sm ${
+                    className={`flex-1 h-9 font-medium rounded-md text-sm transition-all ${
                       messageSent
-                        ? 'bg-success text-success-foreground border-success'
-                        : 'bg-primary text-primary-foreground border-primary shadow-sm hover:bg-primary/90'
+                        ? 'bg-success text-success-foreground'
+                        : 'bg-foreground text-background hover:bg-foreground/90'
                     }`}
                   >
-                    {messageSent ? (
-                      <>
-                        <Check className="w-4 h-4 mr-2" />
-                        Envoyé !
-                      </>
-                    ) : sending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Envoi...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        {isFirstDegree ? 'Envoyer' : 'Envoyer (InMail)'}
-                      </>
-                    )}
+                    {messageSent ? <><Check className="w-3.5 h-3.5 mr-1.5" />Envoyé !</>
+                      : sending ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Envoi…</>
+                      : <><Send className="w-3.5 h-3.5 mr-1.5" />{isFirstDegree ? 'Envoyer' : 'Envoyer InMail'}</>
+                    }
                   </Button>
                 )}
-                
-                {/* Copy button */}
+
                 <Button
                   onClick={handleCopy}
-                  variant={canSendDirectly ? 'outline' : 'default'}
-                  size="lg"
-                  className={`h-11 rounded-lg border font-medium text-sm ${
-                    canSendDirectly 
-                      ? 'px-4 border-border hover:bg-muted/50'
-                      : 'flex-1 bg-primary text-primary-foreground border-primary shadow-sm'
-                  }`}
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
-                      Copié !
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 mr-2" />
-                      {canSendDirectly ? '' : 'Copier'}
-                    </>
-                  )}
-                </Button>
-                
-                {/* Regenerate button */}
-                <Button
                   variant="outline"
-                  size="lg"
+                  className={`h-9 rounded-md text-sm font-medium ${!canSendDirectly ? 'flex-1' : 'px-3'}`}
+                >
+                  {copied
+                    ? <><Check className="w-3.5 h-3.5 mr-1.5" />Copié</>
+                    : <><Copy className="w-3.5 h-3.5 mr-1.5" />{!canSendDirectly ? 'Copier' : ''}</>
+                  }
+                </Button>
+
+                <Button
+                  variant="ghost"
                   onClick={generateMessage}
                   disabled={loading}
-                  className="h-11 px-4 rounded-lg border-border hover:border-border hover:bg-muted/50"
+                  className="h-9 w-9 p-0 rounded-md text-muted-foreground hover:text-foreground"
                 >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 </Button>
               </div>
             </div>
