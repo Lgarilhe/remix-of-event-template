@@ -227,7 +227,7 @@ const StatsBar: React.FC = () => (
         <div className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
           <AnimatedCounter target={stat.value} suffix={stat.suffix} />
         </div>
-        <div className="text-xs text-muted-foreground uppercase tracking-widest mt-0.5">
+        <div className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">
           {stat.label}
         </div>
       </motion.div>
@@ -285,7 +285,7 @@ const LogoCarousel: React.FC = () => {
       transition={{ delay: 1.5, duration: 0.6 }}
       className="flex items-center justify-center gap-6 sm:gap-8 mt-10"
     >
-      <span className="text-xs text-muted-foreground/40 uppercase tracking-widest shrink-0">
+      <span className="text-xs text-muted-foreground/40 uppercase tracking-wider shrink-0">
         Intégrations
       </span>
       <div className="flex items-center gap-4">
@@ -411,7 +411,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               transition={{ delay: 1, duration: 0.3, type: 'spring' }}
               className="absolute top-4 right-4 z-20"
             >
-              <span className="relative px-2.5 py-1 bg-foreground text-background text-xs font-bold uppercase tracking-widest">
+              <span className="relative px-2.5 py-1 bg-foreground text-background text-xs font-bold uppercase tracking-wider">
                 Recommandé
                 <motion.span
                   className="absolute inset-0 bg-accent/30"

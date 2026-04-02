@@ -624,7 +624,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                         className="text-3xl sm:text-4xl font-black text-foreground tabular-nums tracking-tighter leading-none"
                       />
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                           profils trouvés
                         </span>
                         <div className="flex items-center gap-2">

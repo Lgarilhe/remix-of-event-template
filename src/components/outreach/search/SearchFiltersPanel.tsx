@@ -315,7 +315,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <div className="bg-background border border-border p-3 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-sm">🎯</span>
-            <span className="text-xs font-bold text-foreground uppercase tracking-widest">Poste actif</span>
+            <span className="text-xs font-bold text-foreground uppercase tracking-wider">Poste actif</span>
           </div>
           <p className="text-sm font-medium text-foreground truncate">{selectedJob.title}</p>
           {(selectedJob as any).client?.name && (
@@ -355,7 +355,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
           <div className="bg-background border border-border p-3">
-            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
+            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea

@@ -178,7 +178,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
         <motion.h3
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"
+          className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2"
         >
           <Zap className="w-3.5 h-3.5 text-primary" />
           Choisissez votre source
@@ -220,7 +220,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
 
       {/* ── Section 2: Checklist ── */}
       <div>
-        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
           Vérifications
         </h3>
         <div className="border border-border divide-y divide-foreground/5">

@@ -342,7 +342,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                             {item.sub} taux
                           </span>
                         )}
-                        <span className="text-[8px] text-muted-foreground uppercase tracking-widest mt-1 font-medium">
+                        <span className="text-[8px] text-muted-foreground uppercase tracking-wider mt-1 font-medium">
                           {item.label}
                         </span>
                       </div>
@@ -354,7 +354,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 <div className="border border-border bg-background">
                   <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
                     <TrendingUp className="w-3.5 h-3.5 text-foreground" />
-                    <span className="text-xs font-bold text-foreground uppercase tracking-widest">
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">
                       Funnel de conversion
                     </span>
                   </div>
@@ -402,7 +402,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 {statusData.length > 0 && (
                   <div className="border border-border bg-background">
                     <div className="px-3 py-2 border-b border-border bg-muted">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">
+                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">
                         Répartition prospects
                       </span>
                     </div>
@@ -440,7 +440,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 {chartData.length > 0 && (
                   <div className="border border-border bg-background">
                     <div className="px-3 py-2 border-b border-border bg-muted">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-widest">
+                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">
                         Activité quotidienne
                       </span>
                     </div>

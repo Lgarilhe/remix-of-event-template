@@ -104,7 +104,7 @@ export function AppSidebar() {
         <SidebarGroup className="p-0">
           {!collapsed && (
             <div className="px-3 pb-1.5">
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Main</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Main</span>
             </div>
           )}
           <SidebarGroupContent>
@@ -157,7 +157,7 @@ export function AppSidebar() {
           <SidebarGroup className="p-0 mt-4">
             {!collapsed && (
               <div className="px-3 pb-1.5">
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Outils</span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Outils</span>
               </div>
             )}
             <SidebarGroupContent>

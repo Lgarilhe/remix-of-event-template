@@ -139,7 +139,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 <Sparkles className="w-5 h-5 text-primary" />
               </motion.div>
               <div>
-                <h2 className="text-sm font-black uppercase tracking-widest text-foreground">
+                <h2 className="text-sm font-black uppercase tracking-wider text-foreground">
                   Scoring terminé
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5 font-medium">
@@ -213,7 +213,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
                 onClick={() => setFilter(item.key)}
                 whileTap={{ scale: 0.95 }}
                 className={cn(
-                  "h-6 px-2.5 text-xs font-black uppercase tracking-widest border transition-all",
+                  "h-6 px-2.5 text-xs font-black uppercase tracking-wider border transition-all",
                   filter === item.key
                     ? 'bg-foreground text-background border-border'
                     : 'text-muted-foreground border-border hover:text-foreground hover:border-border'
@@ -243,7 +243,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
               </motion.div>
             ))}
             {filtered.length === 0 && (
-              <div className="py-8 text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
+              <div className="py-8 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
                 Aucun profil dans cette catégorie
               </div>
             )}
@@ -258,7 +258,7 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
               {stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''} IA utilisé{stats.llmCalled > 1 ? 's' : ''}
             </span>
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -288,7 +288,7 @@ const StatCard: React.FC<{
   )}>
     <div className="flex items-center gap-1.5 text-muted-foreground">
       {icon}
-      <span className="text-[8px] font-bold uppercase tracking-widest">{label}</span>
+      <span className="text-[8px] font-bold uppercase tracking-wider">{label}</span>
     </div>
     <span className={cn(
       "text-base font-black tabular-nums",
@@ -349,7 +349,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
             </a>
           )}
           {entry.hardFilterPassed === false && (
-            <span className="inline-flex items-center gap-0.5 text-[8px] px-1 py-px bg-destructive/10 text-destructive border border-destructive/20 font-black uppercase tracking-widest shrink-0">
+            <span className="inline-flex items-center gap-0.5 text-[8px] px-1 py-px bg-destructive/10 text-destructive border border-destructive/20 font-black uppercase tracking-wider shrink-0">
               <Ban className="w-2 h-2" />
               KO
             </span>
@@ -382,7 +382,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           <div className="px-4 pb-2.5 ml-[2.625rem] text-xs text-muted-foreground space-y-1 border-l-2 border-border pl-2.5">
             {entry.hardFilterKO && (
               <p>
-                <span className="font-black text-foreground/60 uppercase tracking-widest text-[8px]">Filtre :</span>{' '}
+                <span className="font-black text-foreground/60 uppercase tracking-wider text-[8px]">Filtre :</span>{' '}
                 {entry.hardFilterKO}
               </p>
             )}

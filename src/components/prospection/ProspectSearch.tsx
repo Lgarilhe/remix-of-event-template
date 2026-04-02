@@ -452,7 +452,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
           <div className="w-7 h-7 bg-foreground text-background flex items-center justify-center shrink-0">
             <Search className="w-3.5 h-3.5" />
           </div>
-          <span className="text-xs font-bold uppercase tracking-widest text-foreground">Filtres</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-foreground">Filtres</span>
           <Badge variant="outline" className="text-xs border-border font-normal bg-background/80 ml-auto">Recherche avancée</Badge>
         </div>
 

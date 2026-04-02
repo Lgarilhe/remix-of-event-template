@@ -116,7 +116,7 @@ export const PreScoreBar: React.FC<PreScoreBarProps> = ({ preScore, hasLLMScore 
       <Tooltip>
         <TooltipTrigger asChild>
           <div className="flex items-center gap-1.5 cursor-help shrink-0">
-            <span className={`text-xs font-bold uppercase tracking-widest ${tierStyle.text}`}>
+            <span className={`text-xs font-bold uppercase tracking-wider ${tierStyle.text}`}>
               {tierStyle.label}
             </span>
             <div className="w-14 h-[3px] bg-muted overflow-hidden">

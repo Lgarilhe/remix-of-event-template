@@ -264,7 +264,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       {/* Skills — unified row */}
       {allSkills.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
             <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Matchés ({result.matching_skills.length})</span>
             <span className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Manquants ({result.missing_skills.length})</span>
           </div>
