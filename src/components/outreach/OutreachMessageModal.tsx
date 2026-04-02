@@ -604,10 +604,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   onClick={handleCopy}
                   variant={canSendDirectly ? 'outline' : 'default'}
                   size="lg"
-                  className={`h-11 rounded-lg border font-bold text-sm ${
+                  className={`h-11 rounded-lg border font-medium text-sm ${
                     canSendDirectly 
-                      ? 'px-4 border-border hover:border-border hover:bg-muted/50'
-                      : 'flex-1 bg-foreground text-background border-border shadow-sm'
+                      ? 'px-4 border-border hover:bg-muted/50'
+                      : 'flex-1 bg-primary text-primary-foreground border-primary shadow-sm'
                   }`}
                 >
                   {copied ? (
