@@ -8,6 +8,7 @@ import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { AttendeePicturesProvider } from '@/contexts/AttendeePicturesContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { AnimatedChatBubble } from '@/components/ui/AnimatedChatBubble';
 
 export default function Inbox() {
   const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
@@ -36,6 +37,10 @@ export default function Inbox() {
   return (
     <div className="h-full flex flex-col bg-background">
       <SEOHead title="Messages — Skalr" description="Messagerie LinkedIn unifiée" />
+      <div className="flex items-center gap-2.5 px-3 sm:px-6 lg:px-8 pt-6 pb-2">
+        <AnimatedChatBubble size={32} speed={0.8} />
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight uppercase">Messages</h1>
+      </div>
       <div className="flex-1 min-h-0 px-3 sm:px-6 lg:px-8">
         <div className="mx-auto h-full max-w-[1600px] md:px-[34px]">
           <AttendeePicturesProvider organizationId={organizationId || null}>

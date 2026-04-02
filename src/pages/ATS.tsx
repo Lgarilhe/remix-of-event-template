@@ -31,6 +31,7 @@ import iconAnalytics3d from '@/assets/icon-analytics-3d.webp';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useATSData, ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { AnimatedFunnel } from '@/components/ui/AnimatedFunnel';
 
 export type { ATSCandidate };
 export { ATS_STAGES };
@@ -195,7 +196,8 @@ export default function ATS() {
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header — compact single row */}
           <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AnimatedFunnel size={32} speed={0.8} />
               <h1 className="text-xl sm:text-2xl font-bold text-foreground uppercase tracking-tight">ATS</h1>
               {isFetching && !loading && (
                 <span className="text-xs text-blue-600 border border-blue-300 px-1.5 py-0.5 uppercase tracking-wider font-medium animate-pulse hidden sm:inline">
