@@ -32,11 +32,6 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   const { updateProject } = useSourcingProjects();
   const [isGeneratingFilters, setIsGeneratingFilters] = useState(false);
-  const [suggestions, setSuggestions] = useState<Suggestions | null>(() => {
-    // Load from filters_snapshot if available
-    const snap = project.filters_snapshot as any;
-    return snap?.suggestions || null;
-  });
 
   const handleGenerateFilters = useCallback(async () => {
     setIsGeneratingFilters(true);
