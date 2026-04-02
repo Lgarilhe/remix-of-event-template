@@ -678,8 +678,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   const actionConfig = actionTypeConfig[step.action_type] || { 
                                     label: step.action_type, 
                                     icon: <Send className="w-3.5 h-3.5" />,
-                                    color: 'text-gray-600',
-                                    bgColor: 'bg-gray-100'
+                                    color: 'text-muted-foreground',
+                                    bgColor: 'bg-muted'
                                   };
                                   
                                   // Determine status: from execution or 'pending' if no execution yet

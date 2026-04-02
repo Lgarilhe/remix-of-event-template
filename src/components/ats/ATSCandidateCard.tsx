@@ -102,19 +102,19 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         </span>
         
         {candidate.outreachStatus === 'interested' && (
-          <span className="text-xs px-1.5 py-0.5 border border-green-500 bg-green-50 text-green-700 flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="text-xs px-1.5 py-0.5 border border-success bg-success/10 text-success flex items-center gap-1 uppercase tracking-wider font-bold">
             <ThumbsUp className="w-3 h-3" />
             Intéressé
           </span>
         )}
         {candidate.outreachStatus === 'not_interested' && (
-          <span className="text-xs px-1.5 py-0.5 border border-red-400 bg-red-50 text-red-600 flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="text-xs px-1.5 py-0.5 border border-destructive/40 bg-destructive/5 text-destructive flex items-center gap-1 uppercase tracking-wider font-bold">
             <ThumbsDown className="w-3 h-3" />
             Pas intéressé
           </span>
         )}
         {candidate.outreachStatus === 'replied' && (
-          <span className="text-xs px-1.5 py-0.5 border border-blue-400 bg-blue-50 text-blue-600 flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="text-xs px-1.5 py-0.5 border border-info/40 bg-info/10 text-info flex items-center gap-1 uppercase tracking-wider font-bold">
             <MessageCircle className="w-3 h-3" />
             Répondu
           </span>
