@@ -137,8 +137,8 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
         unsupportedTooltip={getFilterTooltip(filters.api, 'role')}
       >
         {filters.role.map((role, index) => (
-          <div key={index} className="p-2 bg-brand-purple/10 rounded-lg mb-2 space-y-2">
-            <div className="flex items-center gap-2">
+          <div key={index} className="p-2 bg-brand-purple/10 rounded-lg mb-2 space-y-2 min-w-0">
+            <div className="flex items-start gap-2 min-w-0">
               <button
                 type="button"
                 onClick={() => {
@@ -148,16 +148,16 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                   onRoleDialogScopeChange(role.scope);
                   onRoleDialogOpenChange(true);
                 }}
-                className="text-sm h-7 flex-1 text-left truncate hover:text-linkedin transition-colors group flex items-center gap-1"
+                className="text-sm flex-1 min-w-0 text-left hover:text-linkedin transition-colors group flex items-start gap-1"
               >
-                <span className="truncate">{role.keywords}</span>
+                <span className="min-w-0 whitespace-normal break-words leading-snug">{role.keywords}</span>
                 <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
               <button type="button" onClick={() => onRemoveRole(index)} className="text-purple-400 hover:text-purple-600 shrink-0">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Select value={role.priority} onValueChange={(v) => onUpdateRole(index, { priority: v as FilterPriority })}>
                 <SelectTrigger className="text-xs h-6 bg-card border-purple-200">
                   <SelectValue />
@@ -195,10 +195,10 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                 }
               }}
               disabled={!isFilterSupported(filters.api, 'role')}
-              className="w-full text-left flex items-center gap-2 px-3 py-1.5 rounded-md border border-input bg-background hover:bg-accent/50 transition-colors h-8 group disabled:opacity-50 disabled:pointer-events-none"
+              className="w-full min-w-0 text-left flex items-start gap-2 px-3 py-1.5 rounded-md border border-input bg-background hover:bg-accent/50 transition-colors min-h-8 group disabled:opacity-50 disabled:pointer-events-none"
             >
               {newRoleKeywords ? (
-                <span className="text-sm truncate flex-1">{newRoleKeywords}</span>
+                <span className="text-sm whitespace-normal break-words leading-snug flex-1 min-w-0">{newRoleKeywords}</span>
               ) : (
                 <span className="text-xs text-muted-foreground flex-1">Cliquez pour ajouter un rôle...</span>
               )}
@@ -284,7 +284,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Priorité</Label>
               <Select value={newRolePriority} onValueChange={(v) => onNewRolePriorityChange(v as FilterPriority)} disabled={!isFilterSupported(filters.api, 'role')}>

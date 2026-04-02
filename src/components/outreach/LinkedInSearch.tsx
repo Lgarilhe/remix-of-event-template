@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
+import type { JobDetails } from '@/types/jobDetails';
+import { SKILL_SYNONYMS } from '@/hooks/linkedin/skillSynonyms';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -57,6 +59,93 @@ interface MissionSearchCacheEntry {
 
 const missionSearchCache = new Map<string, MissionSearchCacheEntry>();
 
+const TITLE_SUGGESTION_RULES: Array<{ pattern: RegExp; suggestions: string[] }> = [
+  { pattern: /(devops|site reliability|\bsre\b|platform)/i, suggestions: ['SRE', 'Platform Engineer', 'Cloud Engineer', 'DevOps Engineer'] },
+  { pattern: /(architect|architecture)/i, suggestions: ['Solution Architect', 'Cloud Architect', 'Technical Architect'] },
+  { pattern: /(cloud|infra|infrastructure)/i, suggestions: ['Cloud Engineer', 'Infrastructure Engineer', 'Platform Engineer'] },
+  { pattern: /(full[\s-]?stack)/i, suggestions: ['Software Engineer', 'Backend Engineer', 'Frontend Engineer'] },
+  { pattern: /(data)/i, suggestions: ['Data Engineer', 'Analytics Engineer', 'Data Platform Engineer'] },
+];
+
+const dedupeSuggestionValues = (values: Array<string | null | undefined>, limit: number): string[] => {
+  const seen = new Set<string>();
+  const items: string[] = [];
+
+  for (const value of values) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) continue;
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(normalized);
+
+    if (items.length >= limit) break;
+  }
+
+  return items;
+};
+
+const buildFallbackSuggestions = (project?: SourcingProject | null): FilterSuggestions | null => {
+  if (!project) return null;
+
+  const jd = (project.job_details || {}) as Partial<JobDetails>;
+  const title = jd.title || project.job_title || project.name || '';
+  const baseSkills = [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])];
+  const skillSynonymSuggestions = baseSkills.flatMap((skill) => {
+    const normalizedSkill = skill.toLowerCase().trim();
+    const directSynonyms = SKILL_SYNONYMS[normalizedSkill] || [];
+    const reverseSynonyms = Object.entries(SKILL_SYNONYMS)
+      .filter(([key, synonyms]) => key === normalizedSkill || synonyms.some((synonym) => synonym.toLowerCase() === normalizedSkill))
+      .flatMap(([key, synonyms]) => [key, ...synonyms]);
+
+    return [...directSynonyms, ...reverseSynonyms].filter((candidate) => candidate.toLowerCase() !== normalizedSkill);
+  });
+
+  const titleSuggestions = TITLE_SUGGESTION_RULES
+    .filter((rule) => rule.pattern.test(title))
+    .flatMap((rule) => rule.suggestions);
+
+  const nextSuggestions: FilterSuggestions = {
+    alt_titles: dedupeSuggestionValues(titleSuggestions, 5),
+    alt_skills: dedupeSuggestionValues([
+      ...(jd.skills_nice_to_have || []),
+      ...(jd.skills_should_have || []),
+      ...skillSynonymSuggestions,
+    ], 8),
+    alt_locations: dedupeSuggestionValues([
+      jd.remote_policy === 'full_remote' ? 'Remote France' : null,
+      jd.remote_policy === 'hybrid' && jd.location ? `${jd.location} et périphérie` : null,
+    ], 4),
+    alt_companies: dedupeSuggestionValues(
+      jd.target_companies?.flatMap((category) => category.companies?.map((company) => company.name) || []) || [],
+      6,
+    ),
+    alt_certifications: dedupeSuggestionValues(jd.certifications || [], 5),
+  };
+
+  return Object.values(nextSuggestions).some((value) => Array.isArray(value) && value.length > 0)
+    ? nextSuggestions
+    : null;
+};
+
+const mergeSuggestions = (
+  primary: FilterSuggestions | null,
+  fallback: FilterSuggestions | null,
+): FilterSuggestions | null => {
+  const merged: FilterSuggestions = {
+    alt_titles: dedupeSuggestionValues([...(primary?.alt_titles || []), ...(fallback?.alt_titles || [])], 5),
+    alt_skills: dedupeSuggestionValues([...(primary?.alt_skills || []), ...(fallback?.alt_skills || [])], 8),
+    alt_locations: dedupeSuggestionValues([...(primary?.alt_locations || []), ...(fallback?.alt_locations || [])], 4),
+    alt_companies: dedupeSuggestionValues([...(primary?.alt_companies || []), ...(fallback?.alt_companies || [])], 6),
+    alt_certifications: dedupeSuggestionValues([...(primary?.alt_certifications || []), ...(fallback?.alt_certifications || [])], 5),
+  };
+
+  return Object.values(merged).some((value) => Array.isArray(value) && value.length > 0)
+    ? merged
+    : null;
+};
+
 export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   accounts,
   selectedAccount,
@@ -78,6 +167,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [activeProject?.filters_snapshot]);
   const [inlineSuggestions, setInlineSuggestions] = useState<FilterSuggestions | null>(snapshotSuggestions);
   const inlineSuggestionsProjectRef = useRef<string | null>(activeProject?.id ?? null);
+  const fallbackSuggestions = useMemo(
+    () => buildFallbackSuggestions(activeProject),
+    [activeProject?.id, activeProject?.job_details, activeProject?.job_title, activeProject?.name],
+  );
+  const effectiveSuggestions = useMemo(
+    () => mergeSuggestions(inlineSuggestions, fallbackSuggestions),
+    [inlineSuggestions, fallbackSuggestions],
+  );
 
   // Internal search source toggle (Apollo vs LinkedIn)
   const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
@@ -815,7 +912,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onDeleteHistoryEntry={searchHistory.deleteEntry}
       scoringInstructions={scoringInstructions}
       onScoringInstructionsChange={setScoringInstructions}
-      suggestions={activeProject ? inlineSuggestions : null}
+      suggestions={activeProject ? effectiveSuggestions : null}
       onSuggestionsGenerated={handleSuggestionsGenerated}
     />
   );
