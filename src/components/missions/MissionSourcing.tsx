@@ -11,13 +11,6 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
 
-interface Suggestions {
-  alt_skills: string[];
-  alt_titles: string[];
-  alt_locations: string[];
-  alt_companies: string[];
-  alt_certifications: string[];
-}
 
 interface MissionSourcingProps {
   project: SourcingProject;
