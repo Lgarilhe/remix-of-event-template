@@ -38,7 +38,7 @@ export const AnimatedFunnel: React.FC<AnimatedFunnelProps> = ({
     const cx = w / 2;
     let t = 0;
 
-    const isDark = document.documentElement.classList.contains('dark');
+    const isDark = !document.documentElement.classList.contains('light');
 
     // Particles flowing through funnel
     interface Particle { x: number; y: number; vy: number; r: number; color: number; opacity: number; }

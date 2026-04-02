@@ -39,7 +39,7 @@ export const AnimatedCompass: React.FC<AnimatedCompassProps> = ({
     const cy = h / 2;
     let t = 0;
 
-    const isDark = document.documentElement.classList.contains('dark');
+    const isDark = !document.documentElement.classList.contains('light');
 
     function frame() {
       if (!ctx) return;
