@@ -121,8 +121,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
 
   return (
-    <div className="space-y-4 lg:sticky lg:top-24">
-
+    <div className="space-y-2.5 sm:space-y-4 lg:sticky lg:top-24">
       {/* Reconnection alert */}
       {needsReconnection && (
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
@@ -315,7 +314,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-3">
         {/* Filter actions */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {onOpenFilterWizard && (
@@ -333,13 +332,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             currentLocation={filters.location}
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
             searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
-          />
-
-          <FilterPresetsManager
-            currentFilters={filters}
-            onApplyFilters={setFilters}
-            selectedJob={selectedJob}
-            onApplyPresetJob={handleApplyPresetJob}
           />
         </div>
 
