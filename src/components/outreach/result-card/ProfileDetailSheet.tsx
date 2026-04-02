@@ -464,7 +464,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-hidden rounded-xl border-l border-border bg-muted/30" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-hidden rounded-xl border-l border-border bg-muted" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           {/* ─── NAV BAR ─── */}
           {(onNavigatePrev || onNavigateNext) && (
             <div className="flex items-center justify-between px-3 sm:px-5 py-2 bg-background border-b border-border shrink-0">
