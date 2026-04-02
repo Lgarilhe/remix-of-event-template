@@ -40,7 +40,7 @@ export const AnimatedChatBubble: React.FC<AnimatedChatBubbleProps> = ({
     let t = 0;
     let dotPhase = 0;
 
-    const isDark = document.documentElement.classList.contains('dark');
+    const isDark = !document.documentElement.classList.contains('light');
 
     function drawRoundedBubble(x: number, y: number, bw: number, bh: number, r: number) {
       if (!ctx) return;
