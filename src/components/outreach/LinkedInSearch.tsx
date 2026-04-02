@@ -848,8 +848,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
       {/* Filters modal — large overlay */}
       <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <DialogContent className="max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto p-0 gap-0">
-          <div className="p-6">
+        <DialogContent className="w-full h-full max-w-full max-h-full sm:max-w-[90vw] sm:w-[90vw] sm:max-h-[85vh] sm:h-auto overflow-y-auto p-0 gap-0 rounded-none sm:rounded-lg">
+          <div className="p-4 sm:p-6">
             {filtersPanel}
           </div>
         </DialogContent>

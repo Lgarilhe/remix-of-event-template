@@ -122,6 +122,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
   return (
     <div className="space-y-4 lg:sticky lg:top-24">
+
       {/* Reconnection alert */}
       {needsReconnection && (
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
@@ -135,31 +136,21 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Source Toggle: Apollo (Base Konekt) vs LinkedIn */}
       {onSearchSourceChange && (
-        <div className="bg-background border border-border p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                🔍 Source
-              </span>
-              <span className={cn(
-                "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border",
-                searchSource === 'database'
-                  ? "border-success/30 text-success bg-success/10"
-                  : "border-info/30 text-info bg-info/10"
-              )}>
-                {searchSource === 'database' ? '🟢 Base Konekt · 232M+' : '🔵 LinkedIn'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors", searchSource === 'database' ? 'text-foreground' : 'text-muted-foreground/50')}>
-                Apollo
+        <div className="bg-background border border-border p-2.5 sm:p-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground shrink-0">
+              🔍 Source
+            </span>
+            <div className="flex items-center gap-1.5 flex-1">
+              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap", searchSource === 'database' ? 'text-foreground' : 'text-muted-foreground/40')}>
+                Base Konekt
               </span>
               <Switch
                 checked={searchSource === 'linkedin'}
                 onCheckedChange={(checked) => onSearchSourceChange(checked ? 'linkedin' : 'database')}
                 className="data-[state=checked]:bg-info"
               />
-              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors", searchSource === 'linkedin' ? 'text-foreground' : 'text-muted-foreground/50')}>
+              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap", searchSource === 'linkedin' ? 'text-foreground' : 'text-muted-foreground/40')}>
                 LinkedIn
               </span>
             </div>
@@ -174,7 +165,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Account selector — only visible in LinkedIn mode */}
       {searchSource !== 'database' && (
-      <div className="bg-background border border-border p-3 space-y-2">
+      <div className="bg-background border border-border p-2.5 sm:p-3 space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compte</label>
           <QuotaDisplay
@@ -312,21 +303,21 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Mission context: show selected job info */}
       {activeProject && selectedJob && (
-        <div className="bg-background border border-border p-3 space-y-1">
+        <div className="bg-background border border-border p-2.5 sm:p-3 space-y-0.5">
           <div className="flex items-center gap-2">
             <span className="text-sm">🎯</span>
             <span className="text-xs font-bold text-foreground uppercase tracking-wider">Poste actif</span>
           </div>
-          <p className="text-sm font-medium text-foreground truncate">{selectedJob.title}</p>
+          <p className="text-sm font-medium text-foreground truncate pl-6">{selectedJob.title}</p>
           {(selectedJob as any).client?.name && (
-            <p className="text-xs text-muted-foreground truncate">@ {(selectedJob as any).client.name}</p>
+            <p className="text-xs text-muted-foreground truncate pl-6">@ {(selectedJob as any).client.name}</p>
           )}
         </div>
       )}
 
       <div className="space-y-3">
         {/* Filter actions */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {onOpenFilterWizard && (
             <button
               onClick={onOpenFilterWizard}
@@ -354,8 +345,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
-          <div className="bg-background border border-border p-3">
-            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+          <div className="bg-background border border-border p-2.5 sm:p-3">
+            <label className="text-[10px] sm:text-xs font-bold text-muted-foreground mb-1 sm:mb-1.5 block uppercase tracking-wider">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea
@@ -380,8 +371,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       {/* Keywords preview + edit dialog */}
-      <div className="bg-background border border-border p-4">
-        <label className="text-sm font-medium text-foreground mb-2 block uppercase tracking-wide">
+      <div className="bg-background border border-border p-2.5 sm:p-4">
+        <label className="text-xs sm:text-sm font-medium text-foreground mb-1.5 sm:mb-2 block uppercase tracking-wide">
           Mots-clés
         </label>
         <button
