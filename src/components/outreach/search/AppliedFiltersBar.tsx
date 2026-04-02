@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { SlidersHorizontal, X, Search, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { LinkedInFiltersState } from '@/types/linkedin';
-import type { Job } from '@/types/job';
+import type { LinkedInFiltersState } from '../types';
+import type { Job } from '@/types/jobs';
 
 interface AppliedFiltersBarProps {
   filters: LinkedInFiltersState;
