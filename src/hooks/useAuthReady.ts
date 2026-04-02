@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { getValidatedSession } from '@/lib/authSession';
@@ -12,52 +12,90 @@ import { getValidatedSession } from '@/lib/authSession';
  * 3. NEVER call async Supabase methods (getUser, getSession, signOut)
  *    inside onAuthStateChange — it deadlocks the auth state machine
  */
-export const useAuthReady = () => {
-  const [isReady, setIsReady] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+type AuthReadyState = {
+  isReady: boolean;
+  session: Session | null;
+  user: User | null;
+};
 
-  useEffect(() => {
-    let isMounted = true;
+const initialAuthState: AuthReadyState = {
+  isReady: false,
+  session: null,
+  user: null,
+};
 
-    // 1. Initial session restoration — validate token integrity
-    getValidatedSession()
-      .then(({ session: s, user: validatedUser }) => {
-        if (!isMounted) return;
+let authState: AuthReadyState = initialAuthState;
+let authInitialized = false;
+const listeners = new Set<() => void>();
 
-        setSession(s);
-        setUser(validatedUser);
-        setIsReady(true);
-      })
-      .catch(() => {
-        if (!isMounted) return;
+const emitAuthChange = () => {
+  listeners.forEach((listener) => listener());
+};
 
-        setSession(null);
-        setUser(null);
-        setIsReady(true);
+const setAuthState = (nextState: AuthReadyState) => {
+  const hasChanged =
+    authState.isReady !== nextState.isReady ||
+    authState.session?.access_token !== nextState.session?.access_token ||
+    authState.user?.id !== nextState.user?.id;
+
+  authState = nextState;
+
+  if (hasChanged) {
+    emitAuthChange();
+  }
+};
+
+const initializeAuthReady = () => {
+  if (authInitialized) return;
+  authInitialized = true;
+
+  // 1. Initial session restoration — validate token integrity once globally
+  void getValidatedSession()
+    .then(({ session, user }) => {
+      setAuthState({
+        isReady: true,
+        session,
+        user,
       });
-
-    // 2. Subsequent auth events — synchronous only, no async Supabase calls
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) return;
-
-      if (nextSession?.user) {
-        setSession(nextSession);
-        setUser(nextSession.user);
-      } else {
-        setSession(null);
-        setUser(null);
-      }
-      setIsReady(true);
+    })
+    .catch(() => {
+      setAuthState({
+        isReady: true,
+        session: null,
+        user: null,
+      });
     });
 
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+  // 2. Subsequent auth events — synchronous only, no async Supabase calls
+  supabase.auth.onAuthStateChange((_event, nextSession) => {
+    if (nextSession?.user) {
+      setAuthState({
+        isReady: true,
+        session: nextSession,
+        user: nextSession.user,
+      });
+      return;
+    }
 
-  return { isReady, session, user };
+    setAuthState({
+      isReady: true,
+      session: null,
+      user: null,
+    });
+  });
+};
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  initializeAuthReady();
+
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+const getSnapshot = () => authState;
+
+export const useAuthReady = () => {
+  return useSyncExternalStore(subscribe, getSnapshot, () => initialAuthState);
 };
