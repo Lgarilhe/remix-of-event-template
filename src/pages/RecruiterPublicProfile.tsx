@@ -152,7 +152,7 @@ const RecruiterPublicProfile: React.FC = () => {
             {profile.intro_video_url && (
               <div>
                 {showVideo ? (
-                  <div className="border-2 border-border aspect-video bg-foreground/5">
+                  <div className="border-2 border-border aspect-video bg-accent/50">
                     <video
                       src={profile.intro_video_url}
                       controls
@@ -163,7 +163,7 @@ const RecruiterPublicProfile: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => setShowVideo(true)}
-                    className="w-full border-2 border-border p-6 flex items-center justify-center gap-3 hover:bg-foreground/5 transition-colors group"
+                    className="w-full border-2 border-border p-6 flex items-center justify-center gap-3 hover:bg-accent/50 transition-colors group"
                   >
                     <div className="w-12 h-12 border-2 border-border flex items-center justify-center group-hover:bg-accent/20 transition-colors">
                       <Play className="w-5 h-5 text-foreground ml-0.5" />

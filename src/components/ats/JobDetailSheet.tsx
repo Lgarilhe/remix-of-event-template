@@ -267,7 +267,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                         i > 0 && "border-l-0",
                         tab === t.key
                           ? "bg-foreground text-background"
-                          : "bg-background text-muted-foreground hover:bg-foreground/5"
+                          : "bg-background text-muted-foreground hover:bg-accent/50"
                       )}>
                       <t.icon className="w-3 h-3" />
                       {t.label}
@@ -476,7 +476,7 @@ function CandidatsTab({
           <button
             key={candidate.id}
             onClick={() => onCandidateClick(candidate)}
-            className="w-full text-left px-3 py-2.5 hover:bg-foreground/5 transition-colors flex items-center gap-3 group"
+            className="w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3 group"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">

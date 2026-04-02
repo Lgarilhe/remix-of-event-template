@@ -14,7 +14,7 @@ export const ATSTableSkeleton: React.FC = () => {
     <div className="bg-background border border-border overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow className="bg-foreground/5 border-b border-border">
+          <TableRow className="bg-accent/50 border-b border-border">
             <TableHead className="w-[250px]"><Skeleton className="h-4 w-20 rounded-none" /></TableHead>
             <TableHead><Skeleton className="h-4 w-16 rounded-none" /></TableHead>
             <TableHead><Skeleton className="h-4 w-16 rounded-none" /></TableHead>

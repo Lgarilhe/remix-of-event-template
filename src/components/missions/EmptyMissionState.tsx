@@ -243,9 +243,9 @@ const aiBullets = [
 ];
 
 const manualBullets = [
-  { icon: Pencil, text: 'Contrôle total sur chaque paramètre', color: 'text-foreground/60', bg: 'bg-foreground/5 border-border' },
-  { icon: List, text: 'Importez depuis une URL ou un fichier', color: 'text-foreground/60', bg: 'bg-foreground/5 border-border' },
-  { icon: Settings, text: 'Pour les recruteurs expérimentés', color: 'text-foreground/60', bg: 'bg-foreground/5 border-border' },
+  { icon: Pencil, text: 'Contrôle total sur chaque paramètre', color: 'text-foreground/60', bg: 'bg-accent/50 border-border' },
+  { icon: List, text: 'Importez depuis une URL ou un fichier', color: 'text-foreground/60', bg: 'bg-accent/50 border-border' },
+  { icon: Settings, text: 'Pour les recruteurs expérimentés', color: 'text-foreground/60', bg: 'bg-accent/50 border-border' },
 ];
 
 /* ─── Logo carousel (real integrations) ─── */

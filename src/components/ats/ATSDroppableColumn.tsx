@@ -44,7 +44,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       `}
     >
       {/* Header */}
-      <div className="p-3 border-b border-border bg-foreground/5">
+      <div className="p-3 border-b border-border bg-accent/50">
         <div className="flex items-center justify-between">
           <h3 className="font-medium text-foreground text-[12px] uppercase tracking-wider">{stage.label}</h3>
           <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold">
@@ -74,7 +74,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
 
       {/* Load more / Collapse */}
       {(hasMore || canCollapse) && (
-        <div className="p-2 border-t border-border bg-foreground/5">
+        <div className="p-2 border-t border-border bg-accent/50">
           <div className="flex gap-0">
             {hasMore && (
               <button

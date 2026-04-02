@@ -79,7 +79,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
         {/* Progress bar */}
         {steps.length > 0 && (
-          <div className="h-[2px] bg-foreground/5 overflow-hidden">
+          <div className="h-[2px] bg-accent/50 overflow-hidden">
             <div
               className={cn(
                 "h-full skalr-gradient-bg transition-all duration-500 ease-out",

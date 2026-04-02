@@ -47,7 +47,7 @@ const BreakdownRow: React.FC<{ label: string; value: number; max: number }> = ({
       <span className="w-20 text-muted-foreground uppercase tracking-wider truncate">{label}</span>
       <div className="flex-1 h-1 bg-muted overflow-hidden">
         <div
-          className={`h-full transition-all ${pct >= 70 ? 'bg-foreground' : pct >= 40 ? 'bg-foreground/50' : 'bg-destructive'}`}
+          className={`h-full transition-all ${pct >= 70 ? 'bg-foreground' : pct >= 40 ? 'bg-accent/500' : 'bg-destructive'}`}
           style={{ width: `${pct}%` }}
         />
       </div>

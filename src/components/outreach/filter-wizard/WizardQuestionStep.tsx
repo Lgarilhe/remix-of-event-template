@@ -104,7 +104,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${
                     isOptionSelected(option.id)
                       ? 'bg-emerald-50 border-emerald-300'
-                      : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      : 'bg-card border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   <Checkbox
@@ -153,7 +153,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   className={`w-full text-left p-3 rounded-lg border transition-all ${
                     isOptionSelected(option.id)
                       ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-200'
-                      : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      : 'bg-card border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">

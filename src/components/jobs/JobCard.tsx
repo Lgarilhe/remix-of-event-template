@@ -80,7 +80,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
   const salary = formatSalary(job.salaryMin, job.salaryMax);
 
   return (
-    <div className="bg-background border border-black hover:shadow-lg transition-shadow">
+    <div className="bg-background border border-border hover:shadow-lg transition-shadow">
       {/* Main content */}
       <div 
         className="p-6 cursor-pointer"

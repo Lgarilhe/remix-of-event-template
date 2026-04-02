@@ -142,7 +142,7 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
                   qs.verdict === 'go' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
                   qs.verdict === 'no_go' ? 'border-destructive/40 bg-destructive/5 text-destructive' :
                   qs.verdict === 'maybe' ? 'border-amber-400 bg-amber-50 text-amber-700' :
-                  'border-border bg-foreground/5 text-muted-foreground'
+                  'border-border bg-accent/50 text-muted-foreground'
                 )}>
                   {qs.verdict === 'go' ? '✓' : qs.verdict === 'no_go' ? '✗' : qs.verdict === 'maybe' ? '?' : '📅'}
                 </div>

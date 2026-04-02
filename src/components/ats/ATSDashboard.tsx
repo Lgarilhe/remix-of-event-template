@@ -565,7 +565,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                           "w-5 h-5 flex items-center justify-center shrink-0 border",
                           msg.type === 'inmail'
                             ? "bg-accent/15 border-accent/40"
-                            : "bg-foreground/5 border-border"
+                            : "bg-accent/50 border-border"
                         )}>
                           {msg.type === 'inmail' ? (
                             <Mail className="w-2.5 h-2.5" />

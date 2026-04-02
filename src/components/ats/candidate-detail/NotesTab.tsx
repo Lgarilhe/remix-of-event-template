@@ -49,7 +49,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
           onClick={() => setNoteMode('team')}
           className={cn(
             "flex-1 py-2 text-xs font-bold uppercase tracking-[0.15em] border border-border transition-colors",
-            noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
+            noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-accent/50'
           )}
         >
           💬 Équipe
@@ -58,7 +58,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
           onClick={() => setNoteMode('personal')}
           className={cn(
             "flex-1 py-2 text-xs font-bold uppercase tracking-[0.15em] border border-border -ml-px transition-colors",
-            noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/5'
+            noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-accent/50'
           )}
         >
           📝 Perso

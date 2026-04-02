@@ -148,7 +148,7 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
     >
       <div className={cn(
         "p-3 border-b border-border",
-        isDismissed ? "bg-red-50" : "bg-foreground/5"
+        isDismissed ? "bg-red-50" : "bg-accent/50"
       )}>
         <div className="flex items-center justify-between">
           <h3 className={cn(

@@ -103,7 +103,7 @@ const SourceCard: React.FC<{
         'w-10 h-10 flex items-center justify-center border shrink-0',
         selected
           ? 'bg-accent/10 border-accent/30'
-          : 'bg-foreground/5 border-border',
+          : 'bg-accent/50 border-border',
       )}>
         {icon}
       </div>
@@ -344,7 +344,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
               'w-full h-[48px] flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
               filtersReady
                 ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm active:shadow-none active:translate-x-[4px] active:translate-y-[4px]'
-                : 'border-border bg-foreground/5 text-muted-foreground cursor-not-allowed',
+                : 'border-border bg-accent/50 text-muted-foreground cursor-not-allowed',
             )}
           >
             <Search className="w-5 h-5" />

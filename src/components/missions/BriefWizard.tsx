@@ -742,7 +742,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                         ? 'bg-destructive text-destructive-foreground border-destructive'
                         : c.weight === 2
                           ? 'bg-accent/30 text-foreground border-accent'
-                          : 'bg-foreground/5 text-foreground border-border'
+                          : 'bg-accent/50 text-foreground border-border'
                     )}
                   >
                     {c.weight === 3 ? 'Critique' : c.weight === 2 ? 'Important' : 'Bonus'}

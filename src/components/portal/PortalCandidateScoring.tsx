@@ -39,7 +39,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
   if (!canFillScorecard || submitted) {
     if (submitted) {
       return (
-        <div className="flex items-center gap-1.5 px-3 py-2 bg-foreground/5 border border-border">
+        <div className="flex items-center gap-1.5 px-3 py-2 bg-accent/50 border border-border">
           <Check className="w-3 h-3 text-foreground" />
           <span className="text-xs text-foreground font-medium">Évaluation envoyée</span>
         </div>

@@ -79,7 +79,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
                 className={`w-9 h-9 flex items-center justify-center shrink-0 transition-colors ${
                   isSelected
                     ? 'bg-foreground text-background'
-                    : 'bg-foreground/5 text-foreground/60'
+                    : 'bg-accent/50 text-foreground/60'
                 }`}
               >
                 <Icon className="w-4.5 h-4.5" />

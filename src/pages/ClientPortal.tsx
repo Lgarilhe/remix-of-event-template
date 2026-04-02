@@ -212,7 +212,7 @@ export default function ClientPortal() {
           data.projects.map(project => (
             <div key={project.id} className="border border-border">
               {/* Project header */}
-              <div className="px-4 py-3 bg-foreground/5 border-b border-border flex items-center justify-between">
+              <div className="px-4 py-3 bg-accent/50 border-b border-border flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">{project.name}</h2>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">

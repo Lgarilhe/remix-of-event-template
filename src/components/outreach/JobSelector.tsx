@@ -320,8 +320,8 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-2 px-3 py-2 text-sm text-left border-b border-border transition-colors",
-                    "hover:bg-foreground/5",
-                    !selectedJob && "bg-foreground/5 font-medium"
+                    "hover:bg-accent/50",
+                    !selectedJob && "bg-accent/50 font-medium"
                   )}
                   onClick={() => {
                     handleChange('none');
@@ -355,7 +355,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                       type="button"
                       className={cn(
                         "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-left border-b border-border/5 transition-colors",
-                        "hover:bg-foreground/5",
+                        "hover:bg-accent/50",
                         isSelected && "bg-accent/10 border-l-2 border-l-brutal-accent"
                       )}
                       onClick={() => {
@@ -413,7 +413,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           {selectedJob.skills.slice(0, 5).map((skill, i) => (
             <span 
               key={i} 
-              className="text-xs px-1.5 py-0.5 border border-border bg-foreground/5 text-foreground/70 font-medium uppercase tracking-wide"
+              className="text-xs px-1.5 py-0.5 border border-border bg-accent/50 text-foreground/70 font-medium uppercase tracking-wide"
             >
               {skill}
             </span>

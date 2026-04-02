@@ -19,7 +19,7 @@ const SkeletonCard: React.FC = () => (
 
 const SkeletonColumn: React.FC<{ cardCount: number }> = ({ cardCount }) => (
   <div className="w-[280px] flex-shrink-0 border border-border">
-    <div className="p-3 border-b border-border bg-foreground/5">
+    <div className="p-3 border-b border-border bg-accent/50">
       <div className="flex items-center justify-between">
         <Skeleton className="h-4 w-24 rounded-none" />
         <Skeleton className="h-5 w-8 rounded-none" />

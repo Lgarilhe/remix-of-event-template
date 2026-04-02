@@ -250,7 +250,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               transition={{ repeat: Infinity, duration: 1.2 }}
             />
             <p className="text-sm text-muted-foreground">Analyse en cours...</p>
-            <div className="w-32 h-1 bg-foreground/5 overflow-hidden">
+            <div className="w-32 h-1 bg-accent/50 overflow-hidden">
               <motion.div
                 className="h-full"
                 style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}

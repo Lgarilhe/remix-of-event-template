@@ -323,7 +323,7 @@ const EditableChip: React.FC<{ value: string; onEdit: (newValue: string) => void
 
   if (editing) {
     return (
-      <span className="inline-flex items-center border-2 border-border bg-foreground/5">
+      <span className="inline-flex items-center border-2 border-border bg-accent/50">
         <input ref={inputRef} value={editValue} onChange={e => setEditValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirm(); } if (e.key === 'Escape') { setEditValue(value); setEditing(false); } }}
           onBlur={confirm}
@@ -565,7 +565,7 @@ export const FilterWizard: React.FC<FilterWizardProps> = ({
                       isActive
                         ? "border-border bg-foreground text-background"
                         : isDone
-                        ? "border-border bg-foreground/5 text-foreground"
+                        ? "border-border bg-accent/50 text-foreground"
                         : "border-border text-foreground/40 hover:border-border hover:text-foreground/60"
                     )}
                   >

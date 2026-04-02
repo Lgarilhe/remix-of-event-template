@@ -388,7 +388,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                             {cat.score}/{cat.maxScore}
                           </span>
                         </div>
-                        <div className="w-full h-1.5 bg-foreground/5 overflow-hidden">
+                        <div className="w-full h-1.5 bg-accent/50 overflow-hidden">
                           <motion.div
                             className="h-full"
                             style={{ background: cat.color }}

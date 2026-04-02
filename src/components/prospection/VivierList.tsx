@@ -770,7 +770,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                           <SectionHeader emoji="🏆" label="Placements réussis" count={placements.length} />
                           <div className="space-y-2">
                             {placements.map((p: any, i: number) => (
-                              <div key={i} className="border-2 border-border bg-foreground/5 p-3">
+                              <div key={i} className="border-2 border-border bg-accent/50 p-3">
                                 <div className="flex items-center justify-between">
                                   <div className="text-xs font-bold">{p.name || 'Placement'}</div>
                                   {p.status && <Badge variant="outline" className="text-[8px] uppercase tracking-widest border-border">{p.status}</Badge>}
@@ -847,7 +847,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                                         return (
                                           <div key={ci} className={cn(
                                             "px-3 py-2 flex items-center gap-2 text-xs",
-                                            isPlaced && "bg-foreground/5"
+                                            isPlaced && "bg-accent/50"
                                           )}>
                                             <span className="text-xs shrink-0">{stage?.emoji || '○'}</span>
                                             <span className="flex-1 truncate font-medium">{c.name || 'Candidat inconnu'}</span>

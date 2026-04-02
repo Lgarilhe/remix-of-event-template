@@ -63,7 +63,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
           {activeFiltersPreview.length > 5 && (
             <Badge 
               variant="outline" 
-              className="text-xs h-5 px-1.5 bg-foreground/5 text-foreground border-border font-normal"
+              className="text-xs h-5 px-1.5 bg-accent/50 text-foreground border-border font-normal"
             >
               +{activeFiltersPreview.length - 5}
             </Badge>
@@ -415,7 +415,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                 type="button"
                 onClick={() => toggleOption(option.value)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-muted transition-colors ${
-                  isSelected ? 'bg-foreground/5' : ''
+                  isSelected ? 'bg-accent/50' : ''
                 }`}
               >
                 <div className={`w-4 h-4 border flex items-center justify-center shrink-0 ${

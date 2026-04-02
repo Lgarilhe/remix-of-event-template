@@ -90,7 +90,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
     <div className="bg-background border border-border overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow className="bg-foreground/5 border-b border-border">
+          <TableRow className="bg-accent/50 border-b border-border">
             <TableHead className="w-[250px]"><SortButton label="Candidat" sortKeyVal="name" /></TableHead>
             <TableHead className="w-[120px]"><SortButton label="Étape" sortKeyVal="stage" /></TableHead>
             <TableHead className="w-[100px]"><SortButton label="Source" sortKeyVal="source" /></TableHead>
@@ -128,7 +128,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </div>
               </TableCell>
               <TableCell>
-                <span className="text-xs px-2 py-0.5 border border-border bg-foreground/5 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
+                <span className="text-xs px-2 py-0.5 border border-border bg-accent/50 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
                   {candidate.stage}
                   {(() => {
                     const GUIDE_TIMES: Record<string, number> = { 'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5, 'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7 };

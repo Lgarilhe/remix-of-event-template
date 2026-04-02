@@ -371,7 +371,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               {currentCompany && (
                 <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
                   {profileData.currentJob?.logo ? (
-                    <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-white border border-border/30 shrink-0" />
+                    <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                   ) : (
                     <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
                   )}
@@ -431,7 +431,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
                     <div key={index} className="flex items-center gap-2 text-xs min-w-0">
                       {pos.logo ? (
-                        <img src={pos.logo} alt={pos.company || ''} className="w-4 h-4 rounded object-contain bg-white border border-border/30 shrink-0" />
+                        <img src={pos.logo} alt={pos.company || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                       ) : (
                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-green-500' : 'bg-primary/40'}`} />
                       )}

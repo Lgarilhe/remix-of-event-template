@@ -211,7 +211,7 @@ const EditableChip: React.FC<{
 
   if (editing) {
     return (
-      <span className="inline-flex items-center border-2 border-border bg-foreground/5">
+      <span className="inline-flex items-center border-2 border-border bg-accent/50">
         <input
           ref={inputRef}
           value={editValue}

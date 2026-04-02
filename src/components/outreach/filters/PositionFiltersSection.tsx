@@ -159,7 +159,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Select value={role.priority} onValueChange={(v) => onUpdateRole(index, { priority: v as FilterPriority })}>
-                <SelectTrigger className="text-xs h-6 bg-white border-purple-200">
+                <SelectTrigger className="text-xs h-6 bg-card border-purple-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,7 +169,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                 </SelectContent>
               </Select>
               <Select value={role.scope} onValueChange={(v) => onUpdateRole(index, { scope: v as FilterScope })}>
-                <SelectTrigger className="text-xs h-6 bg-white border-purple-200">
+                <SelectTrigger className="text-xs h-6 bg-card border-purple-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -58,7 +58,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
-        <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-[#1A1A1A]/10 bg-white hover:bg-gray-50 transition-colors text-sm">
+        <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-[#1A1A1A]/10 bg-card hover:bg-gray-50 transition-colors text-sm">
           <div className="flex items-center gap-2 text-[#1A1A1A]/70">
             <History className="w-4 h-4" />
             <span className="font-medium">Historique</span>
@@ -77,7 +77,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                 key={entry.id}
                 type="button"
                 onClick={() => onApplyFilters(entry.filters_snapshot)}
-                className="w-full text-left group bg-white border border-[#1A1A1A]/10 rounded-lg p-3 hover:border-[#0077B5]/30 active:border-[#0077B5]/50 transition-colors cursor-pointer"
+                className="w-full text-left group bg-card border border-[#1A1A1A]/10 rounded-lg p-3 hover:border-[#0077B5]/30 active:border-[#0077B5]/50 transition-colors cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span className="text-xs text-[#1A1A1A]/50">

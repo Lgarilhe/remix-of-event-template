@@ -288,7 +288,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                         <img
                           src={exp.logoUrl}
                           alt={exp.company}
-                          className="w-8 h-8 border border-border object-contain bg-white p-0.5"
+                          className="w-8 h-8 border border-border object-contain bg-card p-0.5"
                           onError={(e) => {
                             const img = e.target as HTMLImageElement;
                             img.style.display = 'none';

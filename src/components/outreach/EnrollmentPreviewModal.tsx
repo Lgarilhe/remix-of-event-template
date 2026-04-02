@@ -1002,7 +1002,7 @@ function SummaryMode({
   return (
     <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">
       <div className="text-center space-y-2">
-        <div className="w-12 h-12 mx-auto rounded-xl bg-foreground/5 flex items-center justify-center">
+        <div className="w-12 h-12 mx-auto rounded-xl bg-accent/50 flex items-center justify-center">
           <GitBranch className="w-6 h-6 text-foreground" />
         </div>
         <h3 className="text-lg font-semibold">Récapitulatif de l'enrollment</h3>

@@ -43,7 +43,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
       className={cn(
         "group w-full flex flex-col gap-1 px-2 py-2 rounded-md text-left transition-colors cursor-pointer relative",
         state.skipped && "opacity-50",
-        isSelected ? "bg-foreground/5 ring-1 ring-foreground/10" : "hover:bg-muted/50"
+        isSelected ? "bg-accent/50 ring-1 ring-foreground/10" : "hover:bg-muted/50"
       )}
     >
       <div className="flex items-start gap-2">

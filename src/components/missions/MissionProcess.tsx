@@ -212,7 +212,7 @@ const StepCard: React.FC<StepCardProps> = ({
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Objectifs</label>
             <div className="flex flex-wrap gap-1.5">
               {step.objectives.map((obj, i) => (
-                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-foreground/5 border border-border text-xs font-medium text-foreground">
+                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-accent/50 border border-border text-xs font-medium text-foreground">
                   ☑ {obj}
                   <button
                     onClick={() => onUpdate({ id: step.id, objectives: step.objectives.filter((_, j) => j !== i) })}

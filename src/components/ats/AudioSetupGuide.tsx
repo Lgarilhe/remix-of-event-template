@@ -151,7 +151,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
               className={cn(
                 "flex items-start gap-2 p-3 text-left border transition-all",
                 selectedScenario === s.key
-                  ? "border-border bg-foreground/5"
+                  ? "border-border bg-accent/50"
                   : "border-border hover:border-border"
               )}
             >
@@ -185,7 +185,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
             {scenario.steps.map((step, i) => (
               <div key={i} className={cn(
                 "flex items-start gap-2 px-3 py-2 text-xs",
-                step.important ? "border border-border bg-foreground/5 font-medium text-foreground" : "text-muted-foreground"
+                step.important ? "border border-border bg-accent/50 font-medium text-foreground" : "text-muted-foreground"
               )}>
                 <span className="shrink-0 w-4 text-center font-bold text-foreground">{i + 1}</span>
                 {step.text}

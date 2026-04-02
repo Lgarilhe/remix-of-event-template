@@ -55,7 +55,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
                 />
               </div>
             </div>
-            <div className="w-3 h-3 bg-foreground/5 shrink-0" />
+            <div className="w-3 h-3 bg-accent/50 shrink-0" />
           </div>
         ))}
       </div>

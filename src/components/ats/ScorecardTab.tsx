@@ -533,7 +533,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   {ratedCount}/{totalCriteria} critères évalués
                 </p>
                 {activeEval.interviewStage && (
-                  <span className="text-xs px-1.5 py-0.5 border border-border bg-foreground/5 text-muted-foreground font-medium uppercase tracking-wider">
+                  <span className="text-xs px-1.5 py-0.5 border border-border bg-accent/50 text-muted-foreground font-medium uppercase tracking-wider">
                     {INTERVIEW_STAGES.find(s => s.value === activeEval.interviewStage)?.label || activeEval.interviewStage}
                   </span>
                 )}
@@ -943,7 +943,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                         {Object.entries(currentCriterion.ratingRubric).map(([score, desc]) => (
                           <div key={score} className={cn(
                             "flex items-start gap-2 text-xs px-2 py-1",
-                            String(rating) === score ? "bg-foreground/5 font-medium text-foreground" : "text-muted-foreground"
+                            String(rating) === score ? "bg-accent/50 font-medium text-foreground" : "text-muted-foreground"
                           )}>
                             <span className="font-bold shrink-0 w-3">{score}</span>
                             <span>{desc as string}</span>
@@ -1063,7 +1063,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                       {totalCriteria > 0 ? `${ratedCount}/${totalCriteria} critères` : 'Brouillon'}
                     </p>
                     {ev.interviewStage && (
-                      <span className="text-xs px-1.5 py-0.5 border border-border bg-foreground/5 text-muted-foreground font-medium uppercase tracking-wider">
+                      <span className="text-xs px-1.5 py-0.5 border border-border bg-accent/50 text-muted-foreground font-medium uppercase tracking-wider">
                         {INTERVIEW_STAGES.find(s => s.value === ev.interviewStage)?.label || ev.interviewStage}
                       </span>
                     )}

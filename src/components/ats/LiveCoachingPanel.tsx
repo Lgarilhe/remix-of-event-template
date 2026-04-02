@@ -566,11 +566,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             </>
           )}
           {onOpenProfile && (
-            <button onClick={onOpenProfile} className="lg:hidden h-[28px] px-2 flex items-center gap-1 border border-border text-muted-foreground text-xs font-medium uppercase tracking-wider hover:bg-foreground/5 transition-colors">
+            <button onClick={onOpenProfile} className="lg:hidden h-[28px] px-2 flex items-center gap-1 border border-border text-muted-foreground text-xs font-medium uppercase tracking-wider hover:bg-accent/50 transition-colors">
               <User className="w-3 h-3" /> <span className="hidden sm:inline">CV</span>
             </button>
           )}
-          <button onClick={onClose} className="h-[28px] px-2 flex items-center border border-border text-muted-foreground text-xs hover:bg-foreground/5 transition-colors">
+          <button onClick={onClose} className="h-[28px] px-2 flex items-center border border-border text-muted-foreground text-xs hover:bg-accent/50 transition-colors">
             <X className="w-3 h-3" />
           </button>
         </div>
