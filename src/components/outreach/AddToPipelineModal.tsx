@@ -257,8 +257,8 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                       className={cn(
                         "w-full p-3 text-left rounded-lg border transition-all",
                         selectedJob?.id === job.id
-                          ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
-                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                          ? "border-blue-500 bg-info/10 ring-1 ring-blue-500"
+                          : "border-border hover:border-border hover:bg-accent"
                       )}
                     >
                       <div className="flex items-start justify-between">

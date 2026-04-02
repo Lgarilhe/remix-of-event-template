@@ -433,7 +433,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     <div className="h-[calc(100vh-220px)] bg-background border border-border overflow-y-auto">
       {/* Reset AI Filters Button */}
       {hasAiFilters && (
-        <div className="sticky top-0 z-10 bg-amber-50/90 backdrop-blur-sm border-b border-amber-200 px-4 py-2 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-warning/10 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-amber-700">
             <Sparkles className="w-4 h-4" />
             <span>Filtres générés par l'IA actifs</span>
@@ -442,7 +442,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleResetAiFilters}
-            className="text-amber-700 hover:text-amber-900 hover:bg-amber-100 gap-1.5"
+            className="text-amber-700 hover:text-amber-900 hover:bg-warning/10 gap-1.5"
           >
             <X className="w-3.5 h-3.5" />
             Réinitialiser
@@ -515,7 +515,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.experience}
           onToggle={() => toggleSection('experience')}
           activeFiltersPreview={experienceFiltersPreview}
-          bgColorClass="bg-orange-50/40"
+          bgColorClass="bg-warning/5"
         >
           {/* Calculated Experience */}
           <FilterGroup
@@ -859,7 +859,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.past}
           onToggle={() => toggleSection('past')}
           activeFiltersPreview={pastFiltersPreview}
-          bgColorClass="bg-amber-50/40"
+          bgColorClass="bg-warning/5"
         >
           {/* Past Company */}
           <FilterGroup title="Ancienne entreprise" badge={filters.past_company.length}>

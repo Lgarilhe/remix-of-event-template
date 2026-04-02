@@ -129,7 +129,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
               <div
                 key={b.stage}
                 className={`flex items-center justify-between px-4 py-3 ${
-                  b.severity === 'critical' ? 'bg-destructive/5' : 'bg-yellow-50/50 dark:bg-yellow-950/10'
+                  b.severity === 'critical' ? 'bg-destructive/5' : 'bg-warning/10'
                 }`}
               >
                 <div className="flex items-center gap-3">

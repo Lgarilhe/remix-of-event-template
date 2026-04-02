@@ -67,9 +67,9 @@ type TabKey = typeof TABS[number]['key'];
 function statusColor(status: string | null) {
   if (!status) return 'border-border text-muted-foreground';
   const s = status.toLowerCase();
-  if (['active', 'open', 'en cours'].includes(s)) return 'border-green-500 text-green-700 bg-green-50';
-  if (['closed', 'fermé', 'pourvu'].includes(s)) return 'border-red-400 text-red-600 bg-red-50';
-  if (['paused', 'pause'].includes(s)) return 'border-amber-400 text-amber-600 bg-amber-50';
+  if (['active', 'open', 'en cours'].includes(s)) return 'border-green-500 text-green-700 bg-success/10';
+  if (['closed', 'fermé', 'pourvu'].includes(s)) return 'border-red-400 text-red-600 bg-destructive/10';
+  if (['paused', 'pause'].includes(s)) return 'border-amber-400 text-amber-600 bg-warning/10';
   return 'border-border text-muted-foreground';
 }
 

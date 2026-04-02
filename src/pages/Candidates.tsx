@@ -61,12 +61,12 @@ export interface ShortlistEntry {
 }
 
 export const PIPELINE_STAGES = [
-  { key: 'Pressenti', label: 'Pressenti', color: 'bg-gray-100 border-gray-300' },
-  { key: 'CV envoyé', label: 'CV envoyé', color: 'bg-blue-50 border-blue-300' },
-  { key: 'ITW en cours', label: 'ITW en cours', color: 'bg-yellow-50 border-yellow-300' },
-  { key: 'Offre', label: 'Offre', color: 'bg-purple-50 border-purple-300' },
-  { key: 'Gagné', label: 'Gagné', color: 'bg-green-50 border-green-300' },
-  { key: 'Perdu', label: 'Perdu', color: 'bg-red-50 border-red-300' },
+  { key: 'Pressenti', label: 'Pressenti', color: 'bg-muted border-border' },
+  { key: 'CV envoyé', label: 'CV envoyé', color: 'bg-info/10 border-info/30' },
+  { key: 'ITW en cours', label: 'ITW en cours', color: 'bg-warning/10 border-warning/30' },
+  { key: 'Offre', label: 'Offre', color: 'bg-brand-purple/10 border-brand-purple/30' },
+  { key: 'Gagné', label: 'Gagné', color: 'bg-success/10 border-success/30' },
+  { key: 'Perdu', label: 'Perdu', color: 'bg-destructive/10 border-destructive/30' },
 ];
 
 const viewTabs = [

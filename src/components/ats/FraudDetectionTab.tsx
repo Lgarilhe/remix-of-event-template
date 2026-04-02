@@ -30,8 +30,8 @@ const CATEGORY_CONFIG = {
 };
 
 const SEVERITY_CONFIG = {
-  low: { label: 'Faible', bg: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300', dot: 'bg-yellow-500' },
-  medium: { label: 'Moyen', bg: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', dot: 'bg-orange-500' },
+  low: { label: 'Faible', bg: 'bg-warning/10 text-yellow-800 dark:text-yellow-300', dot: 'bg-yellow-500' },
+  medium: { label: 'Moyen', bg: 'bg-warning/10 text-orange-800 dark:text-orange-300', dot: 'bg-orange-500' },
   high: { label: 'Élevé', bg: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
 };
 

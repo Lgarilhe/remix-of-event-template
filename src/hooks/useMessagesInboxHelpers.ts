@@ -171,28 +171,28 @@ export const getMessageSourceType = (chat: Chat): { label: string; color: string
   
   if (chat.content_type === 'inmail') {
     return hasRecruiter
-      ? { label: 'InMail Recruiter', color: 'bg-purple-100 text-purple-700 border-purple-200' }
-      : { label: 'InMail', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+      ? { label: 'InMail Recruiter', color: 'bg-brand-purple/10 text-brand-purple border-brand-purple/30' }
+      : { label: 'InMail', color: 'bg-brand-purple/10 text-brand-purple border-brand-purple/30' };
   }
-  
+
   if (hasRecruiter) {
-    return { label: 'Recruiter', color: 'bg-amber-100 text-amber-700 border-amber-200' };
+    return { label: 'Recruiter', color: 'bg-warning/10 text-warning border-warning/30' };
   }
-  
-  const hasSalesNav = folders.some(f => 
-    f.toLowerCase().includes('sales') || 
+
+  const hasSalesNav = folders.some(f =>
+    f.toLowerCase().includes('sales') ||
     f.toLowerCase().includes('navigator')
   );
   if (hasSalesNav) {
-    return { label: 'Sales Nav', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+    return { label: 'Sales Nav', color: 'bg-info/10 text-info border-info/30' };
   }
-  
-  const hasClassic = folders.some(f => 
-    f.toLowerCase().includes('classic') || 
+
+  const hasClassic = folders.some(f =>
+    f.toLowerCase().includes('classic') ||
     f.toLowerCase().includes('inbox')
   );
   if (hasClassic || folders.length > 0) {
-    return { label: 'Classic', color: 'bg-slate-100 text-slate-600 border-slate-200' };
+    return { label: 'Classic', color: 'bg-muted text-muted-foreground border-border' };
   }
   
   return null;
