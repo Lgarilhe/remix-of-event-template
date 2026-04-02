@@ -434,7 +434,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900 truncate">
+                          <p className="font-medium text-foreground truncate">
                             {candidate.candidate_name || 'Candidat inconnu'}
                           </p>
                           {candidate.linkedin_profile_url && (
@@ -442,7 +442,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                               href={candidate.linkedin_profile_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-gray-400 hover:text-[#0077B5] transition-colors flex-shrink-0"
+                              className="text-muted-foreground hover:text-[#0077B5] transition-colors flex-shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
@@ -450,7 +450,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           )}
                         </div>
                         {candidate.candidate_headline && (
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
                             {candidate.candidate_headline}
                           </p>
                         )}
@@ -465,9 +465,9 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           <Badge 
                             variant="outline" 
                             className={
-                              candidate.score >= 70 ? 'border-green-300 text-green-700 bg-green-50' :
-                              candidate.score >= 40 ? 'border-yellow-300 text-yellow-700 bg-yellow-50' :
-                              'border-red-300 text-red-600 bg-red-50'
+                              candidate.score >= 70 ? 'border-success/30 text-success-foreground bg-success/10' :
+                              candidate.score >= 40 ? 'border-warning/30 text-warning-foreground bg-warning/10' :
+                              'border-destructive/30 text-destructive bg-destructive/10'
                             }
                           >
                             <Target className="w-3 h-3 mr-1" />
@@ -482,7 +482,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         </TooltipContent>
                       </Tooltip>
                     ) : (
-                      <span className="text-gray-400 text-xs">—</span>
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
 
@@ -492,7 +492,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                     </Badge>
                   </TableCell>
 
-                  <TableCell className="text-xs text-gray-500">
+                  <TableCell className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(candidate.created_at), { 
                       addSuffix: true, 
                       locale: fr 
@@ -519,13 +519,13 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         )}
                         {candidate.status !== 'messaged' && (
                           <DropdownMenuItem onClick={() => onOpenMessage?.(candidate)}>
-                            <MessageSquare className="w-4 h-4 mr-2 text-green-600" />
+                            <MessageSquare className="w-4 h-4 mr-2 text-success-foreground" />
                             Envoyer un message
                           </DropdownMenuItem>
                         )}
                         {candidate.status !== 'dismissed' && (
                           <DropdownMenuItem onClick={() => updateCandidateStatus(candidate.id, 'dismissed')}>
-                            <UserX className="w-4 h-4 mr-2 text-red-500" />
+                            <UserX className="w-4 h-4 mr-2 text-destructive" />
                             Écarter
                           </DropdownMenuItem>
                         )}
@@ -537,18 +537,18 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                             {candidateEnrollments[candidate.candidate_id]?.status === 'active' ? (
                               <DropdownMenuItem 
                                 onClick={() => stopSequence(candidate.candidate_id)}
-                                className="text-orange-600 focus:text-orange-600"
+                                className="text-warning-foreground focus:text-warning-foreground"
                               >
                                 <StopCircle className="w-4 h-4 mr-2" />
                                 Arrêter la séquence
-                                <span className="ml-auto text-xs text-gray-400">
+                                <span className="ml-auto text-xs text-muted-foreground">
                                   {candidateEnrollments[candidate.candidate_id]?.sequence_name}
                                 </span>
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem 
                                 onClick={() => resumeSequence(candidate.candidate_id)}
-                                className="text-green-600 focus:text-green-600"
+                                className="text-success-foreground focus:text-success-foreground"
                               >
                                 <Play className="w-4 h-4 mr-2" />
                                 Reprendre la séquence
@@ -576,7 +576,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         
                         <DropdownMenuItem 
                           onClick={() => removeFromProject(candidate.id)}
-                          className="text-red-600 focus:text-red-600"
+                          className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
                           Retirer du projet
@@ -592,7 +592,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       </ScrollArea>
 
       {/* Results count */}
-      <div className="text-xs text-gray-400 text-center">
+      <div className="text-xs text-muted-foreground text-center">
         {filteredCandidates.length} sur {candidates.length} candidat(s)
       </div>
     </div>

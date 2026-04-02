@@ -440,7 +440,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {job.accompagnement.map(type => (
-                    <span key={type} className="px-3 py-1.5 bg-purple-100 text-purple-800 text-sm">
+                    <span key={type} className="px-3 py-1.5 bg-brand-purple/10 text-brand-purple text-sm">
                       {type}
                     </span>
                   ))}
@@ -470,7 +470,7 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isFavorite = false, onTog
                 e.stopPropagation();
                 setIsApplicationOpen(true);
               }}
-              className="px-6 py-3 bg-[#1A1A1A] text-white text-sm font-medium uppercase tracking-wide hover:bg-[#1A1A1A]/90 transition-colors flex items-center gap-2"
+              className="px-6 py-3 bg-primary text-primary-foreground text-sm font-medium uppercase tracking-wide hover:bg-primary/90 transition-colors flex items-center gap-2"
             >
               <Send className="w-4 h-4" />
               Postuler
