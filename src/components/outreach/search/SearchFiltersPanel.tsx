@@ -18,8 +18,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, Loader2, AlertTriangle, Lock, Pencil, Crosshair } from 'lucide-react';
+import { Search, Loader2, AlertTriangle, Lock, Pencil, Sparkles, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+export interface FilterSuggestions {
+  alt_skills?: string[];
+  alt_titles?: string[];
+  alt_locations?: string[];
+  alt_companies?: string[];
+  alt_certifications?: string[];
+}
 
 interface SearchFiltersPanelProps {
   // Account
@@ -74,7 +82,7 @@ interface SearchFiltersPanelProps {
   // Scoring instructions
   scoringInstructions?: string;
   onScoringInstructionsChange?: (value: string) => void;
-  onOpenFilterWizard?: () => void;
+  suggestions?: FilterSuggestions | null;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -102,11 +110,12 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   onDeleteHistoryEntry,
   scoringInstructions = '',
   onScoringInstructionsChange,
-  onOpenFilterWizard,
+  suggestions,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
   const { data: allJobs = [] } = useJobs();
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
 
   const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
     if (jobId) {
@@ -317,15 +326,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       <div className="space-y-2 sm:space-y-3">
         {/* Filter actions */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {onOpenFilterWizard && (
-            <button
-              onClick={onOpenFilterWizard}
-              className="flex items-center gap-1.5 h-8 px-3 text-[10px] font-black uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
-            >
-              <Crosshair className="w-3 h-3" />
-              Wizard filtres
-            </button>
-          )}
           <AutoFillFiltersButton
             selectedJob={selectedJob}
             accountId={selectedAccount}
@@ -334,6 +334,100 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           />
         </div>
+
+        {/* AI Suggestions inline chips */}
+        {suggestions && (() => {
+          const existingTitles = new Set(filters.role.map(r => r.keywords.toLowerCase()));
+          const existingSkills = new Set([
+            ...filters.skills.map(s => s.name.toLowerCase()),
+            ...(filters.skills_keywords || []).map(s => s.toLowerCase()),
+          ]);
+          const existingLocations = new Set(filters.location.map(l => l.name.toLowerCase()));
+
+          const chips: { label: string; category: string; key: string }[] = [];
+          suggestions.alt_titles?.forEach(t => {
+            const k = `title:${t}`;
+            if (!existingTitles.has(t.toLowerCase()) && !dismissedSuggestions.has(k))
+              chips.push({ label: t, category: 'Poste', key: k });
+          });
+          suggestions.alt_skills?.forEach(s => {
+            const k = `skill:${s}`;
+            if (!existingSkills.has(s.toLowerCase()) && !dismissedSuggestions.has(k))
+              chips.push({ label: s, category: 'Skill', key: k });
+          });
+          suggestions.alt_locations?.forEach(l => {
+            const k = `loc:${l}`;
+            if (!existingLocations.has(l.toLowerCase()) && !dismissedSuggestions.has(k))
+              chips.push({ label: l, category: 'Lieu', key: k });
+          });
+          suggestions.alt_certifications?.forEach(c => {
+            const k = `cert:${c}`;
+            if (!existingSkills.has(c.toLowerCase()) && !dismissedSuggestions.has(k))
+              chips.push({ label: c, category: 'Certif', key: k });
+          });
+
+          if (chips.length === 0) return null;
+
+          const handleAccept = (chip: typeof chips[0]) => {
+            if (chip.key.startsWith('title:')) {
+              setFilters(f => ({
+                ...f,
+                role: [...f.role, { keywords: chip.label, priority: 'CAN_HAVE' as const, scope: 'CURRENT_OR_PAST' as const }],
+              }));
+            } else if (chip.key.startsWith('skill:') || chip.key.startsWith('cert:')) {
+              setFilters(f => ({
+                ...f,
+                skills_keywords: [...(f.skills_keywords || []), chip.label],
+              }));
+            } else if (chip.key.startsWith('loc:')) {
+              setFilters(f => ({
+                ...f,
+                location: [...f.location, { id: chip.label, name: chip.label, priority: 'CAN_HAVE' as const, scope: 'CURRENT' as const }],
+              }));
+            }
+            setDismissedSuggestions(prev => new Set([...prev, chip.key]));
+          };
+
+          const handleDismiss = (chip: typeof chips[0]) => {
+            setDismissedSuggestions(prev => new Set([...prev, chip.key]));
+          };
+
+          return (
+            <div className="bg-background border border-border p-2 sm:p-2.5">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Sparkles className="w-3 h-3 text-primary" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Suggestions IA</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {chips.slice(0, 8).map(chip => (
+                  <span
+                    key={chip.key}
+                    className="inline-flex items-center gap-0.5 pl-2 pr-0.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-[11px] text-foreground group"
+                  >
+                    <span className="text-[9px] text-primary/60 font-medium mr-0.5">{chip.category}</span>
+                    <span className="truncate max-w-[100px]">{chip.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleAccept(chip)}
+                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-primary/20 transition-colors"
+                      title="Ajouter"
+                    >
+                      <Plus className="w-2.5 h-2.5 text-primary" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDismiss(chip)}
+                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-destructive/20 transition-colors"
+                      title="Ignorer"
+                    >
+                      <X className="w-2.5 h-2.5 text-muted-foreground" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
