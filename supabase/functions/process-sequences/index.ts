@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
 // deno-lint-ignore no-explicit-any
 
 async function acquireLock(supabase: any, runId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('acquire_sequence_lock', { p_run_id: runId, p_ttl_minutes: 10 });
+  const { data, error } = await supabase.rpc('acquire_sequence_lock', { p_run_id: runId, p_ttl_minutes: 3 });
   if (error) {
     console.error(`[process] Lock RPC error:`, error);
     return false;
@@ -295,6 +295,11 @@ async function handleProcess(supabase: any, force = false) {
         }
 
         const sequence = enrollment.sequence;
+        if (!sequence) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'Sequence missing from enrollment' }).eq('id', exec.id);
+          results.skipped++;
+          continue;
+        }
 
         // === CONFIGURABLE STOP CONDITIONS ===
         const stopCond = sequence?.stop_conditions || { on_reply: true, on_unsubscribe: true };
@@ -400,7 +405,7 @@ async function handleProcess(supabase: any, force = false) {
         // Condition is true — if this is a pure condition node with tree children, route to 'yes' branch directly
         if (useTreeBranching && (step.action_type === 'condition_branch')) {
           await supabase.from('sequence_step_executions').update({ status: 'sent', executed_at: new Date().toISOString(), final_message: `Condition "${step.condition_type}" → true` }).eq('id', exec.id);
-          await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
+          // Do NOT increment current_step_order for condition_branch — the branch routing handles progression
           await scheduleNextStep(supabase, enrollment, step.step_order, undefined, 'yes', 0, step.id);
           results.processed++;
           continue;
@@ -1471,13 +1476,23 @@ async function handleForceReschedule(supabase: any) {
 }
 
 // deno-lint-ignore no-explicit-any
-async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no', _depth = 0, currentStepId?: string) {
+async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder: number, forceBranchStepId?: string, conditionResult?: 'yes' | 'no', _depth = 0, currentStepId?: string, _visitedIds?: Set<string>) {
   // Guard: prevent infinite recursion on deeply nested or circular branches
   const MAX_BRANCH_DEPTH = 10;
   if (_depth >= MAX_BRANCH_DEPTH) {
     console.error(`[scheduleNextStep] MAX_BRANCH_DEPTH (${MAX_BRANCH_DEPTH}) reached for enrollment ${enrollment.id} at step_order ${currentStepOrder}. Completing sequence to prevent infinite loop.`);
     await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
     return;
+  }
+  // Guard: detect circular next_step_id references
+  const visited = _visitedIds || new Set<string>();
+  if (currentStepId) {
+    if (visited.has(currentStepId)) {
+      console.error(`[scheduleNextStep] Circular step reference detected: ${currentStepId} already visited. Completing sequence.`);
+      await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+      return;
+    }
+    visited.add(currentStepId);
   }
 
   let nextStep;
@@ -1559,7 +1574,7 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
           .single();
         if (parentStep) {
           // Recurse: schedule the step after the parent (using parent's context)
-          return scheduleNextStep(supabase, enrollment, parentStep.step_order, undefined, undefined, _depth + 1);
+          return scheduleNextStep(supabase, enrollment, parentStep.step_order, undefined, undefined, _depth + 1, undefined, visited);
         }
       }
     }
@@ -1786,9 +1801,13 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
               const bal = await balRes.json();
               if ((bal.recruiter || 0) > 0) linkedinApiMode = 'recruiter';
               else if ((bal.sales_navigator || 0) > 0) linkedinApiMode = 'sales_navigator';
-              else if ((bal.premium || 0) > 0) linkedinApiMode = 'classic'; // Premium uses classic API
+              else if ((bal.premium || 0) > 0) linkedinApiMode = 'classic';
+              else {
+                // Zero credits across all types — fail permanently instead of wasting retries
+                return { success: false, error: 'No InMail credits available (recruiter: 0, sales_nav: 0, premium: 0)' };
+              }
             }
-          } catch { linkedinApiMode = 'recruiter'; /* fallback */ }
+          } catch { linkedinApiMode = 'recruiter'; /* fallback on API error */ }
         }
 
         console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | isConnected=${isConnected} | needsInMail=${needsInMail} | apiMode=${linkedinApiMode}`);
@@ -1860,10 +1879,16 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         // Send WhatsApp message via Unipile — same API as LinkedIn (POST /api/v1/chats)
         // Uses the WhatsApp account_id and the candidate's phone number as attendee
         const whatsappAccountId = (step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string;
-        const phoneNumber = (enrollment as any).phone_used;
+        let phoneNumber = ((enrollment as any).phone_used || '') as string;
 
         if (!phoneNumber) {
           return { success: false, error: 'No phone number available for WhatsApp' };
+        }
+
+        // Normalize phone number: strip spaces, dashes, parentheses → E.164-ish format
+        phoneNumber = phoneNumber.replace(/[\s\-().]/g, '');
+        if (!phoneNumber.startsWith('+') && phoneNumber.length >= 10) {
+          phoneNumber = '+' + phoneNumber; // Assume missing + prefix
         }
 
         // Try to find existing WhatsApp chat
