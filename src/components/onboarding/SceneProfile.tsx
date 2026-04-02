@@ -240,7 +240,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         {/* Header */}
         <div className="text-center space-y-2">
           <span
-            className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+            className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
             style={{ fontFamily: "'Space Mono', monospace" }}
           >
             Classification
@@ -269,7 +269,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
         {/* Experience list — single container */}
         <div
-          className="border-2 border-border divide-y divide-foreground/5 overflow-hidden"
+          className="border border-border divide-y divide-foreground/5 overflow-hidden"
           style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}
         >
           {expClassifications.map((exp, i) => {
@@ -314,7 +314,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
+                      <p className="text-xs font-semibold text-foreground truncate leading-tight">
                         {exp.title || 'Poste non renseigné'}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
@@ -374,7 +374,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             type="button"
             variant="outline"
             onClick={() => setProfileStep('form')}
-            className="gap-2 border-2 border-border text-sm"
+            className="gap-2 border border-border text-sm"
           >
             <ArrowLeft className="w-4 h-4" /> Retour
           </Button>
@@ -382,7 +382,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             type="button"
             onClick={handleGenerateBio}
             disabled={generatingBio}
-            className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
             style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {generatingBio ? (
@@ -403,7 +403,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           {isFreelance ? '02' : '04'} — Votre profil
@@ -418,7 +418,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
       {/* Avatar */}
       <motion.div
-        className="mx-auto flex items-center justify-center w-20 h-20 text-2xl font-bold text-white border-2 border-border"
+        className="mx-auto flex items-center justify-center w-20 h-20 text-2xl font-bold text-white border border-border"
         style={{
           background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))',
           boxShadow: '3px 3px 0px 0px hsl(var(--primary))',
@@ -441,7 +441,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             autoFocus
-            className="border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
+            className="border border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
           />
         </div>
 
@@ -454,7 +454,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               placeholder="Recruteur Senior, DRH, Consultant..."
               value={jobTitle}
               onChange={(e) => setJobTitle(e.target.value)}
-              className="border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
+              className="border border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
             />
           </div>
         )}
@@ -470,13 +470,13 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               placeholder="https://linkedin.com/in/votre-profil"
               value={linkedinUrl}
               onChange={(e) => setLinkedinUrl(e.target.value)}
-              className="border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11 flex-1"
+              className="border border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11 flex-1"
             />
             <Button
               type="button"
               onClick={handleScanLinkedIn}
               disabled={scanning || !linkedinUrl.trim()}
-              className="gap-1.5 border-2 border-border text-sm h-11 px-3 shrink-0"
+              className="gap-1.5 border border-border text-sm h-11 px-3 shrink-0"
               variant="outline"
             >
               {scanning ? (
@@ -499,7 +499,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="border-2 border-border p-4 space-y-4"
+              className="border border-border p-4 space-y-4"
               style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}
             >
               {/* Header with photo */}
@@ -508,11 +508,11 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                   <img
                     src={scanResult.photoUrl}
                     alt={scanResult.name}
-                    className="w-12 h-12 border-2 border-border object-cover shrink-0"
+                    className="w-12 h-12 border border-border object-cover shrink-0"
                   />
                 ) : (
                   <div
-                    className="w-12 h-12 border-2 border-border shrink-0 flex items-center justify-center text-sm font-bold text-white"
+                    className="w-12 h-12 border border-border shrink-0 flex items-center justify-center text-sm font-bold text-white"
                     style={{ background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
                   >
                     {scanResult.name?.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'}
@@ -537,21 +537,21 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Key info badges */}
               <div className="flex flex-wrap gap-1.5">
                 {scanResult.yearsExperience > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-border text-foreground"
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border border-border text-foreground"
                     style={{ background: 'hsl(var(--skalr-green) / 0.1)' }}>
                     <Briefcase className="w-3 h-3" />
                     {scanResult.yearsExperience} ans d'exp.
                   </span>
                 )}
                 {scanResult.seniority && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-border text-foreground"
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border border-border text-foreground"
                     style={{ background: 'hsl(var(--skalr-purple) / 0.1)' }}>
                     <Tag className="w-3 h-3" />
                     {scanResult.seniority}
                   </span>
                 )}
                 {scanResult.location && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-border text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border border-border text-muted-foreground">
                     <MapPin className="w-3 h-3" />
                     {scanResult.location}
                   </span>
@@ -571,7 +571,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                       other: { label: 'Autre', color: 'var(--foreground)' },
                     }[type];
                     return (
-                      <span key={type} className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border-2 border-border"
+                      <span key={type} className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border"
                         style={{ background: `hsl(${config.color} / 0.1)` }}>
                         {config.label} × {count}
                       </span>
@@ -680,14 +680,14 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             type="button"
             variant="outline"
             onClick={onBack}
-            className="gap-2 border-2 border-border text-sm"
+            className="gap-2 border border-border text-sm"
           >
             <ArrowLeft className="w-4 h-4" /> Retour
           </Button>
           <Button
             type="submit"
             disabled={saving || scanning}
-            className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
             style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {saving ? (

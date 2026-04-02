@@ -65,11 +65,11 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   if (conversations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <div className="h-10 w-10 border-2 border-border flex items-center justify-center">
+        <div className="h-10 w-10 border border-border flex items-center justify-center">
           <Bot className="w-5 h-5 text-muted-foreground/30" />
         </div>
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">Aucune conversation</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Aucune conversation</p>
           <p className="text-xs mt-1 text-muted-foreground/50">Sélectionnez un poste pour commencer</p>
         </div>
       </div>
@@ -79,7 +79,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide">
       <div className="px-5 pt-5 pb-2">
-        <p className="text-xs font-display font-black uppercase tracking-[0.18em] text-foreground/50">
+        <p className="text-xs font-display font-black uppercase tracking-wider text-foreground/50">
           Conversations récentes
         </p>
       </div>
@@ -114,7 +114,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
                     ) : (
                       <span className="h-1.5 w-1.5 bg-foreground/20 shrink-0" />
                     )}
-                    <span className={cn("text-xs uppercase tracking-[0.12em] font-bold", status.className)}>
+                    <span className={cn("text-xs uppercase tracking-wider font-bold", status.className)}>
                       {status.label}
                     </span>
                   </div>

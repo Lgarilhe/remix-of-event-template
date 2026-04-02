@@ -36,7 +36,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
       <motion.span
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-xs tracking-[0.2em] text-muted-foreground uppercase"
+        className="text-xs tracking-wider text-muted-foreground uppercase"
         style={{ fontFamily: "'Space Mono', monospace" }}
       >
         06 — C'EST PARTI
@@ -125,13 +125,13 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="w-full border-2 border-border bg-card p-5"
+        className="w-full border border-border bg-card p-5"
         style={{
-          boxShadow: '4px 4px 0px 0px hsl(var(--skalr-purple) / 0.3), 0 0 30px hsl(var(--skalr-purple) / 0.08)',
+          boxShadow: '0 4px 20px hsl(var(--skalr-purple) / 0.2), 0 0 40px hsl(var(--skalr-purple) / 0.05)',
         }}
       >
         <p
-          className="text-xs tracking-[0.15em] text-muted-foreground uppercase mb-4 text-center"
+          className="text-xs tracking-wider text-muted-foreground uppercase mb-4 text-center"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           VOTRE ÉCOSYSTÈME
@@ -174,12 +174,12 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.97 }}
         onClick={onFinish}
-        className="w-full py-3.5 text-sm font-bold tracking-wider uppercase border-2 border-border flex items-center justify-center gap-2"
+        className="w-full py-3.5 text-sm font-bold tracking-wider uppercase border border-border flex items-center justify-center gap-2"
         style={{
           fontFamily: "'Space Mono', monospace",
           background: 'hsl(var(--landing-accent-yellow))',
           color: 'hsl(var(--foreground))',
-          boxShadow: '3px 3px 0px 0px hsl(var(--foreground))',
+          boxShadow: '0 4px 16px hsl(var(--foreground) / 0.1)',
         }}
       >
         <Rocket className="w-4 h-4" />

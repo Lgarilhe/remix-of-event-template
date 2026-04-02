@@ -124,7 +124,7 @@ export const LinkedInQuotaSettings = () => {
           return (
             <div key={field.key}>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   {field.label}
                 </label>
                 <span className="text-sm font-mono font-semibold text-foreground tabular-nums min-w-[3ch] text-right">

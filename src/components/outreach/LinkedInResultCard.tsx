@@ -283,7 +283,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
           {/* Avatar - separate column on desktop only */}
           <div className="relative shrink-0 hidden sm:block">
-            <Avatar className="w-14 h-14 border-2 border-border shadow-md">
+            <Avatar className="w-14 h-14 border border-border shadow-md">
               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-lg font-medium">
                 {initials || '?'}
@@ -393,7 +393,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 </span>
               )}
               {totalExperience && (
-                <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                <span className="flex items-center gap-1 text-success font-medium">
                   <TrendingUp className="w-3.5 h-3.5" />
                   {totalExperience}
                 </span>
@@ -433,7 +433,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                       {pos.logo ? (
                         <img src={pos.logo} alt={pos.company || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                       ) : (
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-green-500' : 'bg-primary/40'}`} />
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-success' : 'bg-primary/40'}`} />
                       )}
                       <span className="text-muted-foreground truncate">
                         <span className="font-medium">{pos.role || pos.position}</span>

@@ -75,7 +75,7 @@ const statusConfig = {
   untreated: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
   messaged: { label: 'Contacté', className: 'bg-success/10 text-success-foreground' },
   dismissed: { label: 'Écarté', className: 'bg-destructive/10 text-destructive' },
-  shortlisted: { label: 'Shortlisté', className: 'bg-purple-100 text-purple-700' },
+  shortlisted: { label: 'Shortlisté', className: 'bg-brand-purple/10 text-brand-purple' },
 };
 
 export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnhancedProps> = ({
@@ -371,7 +371,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
               size="sm" 
               variant="outline"
               onClick={() => bulkUpdateStatus('shortlisted')}
-              className="gap-1.5 text-purple-400 border-purple-800 hover:bg-brand-purple/10"
+              className="gap-1.5 text-brand-purple border-brand-purple/30 hover:bg-brand-purple/10"
             >
               <UserCheck className="w-3.5 h-3.5" />
               Shortlister
@@ -442,7 +442,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                               href={candidate.linkedin_profile_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-muted-foreground hover:text-[#0077B5] transition-colors flex-shrink-0"
+                              className="text-muted-foreground hover:text-linkedin transition-colors flex-shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
@@ -513,7 +513,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                       <DropdownMenuContent align="end" className="w-52">
                         {candidate.status !== 'shortlisted' && (
                           <DropdownMenuItem onClick={() => updateCandidateStatus(candidate.id, 'shortlisted')}>
-                            <UserCheck className="w-4 h-4 mr-2 text-purple-600" />
+                            <UserCheck className="w-4 h-4 mr-2 text-brand-purple" />
                             Shortlister
                           </DropdownMenuItem>
                         )}

@@ -39,7 +39,7 @@ const ACTIONS = [
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-info/10 text-info', description: 'Visiter le profil' },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-warning/10 text-warning', description: 'Si connecté' },
   { value: 'smart_message', label: 'Smart Message', icon: Sparkles, color: 'bg-brand-purple/10 text-brand-purple', description: 'Personnalisé par IA' },
-  { value: 'whatsapp_message', label: 'WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-green-500/10 text-green-500', description: 'Si numéro dispo' },
+  { value: 'whatsapp_message', label: 'WhatsApp', icon: null, customIcon: whatsappLogo, color: 'bg-whatsapp/10 text-whatsapp', description: 'Si numéro dispo' },
 ];
 
 const TRIGGERS = [

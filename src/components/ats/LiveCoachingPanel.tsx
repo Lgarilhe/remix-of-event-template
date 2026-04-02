@@ -521,7 +521,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
 
   return (
-    <div className="border-2 border-border bg-foreground/[0.02] mb-4 max-h-[520px] flex flex-col overflow-hidden">
+    <div className="border border-border bg-foreground/[0.02] mb-4 max-h-[520px] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">

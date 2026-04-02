@@ -207,7 +207,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
                 setAcknowledged(true);
                 onReady();
               }}
-              className="relative overflow-hidden w-full h-[36px] bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group"
+              className="relative overflow-hidden w-full h-9 bg-foreground text-background border border-border text-xs font-bold uppercase tracking-wider group"
             >
               <span className="relative z-10">J'ai compris — lancer le coaching</span>
             </button>
@@ -219,7 +219,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
       {!scenario && onReady && (
         <button
           onClick={onReady}
-          className="w-full h-[34px] text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+          className="w-full h-9 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
         >
           Passer — je connais ma config
         </button>

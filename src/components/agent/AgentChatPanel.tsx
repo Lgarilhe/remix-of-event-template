@@ -34,7 +34,7 @@ function LoadingMessages() {
   }, []);
   return (
     <p className={cn(
-      "text-xs text-muted-foreground uppercase tracking-[0.15em] font-medium transition-opacity duration-200",
+      "text-xs text-muted-foreground uppercase tracking-wider font-medium transition-opacity duration-200",
       fade ? "opacity-100" : "opacity-0"
     )}>
       {CHAT_LOADING_MESSAGES[index]}
@@ -217,7 +217,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               <AnimatedOrb size={32} />
               <div>
                 <h2 className="text-sm font-display font-black uppercase tracking-wider text-foreground">Copilot IA</h2>
-                <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground mt-0.5">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mt-0.5">
                   Votre assistant recrutement
                 </p>
               </div>
@@ -225,7 +225,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground border border-border px-2.5 py-1 hover:border-border transition-all duration-150"
+                className="text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground border border-border px-2.5 py-1 hover:border-border transition-all duration-150"
               >
                 Fermer
               </button>
@@ -235,7 +235,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
         {/* Quick Actions Grid */}
         <div className="px-4 py-4 border-b border-border shrink-0">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground mb-3">Actions rapides</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Actions rapides</p>
           <div className="grid grid-cols-2 gap-2">
             {QUICK_ACTIONS.map((qa) => (
               <button
@@ -257,7 +257,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             onClick={() => setActiveTab('new')}
             className={cn(
-              "flex-1 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
+              "flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all duration-150 relative",
               activeTab === 'new'
                 ? "text-foreground"
                 : "text-muted-foreground/50 hover:text-muted-foreground"
@@ -271,7 +271,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             onClick={() => setActiveTab('history')}
             className={cn(
-              "flex-1 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-all duration-150 relative",
+              "flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all duration-150 relative",
               activeTab === 'history'
                 ? "text-foreground"
                 : "text-muted-foreground/50 hover:text-muted-foreground"
@@ -350,7 +350,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <div className="flex flex-col items-center justify-center py-16 gap-6">
             {/* Brutal square scanner */}
             <div className="relative">
-              <div className="h-12 w-12 border-2 border-border relative">
+              <div className="h-12 w-12 border border-border relative">
                 <div
                   className="absolute inset-x-1 h-[2px] animate-[scan_1.5s_ease-in-out_infinite]"
                   style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}

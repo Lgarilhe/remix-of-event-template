@@ -39,7 +39,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           03 — Une dernière chose
@@ -91,7 +91,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
         <Button
           onClick={() => selected && onSubmit(selected)}
           disabled={!selected}
-          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />

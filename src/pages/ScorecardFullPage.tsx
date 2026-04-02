@@ -138,7 +138,7 @@ export default function ScorecardFullPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-border border-t-foreground rounded-full animate-spin" />
+        <div className="w-5 h-5 border border-border border-t-foreground rounded-full animate-spin" />
       </div>
     );
   }
@@ -155,7 +155,7 @@ export default function ScorecardFullPage() {
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => navigate(-1)}
-              className="h-8 w-8 flex items-center justify-center border-2 border-border text-foreground hover:bg-foreground hover:text-background transition-colors shrink-0"
+              className="h-8 w-8 flex items-center justify-center border border-border text-foreground hover:bg-foreground hover:text-background transition-colors shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -196,7 +196,7 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
             jobOpen
               ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
               : "bg-background text-foreground hover:bg-foreground hover:text-background"
@@ -209,7 +209,7 @@ export default function ScorecardFullPage() {
         <button
           onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border-2 border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
+            "h-9 flex items-center gap-2 px-4 border border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
             profileOpen
               ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
               : "bg-background text-foreground hover:bg-foreground hover:text-background"

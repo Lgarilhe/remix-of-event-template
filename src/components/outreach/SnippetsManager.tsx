@@ -217,7 +217,7 @@ export const SnippetsManager: React.FC = () => {
         </div>
         <button
           onClick={openCreateModal}
-          className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background group shrink-0"
+          className="relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background group shrink-0"
         >
           <Plus className="w-3.5 h-3.5 relative z-10" />
           <span className="relative z-10">Nouveau snippet</span>
@@ -261,7 +261,7 @@ export const SnippetsManager: React.FC = () => {
             {snippets.length === 0 ? 'Créez votre premier snippet réutilisable' : 'Aucun résultat pour cette recherche'}
           </p>
           {snippets.length === 0 && (
-            <button onClick={openCreateModal} className="h-[30px] px-4 bg-foreground text-background text-xs font-medium uppercase tracking-wider">
+            <button onClick={openCreateModal} className="h-8 px-4 bg-foreground text-background text-xs font-medium uppercase tracking-wider">
               Créer un snippet
             </button>
           )}

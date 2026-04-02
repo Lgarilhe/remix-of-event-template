@@ -67,7 +67,7 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
                   isCurrent
                     ? "bg-foreground text-background border-border"
                     : isCompleted && !hasErrors
-                      ? "bg-emerald-500 text-white border-emerald-500"
+                      ? "bg-success text-success-foreground border-success"
                       : hasErrors
                         ? "bg-destructive/10 text-destructive border-destructive/40"
                         : "bg-background text-muted-foreground border-border group-hover:border-border"

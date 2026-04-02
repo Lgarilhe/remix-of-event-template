@@ -39,7 +39,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           01 — Votre activité
@@ -73,7 +73,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
                   ? 'border-border bg-foreground/[0.03]'
                   : 'border-border hover:border-border'}
               `}
-              style={isSelected ? { boxShadow: '3px 3px 0px 0px hsl(var(--primary))' } : {}}
+              style={isSelected ? { boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' } : {}}
             >
               <div
                 className={`w-9 h-9 flex items-center justify-center shrink-0 transition-colors ${
@@ -116,8 +116,8 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         <Button
           onClick={() => selected && onSelect(selected)}
           disabled={!selected}
-          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
+          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />
         </Button>

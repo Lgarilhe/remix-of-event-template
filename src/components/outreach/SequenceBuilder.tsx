@@ -117,7 +117,7 @@ const ACTIONS = [
   { value: 'profile_visit', label: 'Visite de profil', icon: Eye, color: 'bg-muted text-foreground', description: 'Visiter le profil du prospect', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
   { value: 'message', label: 'Message direct', icon: MessageSquare, color: 'bg-muted text-foreground', description: 'Envoyer un message (si connecté)', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
   { value: 'smart_message', label: 'Smart Message (IA)', icon: Sparkles, color: 'bg-foreground text-background', description: 'Message personnalisé par IA', requiresPrevious: ['wait_connection'], excludeIfPrevious: [], requiresConnection: true },
-  { value: 'whatsapp_message', label: 'WhatsApp', icon: MessageSquare, color: 'bg-emerald-100 text-emerald-800', description: 'Envoyer un message WhatsApp', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
+  { value: 'whatsapp_message', label: 'WhatsApp', icon: MessageSquare, color: 'bg-success/10 text-success', description: 'Envoyer un message WhatsApp', requiresPrevious: [], excludeIfPrevious: [], requiresConnection: false },
 ];
 
 // TRIGGERS = ce qu'on ATTEND
@@ -847,7 +847,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         const { availableActions, availableTriggers } = getAvailableStepTypes(sequence.steps);
         const hasNoOptions = availableActions.length === 0 && availableTriggers.length === 0;
         return (
-          <div className={cn("mt-4 p-5 border-2 border-dashed rounded-lg", sequence.steps.length === 0 ? "border-border bg-muted/20" : "border-border bg-muted/10")}>
+          <div className={cn("mt-4 p-5 border border-dashed rounded-lg", sequence.steps.length === 0 ? "border-border bg-muted/20" : "border-border bg-muted/10")}>
             <div className="flex items-center justify-between mb-4">
               <span className="font-medium text-sm">{sequence.steps.length === 0 ? 'Commencer par ajouter une étape' : 'Ajouter une étape'}</span>
               {sequence.steps.length > 0 && (

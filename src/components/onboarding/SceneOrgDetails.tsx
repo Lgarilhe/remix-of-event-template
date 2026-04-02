@@ -100,7 +100,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
       {/* Header */}
       <div className="text-center space-y-2">
         <span
-          className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold"
+          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
           02 — Quelques détails
@@ -126,7 +126,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
               Quel est votre mode d'intervention ?
             </label>
             <Select value={freelanceMode} onValueChange={setFreelanceMode}>
-              <SelectTrigger className="border-2 border-border h-10 text-sm">
+              <SelectTrigger className="border border-border h-10 text-sm">
                 <SelectValue placeholder="Sélectionnez" />
               </SelectTrigger>
               <SelectContent>
@@ -151,7 +151,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
                 Fourchette TJM indicative
               </label>
 
-              <div className="space-y-3 rounded-md border-2 border-border bg-background px-4 py-4">
+              <div className="space-y-3 rounded-md border border-border bg-background px-4 py-4">
                 <div className="relative h-10">
                   {/* Track background */}
                   <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-foreground/15" />
@@ -206,7 +206,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
               Taille de l'équipe recrutement
             </label>
             <Select value={teamSize} onValueChange={setTeamSize}>
-              <SelectTrigger className="border-2 border-border h-10 text-sm">
+              <SelectTrigger className="border border-border h-10 text-sm">
                 <SelectValue placeholder="Sélectionnez" />
               </SelectTrigger>
               <SelectContent>
@@ -238,7 +238,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
         <Button
           onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource: '', freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
           disabled={!canSubmit}
-          className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />

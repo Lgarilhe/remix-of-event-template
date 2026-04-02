@@ -49,7 +49,7 @@ const STEP_BG: Record<string, string> = {
   profile_visit: 'bg-info/10 border-info/20',
   message: 'bg-warning/10 border-warning/20',
   smart_message: 'bg-brand-purple/10 border-brand-purple/20',
-  whatsapp_message: 'bg-green-500/10 border-green-500/20',
+  whatsapp_message: 'bg-whatsapp/10 border-whatsapp/20',
   email: 'bg-brand-purple/10 border-brand-purple/20',
   wait_connection: 'bg-warning/10 border-warning/20',
   wait_reply: 'bg-warning/10 border-warning/20',
@@ -64,7 +64,7 @@ const STEP_ICON_BG: Record<string, string> = {
   profile_visit: 'bg-info/20 text-info',
   message: 'bg-warning/20 text-warning-foreground',
   smart_message: 'bg-brand-purple/20 text-brand-purple',
-  whatsapp_message: 'bg-green-500/20 text-green-500',
+  whatsapp_message: 'bg-whatsapp/20 text-whatsapp',
   email: 'bg-brand-purple/20 text-brand-purple',
   wait_connection: 'bg-warning/20 text-warning-foreground',
   wait_reply: 'bg-warning/20 text-warning-foreground',
@@ -161,7 +161,7 @@ const StepNode: React.FC<{
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[10px] text-muted-foreground/50 leading-none mb-0.5">Étape {index + 1}</div>
-          <div className="text-[13px] font-semibold truncate leading-tight">
+          <div className="text-xs font-semibold truncate leading-tight">
             {STEP_LABELS[step.actionType]}
           </div>
           {msgType && (

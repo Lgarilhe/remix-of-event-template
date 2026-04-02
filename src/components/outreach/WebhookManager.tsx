@@ -124,7 +124,7 @@ export function WebhookManager() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Webhook className="w-5 h-5 text-[#0077B5]" />
+            <Webhook className="w-5 h-5 text-linkedin" />
             <div>
               <CardTitle className="text-lg">Webhooks Temps Réel</CardTitle>
               <CardDescription>
@@ -145,7 +145,7 @@ export function WebhookManager() {
       <CardContent className="space-y-4">
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-[#0077B5]" />
+            <Loader2 className="w-6 h-6 animate-spin text-linkedin" />
           </div>
         ) : (
           <>
@@ -177,7 +177,7 @@ export function WebhookManager() {
                     className="flex items-center justify-between p-3 rounded-lg border border-border bg-card"
                   >
                     <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="bg-[#0077B5]/10 text-[#0077B5] border-[#0077B5]/20">
+                      <Badge variant="outline" className="bg-linkedin/10 text-linkedin border-linkedin/20">
                         {getSourceLabel(webhook.source)}
                       </Badge>
                       <div className="leading-tight">
@@ -214,7 +214,7 @@ export function WebhookManager() {
               <Button
                 onClick={handleRegister}
                 disabled={registering}
-                className="w-full bg-[#0077B5] hover:bg-[#005E93]"
+                className="w-full bg-linkedin hover:bg-linkedin-hover"
               >
                 {registering ? (
                   <>

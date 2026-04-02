@@ -31,7 +31,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
   const { isAgency } = useOrganization();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {readOnly && (
         <div className="px-4 py-2.5 rounded-md border border-border bg-muted/50">
           <span className="text-xs font-medium text-muted-foreground">
@@ -44,7 +44,7 @@ export const MissionConfig: React.FC<MissionConfigProps> = ({ project, readOnly 
       <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
         <div className="flex items-center gap-2 mb-5">
           <Settings className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">
+          <h3 className="text-sm font-bold text-foreground">
             Infos mission
           </h3>
         </div>

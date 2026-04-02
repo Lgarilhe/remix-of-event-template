@@ -207,7 +207,7 @@ export default function Candidates() {
                         key={tab.value}
                         onClick={() => setActiveTab(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group",
+                          "relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group",
                           index > 0 && "border-l-0",
                           isActive ? "bg-accent text-foreground" : "bg-background text-foreground"
                         )}

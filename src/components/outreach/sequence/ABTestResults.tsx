@@ -30,7 +30,7 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
     <div className="border border-border bg-background">
       <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
         <FlaskConical className="w-3.5 h-3.5 text-foreground" />
-        <span className="text-xs font-bold text-foreground uppercase tracking-widest">
+        <span className="text-xs font-bold text-foreground uppercase tracking-wider">
           Résultats A/B Test
         </span>
       </div>

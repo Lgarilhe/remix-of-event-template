@@ -161,7 +161,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
         </div>
         <Button
           onClick={() => { setEditingICP(null); setFormOpen(true); }}
-          className="h-[30px] px-3 bg-foreground text-background hover:bg-foreground/90 text-xs font-medium uppercase tracking-wider gap-1.5"
+          className="h-8 px-3 bg-foreground text-background hover:bg-foreground/90 text-xs font-medium uppercase tracking-wider gap-1.5"
         >
           <Plus className="w-3.5 h-3.5" /> Nouvel ICP
         </Button>

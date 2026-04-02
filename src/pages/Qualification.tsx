@@ -226,7 +226,7 @@ export default function Qualification() {
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
                   {session.event_location.startsWith('http') ? (
-                    <a href={session.event_location} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 truncate">
+                    <a href={session.event_location} target="_blank" rel="noopener noreferrer" className="text-info hover:text-info/80 truncate">
                       Rejoindre le call
                     </a>
                   ) : (

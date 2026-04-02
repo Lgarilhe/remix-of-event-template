@@ -26,16 +26,16 @@ interface ATSDashboardProps {
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  'Nouveau': 'hsl(210, 10%, 70%)',
-  'Contacté': 'hsl(217, 91%, 60%)',
-  'Répondu': 'hsl(187, 85%, 53%)',
-  'Pressenti': 'hsl(210, 10%, 55%)',
-  'Pré-qualif': 'hsl(168, 76%, 42%)',
-  'CV envoyé': 'hsl(234, 89%, 63%)',
-  'ITW en cours': 'hsl(45, 93%, 55%)',
-  'Offre': 'hsl(271, 81%, 56%)',
-  'Gagné': 'hsl(142, 71%, 45%)',
-  'Perdu': 'hsl(0, 65%, 55%)',
+  'Nouveau': 'hsl(var(--muted-foreground))',
+  'Contacté': 'hsl(var(--status-info))',
+  'Répondu': 'hsl(var(--skalr-cyan))',
+  'Pressenti': 'hsl(var(--muted-foreground))',
+  'Pré-qualif': 'hsl(var(--status-success))',
+  'CV envoyé': 'hsl(var(--status-info))',
+  'ITW en cours': 'hsl(var(--status-warning))',
+  'Offre': 'hsl(var(--skalr-purple))',
+  'Gagné': 'hsl(var(--status-success))',
+  'Perdu': 'hsl(var(--destructive))',
 };
 
 const SOURCE_COLORS = [

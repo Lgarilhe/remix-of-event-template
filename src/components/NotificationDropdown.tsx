@@ -36,7 +36,7 @@ export const NotificationDropdown: React.FC = () => {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative overflow-hidden bg-background text-foreground h-[34px] w-[34px] flex items-center justify-center text-xs font-medium uppercase border border-border leading-none"
+        className="relative overflow-hidden bg-background text-foreground h-8 w-8 flex items-center justify-center text-xs font-medium uppercase border border-border rounded-lg leading-none hover:bg-accent transition-colors"
       >
         <img src={iconBell3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
@@ -47,7 +47,7 @@ export const NotificationDropdown: React.FC = () => {
       </button>
 
       {open && (
-        <div className="fixed md:absolute left-2 right-2 md:left-auto md:right-0 top-[52px] md:top-[38px] md:w-80 bg-background border border-border shadow-lg z-[2100] max-h-[400px] flex flex-col">
+        <div className="fixed md:absolute left-2 right-2 md:left-auto md:right-0 top-[52px] md:top-[38px] md:w-80 bg-background border border-border shadow-lg rounded-xl z-[2100] max-h-[400px] flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-xs font-bold uppercase tracking-wider text-foreground">

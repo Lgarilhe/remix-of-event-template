@@ -628,7 +628,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <Input
                           value={briefName}
                           onChange={(e) => setBriefName(e.target.value)}
-                          className="border-border rounded-lg h-[34px] text-sm"
+                          className="border-border rounded-lg h-9 text-sm"
                           placeholder="Ex: Lead DevOps — Numspot"
                         />
                       </div>
@@ -637,7 +637,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         <Input
                           value={briefClientName}
                           onChange={(e) => setBriefClientName(e.target.value)}
-                          className="border-border rounded-lg h-[34px] text-sm"
+                          className="border-border rounded-lg h-9 text-sm"
                           placeholder="Ex: Numspot"
                         />
                       </div>
@@ -775,7 +775,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={() => setInputMode('name')}
                         className={cn(
-                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-border transition-colors",
+                          "flex-1 h-9 text-xs font-medium uppercase tracking-wider border border-border transition-colors",
                           inputMode === 'name' ? "bg-foreground text-background" : "bg-background text-foreground"
                         )}
                       >
@@ -784,7 +784,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <button
                         onClick={() => setInputMode('url')}
                         className={cn(
-                          "flex-1 h-[34px] text-xs font-medium uppercase tracking-wider border border-border border-l-0 transition-colors",
+                          "flex-1 h-9 text-xs font-medium uppercase tracking-wider border border-border border-l-0 transition-colors",
                           inputMode === 'url' ? "bg-foreground text-background" : "bg-background text-foreground"
                         )}
                       >
@@ -869,7 +869,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       <div className="border border-border p-8 text-center">
                         <div className="text-3xl mb-3">🤷</div>
                         <p className="text-sm text-muted-foreground mb-4">Aucun poste ouvert détecté pour cette entreprise.</p>
-                        <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-6 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
+                        <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-9 px-6 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
                           <span className="relative z-10">← Nouvelle recherche</span>
                         </button>
                       </div>
@@ -1069,10 +1069,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         {activeTab === 'import' && importPhase === 'results' && importResult && importResult.openRoles.length > 0 && (
           <div className="border-t border-border px-4 sm:px-8 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <button onClick={() => onOpenChange(false)} className="h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:bg-muted transition-colors">
+              <button onClick={() => onOpenChange(false)} className="h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:bg-muted transition-colors">
                 Annuler
               </button>
-              <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
+              <button onClick={() => setImportPhase('idle')} className="relative overflow-hidden h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group">
                 <span className="relative z-10">← Nouvelle recherche</span>
               </button>
             </div>

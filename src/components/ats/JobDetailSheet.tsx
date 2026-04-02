@@ -67,8 +67,8 @@ type TabKey = typeof TABS[number]['key'];
 function statusColor(status: string | null) {
   if (!status) return 'border-border text-muted-foreground';
   const s = status.toLowerCase();
-  if (['active', 'open', 'en cours'].includes(s)) return 'border-green-500 text-green-700 bg-success/10';
-  if (['closed', 'fermé', 'pourvu'].includes(s)) return 'border-red-400 text-red-600 bg-destructive/10';
+  if (['active', 'open', 'en cours'].includes(s)) return 'border-success/40 text-success bg-success/10';
+  if (['closed', 'fermé', 'pourvu'].includes(s)) return 'border-destructive/40 text-destructive bg-destructive/10';
   if (['paused', 'pause'].includes(s)) return 'border-amber-400 text-amber-600 bg-warning/10';
   return 'border-border text-muted-foreground';
 }
@@ -356,7 +356,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
           {infoGrid.map(item => (
             <div key={item.label} className="border border-border p-2.5">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{item.label}</p>
-              <p className="text-[12px] text-foreground font-medium">{item.value}</p>
+              <p className="text-xs text-foreground font-medium">{item.value}</p>
             </div>
           ))}
         </div>
@@ -480,7 +480,7 @@ function CandidatsTab({
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-[12px] font-medium text-foreground truncate">{candidate.name}</span>
+                <span className="text-xs font-medium text-foreground truncate">{candidate.name}</span>
                 {candidate.score != null && (
                   <span className={cn(
                     "text-xs font-bold px-1 py-0.5 border shrink-0",
@@ -532,7 +532,7 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
         const responseRate = seq.sentCount > 0 ? Math.round((seq.repliedCount / seq.sentCount) * 100) : 0;
         return (
           <div key={seq.id} className="border border-border p-3">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-foreground mb-2">{seq.name}</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-foreground mb-2">{seq.name}</p>
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
                 <p className="text-lg font-bold text-foreground">{seq.enrolledCount}</p>
@@ -543,7 +543,7 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Envoyés</p>
               </div>
               <div className="text-center">
-                <p className={cn("text-lg font-bold", responseRate >= 20 ? "text-green-600" : "text-foreground")}>{responseRate}%</p>
+                <p className={cn("text-lg font-bold", responseRate >= 20 ? "text-success" : "text-foreground")}>{responseRate}%</p>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Réponse</p>
               </div>
             </div>
@@ -573,7 +573,7 @@ function IATab({
       {/* Analyze button */}
       <button
         onClick={() => jobId && openAgent(jobId)}
-        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border-2 border-border text-foreground text-xs font-bold uppercase tracking-wider group"
+        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border border-border text-foreground text-xs font-bold uppercase tracking-wider group"
       >
         <Brain className="w-4 h-4 relative z-10" />
         <span className="relative z-10">Analyser ce poste avec l'Agent</span>
@@ -611,7 +611,7 @@ function IATab({
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Scorés</p>
             </div>
             <div>
-              <p className="text-lg font-bold text-green-600">{scoreSummary.above70}</p>
+              <p className="text-lg font-bold text-success">{scoreSummary.above70}</p>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">≥ 70%</p>
             </div>
           </div>

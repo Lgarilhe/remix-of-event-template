@@ -146,13 +146,13 @@ export default function Marketplace() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Rechercher un poste, un client..."
-                className="w-full h-[34px] pl-9 pr-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 pl-9 pr-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <select
               value={filterContract}
               onChange={(e) => setFilterContract(e.target.value)}
-              className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
+              className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
             >
               <option value="">Tous les contrats</option>
               <option value="cdi">CDI</option>
@@ -162,7 +162,7 @@ export default function Marketplace() {
             <select
               value={filterRemote}
               onChange={(e) => setFilterRemote(e.target.value)}
-              className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
+              className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
             >
               <option value="">Tous les modes</option>
               <option value="onsite">Sur site</option>
@@ -174,7 +174,7 @@ export default function Marketplace() {
           {/* Mission cards */}
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="w-5 h-5 border-2 border-border border-t-foreground animate-spin" />
+              <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="border border-dashed border-border p-12 text-center">
@@ -277,7 +277,7 @@ export default function Marketplace() {
                         onClick={() => handleApply(mission.id)}
                         disabled={applyingId === mission.id}
                         className={cn(
-                          "relative overflow-hidden w-full h-[34px] border border-border text-xs font-medium uppercase tracking-wider group",
+                          "relative overflow-hidden w-full h-9 border border-border text-xs font-medium uppercase tracking-wider group",
                           applyingId === mission.id
                             ? "bg-muted text-muted-foreground"
                             : "bg-foreground text-background"

@@ -228,7 +228,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
               </SelectItem>
               <SelectItem value="CAN_HAVE" className="text-xs cursor-pointer">
                 <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="w-2 h-2 rounded-full bg-success" />
                   Should-have (valorisé)
                 </span>
               </SelectItem>

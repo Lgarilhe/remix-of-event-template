@@ -227,7 +227,7 @@ const StatsBar: React.FC = () => (
         <div className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
           <AnimatedCounter target={stat.value} suffix={stat.suffix} />
         </div>
-        <div className="text-xs text-muted-foreground uppercase tracking-widest mt-0.5">
+        <div className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">
           {stat.label}
         </div>
       </motion.div>
@@ -237,9 +237,9 @@ const StatsBar: React.FC = () => (
 
 /* ─── Main bullets with staggered icon animations ─── */
 const aiBullets = [
-  { icon: Sparkles, text: 'Brief vocal ou écrit → structuré par l\'IA', color: 'text-amber-500', bg: 'bg-amber-500/10 border-amber-500/20' },
-  { icon: Clock, text: 'Filtres de recherche générés automatiquement', color: 'text-blue-500', bg: 'bg-blue-500/10 border-blue-500/20' },
-  { icon: MessageSquare, text: 'Messages personnalisés en 1 clic', color: 'text-emerald-500', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+  { icon: Sparkles, text: 'Brief vocal ou écrit → structuré par l\'IA', color: 'text-warning', bg: 'bg-warning/10 border-warning/20' },
+  { icon: Clock, text: 'Filtres de recherche générés automatiquement', color: 'text-info', bg: 'bg-info/10 border-info/20' },
+  { icon: MessageSquare, text: 'Messages personnalisés en 1 clic', color: 'text-success', bg: 'bg-success/10 border-success/20' },
 ];
 
 const manualBullets = [
@@ -285,7 +285,7 @@ const LogoCarousel: React.FC = () => {
       transition={{ delay: 1.5, duration: 0.6 }}
       className="flex items-center justify-center gap-6 sm:gap-8 mt-10"
     >
-      <span className="text-xs text-muted-foreground/40 uppercase tracking-widest shrink-0">
+      <span className="text-xs text-muted-foreground/40 uppercase tracking-wider shrink-0">
         Intégrations
       </span>
       <div className="flex items-center gap-4">
@@ -366,7 +366,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
             whileTap={{ scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             className={cn(
-              "relative w-full text-left border-2 border-border p-7 sm:p-9 overflow-hidden h-full",
+              "relative w-full text-left border border-border p-7 sm:p-9 overflow-hidden h-full",
               "bg-gradient-to-br from-[hsl(var(--accent))] via-transparent to-[hsl(var(--accent))]",
               "focus-visible:outline-none group"
             )}
@@ -411,7 +411,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               transition={{ delay: 1, duration: 0.3, type: 'spring' }}
               className="absolute top-4 right-4 z-20"
             >
-              <span className="relative px-2.5 py-1 bg-foreground text-background text-xs font-bold uppercase tracking-widest">
+              <span className="relative px-2.5 py-1 bg-foreground text-background text-xs font-bold uppercase tracking-wider">
                 Recommandé
                 <motion.span
                   className="absolute inset-0 bg-accent/30"
@@ -425,7 +425,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               {/* Icon with animated ring */}
               <div className="relative w-14 h-14 mb-6">
                 <motion.div
-                  className="absolute inset-0 border-2 border-accent/30"
+                  className="absolute inset-0 border border-accent/30"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 20, repeat: Infinity, ease: 'linear' as const }}
                   style={{ borderRadius: '30% 70% 70% 30% / 30% 30% 70% 70%' }}
@@ -471,7 +471,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
 
               {/* CTA */}
               <ShimmerButton
-                className="w-full h-[48px] text-xs pointer-events-none"
+                className="w-full h-12 text-xs pointer-events-none"
                 shimmerDuration="1.5s"
                 tabIndex={-1}
               >
@@ -547,7 +547,7 @@ export const EmptyMissionState: React.FC<EmptyMissionStateProps> = ({ onCreateAI
               </ul>
 
               {/* CTA outline */}
-              <div className="relative overflow-hidden w-full h-[48px] text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground flex items-center justify-center gap-2 group/btn">
+              <div className="relative overflow-hidden w-full h-12 text-xs font-bold uppercase tracking-wider border border-border bg-background text-foreground flex items-center justify-center gap-2 group/btn">
                 <span className="relative z-10 flex items-center gap-2">
                   <Pencil className="w-3.5 h-3.5" />
                   Création manuelle

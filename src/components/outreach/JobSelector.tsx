@@ -204,7 +204,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       <div className="border border-border bg-background p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm">🎯</span>
-          <span className="text-xs font-bold text-foreground uppercase tracking-widest">Scoring Job</span>
+          <span className="text-xs font-bold text-foreground uppercase tracking-wider">Scoring Job</span>
         </div>
         <Skeleton className="h-9 w-full" />
       </div>
@@ -215,7 +215,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
     <div className="border border-border bg-background p-3 space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-sm">🎯</span>
-        <label className="text-xs font-bold text-foreground uppercase tracking-widest">
+        <label className="text-xs font-bold text-foreground uppercase tracking-wider">
           Scoring Job
         </label>
         <div className="ml-auto flex items-center gap-1">

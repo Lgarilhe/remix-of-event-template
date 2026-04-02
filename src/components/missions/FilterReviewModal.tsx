@@ -169,7 +169,7 @@ const ChipInput: React.FC<{
   };
 
   return (
-    <div className="inline-flex items-center border-2 border-dashed border-border hover:border-border transition-colors">
+    <div className="inline-flex items-center border border-dashed border-border hover:border-border transition-colors">
       <input
         ref={inputRef}
         value={value}
@@ -211,7 +211,7 @@ const EditableChip: React.FC<{
 
   if (editing) {
     return (
-      <span className="inline-flex items-center border-2 border-border bg-accent/50">
+      <span className="inline-flex items-center border border-border bg-accent/50">
         <input
           ref={inputRef}
           value={editValue}
@@ -228,7 +228,7 @@ const EditableChip: React.FC<{
   }
 
   return (
-    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border-2 border-border text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-border transition-colors cursor-default">
+    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border border-border text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-border transition-colors cursor-default">
       <span className="max-w-[200px] truncate">{value}</span>
       <button
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
@@ -353,7 +353,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
 
           {/* Panel */}
           <motion.div
-            className="relative w-full sm:max-w-lg max-h-[85dvh] flex flex-col bg-background border-2 border-border sm:mx-4 overflow-hidden"
+            className="relative w-full sm:max-w-lg max-h-[85dvh] flex flex-col bg-background border border-border sm:mx-4 overflow-hidden"
             initial={{ y: '100%', opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
@@ -372,7 +372,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
               </div>
               <button
                 onClick={() => onOpenChange(false)}
-                className="w-8 h-8 flex items-center justify-center border-2 border-border hover:border-border transition-colors"
+                className="w-8 h-8 flex items-center justify-center border border-border hover:border-border transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -446,7 +446,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                             section.chips.map((chip, i) => (
                               <span
                                 key={`${chip}-${i}`}
-                                className="group inline-flex items-center gap-1 px-2 py-1 border-2 border-border text-xs font-bold uppercase tracking-wider text-foreground/80 cursor-default"
+                                className="group inline-flex items-center gap-1 px-2 py-1 border border-border text-xs font-bold uppercase tracking-wider text-foreground/80 cursor-default"
                               >
                                 <span className="max-w-[200px] truncate">{chip}</span>
                                 <button
@@ -472,7 +472,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                                 <button
                                   key={`sug-${suggestion}-${i}`}
                                   onClick={() => addChip(section.id, suggestion)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 border-2 border-dashed border-border text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-border hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
+                                  className="inline-flex items-center gap-1 px-2 py-1 border border-dashed border-border text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-border hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
                                 >
                                   <Plus className="w-2.5 h-2.5" />
                                   <span>{suggestion}</span>
@@ -498,7 +498,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 <button
                   onClick={onRegenerate}
                   disabled={isLoading}
-                  className="h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-border bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
+                  className="h-9 px-4 text-xs font-black uppercase tracking-wider border border-border bg-background text-foreground hover:bg-foreground/[0.04] transition-colors"
                 >
                   Regénérer
                 </button>
@@ -507,7 +507,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                 onClick={handleAccept}
                 disabled={isLoading || enabledCount === 0}
                 className={cn(
-                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-[36px] px-5 text-xs font-black uppercase tracking-wider border-2 border-border group transition-colors",
+                  "flex-1 relative overflow-hidden flex items-center justify-center gap-2 h-9 px-5 text-xs font-black uppercase tracking-wider border border-border group transition-colors",
                   enabledCount > 0
                     ? "bg-foreground text-background"
                     : "bg-muted text-muted-foreground cursor-not-allowed"

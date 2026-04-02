@@ -69,7 +69,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
               </h4>
               {/* Position name */}
               {entry.positions && entry.positions.length > 0 && (
-                <p className="text-xs text-blue-600 truncate flex items-center gap-1 mt-0.5">
+                <p className="text-xs text-info truncate flex items-center gap-1 mt-0.5">
                   <Briefcase className="w-3 h-3 flex-shrink-0" />
                   {entry.positions[0].name}
                 </p>

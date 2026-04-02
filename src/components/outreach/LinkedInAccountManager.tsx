@@ -273,7 +273,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-[#0077B5]" />
+        <Loader2 className="w-8 h-8 animate-spin text-linkedin" />
       </div>
     );
   }
@@ -305,7 +305,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                   className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#0077B5] flex items-center justify-center">
+                    <div className="w-10 h-10 bg-linkedin flex items-center justify-center">
                       <img src={linkedInLogo} alt="LinkedIn" className="w-6 h-6 object-contain" />
                     </div>
                     <div>
@@ -400,7 +400,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => handleReconnect(account)}
-                        className="text-[#0077B5] hover:text-[#005E93] hover:bg-info/10 border-[#0077B5]/30"
+                        className="text-linkedin hover:text-linkedin-hover hover:bg-info/10 border-linkedin/30"
                       >
                         <RefreshCw className="w-4 h-4 mr-1" />
                         Reconnecter
@@ -483,7 +483,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 <Button
                   onClick={handleSolveCheckpoint}
                   disabled={connecting || (checkpoint.type !== 'IN_APP_VALIDATION' && !checkpointCode.trim())}
-                  className="bg-[#0077B5] hover:bg-[#005E93]"
+                  className="bg-linkedin hover:bg-linkedin-hover"
                 >
                   {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   {checkpoint.type === 'IN_APP_VALIDATION' ? 'J\'ai validé' : 'Vérifier'}
@@ -561,7 +561,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 <Button
                   onClick={handleConnectWithCookie}
                   disabled={connecting || !liAtCookie.trim()}
-                  className="w-full bg-[#0077B5] hover:bg-[#005E93]"
+                  className="w-full bg-linkedin hover:bg-linkedin-hover"
                 >
                   {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain mr-2" />}
                   Connecter
@@ -599,7 +599,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
                 <Button
                   onClick={handleConnectWithCredentials}
                   disabled={connecting || !email.trim() || !password}
-                  className="w-full bg-[#0077B5] hover:bg-[#005E93]"
+                  className="w-full bg-linkedin hover:bg-linkedin-hover"
                 >
                   {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <img src={linkedInLogo} alt="LinkedIn" className="w-4 h-4 object-contain mr-2" />}
                   Connecter

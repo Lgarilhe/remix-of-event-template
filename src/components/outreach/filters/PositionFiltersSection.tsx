@@ -148,7 +148,7 @@ export const PositionFiltersSection: React.FC<PositionFiltersSectionProps> = ({
                   onRoleDialogScopeChange(role.scope);
                   onRoleDialogOpenChange(true);
                 }}
-                className="text-sm h-7 flex-1 text-left truncate hover:text-[#0077B5] transition-colors group flex items-center gap-1"
+                className="text-sm h-7 flex-1 text-left truncate hover:text-linkedin transition-colors group flex items-center gap-1"
               >
                 <span className="truncate">{role.keywords}</span>
                 <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />

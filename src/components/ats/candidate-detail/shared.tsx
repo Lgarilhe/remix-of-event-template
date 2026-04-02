@@ -41,7 +41,7 @@ export function BrutalActionButton({ children, onClick, disabled, loading, first
   return (
     <button onClick={onClick} disabled={disabled}
       className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 disabled:cursor-not-allowed",
+        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-50 disabled:cursor-not-allowed",
         first !== false && 'first:ml-0',
         !first && '-ml-px'
       )}>
@@ -129,7 +129,7 @@ export function ExperienceItem({ exp }: { exp: { title: string; company: string;
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
-        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border-2", exp.isCurrent ? "bg-emerald-500 border-emerald-500" : "bg-background border-border")} />
+        <div className={cn("absolute left-0.5 top-3 w-2 h-2 rounded-full border", exp.isCurrent ? "bg-success border-success" : "bg-background border-border")} />
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -167,7 +167,7 @@ export function EducationItem({ edu }: { edu: { school: string; logo?: string; d
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
-        <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border-2 bg-background border-border" />
+        <div className="absolute left-0.5 top-3 w-2 h-2 rounded-full border bg-background border-border" />
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">

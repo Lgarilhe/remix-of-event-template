@@ -37,7 +37,7 @@ const FilterButton: React.FC<{
   <Popover>
     <PopoverTrigger asChild>
       <button className={cn(
-        "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group shrink-0 whitespace-nowrap",
+        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group shrink-0 whitespace-nowrap",
         count > 0 && "bg-accent"
       )}>
         <span className="relative z-10">{label}</span>
@@ -75,7 +75,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
           placeholder="Rechercher..."
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-56 rounded-lg border-border bg-background text-sm h-[34px]"
+          className="pl-9 w-56 rounded-lg border-border bg-background text-sm h-9"
         />
       </div>
 
@@ -157,7 +157,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       <button
         onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
         className={cn(
-          "relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-border text-foreground text-xs font-medium uppercase tracking-wider group",
+          "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-l-0 border-border text-foreground text-xs font-medium uppercase tracking-wider group",
           filters.hasReminder && "bg-accent"
         )}
       >
@@ -169,7 +169,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       {activeFiltersCount > 0 && (
         <button
           onClick={clearAllFilters}
-          className="relative overflow-hidden h-[34px] px-4 flex items-center gap-2 border border-l-0 border-border text-destructive text-xs font-medium uppercase tracking-wider group ml-0"
+          className="relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-l-0 border-border text-destructive text-xs font-medium uppercase tracking-wider group ml-0"
         >
           <X className="w-3.5 h-3.5 relative z-10" />
           <span className="relative z-10">Effacer ({activeFiltersCount})</span>

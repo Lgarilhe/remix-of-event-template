@@ -69,7 +69,7 @@ export const MyWhatsAppAccount = () => {
         {connected && activeAccount ? (
           <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#25D366' }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'hsl(var(--brand-whatsapp))' }}>
                 <img src={whatsappLogo} alt="WhatsApp" className="w-5 h-5" />
               </div>
               <div>

@@ -111,7 +111,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               <TableCell>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground truncate text-sm">
+                    <span className="font-medium text-foreground truncate text-sm min-w-0">
                       {candidate.name}
                     </span>
                     {candidate.hasReminder && <Bell className="w-3.5 h-3.5 text-primary flex-shrink-0" />}

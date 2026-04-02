@@ -31,7 +31,7 @@ export const ChannelIcon: React.FC<ChannelIconProps> = ({
     return (
       <span className={cn('inline-flex items-center gap-1', className)}>
         <img src={whatsappLogo} alt="WhatsApp" className={cn(sizeClass, 'rounded-sm')} />
-        {showLabel && <span className="text-xs font-medium text-[#25D366]">WhatsApp</span>}
+        {showLabel && <span className="text-xs font-medium text-whatsapp">WhatsApp</span>}
       </span>
     );
   }
@@ -39,7 +39,7 @@ export const ChannelIcon: React.FC<ChannelIconProps> = ({
   return (
     <span className={cn('inline-flex items-center gap-1', className)}>
       <img src={linkedinLogo} alt="LinkedIn" className={cn(sizeClass, 'rounded-sm')} />
-      {showLabel && <span className="text-xs font-medium text-[#0A66C2]">LinkedIn</span>}
+      {showLabel && <span className="text-xs font-medium text-linkedin">LinkedIn</span>}
     </span>
   );
 };

@@ -155,7 +155,7 @@ const StepCard: React.FC<StepCardProps> = ({
               defaultValue={step.description || ''}
               onBlur={(e) => onUpdate({ id: step.id, description: e.target.value || null })}
               placeholder="Description de l'étape..."
-              className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+              className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
             />
           </div>
 
@@ -167,7 +167,7 @@ const StepCard: React.FC<StepCardProps> = ({
                 type="number"
                 defaultValue={step.duration_minutes}
                 onBlur={(e) => onUpdate({ id: step.id, duration_minutes: Number(e.target.value) || 30 })}
-                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -175,7 +175,7 @@ const StepCard: React.FC<StepCardProps> = ({
               <select
                 value={step.interviewer_type}
                 onChange={(e) => onUpdate({ id: step.id, interviewer_type: e.target.value as any })}
-                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               >
                 <option value="internal">Interne</option>
                 <option value="client">Client</option>
@@ -188,7 +188,7 @@ const StepCard: React.FC<StepCardProps> = ({
                 defaultValue={step.interviewer_name || ''}
                 onBlur={(e) => onUpdate({ id: step.id, interviewer_name: e.target.value || null })}
                 placeholder="Nom..."
-                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -196,7 +196,7 @@ const StepCard: React.FC<StepCardProps> = ({
               <button
                 onClick={() => onUpdate({ id: step.id, is_eliminatory: !step.is_eliminatory })}
                 className={cn(
-                  "w-full h-[34px] px-3 text-xs font-bold uppercase tracking-wider border transition-colors",
+                  "w-full h-9 px-3 text-xs font-bold uppercase tracking-wider border transition-colors",
                   step.is_eliminatory
                     ? "bg-red-600 text-white border-red-600"
                     : "bg-background text-muted-foreground border-border hover:border-border"
@@ -229,7 +229,7 @@ const StepCard: React.FC<StepCardProps> = ({
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addObjective(); } }}
                   onBlur={() => { if (editingObjective.trim()) addObjective(); }}
                   placeholder="Ajouter un objectif..."
-                  className="h-[30px] w-40 px-2 text-xs border border-dashed border-border bg-transparent text-foreground focus:border-border focus:outline-none"
+                  className="h-8 w-40 px-2 text-xs border border-dashed border-border bg-transparent text-foreground focus:border-border focus:outline-none"
                 />
                 <button onClick={addObjective} className="text-muted-foreground hover:text-foreground">
                   <Plus className="w-3.5 h-3.5" />
@@ -300,7 +300,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
         {!readOnly && availableMembers.length > 0 && !showAssign && (
           <button
             onClick={() => setShowAssign(true)}
-            className="flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
+            className="flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
           >
             <Plus className="w-3 h-3" /> Assigner
           </button>
@@ -313,7 +313,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <select
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
-            className="flex-1 h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+            className="flex-1 h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
           >
             <option value="">Sélectionner un membre...</option>
             {availableMembers.map((m: any) => (
@@ -323,7 +323,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
-            className="h-[34px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
+            className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
           >
             <option value="lead">Lead</option>
             <option value="sourcer">Sourcer</option>
@@ -334,13 +334,13 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <button
             onClick={handleAssign}
             disabled={!selectedUserId}
-            className="h-[34px] px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+            className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
           >
             OK
           </button>
           <button
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
-            className="h-[34px] px-3 text-muted-foreground hover:text-foreground border border-border text-xs uppercase"
+            className="h-9 px-3 text-muted-foreground hover:text-foreground border border-border text-xs uppercase"
           >
             ×
           </button>
@@ -349,7 +349,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
 
       {loadingTeam ? (
         <div className="flex items-center justify-center py-6">
-          <div className="w-4 h-4 border-2 border-border border-t-foreground animate-spin" />
+          <div className="w-4 h-4 border border-border border-t-foreground animate-spin" />
         </div>
       ) : team.length === 0 ? (
         <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
@@ -393,7 +393,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             {!showInvite && (
               <button
                 onClick={() => setShowInvite(true)}
-                className="flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
+                className="flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
               >
                 <Mail className="w-3 h-3" /> Inviter par email
               </button>
@@ -407,7 +407,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="email@freelance.com"
-                className="flex-1 h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="flex-1 h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -428,13 +428,13 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                   }
                 }}
                 disabled={!inviteEmail.trim() || isSending}
-                className="h-[34px] px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+                className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
               >
                 {isSending ? 'Envoi...' : 'Inviter'}
               </button>
               <button
                 onClick={() => { setShowInvite(false); setInviteEmail(''); }}
-                className="h-[34px] px-2 text-muted-foreground hover:text-foreground"
+                className="h-9 px-2 text-muted-foreground hover:text-foreground"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -582,7 +582,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
   };
 
   return (
-    <div className="bg-background border border-border border-t-0 p-4 sm:p-6">
+    <div className="bg-background border border-border p-4 sm:p-6">
       {/* Contextual banner */}
       <MissionContextBanner
         icon="🏗️"
@@ -620,7 +620,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
             <button
               onClick={handleAISuggestion}
               disabled={suggestingAI}
-              className="ml-auto flex items-center gap-1.5 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+              className="ml-auto flex items-center gap-1.5 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
             >
               {suggestingAI ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
               Réoptimiser avec l'IA
@@ -638,7 +638,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           <button
             onClick={initializeDefaultSteps}
             disabled={isAdding}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background group"
+            className="relative overflow-hidden flex items-center gap-1.5 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background group"
           >
             <span className="relative z-10">Créer un process par défaut</span>
           </button>
@@ -647,7 +647,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
 
       {loadingSteps ? (
         <div className="flex items-center justify-center py-12">
-          <div className="w-5 h-5 border-2 border-border border-t-foreground animate-spin" />
+          <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
         </div>
       ) : steps.length === 0 ? (
         <div className="border border-dashed border-border p-6">
@@ -738,18 +738,18 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
               onKeyDown={(e) => { if (e.key === 'Enter') handleAddStep(); if (e.key === 'Escape') setAddingStep(false); }}
               autoFocus
               placeholder="Nom de l'étape..."
-              className="flex-1 h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+              className="flex-1 h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
             />
             <button
               onClick={handleAddStep}
               disabled={!newStepName.trim()}
-              className="h-[34px] px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+              className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
             >
               Ajouter
             </button>
             <button
               onClick={() => { setAddingStep(false); setNewStepName(''); }}
-              className="h-[34px] px-3 text-muted-foreground hover:text-foreground border border-border text-xs font-bold uppercase tracking-wider"
+              className="h-9 px-3 text-muted-foreground hover:text-foreground border border-border text-xs font-bold uppercase tracking-wider"
             >
               Annuler
             </button>
@@ -757,7 +757,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
         ) : (
           <button
             onClick={() => setAddingStep(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-4 text-xs font-medium uppercase tracking-wider border border-dashed border-border bg-background text-muted-foreground hover:text-foreground hover:border-border transition-colors group w-full justify-center"
+            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-dashed border-border bg-background text-muted-foreground hover:text-foreground hover:border-border transition-colors group w-full justify-center"
           >
             <Plus className="w-3.5 h-3.5 relative z-10" />
             <span className="relative z-10">Ajouter une étape</span>

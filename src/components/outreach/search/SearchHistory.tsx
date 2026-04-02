@@ -77,7 +77,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                 key={entry.id}
                 type="button"
                 onClick={() => onApplyFilters(entry.filters_snapshot)}
-                className="w-full text-left group bg-card border border-border rounded-lg p-3 hover:border-[#0077B5]/30 active:border-[#0077B5]/50 transition-colors cursor-pointer"
+                className="w-full text-left group bg-card border border-border rounded-lg p-3 hover:border-linkedin/30 active:border-linkedin/50 transition-colors cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span className="text-xs text-muted-foreground">
@@ -85,7 +85,7 @@ export const SearchHistory: React.FC<SearchHistoryProps> = ({
                   </span>
                   <div className="flex items-center gap-1">
                     <span
-                      className="inline-flex items-center justify-center h-6 w-6 rounded text-[#0077B5]"
+                      className="inline-flex items-center justify-center h-6 w-6 rounded text-linkedin"
                       title="Réutiliser ces filtres"
                     >
                       <Play className="w-3 h-3" />

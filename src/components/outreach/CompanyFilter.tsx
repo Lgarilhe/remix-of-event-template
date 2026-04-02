@@ -140,13 +140,13 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
               <Badge
                 key={company.id}
                 variant="secondary"
-                className="gap-1 pr-1 bg-[#0077B5]/10 text-[#0077B5] hover:bg-[#0077B5]/20 text-xs"
+                className="gap-1 pr-1 bg-linkedin/10 text-linkedin hover:bg-linkedin/20 text-xs"
               >
                 <span className="max-w-[150px] truncate">{company.name}</span>
                 <button 
                   type="button" 
                   onClick={() => onRemoveIdCompany(company.id)} 
-                  className="ml-0.5 hover:bg-[#0077B5]/30 rounded-full p-0.5"
+                  className="ml-0.5 hover:bg-linkedin/30 rounded-full p-0.5"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -185,7 +185,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   <button
                     type="button"
                     onClick={() => openEditDialog(index)}
-                    className="text-xs font-medium text-foreground truncate flex-1 pr-2 text-left hover:text-[#0077B5] transition-colors group flex items-center gap-1"
+                    className="text-xs font-medium text-foreground truncate flex-1 pr-2 text-left hover:text-linkedin transition-colors group flex items-center gap-1"
                   >
                     <span className="truncate">{company.keywords}</span>
                     <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -283,7 +283,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             size="sm"
             onClick={handleAddKeyword}
             disabled={!newKeywords.trim()}
-            className="h-6 px-2 bg-[#0077B5] hover:bg-[#005E93]"
+            className="h-6 px-2 bg-linkedin hover:bg-linkedin-hover"
           >
             <Plus className="w-3 h-3" />
           </Button>

@@ -103,17 +103,17 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   key={option.id}
                   className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${
                     isOptionSelected(option.id)
-                      ? 'bg-success/10 border-emerald-300'
+                      ? 'bg-success/10 border-success/30'
                       : 'bg-card border-border hover:border-border hover:bg-accent'
                   }`}
                 >
                   <Checkbox
                     checked={isOptionSelected(option.id)}
                     onCheckedChange={() => handleOptionToggle(option.id)}
-                    className="mt-0.5 h-4 w-4 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                    className="mt-0.5 h-4 w-4 data-[state=checked]:bg-success data-[state=checked]:border-success"
                   />
                   <div className="flex-1 min-w-0">
-                    <span className={`text-sm font-medium block leading-tight ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-foreground'}`}>
+                    <span className={`text-sm font-medium block leading-tight ${isOptionSelected(option.id) ? 'text-success' : 'text-foreground'}`}>
                       {option.label}
                     </span>
                     {option.description && (
@@ -129,15 +129,15 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
               {customItems.map((item) => (
                 <div
                   key={item}
-                  className="flex items-center gap-2 p-2.5 rounded-lg border bg-info/10 border-blue-300"
+                  className="flex items-center gap-2 p-2.5 rounded-lg border bg-info/10 border-info/30"
                 >
-                  <Checkbox checked={true} disabled className="h-4 w-4 data-[state=checked]:bg-blue-600" />
-                  <span className="text-sm font-medium text-blue-800 flex-1 truncate">{item}</span>
+                  <Checkbox checked={true} disabled className="h-4 w-4 data-[state=checked]:bg-info" />
+                  <span className="text-sm font-medium text-info flex-1 truncate">{item}</span>
                   <button
                     onClick={() => handleCustomRemove(item)}
-                    className="p-0.5 hover:bg-blue-200 rounded"
+                    className="p-0.5 hover:bg-info/20 rounded"
                   >
-                    <X className="w-3 h-3 text-blue-600" />
+                    <X className="w-3 h-3 text-info" />
                   </button>
                 </div>
               ))}
@@ -152,13 +152,13 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                   onClick={() => handleOptionToggle(option.id)}
                   className={`w-full text-left p-3 rounded-lg border transition-all ${
                     isOptionSelected(option.id)
-                      ? 'bg-success/10 border-emerald-400 ring-1 ring-emerald-200'
+                      ? 'bg-success/10 border-success/40 ring-1 ring-success/20'
                       : 'bg-card border-border hover:border-border hover:bg-accent'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm ${isOptionSelected(option.id) ? 'text-emerald-800' : 'text-foreground'}`}>
+                      <div className={`font-medium text-sm ${isOptionSelected(option.id) ? 'text-success' : 'text-foreground'}`}>
                         {option.label}
                       </div>
                       {option.description && (
@@ -168,7 +168,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
                       )}
                     </div>
                     {isOptionSelected(option.id) && (
-                      <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <Check className="w-4 h-4 text-success flex-shrink-0" />
                     )}
                   </div>
                 </button>
@@ -216,7 +216,7 @@ export const WizardQuestionStep: React.FC<WizardQuestionStepProps> = ({
           size="sm"
           onClick={onNext}
           disabled={!canProceed}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          className="bg-success hover:bg-success/90 text-white"
         >
           {isLast ? 'Générer les filtres ✨' : 'Suivant →'}
         </Button>

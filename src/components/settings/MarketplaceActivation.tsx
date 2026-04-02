@@ -109,7 +109,7 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
         </p>
         {status !== 'active' && (
           <button
-            className="h-[30px] px-4 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-50"
+            className="h-8 px-4 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-50"
           >
             {completedCount === 0 ? 'Commencer l\'activation' : 'Continuer'}
           </button>

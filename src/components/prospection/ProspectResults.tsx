@@ -156,7 +156,7 @@ function ProspectCard({ prospect, index }: { prospect: ProspectProfile; index: n
                       </AvatarFallback>
                     </Avatar>
                   </div>
-                  <h3 className="font-semibold text-foreground text-sm sm:text-[15px] leading-tight break-words sm:truncate">{displayName}</h3>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-sm leading-tight break-words sm:truncate">{displayName}</h3>
                   {prospect.score !== undefined && (
                      <Badge variant="outline" className={cn(
                       "text-xs shrink-0 font-bold tabular-nums px-2",

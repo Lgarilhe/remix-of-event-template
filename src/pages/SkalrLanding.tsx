@@ -70,7 +70,7 @@ const BrutalButton = ({
   <button
     onClick={onClick}
     className={`
-      relative group inline-flex items-center gap-2 h-12 px-7 text-[13px] font-semibold uppercase tracking-wider
+      relative group inline-flex items-center gap-2 h-12 px-7 text-xs font-semibold uppercase tracking-wider
       border-2 border-border transition-all duration-200
       ${variant === 'primary'
         ? 'bg-foreground text-background hover:shadow-md'
@@ -166,7 +166,7 @@ const SkalrLanding = () => {
         {/* ===== NAV ===== */}
         <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
           <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-            <span className="text-lg font-bold uppercase tracking-widest text-foreground">
+            <span className="text-lg font-bold uppercase tracking-wider text-foreground">
               Skalr<span className="text-primary">.</span>
             </span>
             
@@ -210,7 +210,7 @@ const SkalrLanding = () => {
               transition={{ duration: 0.5 }}
               className="mb-8"
             >
-              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-sm">
+              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-sm">
                 <span className="w-2 h-2 bg-accent" />
                 Plateforme de recrutement
               </span>
@@ -274,7 +274,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-4 block">
                 Fonctionnalités
               </span>
               <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground leading-[1.1]">
@@ -388,7 +388,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center mb-16"
             >
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-muted-foreground mb-4 block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-4 block">
                 Résultats
               </span>
               <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground">
@@ -425,7 +425,7 @@ const SkalrLanding = () => {
               viewport={{ once: true }}
               className="text-center"
             >
-              <span className="text-xs uppercase tracking-[0.2em] font-semibold text-background/60 mb-6 block">
+              <span className="text-xs uppercase tracking-wider font-semibold text-background/60 mb-6 block">
                 Témoignage
               </span>
               <blockquote className="font-editorial text-2xl sm:text-3xl md:text-4xl leading-[1.3] text-background mb-8">
@@ -518,7 +518,7 @@ const SkalrLanding = () => {
         {/* ===== FOOTER ===== */}
         <footer className="py-8 px-6 border-t-2 border-border bg-background">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="text-sm font-bold uppercase tracking-widest text-foreground">
+            <span className="text-sm font-bold uppercase tracking-wider text-foreground">
               Skalr<span className="text-primary">.</span>
             </span>
             <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">

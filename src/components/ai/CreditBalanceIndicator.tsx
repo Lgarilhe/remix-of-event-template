@@ -29,7 +29,7 @@ export const CreditBalanceIndicator = () => {
             aria-live="polite"
             aria-label={`Crédits IA : ${creditsRemaining}`}
             className={cn(
-              "relative overflow-hidden h-[34px] px-2.5 flex items-center gap-1.5 text-xs font-medium border border-border leading-none transition-colors",
+              "relative overflow-hidden h-9 px-2.5 flex items-center gap-1.5 text-xs font-medium border border-border leading-none transition-colors",
               isOut && "bg-destructive/10 border-destructive text-destructive",
               isLow && !isOut && "bg-warning/10 border-warning text-warning-foreground",
               !isLow && !isOut && "glass text-foreground"

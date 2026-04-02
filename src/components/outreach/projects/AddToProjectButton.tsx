@@ -226,7 +226,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             onClick={() => addToProject(project)}
             className="gap-2"
           >
-            <FolderOpen className="w-4 h-4 text-[#0077B5]" />
+            <FolderOpen className="w-4 h-4 text-linkedin" />
             <span className="flex-1 truncate">{project.name}</span>
             {project.job_id === jobId && (
               <Badge variant="outline" className="text-xs px-1 py-0">

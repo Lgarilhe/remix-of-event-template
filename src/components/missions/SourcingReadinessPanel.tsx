@@ -178,7 +178,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
         <motion.h3
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2"
+          className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2"
         >
           <Zap className="w-3.5 h-3.5 text-primary" />
           Choisissez votre source
@@ -189,7 +189,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             selected={searchSource === 'linkedin'}
             onClick={() => onSourceChange?.('linkedin')}
             delay={0.1}
-            icon={<Linkedin className="w-5 h-5 text-[#0A66C2]" />}
+            icon={<Linkedin className="w-5 h-5 text-linkedin" />}
             title="LinkedIn"
             description="Recherche directe via votre compte"
             badge={
@@ -220,7 +220,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
 
       {/* ── Section 2: Checklist ── */}
       <div>
-        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
           Vérifications
         </h3>
         <div className="border border-border divide-y divide-foreground/5">
@@ -274,7 +274,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             <ShimmerButton
               onClick={onAutoFill}
               disabled={autoFillLoading || brief.filled < 3}
-              className="w-full h-[44px] text-xs"
+              className="w-full h-11 text-xs"
               shimmerDuration="1.5s"
             >
               {autoFillLoading ? (
@@ -341,7 +341,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             onClick={onSearch}
             disabled={!filtersReady}
             className={cn(
-              'w-full h-[48px] flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
+              'w-full h-12 flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
               filtersReady
                 ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm'
                 : 'border-border bg-accent/50 text-muted-foreground cursor-not-allowed',

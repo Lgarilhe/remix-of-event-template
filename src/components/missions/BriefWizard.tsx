@@ -27,7 +27,7 @@ const Field = ({
   readOnly?: boolean;
 }) => (
   <div className={cn('space-y-1.5', className)}>
-    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
     {type === 'textarea' ? (
       <textarea
         defaultValue={value ?? ''}
@@ -36,7 +36,7 @@ const Field = ({
         readOnly={readOnly}
         tabIndex={readOnly ? -1 : undefined}
         className={cn(
-          'w-full min-h-[80px] px-3 py-2 text-sm border-2 border-border bg-background text-foreground resize-y focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
+          'w-full min-h-[80px] px-3 py-2 text-sm border border-border bg-background text-foreground resize-y focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
           readOnly && 'cursor-default opacity-70 focus:border-border'
         )}
       />
@@ -49,7 +49,7 @@ const Field = ({
         readOnly={readOnly}
         tabIndex={readOnly ? -1 : undefined}
         className={cn(
-          'w-full h-[38px] px-3 text-sm border-2 border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
+          'w-full h-[38px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
           readOnly && 'cursor-default opacity-70 focus:border-border'
         )}
       />
@@ -73,14 +73,14 @@ const SelectField = ({
   readOnly?: boolean;
 }) => (
   <div className="space-y-1.5">
-    <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
       disabled={readOnly}
       tabIndex={readOnly ? -1 : undefined}
       className={cn(
-        'w-full h-[38px] px-3 text-sm border-2 border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors',
+        'w-full h-[38px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors',
         readOnly && 'cursor-default opacity-70 focus:border-border'
       )}
     >
@@ -120,7 +120,7 @@ const TagInput = ({
 
   return (
     <div className="space-y-2">
-      <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag, i) => (
           <motion.span
@@ -152,7 +152,7 @@ const TagInput = ({
               if (input.trim()) addTag();
             }}
             placeholder={placeholder || 'Ajouter...'}
-            className="h-[30px] w-32 px-2 text-xs border-2 border-dashed border-border bg-transparent text-foreground focus:border-border transition-colors focus:outline-none"
+            className="h-8 w-32 px-2 text-xs border border-dashed border-border bg-transparent text-foreground focus:border-border transition-colors focus:outline-none"
           />
         )}
       </div>
@@ -265,22 +265,22 @@ const FullscreenStepDialog: React.FC<{
       <div className="relative z-10 shrink-0 border-b-2 border-border bg-background">
         <div className="flex items-center justify-between px-4 sm:px-8 py-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-black border-2 border-border shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-bold border border-border shrink-0">
               {step.emoji}
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-lg font-black uppercase tracking-wider text-foreground truncate">{step.label}</h2>
+              <h2 className="text-sm sm:text-lg font-bold uppercase tracking-wider text-foreground truncate">{step.label}</h2>
               <p className="text-xs text-muted-foreground truncate hidden sm:block">{step.subtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <span className="text-xs font-black text-muted-foreground uppercase tracking-wider">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
               {stepIndex + 1}/{STEPS.length}
             </span>
             <button
               type="button"
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center border-2 border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
+              className="w-8 h-8 flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
             >
               <X className="w-4 h-4" />
             </button>
@@ -323,7 +323,7 @@ const FullscreenStepDialog: React.FC<{
           <button
             type="button"
             onClick={isFirst ? onClose : onPrev}
-            className="flex items-center gap-1.5 h-[36px] px-4 text-xs font-black uppercase tracking-wider border-2 border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
+            className="flex items-center gap-1.5 h-9 px-4 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             {isFirst ? 'Fermer' : 'Précédent'}
@@ -350,7 +350,7 @@ const FullscreenStepDialog: React.FC<{
                   <button
                     type="button"
                     onClick={onClose}
-                    className="flex items-center gap-1.5 h-[40px] px-5 text-xs font-black uppercase tracking-wider border-2 border-border bg-foreground text-background"
+                    className="flex items-center gap-1.5 h-[40px] px-5 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background"
                   >
                     <Check className="w-3.5 h-3.5" />
                     {readOnly ? 'Fermer' : 'Terminer'}
@@ -362,7 +362,7 @@ const FullscreenStepDialog: React.FC<{
             <button
               type="button"
               onClick={onNext}
-              className="group relative overflow-hidden flex items-center gap-1.5 h-[40px] px-6 text-xs font-black uppercase tracking-wider border-2 border-border bg-foreground text-background"
+              className="group relative overflow-hidden flex items-center gap-1.5 h-[40px] px-6 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background"
             >
               <span className="relative z-10 flex items-center gap-1.5">
                 Suivant
@@ -420,7 +420,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
               key={step.key}
               onClick={() => setOpenStep(i)}
               className={cn(
-                'w-full border-2 border-border p-4 sm:p-5 flex items-center gap-3 text-left transition-all group relative cursor-pointer',
+                'w-full border border-border p-4 sm:p-5 flex items-center gap-3 text-left transition-all group relative cursor-pointer',
                 i > 0 && 'border-t-0',
                 readOnly ? 'hover:bg-foreground/[0.02]' : 'hover:bg-foreground/[0.03] active:bg-foreground/[0.06]'
               )}
@@ -428,7 +428,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
             >
               <div
                 className={cn(
-                  'w-10 h-10 flex items-center justify-center text-sm font-black shrink-0 border-2 transition-colors',
+                  'w-10 h-10 flex items-center justify-center text-sm font-bold shrink-0 border-2 transition-colors',
                   pct === 100
                     ? 'bg-foreground text-background border-border'
                     : hasMissing
@@ -441,7 +441,7 @@ export const BriefWizard: React.FC<BriefWizardProps> = ({ jobDetails, onUpdate, 
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-sm font-black uppercase tracking-wider text-foreground">{step.label}</span>
+                  <span className="text-sm font-bold uppercase tracking-wider text-foreground">{step.label}</span>
                   {pct > 0 && pct < 100 && <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{pct}%</span>}
                 </div>
                 <p className="text-xs text-muted-foreground truncate">{step.subtitle}</p>
@@ -517,7 +517,7 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
     </div>
     <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." readOnly={readOnly} />
     <div className="pt-5 border-t-2 border-border">
-      <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} readOnly={readOnly} />
         <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" readOnly={readOnly} />
@@ -626,11 +626,11 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
             <div key={key} className="space-y-1">
-              <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
@@ -641,7 +641,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                   readOnly={readOnly}
                   tabIndex={readOnly ? -1 : undefined}
                   className={cn(
-                    'w-full h-[34px] px-2 text-sm text-center border-2 border-border bg-background text-foreground focus:border-border focus:outline-none',
+                    'w-full h-9 px-2 text-sm text-center border border-border bg-background text-foreground focus:border-border focus:outline-none',
                     readOnly && 'cursor-default opacity-70 focus:border-border'
                   )}
                 />
@@ -657,12 +657,12 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Critères ({criteria.length})</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Critères ({criteria.length})</p>
           {!readOnly && !adding && (
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="flex items-center gap-1 h-[28px] px-3 text-xs font-black uppercase tracking-wider border-2 border-border text-foreground hover:bg-foreground hover:text-background transition-all"
+              className="flex items-center gap-1 h-[28px] px-3 text-xs font-bold uppercase tracking-wider border border-border text-foreground hover:bg-foreground hover:text-background transition-all"
             >
               <Plus className="w-3 h-3" /> Ajouter
             </button>
@@ -675,7 +675,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="border-2 border-border p-3 mb-3 space-y-3 overflow-hidden"
+              className="border border-border p-3 mb-3 space-y-3 overflow-hidden"
             >
               <input
                 value={newLabel}
@@ -688,7 +688,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 }}
                 autoFocus
                 placeholder="Ex: Maîtrise de Kubernetes, Leadership..."
-                className="w-full h-[34px] px-3 text-sm border-2 border-border bg-background text-foreground focus:border-border focus:outline-none"
+                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none"
               />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <SelectField label="Catégorie" value={newCategory} onChange={setNewCategory} options={CATEGORY_OPTIONS} />
@@ -698,7 +698,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                     type="button"
                     onClick={addCriterion}
                     disabled={!newLabel.trim()}
-                    className="h-[34px] px-4 bg-foreground text-background text-xs font-black uppercase tracking-wider border-2 border-border disabled:opacity-50"
+                    className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
                   >
                     Ajouter
                   </button>
@@ -708,7 +708,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                       setAdding(false);
                       setNewLabel('');
                     }}
-                    className="h-[34px] px-3 text-xs font-black uppercase tracking-wider border-2 border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
+                    className="h-9 px-3 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
                   >
                     X
                   </button>
@@ -719,7 +719,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
         </AnimatePresence>
 
         {criteria.length === 0 ? (
-          <div className="border-2 border-dashed border-border p-6 text-center">
+          <div className="border border-dashed border-border p-6 text-center">
             <p className="text-sm text-muted-foreground mb-2 font-bold">Aucun critère défini</p>
             <p className="text-xs text-muted-foreground">Ajoutez les critères que le manager souhaite évaluer.</p>
           </div>
@@ -731,12 +731,12 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="border-2 border-border px-4 py-3 hover:border-border transition-colors"
+                className="border border-border px-4 py-3 hover:border-border transition-colors"
               >
                 <div className="flex items-start gap-3">
                   <span
                     className={cn(
-                      'mt-0.5 px-2 py-0.5 text-xs font-black uppercase tracking-wider shrink-0 border-2',
+                      'mt-0.5 px-2 py-0.5 text-xs font-bold uppercase tracking-wider shrink-0 border-2',
                       c.weight === 3
                         ? 'bg-destructive text-destructive-foreground border-destructive'
                         : c.weight === 2
@@ -751,12 +751,12 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                       <span className="text-sm font-bold text-foreground">{c.label}</span>
                       <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{CATEGORY_OPTIONS[c.category] || c.category}</span>
                       {c.deal_breaker && (
-                        <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground border border-destructive">Deal breaker</span>
+                        <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground border border-destructive">Deal breaker</span>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
+                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
                         <input
                           defaultValue={c.level_10 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_10: e.target.value || undefined })}
@@ -764,13 +764,13 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                           readOnly={readOnly}
                           tabIndex={readOnly ? -1 : undefined}
                           className={cn(
-                            'w-full h-[30px] px-2 text-xs border-2 border-border bg-background text-foreground focus:border-border focus:outline-none',
+                            'w-full h-8 px-2 text-xs border border-border bg-background text-foreground focus:border-border focus:outline-none',
                             readOnly && 'cursor-default opacity-70 focus:border-border'
                           )}
                         />
                       </div>
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Rédhibitoire si...</label>
+                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Rédhibitoire si...</label>
                         <input
                           defaultValue={c.level_1 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_1: e.target.value || undefined })}
@@ -778,7 +778,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                           readOnly={readOnly}
                           tabIndex={readOnly ? -1 : undefined}
                           className={cn(
-                            'w-full h-[30px] px-2 text-xs border-2 border-border bg-background text-foreground focus:border-border focus:outline-none',
+                            'w-full h-8 px-2 text-xs border border-border bg-background text-foreground focus:border-border focus:outline-none',
                             readOnly && 'cursor-default opacity-70 focus:border-border'
                           )}
                         />

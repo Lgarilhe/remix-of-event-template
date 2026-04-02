@@ -129,8 +129,8 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
         hasBlockers
           ? "border-l-destructive bg-destructive/5 text-destructive"
           : warningCount > 0
-            ? "border-l-amber-500 bg-warning/10 text-warning"
-            : "border-l-emerald-500 bg-success/10 text-success"
+            ? "border-l-warning bg-warning/10 text-warning"
+            : "border-l-success bg-success/10 text-success"
       )}>
         {hasBlockers ? (
           <><X className="w-3.5 h-3.5" />{requiredItems.filter(i => i.status === 'fail').length} bloquant(s)</>
@@ -174,8 +174,8 @@ const ChecklistItem: React.FC<{ item: ValidationItem }> = ({ item }) => (
   <div className="flex items-center gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/40 transition-colors">
     <div className={cn(
       "w-4 h-4 rounded-full flex items-center justify-center shrink-0",
-      item.status === 'pass' ? "bg-emerald-100 text-emerald-600"
-        : item.status === 'warning' ? "bg-amber-100 text-amber-600"
+      item.status === 'pass' ? "bg-success/10 text-success"
+        : item.status === 'warning' ? "bg-warning/10 text-warning"
           : "bg-destructive/10 text-destructive"
     )}>
       {item.status === 'pass' ? <Check className="w-2.5 h-2.5" /> :

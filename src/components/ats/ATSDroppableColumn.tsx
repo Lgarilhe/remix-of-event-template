@@ -46,7 +46,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       {/* Header */}
       <div className="p-3 border-b border-border bg-accent/50">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium text-foreground text-[12px] uppercase tracking-wider">{stage.label}</h3>
+          <h3 className="font-medium text-foreground text-xs uppercase tracking-wider">{stage.label}</h3>
           <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold">
             {candidates.length}
           </span>

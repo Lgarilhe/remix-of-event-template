@@ -124,13 +124,13 @@ const MissionWorkspace = () => {
                 Missions
               </button>
               <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
-              <h1 className="font-semibold text-foreground truncate">
+              <h1 className="font-semibold text-foreground truncate min-w-0">
                 {project.name}
               </h1>
               {project.client_name && (
                 <>
                   <span className="text-muted-foreground/40 hidden sm:inline mx-1">·</span>
-                  <span className="text-sm text-muted-foreground truncate hidden sm:inline">{project.client_name}</span>
+                  <span className="text-sm text-muted-foreground truncate hidden sm:inline min-w-0">{project.client_name}</span>
                 </>
               )}
             </div>

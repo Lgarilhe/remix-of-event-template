@@ -545,7 +545,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         <div className="flex items-center gap-0 overflow-x-auto no-scrollbar">
           <button 
             onClick={() => setShowGlobalAnalytics(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group shrink-0"
           >
             <BarChart3 className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Analytics</span>
@@ -553,7 +553,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           <button 
             onClick={handleForceReschedule}
             disabled={forceRescheduling || !selectedAccount}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-accent text-foreground group shrink-0 disabled:opacity-50"
+            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-accent text-foreground group shrink-0 disabled:opacity-50"
             title="Envoyer toutes les actions du jour maintenant"
           >
             <Zap className={cn("w-3.5 h-3.5 relative z-10", forceRescheduling && "animate-pulse")} />
@@ -561,14 +561,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </button>
           <button 
             onClick={() => setShowActivityLog(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-background text-foreground group shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-background text-foreground group shrink-0"
           >
             <Activity className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Journal</span>
           </button>
           <button 
             onClick={handleCreateNew}
-            className="relative overflow-hidden flex items-center gap-1.5 h-[34px] px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-foreground text-background group shrink-0"
+            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-foreground text-background group shrink-0"
           >
             <Send className="w-3.5 h-3.5 relative z-10" />
             <span className="hidden sm:inline relative z-10">Créer une séquence</span>
@@ -617,7 +617,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </p>
           <button 
             onClick={handleCreateNew}
-            className="relative overflow-hidden h-[34px] px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group"
+            className="relative overflow-hidden h-9 px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group"
           >
             <span className="relative z-10 flex items-center gap-2">Créer ma première séquence</span>
           </button>

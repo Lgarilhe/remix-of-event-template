@@ -73,7 +73,7 @@ const InsightsPanel: React.FC<{ strengths: string[]; concerns: string[] }> = ({ 
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-1">
     {strengths.length > 0 && (
       <div className="space-y-1">
-        <p className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-1">
+        <p className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1">
           <ThumbsUp className="w-3 h-3" /> Points forts
         </p>
         <ul className="space-y-0.5">
@@ -88,7 +88,7 @@ const InsightsPanel: React.FC<{ strengths: string[]; concerns: string[] }> = ({ 
     )}
     {concerns.length > 0 && (
       <div className="space-y-1">
-        <p className="text-xs font-bold uppercase tracking-widest text-destructive/70 flex items-center gap-1">
+        <p className="text-xs font-bold uppercase tracking-wider text-destructive/70 flex items-center gap-1">
           <ThumbsDown className="w-3 h-3" /> Attention
         </p>
         <ul className="space-y-0.5">
@@ -123,7 +123,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger className="w-full flex items-center justify-between py-1.5 px-2 -mx-2 rounded hover:bg-muted/50 transition-colors group cursor-pointer">
-        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
           Détail du scoring
         </span>
         <ChevronDown className={cn(

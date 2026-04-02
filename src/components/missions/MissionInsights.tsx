@@ -231,7 +231,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
   };
 
   return (
-    <div className="bg-background border border-border border-t-0 p-3 sm:p-6 space-y-6">
+    <div className="bg-background border border-border p-4 sm:p-6 space-y-6">
       {hasData ? (
         <>
           {/* Section 1: Funnel */}
@@ -254,7 +254,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
               label="Taux de réponse"
               value={`${responseRate}%`}
               sublabel={`${enrollmentStats.replied}/${enrollmentStats.total} inscrits`}
-              color={responseRate >= 20 ? 'text-green-600' : responseRate >= 10 ? 'text-yellow-600' : 'text-red-500'}
+              color={responseRate >= 20 ? 'text-success' : responseRate >= 10 ? 'text-warning' : 'text-destructive'}
             />
             <MetricCard
               label="Temps moyen de réponse"
@@ -272,7 +272,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
               label="Conversion globale"
               value={`${conversionRate}%`}
               sublabel={`${stats.shortlisted} shortlistés`}
-              color={conversionRate >= 5 ? 'text-green-600' : 'text-foreground'}
+              color={conversionRate >= 5 ? 'text-success' : 'text-foreground'}
             />
           </div>
 
@@ -286,9 +286,9 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                 {insights.map((insight, i) => (
                   <div key={i} className={cn(
                     "border-l-4 p-3 flex items-start gap-3",
-                    insight.priority === 'high' ? "border-red-400 bg-destructive/10" :
-                    insight.priority === 'medium' ? "border-yellow-400 bg-warning/10" :
-                    "border-green-400 bg-success/10"
+                    insight.priority === 'high' ? "border-destructive/40 bg-destructive/10" :
+                    insight.priority === 'medium' ? "border-warning/40 bg-warning/10" :
+                    "border-success/40 bg-success/10"
                   )}>
                     <span className="text-lg shrink-0">{insight.icon}</span>
                     <div className="flex-1 min-w-0">
@@ -320,8 +320,8 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                   <div key={item.id} className="flex items-center gap-3 py-1.5 border-b border-border/5 last:border-0">
                     <span className={cn(
                       "w-2 h-2 rounded-full shrink-0",
-                      item.status === 'shortlisted' ? "bg-purple-400" :
-                      item.status === 'messaged' ? "bg-blue-400" :
+                      item.status === 'shortlisted' ? "bg-brand-purple" :
+                      item.status === 'messaged' ? "bg-info" :
                       item.status === 'dismissed' ? "bg-destructive/40" :
                       "bg-muted-foreground/30"
                     )} />
@@ -333,9 +333,9 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                       {item.score !== null && (
                         <span className={cn(
                           "text-xs font-bold ml-2",
-                          item.score >= 70 ? "text-green-600" :
-                          item.score >= 40 ? "text-yellow-600" :
-                          "text-red-500"
+                          item.score >= 70 ? "text-success" :
+                          item.score >= 40 ? "text-warning" :
+                          "text-destructive"
                         )}>
                           {item.score}%
                         </span>

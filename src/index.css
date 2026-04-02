@@ -57,6 +57,11 @@
     --skalr-cyan: 187 85% 53%;
     --skalr-green: 142 71% 45%;
 
+    /* Third-party brand colors */
+    --brand-linkedin: 201 100% 35%;
+    --brand-linkedin-hover: 201 100% 29%;
+    --brand-whatsapp: 142 70% 49%;
+
     /* Semantic status colors */
     --status-success: 142 71% 45%;
     --status-success-foreground: 0 0% 100%;

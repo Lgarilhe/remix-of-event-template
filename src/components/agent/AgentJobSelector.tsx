@@ -81,7 +81,7 @@ export const AgentJobSelector: React.FC<AgentJobSelectorProps> = ({
           onClick={onLaunch}
           disabled={!selectedJob}
           className={cn(
-            "w-full h-11 text-xs font-bold uppercase tracking-[0.18em] flex items-center justify-center gap-2 border-2 transition-all duration-150",
+            "w-full h-11 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-2 transition-all duration-150",
             selectedJob
               ? "border-border bg-foreground text-background hover:shadow-md"
               : "border-border text-muted-foreground/40 cursor-not-allowed"

@@ -58,7 +58,7 @@ const RecruiterPublicProfile: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-border border-t-foreground animate-spin" />
+        <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
       </div>
     );
   }
@@ -112,13 +112,13 @@ const RecruiterPublicProfile: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="border-2 border-border p-6 md:p-8 space-y-6"
+            className="border border-border p-6 md:p-8 space-y-6"
             style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
           >
             {/* Header */}
             <div className="flex items-start gap-4">
               <div
-                className="w-16 h-16 flex items-center justify-center text-xl font-bold text-white border-2 border-border shrink-0"
+                className="w-16 h-16 flex items-center justify-center text-xl font-bold text-white border border-border shrink-0"
                 style={{ background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
               >
                 {initials}
@@ -152,7 +152,7 @@ const RecruiterPublicProfile: React.FC = () => {
             {profile.intro_video_url && (
               <div>
                 {showVideo ? (
-                  <div className="border-2 border-border aspect-video bg-accent/50">
+                  <div className="border border-border aspect-video bg-accent/50">
                     <video
                       src={profile.intro_video_url}
                       controls
@@ -163,9 +163,9 @@ const RecruiterPublicProfile: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => setShowVideo(true)}
-                    className="w-full border-2 border-border p-6 flex items-center justify-center gap-3 hover:bg-accent/50 transition-colors group"
+                    className="w-full border border-border p-6 flex items-center justify-center gap-3 hover:bg-accent/50 transition-colors group"
                   >
-                    <div className="w-12 h-12 border-2 border-border flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                    <div className="w-12 h-12 border border-border flex items-center justify-center group-hover:bg-accent/20 transition-colors">
                       <Play className="w-5 h-5 text-foreground ml-0.5" />
                     </div>
                     <div className="text-left">
@@ -226,7 +226,7 @@ const RecruiterPublicProfile: React.FC = () => {
                   {allSkills.slice(0, 20).map((skill) => (
                     <span
                       key={skill}
-                      className="px-2.5 py-1 text-xs font-semibold border-2 border-border text-foreground/70"
+                      className="px-2.5 py-1 text-xs font-semibold border border-border text-foreground/70"
                     >
                       {skill}
                     </span>
@@ -265,7 +265,7 @@ const RecruiterPublicProfile: React.FC = () => {
                   href={profile.linkedin_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold border-2 border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
                   style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
                 >
                   <Linkedin className="w-4 h-4" />

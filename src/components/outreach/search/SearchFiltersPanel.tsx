@@ -144,8 +144,8 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               <span className={cn(
                 "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border",
                 searchSource === 'database'
-                  ? "border-emerald-500/30 text-emerald-600 bg-success/10"
-                  : "border-blue-500/30 text-blue-600 bg-info/10"
+                  ? "border-success/30 text-success bg-success/10"
+                  : "border-info/30 text-info bg-info/10"
               )}>
                 {searchSource === 'database' ? '🟢 Base Konekt · 232M+' : '🔵 LinkedIn'}
               </span>
@@ -157,7 +157,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               <Switch
                 checked={searchSource === 'linkedin'}
                 onCheckedChange={(checked) => onSearchSourceChange(checked ? 'linkedin' : 'database')}
-                className="data-[state=checked]:bg-blue-500"
+                className="data-[state=checked]:bg-info"
               />
               <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors", searchSource === 'linkedin' ? 'text-foreground' : 'text-muted-foreground/50')}>
                 LinkedIn
@@ -315,7 +315,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <div className="bg-background border border-border p-3 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-sm">🎯</span>
-            <span className="text-xs font-bold text-foreground uppercase tracking-widest">Poste actif</span>
+            <span className="text-xs font-bold text-foreground uppercase tracking-wider">Poste actif</span>
           </div>
           <p className="text-sm font-medium text-foreground truncate">{selectedJob.title}</p>
           {(selectedJob as any).client?.name && (
@@ -330,7 +330,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           {onOpenFilterWizard && (
             <button
               onClick={onOpenFilterWizard}
-              className="flex items-center gap-1.5 h-[30px] px-3 text-[10px] font-black uppercase tracking-wider border-2 border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
+              className="flex items-center gap-1.5 h-8 px-3 text-[10px] font-black uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
             >
               <Crosshair className="w-3 h-3" />
               Wizard filtres
@@ -355,7 +355,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
           <div className="bg-background border border-border p-3">
-            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-widest">
+            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea

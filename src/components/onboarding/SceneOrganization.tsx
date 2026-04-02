@@ -308,7 +308,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
+        <span className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
           01 — Votre société
         </span>
         <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Parlez-nous de vous</h2>
@@ -318,7 +318,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       {/* Search input */}
       <div className="flex gap-2">
         {onBack && (
-          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border-2 border-border shrink-0">
+          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border border-border shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         )}
@@ -330,13 +330,13 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             onKeyDown={handleKeyDown}
             placeholder="Le nom de votre société..."
             autoFocus
-            className="pl-11 pr-4 border-2 border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
+            className="pl-11 pr-4 border border-border focus:border-border focus:shadow-sm transition-shadow text-sm h-11"
           />
         </div>
         <Button
           onClick={handleSearch}
           disabled={query.trim().length < 2 || phase === 'scanning'}
-          className="h-11 px-5 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
+          className="h-11 px-5 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
           style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           {phase === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
@@ -417,7 +417,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   onClick={() => selectCandidate(c.id)}
-                  className="w-full text-left border-2 border-border hover:border-border p-3 flex items-center gap-3 transition-all hover:shadow-sm"
+                  className="w-full text-left border border-border hover:border-border p-3 flex items-center gap-3 transition-all hover:shadow-sm"
                 >
                   {c.logoUrl ? (
                     <img src={c.logoUrl} alt={c.name} className="w-8 h-8 object-contain rounded-sm shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -461,7 +461,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           >
             {/* Company card */}
             <div
-              className="border-2 border-border/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
+              className="border border-border/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
             >
               <img
@@ -567,7 +567,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               <Button
                 onClick={handleContinue}
                 disabled={isCreating}
-                className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
                 style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
@@ -742,7 +742,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <Users className="w-3.5 h-3.5" />
             Répartition des équipes
           </h4>
-          <div className="space-y-2 border-2 border-border p-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
+          <div className="space-y-2 border border-border p-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
             {headcountEntries.map(([dept, count]) => (
               <div key={dept} className="space-y-0.5">
                 <div className="flex items-center justify-between text-xs">
@@ -771,7 +771,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <TrendingUp className="w-3.5 h-3.5" />
             Historique de levées
           </h4>
-          <div className="border-2 border-border p-3 space-y-0" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
+          <div className="border border-border p-3 space-y-0" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
             {fundingEvents.map((ev, i) => (
               <div key={i} className="flex gap-3 relative">
                 {/* Vertical line */}
@@ -779,7 +779,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                   <div className="absolute left-[7px] top-5 bottom-0 w-[2px] bg-foreground/10" />
                 )}
                 {/* Dot */}
-                <div className="w-4 h-4 mt-0.5 shrink-0 border-2 border-border bg-background z-10" style={{ borderRadius: 0 }} />
+                <div className="w-4 h-4 mt-0.5 shrink-0 border border-border bg-background z-10" style={{ borderRadius: 0 }} />
                 <div className="pb-3 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     {ev.type && (

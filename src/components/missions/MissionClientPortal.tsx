@@ -90,7 +90,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
+            className="flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
           >
             <Plus className="w-3 h-3" /> Créer un accès
           </button>
@@ -107,7 +107,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 placeholder="Ex: Thomas Dupont"
-                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -117,7 +117,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                 onChange={(e) => setClientEmail(e.target.value)}
                 type="email"
                 placeholder="thomas@client.com"
-                className="w-full h-[34px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
               />
             </div>
           </div>
@@ -125,13 +125,13 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
             <button
               onClick={handleCreate}
               disabled={isCreating || !clientName.trim()}
-              className="h-[34px] px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+              className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
             >
               {isCreating ? 'Création...' : 'Générer le lien'}
             </button>
             <button
               onClick={() => { setShowForm(false); setClientName(''); setClientEmail(''); }}
-              className="h-[34px] px-3 text-muted-foreground hover:text-foreground border border-border text-xs font-bold uppercase tracking-wider"
+              className="h-9 px-3 text-muted-foreground hover:text-foreground border border-border text-xs font-bold uppercase tracking-wider"
             >
               Annuler
             </button>
@@ -142,7 +142,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
       {/* Token list */}
       {isLoading ? (
         <div className="flex items-center justify-center py-6">
-          <div className="w-4 h-4 border-2 border-border border-t-foreground animate-spin" />
+          <div className="w-4 h-4 border border-border border-t-foreground animate-spin" />
         </div>
       ) : projectTokens.length === 0 && !showForm ? (
         <p className="text-xs text-muted-foreground py-2">

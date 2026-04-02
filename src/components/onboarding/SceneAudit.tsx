@@ -215,7 +215,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5 px-1">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span className="skalr-gradient-text text-xs uppercase tracking-[0.2em] font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
+        <span className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
           02 — Marque employeur
         </span>
         <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Votre image employeur</h2>
@@ -289,12 +289,12 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               Impossible d'analyser votre marque employeur pour le moment. Vous pouvez passer cette étape et y revenir plus tard.
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
-              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
+              <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
                 <ArrowLeft className="w-4 h-4" /> Retour
               </Button>
               <Button
                 onClick={onNext}
-                className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
                 style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Passer
@@ -314,7 +314,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           >
             {/* Score card */}
             <div
-              className="border-2 border-border/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
+              className="border border-border/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
               style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
             >
               <img src={analyticsIcon} alt="" aria-hidden="true" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
@@ -449,7 +449,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Skalr insight card */}
             <div
-              className="border-2 border-border p-4"
+              className="border border-border p-4"
               style={{
                 background: 'linear-gradient(135deg, hsl(var(--skalr-purple) / 0.04), hsl(var(--skalr-pink) / 0.04))',
               }}
@@ -464,12 +464,12 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Navigation */}
             <div className="flex items-center justify-between pt-1">
-              <Button variant="outline" onClick={onBack} className="gap-2 border-2 border-border text-sm">
+              <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
                 <ArrowLeft className="w-4 h-4" /> Retour
               </Button>
               <Button
                 onClick={onNext}
-                className="gap-2 border-2 border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+                className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
                 style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Continuer

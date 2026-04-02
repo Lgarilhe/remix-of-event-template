@@ -462,7 +462,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       href={exec.enrollment.profile_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-muted-foreground hover:text-[#0077B5] transition-colors"
+                                      className="text-muted-foreground hover:text-linkedin transition-colors"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <ExternalLink className="w-3.5 h-3.5" />

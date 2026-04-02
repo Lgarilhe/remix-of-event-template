@@ -79,9 +79,9 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
         {candidate.score != null && (
           <span className={cn(
             "text-xs font-bold px-1.5 py-0.5 shrink-0",
-            candidate.score >= 70 ? "bg-success/10 text-green-700" :
-            candidate.score >= 40 ? "bg-warning/10 text-yellow-700" :
-            "bg-destructive/10 text-red-600"
+            candidate.score >= 70 ? "bg-success/10 text-success" :
+            candidate.score >= 40 ? "bg-warning/10 text-warning" :
+            "bg-destructive/10 text-destructive"
           )}>
             {candidate.score}
           </span>
@@ -97,12 +97,12 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <ExternalLink className="w-2.5 h-2.5" /> LinkedIn
+            <ExternalLink className="w-3 h-3" /> LinkedIn
           </a>
         )}
         {timeInStage && (
           <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5 ml-auto">
-            <Clock className="w-2.5 h-2.5" /> {timeInStage}
+            <Clock className="w-3 h-3" /> {timeInStage}
           </span>
         )}
       </div>
@@ -153,7 +153,7 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
         <div className="flex items-center justify-between">
           <h3 className={cn(
             "font-medium text-xs uppercase tracking-wider",
-            isDismissed && "text-red-600"
+            isDismissed && "text-destructive"
           )}>
             {column.label}
           </h3>
@@ -276,7 +276,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const totalCandidates = stats?.total || candidates.length;
 
   return (
-    <div className="bg-background border border-border border-t-0 p-3 sm:p-6">
+    <div className="bg-background border border-border p-4 sm:p-6">
       {/* Stats bar */}
       {totalCandidates > 0 && (
         <div className="mb-4">
@@ -284,7 +284,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
               if (count === 0 || totalCandidates === 0) return null;
-              const colors = ['bg-muted-foreground/30', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
+              const colors = ['bg-muted-foreground/30', 'bg-info', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-brand-purple', 'bg-emerald-400'];
               return (
                 <div
                   key={col.key}
@@ -305,7 +305,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
-              const colors = ['bg-muted-foreground/30', 'bg-blue-400', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-purple-400', 'bg-emerald-400'];
+              const colors = ['bg-muted-foreground/30', 'bg-info', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-brand-purple', 'bg-emerald-400'];
               return (
                 <span key={col.key} className="text-xs text-muted-foreground uppercase tracking-wider">
                   <span className={cn("inline-block w-2 h-2 mr-1", colors[i % colors.length])} />
@@ -340,7 +340,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('table')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border group",
+              "flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border group",
               viewMode === 'table' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >
@@ -349,7 +349,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <button
             onClick={() => setViewMode('kanban')}
             className={cn(
-              "flex items-center gap-1 h-[30px] px-3 text-xs font-medium uppercase tracking-wider border border-border border-l-0 group",
+              "flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border border-l-0 group",
               viewMode === 'kanban' ? "bg-foreground text-background" : "bg-background text-foreground"
             )}
           >
