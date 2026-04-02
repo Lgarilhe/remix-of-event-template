@@ -432,7 +432,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
             {/* Sender name */}
             <div className="shrink-0">
-              <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Signature
               </label>
               <Input
