@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel } from './search/SearchFiltersPanel';
