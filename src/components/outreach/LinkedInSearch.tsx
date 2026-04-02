@@ -18,10 +18,11 @@ import { Job } from '@/types/jobs';
 import { extractTraitsFromProfile, traitsToFilters } from '@/hooks/linkedin/extractSimilarFilters';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
+import { AppliedFiltersBar } from './search/AppliedFiltersBar';
 
 interface LinkedInSearchProps {
   accounts: LinkedInAccount[];
@@ -832,34 +833,30 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onApply={handleWizardApply}
         />
       )}
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
-      {/* Mobile: Filters button + Sheet */}
-      <div className="lg:hidden">
-        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="w-full gap-2 border-primary text-primary overflow-hidden">
-              <SlidersHorizontal className="w-4 h-4 shrink-0" />
-              <span className="shrink-0">Filtres de recherche</span>
-              {search.selectedJob && (
-                <span className="text-xs bg-primary/10 px-2 py-0.5 truncate max-w-[40%]">
-                  {search.selectedJob.title}
-                </span>
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[90vw] max-w-[400px] p-4 overflow-y-auto">
+    <div className="w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
+      {/* Filters bar — always visible */}
+      <AppliedFiltersBar
+        filters={search.filters}
+        selectedJob={search.selectedJob}
+        searchSource={searchSource}
+        onSearchSourceChange={handleSearchSourceChange}
+        onOpenFilters={() => setFiltersOpen(true)}
+        onSearch={() => handleSearch(false)}
+        loading={search.loading}
+        hasSearched={search.hasSearched}
+      />
+
+      {/* Filters modal — large overlay */}
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="max-w-[90vw] w-[90vw] max-h-[85vh] overflow-y-auto p-0 gap-0">
+          <div className="p-6">
             {filtersPanel}
-          </SheetContent>
-        </Sheet>
-      </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-      {/* Desktop: Filters sidebar */}
-      <div className="hidden lg:block lg:col-span-4 xl:col-span-3 overflow-y-auto">
-        {filtersPanel}
-      </div>
-
-      {/* Results panel */}
-      <div className="lg:col-span-8 xl:col-span-9 min-w-0 lg:min-h-0">
+      {/* Results panel — full width */}
+      <div className="min-w-0 lg:min-h-0">
         <SearchResultsPanel
           results={search.results}
           mergedResults={mergedResults}
