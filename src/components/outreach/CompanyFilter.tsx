@@ -179,15 +179,15 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
             return (
               <div 
                 key={index} 
-                className="bg-card border border-border rounded-md p-2 shadow-sm"
+                className="bg-card border border-border rounded-md p-2 shadow-sm min-w-0"
               >
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-start justify-between gap-2 mb-1.5 min-w-0">
                   <button
                     type="button"
                     onClick={() => openEditDialog(index)}
-                    className="text-xs font-medium text-foreground truncate flex-1 pr-2 text-left hover:text-linkedin transition-colors group flex items-center gap-1"
+                    className="text-xs font-medium text-foreground flex-1 min-w-0 pr-2 text-left hover:text-linkedin transition-colors group flex items-start gap-1"
                   >
-                    <span className="truncate">{company.keywords}</span>
+                    <span className="min-w-0 whitespace-normal break-words leading-snug">{company.keywords}</span>
                     <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
                   <button 
@@ -199,7 +199,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   </button>
                 </div>
                 
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
                   <Select
                     value={company.priority}
                     onValueChange={(val) => onUpdateKeywordCompany(index, { priority: val as CompanyPriority })}

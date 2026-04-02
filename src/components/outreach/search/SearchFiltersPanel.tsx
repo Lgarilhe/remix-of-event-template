@@ -467,10 +467,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <button
           type="button"
           onClick={() => { setKeywordsDraft(filters.keywords); setKeywordsDialogOpen(true); }}
-          className="w-full text-left flex items-center gap-2 px-3 py-2 border border-input bg-background hover:bg-accent/50 transition-colors min-h-[40px] group"
+          className="w-full min-w-0 text-left flex items-start gap-2 px-3 py-2 border border-input bg-background hover:bg-accent/50 transition-colors min-h-[40px] group"
         >
           {filters.keywords ? (
-            <span className="text-sm truncate flex-1">{filters.keywords}</span>
+            <span className="text-sm whitespace-normal break-words leading-snug flex-1 min-w-0">{filters.keywords}</span>
           ) : (
             <span className="text-sm text-muted-foreground flex-1">Ex: Product Manager, React...</span>
           )}
