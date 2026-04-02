@@ -50,6 +50,7 @@ interface MissionSearchCacheEntry {
   selectedProfiles: string[];
   showPoolView: boolean;
   scoredSortBy: ScoredSortBy;
+  searchSource: 'linkedin' | 'database';
   scrollTop: number;
   scoringInstructions: string;
 }
