@@ -18,6 +18,13 @@ interface AutoFillFiltersButtonProps {
   accountId: string | null;
   currentLocation?: LocationFilterItem[];
   onApplyFilters: (filters: Partial<LinkedInFiltersState>) => void;
+  onSuggestionsGenerated?: (suggestions: {
+    alt_skills?: string[];
+    alt_titles?: string[];
+    alt_locations?: string[];
+    alt_companies?: string[];
+    alt_certifications?: string[];
+  } | null) => void;
   disabled?: boolean;
   /** Search source: affects which filters are generated */
   searchSource?: 'linkedin' | 'database';
@@ -106,6 +113,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
   accountId,
   currentLocation,
   onApplyFilters,
+  onSuggestionsGenerated,
   disabled,
   searchSource = 'linkedin',
 }) => {
@@ -153,7 +161,18 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
     setLoading(true);
     try {
-      const { data, error } = await invokeWithCredits<{ filters?: any; success?: boolean; error?: string }>('generate-search-filters', 'filter_generation', { job: selectedJob, search_source: searchSource || 'linkedin' }, { modelOverride: selectedModel ?? undefined });
+      const { data, error } = await invokeWithCredits<{
+        filters?: any;
+        suggestions?: {
+          alt_skills?: string[];
+          alt_titles?: string[];
+          alt_locations?: string[];
+          alt_companies?: string[];
+          alt_certifications?: string[];
+        } | null;
+        success?: boolean;
+        error?: string;
+      }>('generate-search-filters', 'filter_generation', { job: selectedJob, search_source: searchSource || 'linkedin' }, { modelOverride: selectedModel ?? undefined });
 
       if (error) {
         console.error('[AutoFill] invokeWithCredits error:', error.message);
@@ -166,6 +185,9 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       }
 
       const generated: GeneratedFilters = data.filters;
+      const generatedSuggestions = data.suggestions && Object.values(data.suggestions).some(value => Array.isArray(value) && value.length > 0)
+        ? data.suggestions
+        : null;
 
       // Store debug data
       setDebugData({ input: inputContext, output: generated });
@@ -308,6 +330,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
 
       // Apply filters
       onApplyFilters(update);
+      onSuggestionsGenerated?.(generatedSuggestions);
 
       // Count applied filters
       const filterCount = 
@@ -343,7 +366,7 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [selectedJob, accountId, currentLocation, onApplyFilters]);
+  }, [selectedJob, accountId, currentLocation, onApplyFilters, onSuggestionsGenerated, searchSource, selectedModel]);
 
   const isDisabled = disabled || !selectedJob || !accountId || loading;
 

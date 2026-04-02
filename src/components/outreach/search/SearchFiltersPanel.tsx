@@ -83,6 +83,7 @@ interface SearchFiltersPanelProps {
   scoringInstructions?: string;
   onScoringInstructionsChange?: (value: string) => void;
   suggestions?: FilterSuggestions | null;
+  onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -111,6 +112,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   scoringInstructions = '',
   onScoringInstructionsChange,
   suggestions,
+  onSuggestionsGenerated,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -331,6 +333,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             accountId={selectedAccount}
             currentLocation={filters.location}
             onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+            onSuggestionsGenerated={onSuggestionsGenerated}
             searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
           />
         </div>

@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInAccount } from '@/pages/Outreach';
-import { SearchFiltersPanel } from './search/SearchFiltersPanel';
+import { SearchFiltersPanel, type FilterSuggestions } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
@@ -69,6 +69,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [scoringInstructions, setScoringInstructions] = useLocalState('');
+  const snapshotSuggestions = useMemo<FilterSuggestions | null>(() => {
+    const nextSuggestions = (activeProject?.filters_snapshot as any)?.suggestions as FilterSuggestions | null | undefined;
+    if (!nextSuggestions) return null;
+    return Object.values(nextSuggestions).some(value => Array.isArray(value) && value.length > 0)
+      ? nextSuggestions
+      : null;
+  }, [activeProject?.filters_snapshot]);
+  const [inlineSuggestions, setInlineSuggestions] = useState<FilterSuggestions | null>(snapshotSuggestions);
+  const inlineSuggestionsProjectRef = useRef<string | null>(activeProject?.id ?? null);
 
   // Internal search source toggle (Apollo vs LinkedIn)
   const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
@@ -108,6 +117,24 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     activeProject,
     onProjectChange,
   });
+
+  useEffect(() => {
+    const currentProjectId = activeProject?.id ?? null;
+    if (inlineSuggestionsProjectRef.current !== currentProjectId) {
+      inlineSuggestionsProjectRef.current = currentProjectId;
+      setInlineSuggestions(snapshotSuggestions);
+      return;
+    }
+
+    if (snapshotSuggestions) {
+      setInlineSuggestions(snapshotSuggestions);
+    }
+  }, [activeProject?.id, snapshotSuggestions]);
+
+  const handleSuggestionsGenerated = useCallback((nextSuggestions: FilterSuggestions | null) => {
+    setInlineSuggestions(nextSuggestions);
+    search.mergeProjectSnapshotMeta({ suggestions: nextSuggestions });
+  }, [search]);
 
   // Search history (must be after search hook)
   const searchHistory = useSearchHistory(search.selectedJob?.id || null);
@@ -334,20 +361,30 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
     setReadinessAutoFillLoading(true);
     try {
-      const { data, error } = await invokeEdgeFunction<{ filters?: any; success?: boolean; error?: string }>(
+      const { data, error } = await invokeEdgeFunction<{
+        filters?: any;
+        suggestions?: FilterSuggestions | null;
+        success?: boolean;
+        error?: string;
+      }>(
         'generate-search-filters',
         { job: search.selectedJob, search_source: searchSource || 'linkedin' }
       );
       if (error) throw error;
       if (!data?.success || !data?.filters) throw new Error(data?.error || 'Réponse invalide');
       handleAutoFillFilters(data.filters);
+      handleSuggestionsGenerated(
+        data.suggestions && Object.values(data.suggestions).some(value => Array.isArray(value) && value.length > 0)
+          ? data.suggestions
+          : null
+      );
       toast.success('Filtres générés par l\'IA !');
     } catch (err: any) {
       toast.error(err.message || 'Erreur lors de la génération des filtres');
     } finally {
       setReadinessAutoFillLoading(false);
     }
-  }, [search.selectedJob, searchSource, handleAutoFillFilters]);
+  }, [search.selectedJob, searchSource, handleAutoFillFilters, handleSuggestionsGenerated]);
 
   // Account data helpers
   const selectedAccountData = useMemo(() => 
@@ -715,9 +752,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // AI suggestions from filters_snapshot
-  const aiSuggestions = (activeProject?.filters_snapshot as any)?.suggestions || null;
-
   const filtersPanel = (
     <SearchFiltersPanel
       accounts={accounts}
@@ -781,7 +815,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       onDeleteHistoryEntry={searchHistory.deleteEntry}
       scoringInstructions={scoringInstructions}
       onScoringInstructionsChange={setScoringInstructions}
-      suggestions={activeProject ? aiSuggestions : null}
+      suggestions={activeProject ? inlineSuggestions : null}
+      onSuggestionsGenerated={handleSuggestionsGenerated}
     />
   );
 

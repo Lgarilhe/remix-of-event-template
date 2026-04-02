@@ -448,6 +448,13 @@ export function useLinkedInSearch({
     latestProjectSnapshotRef.current = (activeProject?.filters_snapshot || {}) as Record<string, any>;
   }, [activeProject?.id, activeProject?.filters_snapshot]);
 
+  const mergeProjectSnapshotMeta = useCallback((patch: Record<string, any>) => {
+    latestProjectSnapshotRef.current = {
+      ...latestProjectSnapshotRef.current,
+      ...patch,
+    };
+  }, []);
+
   const persistFiltersSnapshot = useCallback((filtersToPersist: LinkedInFiltersState) => {
     const projectId = latestProjectIdRef.current;
     if (!projectId) return;
@@ -639,6 +646,9 @@ export function useLinkedInSearch({
     // Project
     activeProject,
     onProjectChange,
+
+    // Snapshot metadata
+    mergeProjectSnapshotMeta,
     
     // Cache coordination
     cacheHydratedRef,
