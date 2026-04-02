@@ -214,8 +214,6 @@ export default function Candidates() {
                       >
                         <Icon className="w-3.5 h-3.5 shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
-                        {!isActive && (
-                        )}
                       </button>
                     );
                   })}

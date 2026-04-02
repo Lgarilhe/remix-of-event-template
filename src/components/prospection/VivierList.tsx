@@ -215,8 +215,6 @@ function DetailTab({ active, emoji, label, count, onClick }: { active: boolean; 
           active ? "text-background/60" : "text-muted-foreground"
         )}>{count}</span>
       )}
-      {!active && (
-      )}
     </button>
   );
 }
@@ -1178,8 +1176,6 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           {activeFilterCount > 0 && (
             <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
           )}
-          {!showMore && activeFilterCount === 0 && (
-          )}
         </button>
       </div>
 
@@ -1723,8 +1719,6 @@ export function VivierList() {
             >
               <span className="text-sm relative z-10">{tab.emoji}</span>
               <span className="relative z-10">{tab.label}</span>
-              {!isActive && (
-              )}
             </button>
           );
         })}

@@ -515,8 +515,6 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
               >
                 <Play className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10">Lancer le sourcing</span>
-                {enabledCount > 0 && (
-                )}
               </button>
             </div>
           </motion.div>
