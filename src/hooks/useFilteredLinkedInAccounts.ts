@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { applySubscriptionOverrides } from '@/components/outreach/LinkedInAccountManager';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
@@ -15,7 +15,7 @@ export function useFilteredLinkedInAccounts() {
   const { isAdmin, isOwner, isCollaborator } = useOrganization();
   const { getUserLinkedAccountId, isLoading: mappingsLoading } = useMemberLinkedInAccounts();
   const { isReady, user } = useAuthReady();
-  const [selectedAccount, setSelectedAccount] = React.useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const currentUserId = user?.id ?? null;
 
   // Apply subscription overrides + filter by member mapping
@@ -34,7 +34,7 @@ export function useFilteredLinkedInAccounts() {
   }, [allAccounts, isReady, isAdmin, isOwner, isCollaborator, currentUserId, getUserLinkedAccountId]);
 
   // Auto-select first OK account
-  React.useEffect(() => {
+  useEffect(() => {
     if (selectedAccount || accounts.length === 0) return;
     const okAccount = accounts.find(a => a.status === 'OK');
     setSelectedAccount(okAccount?.id || accounts[0]?.id || null);
