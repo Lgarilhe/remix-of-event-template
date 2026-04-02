@@ -35,7 +35,7 @@ import { AgencySettings } from '@/components/settings/AgencySettings';
 import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import iconSettings3d from '@/assets/icon-settings-3d.webp';
+
 
 const roleIcons = {
   owner: Crown,
