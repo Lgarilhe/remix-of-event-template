@@ -185,7 +185,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   <button
                     type="button"
                     onClick={() => openEditDialog(index)}
-                    className="text-xs font-medium text-[#1A1A1A] truncate flex-1 pr-2 text-left hover:text-[#0077B5] transition-colors group flex items-center gap-1"
+                    className="text-xs font-medium text-foreground truncate flex-1 pr-2 text-left hover:text-[#0077B5] transition-colors group flex items-center gap-1"
                   >
                     <span className="truncate">{company.keywords}</span>
                     <Pencil className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />

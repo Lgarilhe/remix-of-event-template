@@ -111,7 +111,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
         {filters.api === 'recruiter' && filters.location.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#1A1A1A]/60">Rayon de recherche</span>
+              <span className="text-xs text-muted-foreground">Rayon de recherche</span>
               <Select
                 value={filters.location_within_area?.toString() || 'null'}
                 onValueChange={(val) => onChange({
