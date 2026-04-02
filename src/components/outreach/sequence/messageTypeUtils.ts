@@ -21,7 +21,7 @@ export function getStepMessageType(
   }
 
   if (step.actionType === 'connection_request') {
-    return { label: 'Invitation (pas de note)', shortLabel: 'Invitation', color: 'bg-emerald-50 text-emerald-700' };
+    return { label: 'Invitation (pas de note)', shortLabel: 'Invitation', color: 'bg-success/10 text-success' };
   }
 
   // Walk backwards through the graph to find previous message steps in this branch
@@ -30,9 +30,9 @@ export function getStepMessageType(
   if (step.actionType === 'whatsapp_message') {
     const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
     if (prevWhatsApp.length === 0) {
-      return { label: 'WhatsApp initial', shortLabel: 'WhatsApp', color: 'bg-green-50 text-green-700' };
+      return { label: 'WhatsApp initial', shortLabel: 'WhatsApp', color: 'bg-green-500/10 text-green-500' };
     }
-    return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-50 text-green-700' };
+    return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-500/10 text-green-500' };
   }
 
   const prevMessages = previousSteps.filter(s =>
@@ -43,24 +43,24 @@ export function getStepMessageType(
   if (step.actionType === 'inmail') {
     const prevInMails = prevMessages.filter(s => s.actionType === 'inmail');
     if (prevInMails.length === 0) {
-      return { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: 'bg-blue-50 text-blue-700' };
+      return { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: 'bg-info/10 text-info' };
     }
-    return { label: 'InMail relance', shortLabel: 'InMail relance', color: 'bg-blue-50 text-blue-700' };
+    return { label: 'InMail relance', shortLabel: 'InMail relance', color: 'bg-info/10 text-info' };
   }
 
   // message or smart_message
   const prevDirectMsgs = prevMessages.filter(s => ['message', 'smart_message'].includes(s.actionType));
 
   if (prevDirectMsgs.length === 0 && !hadInvite) {
-    return { label: 'Premier message (accroche)', shortLabel: '1er message', color: 'bg-violet-50 text-violet-700' };
+    return { label: 'Premier message (accroche)', shortLabel: '1er message', color: 'bg-brand-purple/10 text-brand-purple' };
   }
   if (prevDirectMsgs.length === 0 && hadInvite) {
-    return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: 'bg-violet-50 text-violet-700' };
+    return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: 'bg-brand-purple/10 text-brand-purple' };
   }
   if (prevDirectMsgs.length === 1) {
-    return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-amber-50 text-amber-700' };
+    return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-warning/10 text-warning' };
   }
-  return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-red-50 text-red-700' };
+  return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-destructive/10 text-destructive' };
 }
 
 /**

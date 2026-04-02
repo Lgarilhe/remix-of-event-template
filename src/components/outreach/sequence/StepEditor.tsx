@@ -79,7 +79,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           <div className="flex items-center gap-1.5">
             <span className={cn(
               "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
-              stepIsTrigger ? "bg-amber-50 text-amber-600" : "bg-muted text-muted-foreground"
+              stepIsTrigger ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
             )}>
               {stepIsTrigger ? 'trigger' : 'action'}
             </span>
@@ -183,8 +183,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
       {/* Trigger config */}
       {stepIsTrigger && step.actionType !== 'condition_branch' && step.actionType !== 'check_connection' && (
-        <div className="space-y-3 p-3 bg-amber-50/50 border border-amber-200/40 rounded-lg">
-          <div className="flex items-center gap-1.5 text-amber-700">
+        <div className="space-y-3 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+          <div className="flex items-center gap-1.5 text-warning">
             <Zap className="w-3 h-3" />
             <span className="text-[11px] font-semibold">Trigger</span>
           </div>
@@ -221,8 +221,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
       {/* Check connection */}
       {step.actionType === 'check_connection' && (
-        <div className="space-y-3 p-3 bg-indigo-50/50 border border-indigo-200/40 rounded-lg">
-          <div className="flex items-center gap-1.5 text-indigo-700">
+        <div className="space-y-3 p-3 bg-info/10 border border-info/30 rounded-lg">
+          <div className="flex items-center gap-1.5 text-info">
             <GitBranch className="w-3 h-3" />
             <span className="text-[11px] font-semibold">Branchement</span>
           </div>
@@ -261,8 +261,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
       {/* Condition branch */}
       {step.actionType === 'condition_branch' && (
-        <div className="space-y-3 p-3 bg-rose-50/50 border border-rose-200/40 rounded-lg">
-          <div className="flex items-center gap-1.5 text-rose-700">
+        <div className="space-y-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+          <div className="flex items-center gap-1.5 text-destructive">
             <GitBranch className="w-3 h-3" />
             <span className="text-[11px] font-semibold">Branchement</span>
           </div>
@@ -293,7 +293,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       {needsMessage(step.actionType) && (
         <div className="space-y-4">
           {isWhatsAppStep(step.actionType) && (
-            <div className="text-[10px] text-emerald-700 bg-emerald-50/50 border border-emerald-200/40 rounded-md px-3 py-2">
+            <div className="text-[10px] text-success bg-success/10 border border-success/30 rounded-md px-3 py-2">
               📱 WhatsApp — candidats sans numéro skippés.
             </div>
           )}

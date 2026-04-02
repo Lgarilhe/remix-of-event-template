@@ -485,13 +485,13 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
               {debugData?.output && (
                 <Collapsible open={showOutput} onOpenChange={setShowOutput}>
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-between p-3 h-auto bg-success/10 dark:bg-green-950/30 hover:bg-success/20 dark:hover:bg-green-950/50">
-                      <span className="font-medium text-sm text-green-700 dark:text-green-400">📤 Filtres générés</span>
+                    <Button variant="ghost" className="w-full justify-between p-3 h-auto bg-green-950/30 hover:bg-green-950/50">
+                      <span className="font-medium text-sm text-green-400">📤 Filtres générés</span>
                       {showOutput ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </Button>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <pre className="mt-2 p-4 bg-success/10 dark:bg-green-950/20 rounded-lg text-xs font-mono whitespace-pre-wrap overflow-x-auto border border-green-200 dark:border-green-900">
+                    <pre className="mt-2 p-4 bg-green-950/20 rounded-lg text-xs font-mono whitespace-pre-wrap overflow-x-auto border border-green-900">
                       {JSON.stringify(debugData.output, null, 2)}
                     </pre>
                   </CollapsibleContent>

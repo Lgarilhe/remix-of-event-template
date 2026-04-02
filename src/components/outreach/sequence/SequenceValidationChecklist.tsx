@@ -129,8 +129,8 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
         hasBlockers
           ? "border-l-destructive bg-destructive/5 text-destructive"
           : warningCount > 0
-            ? "border-l-amber-500 bg-amber-50/50 text-amber-700"
-            : "border-l-emerald-500 bg-emerald-50/50 text-emerald-700"
+            ? "border-l-amber-500 bg-warning/10 text-warning"
+            : "border-l-emerald-500 bg-success/10 text-success"
       )}>
         {hasBlockers ? (
           <><X className="w-3.5 h-3.5" />{requiredItems.filter(i => i.status === 'fail').length} bloquant(s)</>

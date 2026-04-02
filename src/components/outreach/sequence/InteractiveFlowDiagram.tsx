@@ -46,31 +46,31 @@ const STEP_ICONS: Record<string, React.ElementType | null> = {
 const STEP_BG: Record<string, string> = {
   inmail: 'bg-info/10 border-info/20',
   connection_request: 'bg-success/10 border-success/20',
-  profile_visit: 'bg-sky-50 border-sky-200/80',
+  profile_visit: 'bg-info/10 border-info/20',
   message: 'bg-warning/10 border-warning/20',
-  smart_message: 'bg-purple-50 border-purple-200/80',
-  whatsapp_message: 'bg-green-50 border-green-200/80',
-  email: 'bg-violet-50 border-violet-200/80',
+  smart_message: 'bg-brand-purple/10 border-brand-purple/20',
+  whatsapp_message: 'bg-green-500/10 border-green-500/20',
+  email: 'bg-brand-purple/10 border-brand-purple/20',
   wait_connection: 'bg-warning/10 border-warning/20',
   wait_reply: 'bg-warning/10 border-warning/20',
   wait_profile_visit: 'bg-warning/10 border-warning/20',
   condition_branch: 'bg-destructive/10 border-destructive/20',
-  check_connection: 'bg-indigo-50 border-indigo-200/80',
+  check_connection: 'bg-info/10 border-info/20',
 };
 
 const STEP_ICON_BG: Record<string, string> = {
   inmail: 'bg-info/20 text-info-foreground',
   connection_request: 'bg-success/20 text-success-foreground',
-  profile_visit: 'bg-sky-100 text-sky-600',
+  profile_visit: 'bg-info/20 text-info',
   message: 'bg-warning/20 text-warning-foreground',
-  smart_message: 'bg-purple-100 text-purple-600',
-  whatsapp_message: 'bg-green-100 text-green-600',
-  email: 'bg-violet-100 text-violet-600',
+  smart_message: 'bg-brand-purple/20 text-brand-purple',
+  whatsapp_message: 'bg-green-500/20 text-green-500',
+  email: 'bg-brand-purple/20 text-brand-purple',
   wait_connection: 'bg-warning/20 text-warning-foreground',
   wait_reply: 'bg-warning/20 text-warning-foreground',
   wait_profile_visit: 'bg-warning/20 text-warning-foreground',
   condition_branch: 'bg-destructive/20 text-destructive',
-  check_connection: 'bg-indigo-100 text-indigo-600',
+  check_connection: 'bg-info/20 text-info',
 };
 
 const STEP_LABELS: Record<string, string> = {
