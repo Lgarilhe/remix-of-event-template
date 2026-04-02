@@ -225,8 +225,6 @@ export default function ATS() {
               >
                 <Bell className="w-3 h-3 relative z-10" />
                 <span className="relative z-10 hidden sm:inline">Rappels</span>
-                {!showReminders && (
-                )}
               </button>
             </div>
           </div>
@@ -258,8 +256,6 @@ export default function ATS() {
                       >
                         <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain shrink-0 relative z-10" />
                         <span className="relative z-10">{tab.label}</span>
-                        {!isActive && (
-                        )}
                       </button>
                     );
                   })}
@@ -365,8 +361,6 @@ export default function ATS() {
                                     >
                                       <tab.Icon className="w-3 h-3 shrink-0 relative z-10" />
                                       <span className="relative z-10">{tab.label}</span>
-                                      {shortlistViewMode !== tab.value && (
-                                      )}
                                     </button>
                                   ))}
                                 </div>

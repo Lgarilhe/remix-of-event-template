@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { deepMerge } from '@/lib/deepMerge';
-import { Sparkles, Loader2, Play, RefreshCw, Mic, Square } from 'lucide-react';
+import { Sparkles, Loader2, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BriefWizard } from './BriefWizard';
@@ -175,9 +175,15 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
           )}
         >
           {isAnalyzing ? (
-            <><Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" /><span className="relative z-10">Analyse en cours...</span></>
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin relative z-10" />
+              <span className="relative z-10">Analyse en cours...</span>
+            </>
           ) : (
-            <><Sparkles className="w-3.5 h-3.5 relative z-10" /><span className="relative z-10">Analyser avec l'IA</span>
+            <>
+              <Sparkles className="w-3.5 h-3.5 relative z-10" />
+              <span className="relative z-10">Analyser avec l'IA</span>
+            </>
           )}
         </button>
       </div>

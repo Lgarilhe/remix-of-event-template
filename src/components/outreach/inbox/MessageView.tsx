@@ -275,8 +275,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <Zap className="w-3.5 h-3.5" />
               <span className="hidden md:inline">IA</span>
             </span>
-            {!aiPanelOpen && (
-            )}
           </button>
         )}
 

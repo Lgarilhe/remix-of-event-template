@@ -152,8 +152,6 @@ const Settings = () => {
                 >
                   <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain relative z-10" />
                   <span className="relative z-10 hidden sm:inline">{tab.label}</span>
-                  {!isActive && (
-                  )}
                 </button>
               );
             })}

@@ -174,8 +174,6 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           >
             <span className="relative z-10">{sub.emoji}</span>
             <span className="relative z-10">{sub.label}</span>
-            {outreachTab !== sub.value && (
-            )}
           </button>
         ))}
       </div>

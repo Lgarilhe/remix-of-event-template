@@ -287,8 +287,6 @@ export default function Marketplace() {
                           {applyingId === mission.id && <Loader2 className="w-3 h-3 animate-spin" />}
                           {applyingId === mission.id ? 'Envoi...' : 'Postuler'}
                         </span>
-                        {applyingId !== mission.id && (
-                        )}
                       </button>
                     </div>
                   </div>

@@ -46,8 +46,6 @@ const FilterButton: React.FC<{
             {count}
           </span>
         )}
-        {count === 0 && (
-        )}
       </button>
     </PopoverTrigger>
     <PopoverContent className="w-56 p-3 rounded-lg border-border" align="start">
@@ -165,8 +163,6 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       >
         <Bell className="w-3.5 h-3.5 relative z-10" />
         <span className="relative z-10">Rappels</span>
-        {!filters.hasReminder && (
-        )}
       </button>
 
       {/* Clear all */}
