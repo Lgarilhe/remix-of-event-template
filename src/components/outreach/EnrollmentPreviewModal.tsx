@@ -75,7 +75,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const CHANNEL_COLORS: Record<string, string> = {
-  email: 'bg-blue-50 text-blue-700 border-blue-200',
+  email: 'bg-info/10 text-info-foreground border-info/20',
   message: 'bg-sky-50 text-sky-700 border-sky-200',
   smart_message: 'bg-sky-50 text-sky-700 border-sky-200',
   inmail: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -1012,15 +1012,15 @@ function SummaryMode({
       </div>
 
       <div className="space-y-2">
-        <SummaryRow icon={CheckCircle} color="text-emerald-600" label="Candidats avec LinkedIn" count={activeProfiles.length} />
+        <SummaryRow icon={CheckCircle} color="text-success-foreground" label="Candidats avec LinkedIn" count={activeProfiles.length} />
         {candidateAnalysis.withEmail > 0 && (
-          <SummaryRow icon={Mail} color="text-blue-600" label="Avec email" count={candidateAnalysis.withEmail} />
+          <SummaryRow icon={Mail} color="text-info-foreground" label="Avec email" count={candidateAnalysis.withEmail} />
         )}
         {candidateAnalysis.withoutEmail > 0 && emailSteps.length > 0 && (
-          <SummaryRow icon={AlertTriangle} color="text-amber-500" label="Sans email (steps email skippés)" count={candidateAnalysis.withoutEmail} />
+          <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans email (steps email skippés)" count={candidateAnalysis.withoutEmail} />
         )}
         {candidateAnalysis.withoutPhone > 0 && whatsappSteps.length > 0 && (
-          <SummaryRow icon={AlertTriangle} color="text-amber-500" label="Sans téléphone (steps WhatsApp skippés)" count={candidateAnalysis.withoutPhone} />
+          <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans téléphone (steps WhatsApp skippés)" count={candidateAnalysis.withoutPhone} />
         )}
       </div>
 
@@ -1054,7 +1054,7 @@ function SummaryMode({
       </div>
 
       {hasAiSteps && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+        <div className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-lg text-xs text-warning-foreground">
           <Sparkles className="w-3.5 h-3.5 shrink-0" />
           <span>Estimation : ~{estimatedCredits} crédits IA ({hasMessageSteps ? 'personnalisation' : 'génération'})</span>
         </div>

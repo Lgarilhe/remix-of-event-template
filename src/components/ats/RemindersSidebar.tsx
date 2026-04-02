@@ -142,8 +142,8 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
           </div>
         ) : reminders.length === 0 ? (
           <div className="text-center py-12 px-4">
-            <Bell className="w-10 h-10 mx-auto text-[#1A1A1A]/20 mb-3" />
-            <p className="text-sm text-[#1A1A1A]/50">
+            <Bell className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">
               {showCompleted ? 'Aucun rappel' : 'Aucun rappel en attente'}
             </p>
           </div>
