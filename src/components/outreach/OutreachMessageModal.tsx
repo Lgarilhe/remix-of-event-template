@@ -405,21 +405,21 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-lg border border-border shadow-md">
-        {/* Header — clean style */}
-        <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-muted/30">
-          <DialogHeader className="space-y-2">
-            <DialogTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-foreground tracking-tight">
-              <div className="w-8 h-8 bg-foreground flex items-center justify-center shrink-0">
-                <MessageSquare className="w-4 h-4 text-background" />
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-xl border border-border shadow-lg">
+        {/* Header */}
+        <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-background">
+          <DialogHeader className="space-y-1.5">
+            <DialogTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-foreground">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-4 h-4 text-primary" />
               </div>
               <span className="truncate">Message pour {fullName}</span>
             </DialogTitle>
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{job.title}</span>
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground pl-[42px]">
+              <span className="font-medium text-foreground/80">{job.title}</span>
               {job.client?.name && (
                 <>
-                  <span className="text-muted-foreground/40">—</span>
+                  <span className="text-muted-foreground/40">·</span>
                   <span>{job.client.name}</span>
                 </>
               )}
@@ -432,7 +432,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
             {/* Sender name */}
             <div className="shrink-0">
-              <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Signature
               </label>
               <Input
@@ -445,7 +445,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
             {/* Tone selector */}
             <div className="flex-1">
-              <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Ton
               </label>
               <div className="flex gap-1.5">
@@ -461,8 +461,8 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     onClick={() => setTone(t.value as Tone)}
                     className={`h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-lg transition-all ${
                       tone === t.value 
-                        ? 'bg-foreground text-background border-border hover:bg-foreground/90' 
-                        : 'border-border hover:border-border hover:bg-muted/50'
+                        ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90' 
+                        : 'border-border hover:bg-muted/50'
                     }`}
                   >
                     <span className="mr-1">{t.icon}</span>
@@ -475,7 +475,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
           {/* Custom instructions (optional) */}
           <div>
-            <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
               Instructions supplémentaires <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea
@@ -483,7 +483,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
               onChange={(e) => setCustomInstructions(e.target.value)}
               placeholder="Ex: Mentionne son article récent sur le DDD, propose un call mardi, insiste sur le full remote..."
               rows={2}
-              className="w-full px-3 py-2 text-sm border border-border bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-border resize-none"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
 
@@ -494,7 +494,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                 onClick={generateMessage}
                 disabled={loading}
                 size="lg"
-                className="flex-1 h-12 bg-foreground hover:bg-foreground/90 text-background font-bold rounded-lg border border-border shadow-sm transition-all uppercase tracking-wide text-sm"
+                className="flex-1 h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg shadow-sm transition-all text-sm"
               >
                 {loading ? (
                   <>
@@ -523,7 +523,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
             <div className="space-y-4">
               {/* Subject line */}
               <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Objet
                 </label>
                 <Input
@@ -536,7 +536,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
               {/* Message body */}
               <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1.5 block uppercase tracking-wider">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Message
                 </label>
                 <InMailTextEditor
@@ -550,9 +550,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
               {/* Personalization points */}
               {personalizationPoints.length > 0 && (
-                <div className="bg-muted/20 p-3 border border-border">
-                  <div className="flex items-center gap-2 text-muted-foreground font-bold text-xs mb-2 uppercase tracking-wider">
-                    <Lightbulb className="w-3.5 h-3.5" />
+                <div className="bg-muted/30 p-3 rounded-lg border border-border">
+                  <div className="flex items-center gap-2 text-muted-foreground font-medium text-xs mb-2">
+                    <Lightbulb className="w-3.5 h-3.5 text-primary" />
                     Points de personnalisation
                   </div>
                   <ul className="space-y-1">
@@ -574,10 +574,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     onClick={handleSendMessage}
                     disabled={sending || messageSent}
                     size="lg"
-                    className={`flex-1 h-11 font-bold rounded-lg border transition-all text-sm ${
+                    className={`flex-1 h-11 font-semibold rounded-lg border transition-all text-sm ${
                       messageSent
                         ? 'bg-success text-success-foreground border-success'
-                        : 'bg-foreground text-background border-border shadow-sm hover:bg-foreground/90'
+                        : 'bg-primary text-primary-foreground border-primary shadow-sm hover:bg-primary/90'
                     }`}
                   >
                     {messageSent ? (
@@ -604,10 +604,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                   onClick={handleCopy}
                   variant={canSendDirectly ? 'outline' : 'default'}
                   size="lg"
-                  className={`h-11 rounded-lg border font-bold text-sm ${
+                  className={`h-11 rounded-lg border font-medium text-sm ${
                     canSendDirectly 
-                      ? 'px-4 border-border hover:border-border hover:bg-muted/50'
-                      : 'flex-1 bg-foreground text-background border-border shadow-sm'
+                      ? 'px-4 border-border hover:bg-muted/50'
+                      : 'flex-1 bg-primary text-primary-foreground border-primary shadow-sm'
                   }`}
                 >
                   {copied ? (

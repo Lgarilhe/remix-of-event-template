@@ -171,10 +171,10 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
 
   if (noConversation) {
     return (
-      <div className="text-center py-8 text-muted-foreground bg-warning/10 rounded-lg border border-warning/30">
-        <MessageSquare className="w-10 h-10 mx-auto mb-3 text-amber-400" />
-        <p className="text-sm font-medium mb-1 text-amber-700">Aucune conversation</p>
-        <p className="text-xs text-amber-600/70">
+      <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg border border-border">
+        <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <p className="text-sm font-medium mb-1 text-foreground/70">Aucune conversation</p>
+        <p className="text-xs text-muted-foreground">
           Vous n'avez pas encore échangé avec ce candidat
         </p>
       </div>
