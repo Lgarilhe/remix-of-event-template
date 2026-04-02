@@ -881,7 +881,7 @@ function MessageStepCard({
           </Badge>
         )}
         {preview?.isEdited && (
-          <Badge className="text-[9px] h-4 px-1.5 bg-amber-100 text-amber-700 border-0">
+          <Badge className="text-[9px] h-4 px-1.5 bg-warning/10 text-warning-foreground border-0">
             Modifié
           </Badge>
         )}
@@ -914,7 +914,7 @@ function MessageStepCard({
         ) : preview?.isGenerated || preview?.error ? (
           <div className="space-y-2">
             {preview.error && (
-              <div className="flex items-center gap-1.5 text-[11px] text-amber-600 mb-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-warning-foreground mb-2">
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 {preview.error}
               </div>
@@ -1123,13 +1123,13 @@ function SummaryRow({ icon: Icon, color, label, count }: { icon: typeof Mail; co
 function EnrollmentResults({ results, onClose }: { results: { success: number; skipped: number; errors: string[] }; onClose: () => void }) {
   return (
     <div className="max-w-md w-full text-center space-y-6">
-      <div className="w-16 h-16 mx-auto rounded-full bg-emerald-50 flex items-center justify-center">
-        <CheckCircle className="w-8 h-8 text-emerald-600" />
+      <div className="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
+        <CheckCircle className="w-8 h-8 text-success-foreground" />
       </div>
       <div className="space-y-2">
         <h3 className="text-lg font-semibold">Enrollment terminé</h3>
         {results.success > 0 && (
-          <p className="text-sm text-emerald-600">
+          <p className="text-sm text-success-foreground">
             ✅ {results.success} candidat{results.success > 1 ? 's' : ''} inscrit{results.success > 1 ? 's' : ''} avec succès
           </p>
         )}

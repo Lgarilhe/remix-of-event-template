@@ -159,8 +159,8 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
                   className={`
                     p-3 rounded-lg border transition-all cursor-pointer
                     ${isCompleted 
-                      ? 'bg-gray-50 border-gray-200 opacity-60' 
-                      : 'bg-white border-border hover:border-[#1A1A1A]/20'
+                      ? 'bg-muted border-border opacity-60'
+                      : 'bg-background border-border hover:border-foreground/20'
                     }
                   `}
                   onClick={() => onReminderClick(reminder.candidate_id)}
@@ -175,19 +175,19 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
                     
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`font-medium text-sm ${isCompleted ? 'line-through text-[#1A1A1A]/50' : 'text-[#1A1A1A]'}`}>
+                        <span className={`font-medium text-sm ${isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
                           {reminder.title}
                         </span>
                       </div>
                       
                       {reminder.candidate_name && (
-                        <p className="text-xs text-[#1A1A1A]/60 mb-1">
+                        <p className="text-xs text-muted-foreground mb-1">
                           {reminder.candidate_name}
                         </p>
                       )}
                       
                       {reminder.job_title && (
-                        <p className="text-xs text-[#1A1A1A]/50 mb-2">
+                        <p className="text-xs text-muted-foreground mb-2">
                           {reminder.job_title}
                         </p>
                       )}

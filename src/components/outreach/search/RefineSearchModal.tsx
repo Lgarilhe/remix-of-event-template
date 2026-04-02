@@ -51,11 +51,11 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const IMPACT_LABELS: Record<string, { label: string; className: string }> = {
-  beaucoup_plus: { label: '↑↑ Beaucoup plus de résultats', className: 'text-green-700 bg-green-50 border-green-200' },
-  plus: { label: '↑ Plus de résultats', className: 'text-green-600 bg-green-50/50 border-green-200/50' },
+  beaucoup_plus: { label: '↑↑ Beaucoup plus de résultats', className: 'text-success-foreground bg-success/10 border-success/20' },
+  plus: { label: '↑ Plus de résultats', className: 'text-success-foreground bg-success/5 border-success/10' },
   similaire: { label: '≈ Résultats similaires', className: 'text-muted-foreground bg-muted/50 border-border' },
-  moins: { label: '↓ Moins de résultats', className: 'text-amber-600 bg-amber-50/50 border-amber-200/50' },
-  beaucoup_moins: { label: '↓↓ Beaucoup moins', className: 'text-red-600 bg-red-50 border-red-200' },
+  moins: { label: '↓ Moins de résultats', className: 'text-warning-foreground bg-warning/10 border-warning/20' },
+  beaucoup_moins: { label: '↓↓ Beaucoup moins', className: 'text-destructive bg-destructive/10 border-destructive/20' },
 };
 
 const DECISION_OPTIONS = [
