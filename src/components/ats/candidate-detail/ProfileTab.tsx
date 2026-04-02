@@ -139,9 +139,9 @@ export const ProfileTab = React.memo<ProfileTabProps>(({ candidate, enrichedProf
             {fullProfile.qualificationSessions.map(qs => (
               <div key={qs.id} className="flex items-start gap-3">
                 <div className={cn("h-8 w-8 flex items-center justify-center border shrink-0 text-xs font-bold",
-                  qs.verdict === 'go' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+                  qs.verdict === 'go' ? 'border-emerald-400 bg-success/10 text-emerald-400' :
                   qs.verdict === 'no_go' ? 'border-destructive/40 bg-destructive/5 text-destructive' :
-                  qs.verdict === 'maybe' ? 'border-amber-400 bg-amber-50 text-amber-700' :
+                  qs.verdict === 'maybe' ? 'border-amber-400 bg-warning/10 text-amber-400' :
                   'border-border bg-accent/50 text-muted-foreground'
                 )}>
                   {qs.verdict === 'go' ? '✓' : qs.verdict === 'no_go' ? '✗' : qs.verdict === 'maybe' ? '?' : '📅'}

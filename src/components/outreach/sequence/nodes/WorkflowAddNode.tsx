@@ -12,9 +12,9 @@ export const WorkflowAddNode = memo(({ data }: NodeProps) => {
   const { onClick, variant } = data as unknown as AddNodeData;
 
   const variantStyles = variant === 'true'
-    ? 'border-emerald-400 text-emerald-500 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-600 dark:hover:bg-emerald-950/60'
+    ? 'border-emerald-400 text-emerald-500 hover:bg-success/20 hover:border-emerald-500 hover:text-emerald-600'
     : variant === 'false'
-    ? 'border-orange-400 text-orange-500 hover:bg-orange-100 hover:border-orange-500 hover:text-orange-600 dark:hover:bg-orange-950/60'
+    ? 'border-orange-400 text-orange-500 hover:bg-warning/20 hover:border-orange-500 hover:text-orange-600'
     : 'border-border text-muted-foreground hover:bg-primary/10 hover:border-primary/50 hover:text-primary';
 
   return (

@@ -18,8 +18,8 @@ export const WorkflowBranchLabelNode = memo(({ data }: NodeProps) => {
       <div className={cn(
         "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border-2 shadow-sm",
         isTrue
-          ? "text-white bg-emerald-500 border-emerald-400 dark:bg-emerald-600 dark:border-emerald-500"
-          : "text-white bg-orange-500 border-orange-400 dark:bg-orange-600 dark:border-orange-500"
+          ? "text-white bg-emerald-500 border-emerald-400"
+          : "text-white bg-orange-500 border-orange-400"
       )}>
         {isTrue ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
         {label}

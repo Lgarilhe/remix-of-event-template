@@ -597,11 +597,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
           {/* Next Topic / Intro — compact bullet-point format */}
           {nextTopic && isRecording && (
-            <div className="border border-info/30 bg-info/10 dark:bg-info/5 dark:border-info/20 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-300">
+            <div className="border border-info/20 bg-info/5 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-300">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
-                  <ArrowRight className="w-3 h-3 text-info dark:text-info" />
-                  <p className="text-xs font-bold uppercase tracking-wider text-info dark:text-info">{nextTopic.topic}</p>
+                  <ArrowRight className="w-3 h-3 text-info" />
+                  <p className="text-xs font-bold uppercase tracking-wider text-info">{nextTopic.topic}</p>
                 </div>
                 <button
                   onClick={() => { navigator.clipboard.writeText(nextTopic.transition); toast.success('Copié !'); }}
@@ -610,15 +610,15 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   <Copy className="w-2.5 h-2.5" />
                 </button>
               </div>
-              <p className="text-xs text-info-foreground dark:text-info-foreground whitespace-pre-line leading-relaxed">
+              <p className="text-xs text-info-foreground whitespace-pre-line leading-relaxed">
                 {nextTopic.transition}
               </p>
             </div>
           )}
           {loadingIntro && !nextTopic && (
-            <div className="border border-info/20 bg-info/5 dark:bg-info/5 px-3 py-2 flex items-center gap-2">
+            <div className="border border-info/20 bg-info/5 px-3 py-2 flex items-center gap-2">
               <Loader2 className="w-3 h-3 animate-spin text-info" />
-              <p className="text-xs text-info dark:text-info">Préparation intro…</p>
+              <p className="text-xs text-info">Préparation intro…</p>
             </div>
           )}
           {/* Criteria checklist */}
@@ -678,11 +678,11 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
               <div className="space-y-1">
                 {digDeeper.map((item, i) => (
                   <div key={`${i}-${item.signal.slice(0, 20)}`}
-                    className="px-2 py-1.5 border border-warning/30 bg-warning/10 dark:bg-warning/5 dark:border-warning/20 text-xs animate-in fade-in slide-in-from-top-1 duration-200 flex items-center gap-2">
-                    <span className="text-warning dark:text-warning shrink-0">•</span>
-                    <span className="font-medium text-warning-foreground dark:text-warning-foreground truncate">{item.signal}</span>
-                    <span className="text-warning dark:text-warning shrink-0">→</span>
-                    <span className="text-warning dark:text-warning flex-1 truncate">{item.question}</span>
+                    className="px-2 py-1.5 border border-warning/20 bg-warning/5 text-xs animate-in fade-in slide-in-from-top-1 duration-200 flex items-center gap-2">
+                    <span className="text-warning shrink-0">•</span>
+                    <span className="font-medium text-warning-foreground truncate">{item.signal}</span>
+                    <span className="text-warning shrink-0">→</span>
+                    <span className="text-warning flex-1 truncate">{item.question}</span>
                     <button
                       onClick={() => setDigDeeper(prev => { const next = prev.filter((_, idx) => idx !== i); digDeeperRef.current = next; return next; })}
                       className="shrink-0 text-warning/40 hover:text-warning transition-colors"

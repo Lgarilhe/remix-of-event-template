@@ -170,7 +170,7 @@ export const ConnectorSettings = () => {
                     className="flex items-center justify-between py-3 border-b border-border last:border-0"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded bg-green-900/30 flex items-center justify-center shrink-0">
                         <Power className="w-4 h-4 text-green-600" />
                       </div>
                       <div className="min-w-0">

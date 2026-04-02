@@ -108,7 +108,7 @@ export const PrepSheetTab: React.FC<PrepSheetTabProps> = ({ candidateId, jobId, 
             <div key={i} className={cn(
               "flex items-start gap-3 px-3 py-2.5 border",
               point.type === 'strength' ? "border-border bg-accent/50" :
-              point.type === 'risk' ? "border-red-200 bg-red-50/50" :
+              point.type === 'risk' ? "border-destructive/30 bg-destructive/10" :
               "border-border"
             )}>
               <point.icon className={cn(
