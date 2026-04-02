@@ -116,7 +116,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const lastSpeakerRef = useRef<number | null>(null);
 
   const speakerLabel = (speaker: number) => speaker === 0 ? 'Recruteur' : 'Candidat';
-  const speakerColor = (speaker: number) => speaker === 0 ? 'text-blue-600' : 'text-emerald-600';
+  const speakerColor = (speaker: number) => speaker === 0 ? 'text-info' : 'text-success';
   const COACH_INTERVAL_MS = 12000;
 
   // Cleanup timer and media on unmount
@@ -527,8 +527,8 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         <div className="flex items-center gap-2">
           {isRecording && (
             <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive/40 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
             </span>
           )}
           <span className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -544,7 +544,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         <div className="flex items-center gap-1">
           {!isRecording && !callStopped && (
             <button onClick={startRecording}
-              className="h-[28px] px-3 flex items-center gap-1.5 bg-red-500 text-white text-xs font-bold uppercase tracking-wider hover:bg-red-600 transition-colors">
+              className="h-[28px] px-3 flex items-center gap-1.5 bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-wider hover:bg-destructive/90 transition-colors">
               <Mic className="w-3 h-3" /> Démarrer
             </button>
           )}

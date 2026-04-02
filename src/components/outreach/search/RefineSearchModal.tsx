@@ -59,9 +59,9 @@ const IMPACT_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 const DECISION_OPTIONS = [
-  { value: 'accept' as const, label: 'Oui', icon: Check, className: 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100' },
-  { value: 'cautious' as const, label: 'Avec prudence', icon: AlertTriangle, className: 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' },
-  { value: 'reject' as const, label: 'Non', icon: X, className: 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100' },
+  { value: 'accept' as const, label: 'Oui', icon: Check, className: 'border-success/30 bg-success/10 text-success-foreground hover:bg-success/20' },
+  { value: 'cautious' as const, label: 'Avec prudence', icon: AlertTriangle, className: 'border-warning/30 bg-warning/10 text-warning-foreground hover:bg-warning/20' },
+  { value: 'reject' as const, label: 'Non', icon: X, className: 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20' },
 ];
 
 function formatValue(value: unknown): string {
@@ -142,9 +142,9 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {direction === 'expand' ? (
-              <Maximize2 className="w-5 h-5 text-green-600" />
+              <Maximize2 className="w-5 h-5 text-success-foreground" />
             ) : (
-              <Minimize2 className="w-5 h-5 text-amber-600" />
+              <Minimize2 className="w-5 h-5 text-warning-foreground" />
             )}
             {direction === 'expand' ? 'Élargir la recherche' : 'Affiner la recherche'}
           </DialogTitle>
@@ -188,11 +188,11 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
 
               {/* Quick actions */}
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" onClick={handleAcceptAll} className="text-xs h-7 text-green-600 hover:text-green-700">
+                <Button variant="ghost" size="sm" onClick={handleAcceptAll} className="text-xs h-7 text-success-foreground hover:text-success-foreground/80">
                   <Check className="w-3 h-3 mr-1" />
                   Tout accepter
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleRejectAll} className="text-xs h-7 text-red-500 hover:text-red-600">
+                <Button variant="ghost" size="sm" onClick={handleRejectAll} className="text-xs h-7 text-destructive hover:text-destructive/80">
                   <X className="w-3 h-3 mr-1" />
                   Tout refuser
                 </Button>
@@ -207,9 +207,9 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
                       key={index}
                       className={cn(
                         'rounded-xl border p-3 transition-colors',
-                        decision === 'accept' && 'border-green-200 bg-green-50/30',
-                        decision === 'cautious' && 'border-amber-200 bg-amber-50/30',
-                        decision === 'reject' && 'border-red-200 bg-red-50/30 opacity-60',
+                        decision === 'accept' && 'border-success/20 bg-success/5',
+                        decision === 'cautious' && 'border-warning/20 bg-warning/5',
+                        decision === 'reject' && 'border-destructive/20 bg-destructive/5 opacity-60',
                         !decision && 'border-border bg-background'
                       )}
                     >
@@ -245,9 +245,9 @@ export const RefineSearchModal: React.FC<RefineSearchModalProps> = ({
                                 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all',
                                 isSelected
                                   ? cn(opt.className, 'ring-1 ring-offset-1', 
-                                      opt.value === 'accept' && 'ring-green-400',
-                                      opt.value === 'cautious' && 'ring-amber-400',
-                                      opt.value === 'reject' && 'ring-red-400')
+                                      opt.value === 'accept' && 'ring-success',
+                                      opt.value === 'cautious' && 'ring-warning',
+                                      opt.value === 'reject' && 'ring-destructive')
                                   : 'border-border bg-background text-muted-foreground hover:bg-accent/50'
                               )}
                             >

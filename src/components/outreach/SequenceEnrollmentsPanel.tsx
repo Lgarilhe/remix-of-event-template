@@ -130,13 +130,13 @@ const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wai
 
 const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
   send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
-  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
+  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
+  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
   visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
   smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-700', bgColor: 'bg-indigo-500' },
   profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-emerald-700', bgColor: 'bg-emerald-500' },
-  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-blue-700', bgColor: 'bg-blue-500' },
+  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
+  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
   inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
 };
 

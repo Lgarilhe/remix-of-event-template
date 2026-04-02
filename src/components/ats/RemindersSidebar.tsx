@@ -199,7 +199,7 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
                         </Badge>
                         
                         {isCompleted && (
-                          <Badge variant="outline" className="text-xs px-1.5 py-0 text-green-600">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 text-success">
                             <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
                             Terminé
                           </Badge>
