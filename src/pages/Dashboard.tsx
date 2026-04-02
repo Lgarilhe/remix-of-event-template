@@ -34,21 +34,6 @@ export default function Dashboard() {
                 <img src={iconDashboard3d} alt="" aria-hidden="true" className="w-8 h-8 object-contain" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
-              {orgType && (
-                <span className="text-xs text-muted-foreground border border-border px-2 py-0.5 font-medium hidden sm:inline">
-                  {getOrgTypeEmoji(orgType)} {getOrgTypeLabel(orgType)}
-                </span>
-              )}
-              {isFromCache && !isFetching && (
-                <span className="text-xs text-muted-foreground border border-border px-1.5 py-0.5 font-medium hidden sm:inline">
-                  Cache
-                </span>
-              )}
-              {isFetching && !loading && (
-                <span className="text-xs text-muted-foreground border border-border px-1.5 py-0.5 font-medium animate-pulse hidden sm:inline">
-                  Sync...
-                </span>
-              )}
             </div>
 
             <button
