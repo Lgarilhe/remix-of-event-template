@@ -718,7 +718,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
           isOpen={openSections.company}
           onToggle={() => toggleSection('company')}
           activeFiltersPreview={companyFiltersPreview}
-          bgColorClass="bg-emerald-50/40"
+          bgColorClass="bg-success/5"
         >
           {/* Smart filters — company type */}
           <FilterGroup title="Filtres intelligents">

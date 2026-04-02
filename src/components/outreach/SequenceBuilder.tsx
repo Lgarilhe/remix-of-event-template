@@ -752,7 +752,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     {!hasVariants && (
                       <>
                         {isWhatsAppStep(step.actionType) && (
-                          <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded">
+                          <div className="flex items-start gap-2 p-3 bg-success/10 border border-emerald-500/30 text-emerald-400 text-xs rounded">
                             📱 Message WhatsApp. Les candidats sans numéro seront skippés.
                           </div>
                         )}
@@ -1001,7 +1001,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
             />
             {/* Daily limit warnings */}
             {sequence.multiSenderEnabled && sequence.senderAccounts && sequence.senderAccounts.some(s => s.daily_limit > 80) && (
-              <div className="p-3 border border-amber-500/30 bg-amber-50 text-amber-800 text-xs">
+              <div className="p-3 border border-amber-500/30 bg-warning/10 text-amber-400 text-xs">
                 <div className="flex items-center gap-2 font-medium mb-1"><Shield className="w-3.5 h-3.5" />Limites élevées détectées</div>
                 <p>Un ou plusieurs senders ont une limite quotidienne &gt; 80. Cela peut compromettre la sécurité de vos comptes LinkedIn. Nous recommandons 30-50 actions/jour pour les comptes récents, 50-80 pour les comptes établis.</p>
               </div>

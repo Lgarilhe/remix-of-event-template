@@ -51,8 +51,8 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
         unsupported={!isFilterSupported(filters.api, 'open_to_work')}
         unsupportedTooltip={getFilterTooltip(filters.api, 'open_to_work')}
       >
-        <div className={`flex items-center justify-between p-2 bg-green-50 rounded-lg ${!isFilterSupported(filters.api, 'open_to_work') ? 'opacity-50' : ''}`}>
-          <span className="text-sm text-green-800">Profils Open to Work uniquement</span>
+        <div className={`flex items-center justify-between p-2 bg-success/10 rounded-lg ${!isFilterSupported(filters.api, 'open_to_work') ? 'opacity-50' : ''}`}>
+          <span className="text-sm text-green-400">Profils Open to Work uniquement</span>
           <Switch
             checked={filters.open_to_work === true}
             onCheckedChange={(checked) =>
@@ -173,7 +173,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
               })}
               disabled={!isFilterSupported(filters.api, 'activity')}
             >
-              <SelectTrigger className="text-sm h-8 bg-purple-50 border-purple-200">
+              <SelectTrigger className="text-sm h-8 bg-brand-purple/10 border-purple-800">
                 <SelectValue placeholder="Période..." />
               </SelectTrigger>
               <SelectContent>
@@ -225,7 +225,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
               })}
               disabled={!isFilterSupported(filters.api, 'activity')}
             >
-              <SelectTrigger className="text-sm h-8 bg-purple-50 border-purple-200">
+              <SelectTrigger className="text-sm h-8 bg-brand-purple/10 border-purple-800">
                 <SelectValue placeholder="Période..." />
               </SelectTrigger>
               <SelectContent>

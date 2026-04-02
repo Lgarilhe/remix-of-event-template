@@ -457,7 +457,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 highTier.forEach(id => onToggleProfileSelection(id));
                 toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
               }}
-              className="h-6 px-2 text-xs gap-1 text-emerald-700 hover:bg-emerald-50 shrink-0"
+              className="h-6 px-2 text-xs gap-1 text-emerald-400 hover:bg-success/10 shrink-0"
               disabled={scoringInProgress}
             >
               <Sparkles className="w-3 h-3" />
