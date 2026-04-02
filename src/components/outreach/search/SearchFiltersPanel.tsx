@@ -5,7 +5,7 @@ import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
 import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
-import { FilterPresetsManager } from '@/components/outreach/FilterPresetsManager';
+
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
