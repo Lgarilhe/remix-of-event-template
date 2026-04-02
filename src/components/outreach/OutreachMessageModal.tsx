@@ -574,10 +574,10 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
                     onClick={handleSendMessage}
                     disabled={sending || messageSent}
                     size="lg"
-                    className={`flex-1 h-11 font-bold rounded-lg border transition-all text-sm ${
+                    className={`flex-1 h-11 font-semibold rounded-lg border transition-all text-sm ${
                       messageSent
                         ? 'bg-success text-success-foreground border-success'
-                        : 'bg-foreground text-background border-border shadow-sm hover:bg-foreground/90'
+                        : 'bg-primary text-primary-foreground border-primary shadow-sm hover:bg-primary/90'
                     }`}
                   >
                     {messageSent ? (
