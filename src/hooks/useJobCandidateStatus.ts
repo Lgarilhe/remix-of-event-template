@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
@@ -40,6 +41,7 @@ export function useJobCandidateStatus(jobId: string | null) {
   const { statuses, dismissedIds, treatedIds } = statusState;
   const [loading, setLoading] = useState(false);
   const { organizationId } = useOrganization();
+  const { isReady, user } = useAuthReady();
 
   // Helper setters that update individual parts of the batched state
   const setStatuses = useCallback((updater: Map<string, JobCandidateStatus> | ((prev: Map<string, JobCandidateStatus>) => Map<string, JobCandidateStatus>)) => {
@@ -70,14 +72,17 @@ export function useJobCandidateStatus(jobId: string | null) {
       return;
     }
 
+    if (!isReady) {
+      return;
+    }
+
+    if (!user?.id) {
+      setStatusState(EMPTY_STATUS_STATE);
+      return;
+    }
+
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setStatusState(EMPTY_STATUS_STATE);
-        return;
-      }
-
       // Phase 1: lightweight fetch (no linkedin_profile_data)
       const LIGHT_COLUMNS = 'id,job_id,candidate_id,linkedin_profile_url,candidate_name,candidate_headline,status,score,recommendation,skip_reason,created_by,created_at,updated_at,scoring_details,tags,pipeline_stage,project_id,notion_candidate_id,notion_shortlist_id,notion_synced_at,organization_id';
       const allData: any[] = [];
@@ -163,7 +168,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, isReady, user?.id]);
 
   // Load statuses when job changes
   useEffect(() => {
