@@ -1,6 +1,7 @@
 import React from 'react';
 import { SEOHead } from '@/components/SEOHead';
 import { ProjectsList } from '@/components/outreach/projects';
+import { AnimatedCompass } from '@/components/ui/AnimatedCompass';
 
 // ═══ Types exportés — utilisés par d'autres composants, NE PAS SUPPRIMER ═══
 
