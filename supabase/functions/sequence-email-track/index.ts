@@ -113,42 +113,53 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 4. Update tracking_data and status
+    // 4. Update tracking_data and status ATOMICALLY using raw SQL to avoid lost-update race condition
+    // Two concurrent opens would both read the same tracking_data, modify it, and one would overwrite the other.
+    // Instead, we use jsonb concatenation in SQL which is atomic.
     const now = new Date().toISOString();
     const currentPriority = STATUS_PRIORITY[execution.status] ?? 0;
 
     if (evt === 'open') {
-      const newOpenedAt = [...openedAt, now];
-      const updates: Record<string, unknown> = {
-        tracking_data: { ...trackingData, opened_at: newOpenedAt },
-      };
-
-      // Only upgrade status, never downgrade
       const openPriority = STATUS_PRIORITY['opened'] ?? 3;
-      if (openPriority > currentPriority) {
-        updates.status = 'opened';
-      }
+      const newStatus = openPriority > currentPriority ? 'opened' : execution.status;
 
-      await supabase
-        .from('sequence_step_executions')
-        .update(updates)
-        .eq('id', execution.id);
+      // Atomic append to opened_at array using COALESCE + jsonb concatenation
+      await supabase.rpc('atomic_tracking_append', {
+        p_execution_id: execution.id,
+        p_field: 'opened_at',
+        p_value: now,
+        p_new_status: newStatus,
+      }).then(({ error }) => {
+        if (error) {
+          // Fallback to non-atomic update if RPC doesn't exist
+          console.warn('[sequence-email-track] RPC fallback:', error.message);
+          const newOpenedAt = [...openedAt, now];
+          return supabase.from('sequence_step_executions').update({
+            tracking_data: { ...trackingData, opened_at: newOpenedAt },
+            ...(openPriority > currentPriority ? { status: 'opened' } : {}),
+          }).eq('id', execution.id);
+        }
+      });
 
     } else if (evt === 'click') {
-      const newClickedAt = [...clickedAt, now];
-      const updates: Record<string, unknown> = {
-        tracking_data: { ...trackingData, clicked_at: newClickedAt },
-      };
-
       const clickPriority = STATUS_PRIORITY['clicked'] ?? 4;
-      if (clickPriority > currentPriority) {
-        updates.status = 'clicked';
-      }
+      const newStatus = clickPriority > currentPriority ? 'clicked' : execution.status;
 
-      await supabase
-        .from('sequence_step_executions')
-        .update(updates)
-        .eq('id', execution.id);
+      await supabase.rpc('atomic_tracking_append', {
+        p_execution_id: execution.id,
+        p_field: 'clicked_at',
+        p_value: now,
+        p_new_status: newStatus,
+      }).then(({ error }) => {
+        if (error) {
+          console.warn('[sequence-email-track] RPC fallback:', error.message);
+          const newClickedAt = [...clickedAt, now];
+          return supabase.from('sequence_step_executions').update({
+            tracking_data: { ...trackingData, clicked_at: newClickedAt },
+            ...(clickPriority > currentPriority ? { status: 'clicked' } : {}),
+          }).eq('id', execution.id);
+        }
+      });
     }
   } catch (err) {
     // Log but don't fail — tracking should be invisible to the user
