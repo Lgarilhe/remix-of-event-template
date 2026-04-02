@@ -74,13 +74,13 @@ const ACTION_LABELS: Record<string, string> = {
   condition_branch: 'Condition',
 };
 
-const CHANNEL_COLORS: Record<string, string> = {
-  email: 'bg-info/10 text-info-foreground border-info/20',
-  message: 'bg-info/10 text-sky-700 border-sky-200',
-  smart_message: 'bg-info/10 text-sky-700 border-sky-200',
-  inmail: 'bg-brand-purple/10 text-indigo-700 border-indigo-200',
-  connection_request: 'bg-brand-purple/10 text-violet-700 border-violet-200',
-  whatsapp_message: 'bg-success/10 text-green-700 border-green-200',
+const CHANNEL_COLORS: Record<string, { header: string; border: string }> = {
+  email: { header: 'text-info-foreground', border: 'border-border' },
+  message: { header: 'text-sky-600 dark:text-sky-400', border: 'border-border' },
+  smart_message: { header: 'text-sky-600 dark:text-sky-400', border: 'border-border' },
+  inmail: { header: 'text-indigo-600 dark:text-indigo-400', border: 'border-border' },
+  connection_request: { header: 'text-violet-600 dark:text-violet-400', border: 'border-border' },
+  whatsapp_message: { header: 'text-green-600 dark:text-green-400', border: 'border-border' },
 };
 
 function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
