@@ -405,21 +405,21 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-lg border border-border shadow-md">
-        {/* Header — clean style */}
-        <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-muted/30">
-          <DialogHeader className="space-y-2">
-            <DialogTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-foreground tracking-tight">
-              <div className="w-8 h-8 bg-foreground flex items-center justify-center shrink-0">
-                <MessageSquare className="w-4 h-4 text-background" />
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-xl border border-border shadow-lg">
+        {/* Header */}
+        <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-background">
+          <DialogHeader className="space-y-1.5">
+            <DialogTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-foreground">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-4 h-4 text-primary" />
               </div>
               <span className="truncate">Message pour {fullName}</span>
             </DialogTitle>
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{job.title}</span>
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground pl-[42px]">
+              <span className="font-medium text-foreground/80">{job.title}</span>
               {job.client?.name && (
                 <>
-                  <span className="text-muted-foreground/40">—</span>
+                  <span className="text-muted-foreground/40">·</span>
                   <span>{job.client.name}</span>
                 </>
               )}
