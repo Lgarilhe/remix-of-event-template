@@ -394,6 +394,16 @@ Retourne UNIQUEMENT un objet JSON avec:
 - experience_rationale: string - Explication de la plage d'expérience (1 phrase)
 - search_rationale: string - Stratégie globale en 1 phrase (mentionner Role/Work/Context)
 
+=== POWER FILTERS (OBLIGATOIRE) ===
+En plus des filtres de base, tu DOIS retourner ces champs avancés:
+- tenure_at_role_max: number|null - Durée MAX dans le poste actuel en années. Si le recruteur cherche des profils "prêts à bouger", mettre 2-3 ans (les gens restent en moyenne 2.5 ans). Si le poste nécessite de la stabilité (management), mettre null.
+- company_category: "startup"|"scaleup"|"enterprise"|null - Type d'entreprise cible. Déduis du contexte: startup funded, scale-up en croissance, grand groupe, ou null si pas de préférence.
+- exclude_consulting: boolean - true si le poste est chez un client final (pas ESN/SSII). false par défaut. Déduis du contexte.
+- feeder_companies: string[] - Entreprises "pépinières" où trouver ce type de profil (max 8). Exemples: pour un SRE → ["Datadog", "OVH", "Scaleway", "HashiCorp"]. Pour un PM → ["Google", "Meta", "Doctolib", "Alan"].
+- seniority_levels: string[] - Niveaux de séniorité LinkedIn à cibler. Valeurs: "entry", "senior", "manager", "director", "vp", "c_suite", "owner". Déduis du titre + expérience.
+- expanded_titles: string[] - Titres de poste ALTERNATIFS que l'IA recommande d'ajouter (max 6). Expansion intelligente basée sur le contexte. Ex: "SRE" → ["Platform Engineer", "Cloud Engineer", "Infrastructure Engineer", "DevOps Lead"].
+- likely_to_switch_signals: string[] - Signaux que le candidat est ouvert au changement (pour le scoring, pas le filtrage). Ex: ["tenure courte au poste actuel", "promotion récente", "entreprise en restructuration"].
+
 === SUGGESTIONS D'AFFINAGE (OBLIGATOIRE) ===
 En plus des filtres, tu DOIS retourner un objet "suggestions" avec des alternatives que l'utilisateur peut ajouter en un clic pour affiner sa recherche:
 - alt_skills: string[] - Technologies/compétences ALTERNATIVES non incluses dans les filtres principaux mais pertinentes (max 8). Ex: si le filtre a "Kubernetes", suggérer "Docker", "Helm", "Rancher"
@@ -751,6 +761,15 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
           alt_locations: parsed.alt_locations || [],
           alt_companies: parsed.alt_companies || [],
           alt_certifications: parsed.alt_certifications || [],
+        },
+        power_filters: {
+          tenure_at_role_max: parsed.tenure_at_role_max ?? null,
+          company_category: parsed.company_category || null,
+          exclude_consulting: parsed.exclude_consulting === true,
+          feeder_companies: parsed.feeder_companies || [],
+          seniority_levels: parsed.seniority_levels || [],
+          expanded_titles: parsed.expanded_titles || [],
+          likely_to_switch_signals: parsed.likely_to_switch_signals || [],
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

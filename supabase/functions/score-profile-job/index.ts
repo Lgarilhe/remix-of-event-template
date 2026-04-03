@@ -108,6 +108,9 @@ interface ScoringResult {
   pedigreeScore?: number | null;
   notableCompanies?: string[] | null;
   criteriaEvaluations?: Array<{ label: string; verdict: string; reason: string }>;
+  likelyToSwitchScore?: number | null;
+  careerGrowthScore?: number | null;
+  switchSignals?: string[];
   finalScore: number;
   confidenceScore: number;
   dimensions: Record<string, DimensionScore>;
@@ -957,6 +960,9 @@ interface LLMResult {
   mustHaveUncertain: boolean;
   mustHaveDetails: string | null;
   criteriaEvaluations: Array<{ label: string; verdict: string; reason: string }>;
+  likelyToSwitchScore: number | null;
+  careerGrowthScore: number | null;
+  switchSignals: string[];
   tokensUsed: { input: number; output: number };
 }
 
@@ -1080,10 +1086,27 @@ ${workExpText}
 7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste. Intègre la qualité du pedigree dans le score global — un candidat avec les bonnes compétences ET un parcours dans des boîtes exigeantes mérite un score supérieur à un profil équivalent dans des ESN.
 
 8. **Évaluation des critères du manager** : Si des critères d'évaluation sont fournis dans "Détails" (section CRITÈRES D'ÉVALUATION DU MANAGER), évalue CHAQUE critère individuellement. Pour chaque critère, donne un verdict ("pass", "partial", "fail", "unknown") et une justification courte (max 20 mots). Respecte les deal-breakers et les poids.
+
+9. **Likely to Switch** (0-100) : Évalue la probabilité que le candidat soit ouvert au changement. Signaux:
+   → Tenure courte au poste actuel (< 2 ans) = +20
+   → Promotion récente sans augmentation visible de scope = +15
+   → Pattern de changement tous les 2-3 ans = +15
+   → Entreprise en restructuration/layoffs = +20
+   → Open to Work activé sur LinkedIn = +30
+   → Longue tenure (5+ ans au même poste) = -20
+   → Retourne un score 0-100 et les signaux détectés.
+
+10. **Career Growth** (0-100) : Évalue la trajectoire de progression du candidat:
+   → Promotions visibles (Junior→Senior, IC→Lead, etc.) = +30
+   → Entreprises de plus en plus prestigieuses = +20
+   → Montée en séniorité constante = +20
+   → Reconversion réussie = +15
+   → Stagnation (même titre/niveau 5+ ans) = -20
+   → Retourne un score 0-100.
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
-{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3"],"criteriaEvaluations":[{"label":"nom du critère","verdict":"pass","reason":"justification courte"}]}
+{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3"],"criteriaEvaluations":[{"label":"nom du critère","verdict":"pass","reason":"justification courte"}],"switchSignals":["signal1"]}
 pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "failed" / "uncertain". criteriaEvaluations: évaluation de chaque critère du manager si fournis, sinon [].`,
   );
 
@@ -1151,6 +1174,9 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
     mustHaveUncertain: parsed.mustHavePassed === "uncertain",
     mustHaveDetails: parsed.mustHaveDetails || null,
     criteriaEvaluations: Array.isArray(parsed.criteriaEvaluations) ? parsed.criteriaEvaluations : [],
+    likelyToSwitchScore: typeof parsed.likelyToSwitchScore === 'number' ? parsed.likelyToSwitchScore : null,
+    careerGrowthScore: typeof parsed.careerGrowthScore === 'number' ? parsed.careerGrowthScore : null,
+    switchSignals: Array.isArray(parsed.switchSignals) ? parsed.switchSignals : [],
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
       output: data.usage?.output_tokens || 0,
@@ -1239,7 +1265,7 @@ ${profileSections}
 Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-100), pedigree (0-100), score global (0-100), must-have ("passed"/"failed"/"uncertain").
 
 Réponds UNIQUEMENT avec un JSON ARRAY, un objet par candidat dans l'ORDRE, format :
-[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"],"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif courte"}]}]
+[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"],"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif courte"}],"switchSignals":["signal1"]}]
 verdict: "pass"/"partial"/"fail"/"unknown". criteriaEvaluations: évalue chaque critère du manager si fournis dans le contexte du poste, sinon [].
 JSON uniquement, sans markdown.`;
 
@@ -1369,6 +1395,9 @@ JSON uniquement, sans markdown.`;
       mustHaveUncertain: parsed.mustHavePassed === "uncertain",
       mustHaveDetails: parsed.mustHaveDetails || null,
       criteriaEvaluations: Array.isArray(parsed.criteriaEvaluations) ? parsed.criteriaEvaluations : [],
+    likelyToSwitchScore: typeof parsed.likelyToSwitchScore === 'number' ? parsed.likelyToSwitchScore : null,
+    careerGrowthScore: typeof parsed.careerGrowthScore === 'number' ? parsed.careerGrowthScore : null,
+    switchSignals: Array.isArray(parsed.switchSignals) ? parsed.switchSignals : [],
       tokensUsed: tokensPerProfile,
     });
   }
@@ -2232,6 +2261,9 @@ Deno.serve(async (req) => {
         dataCompleteness: weighted.dataCompleteness,
         missingDataPoints: weighted.missingDataPoints,
         criteriaEvaluations: llmResult?.criteriaEvaluations || [],
+        likelyToSwitchScore: llmResult?.likelyToSwitchScore ?? null,
+        careerGrowthScore: llmResult?.careerGrowthScore ?? null,
+        switchSignals: llmResult?.switchSignals || [],
         skippedLLM: llmResult === null,
         processingTimeMs: Date.now() - ps.startTime,
         tokensUsed: llmResult?.tokensUsed ?? null,

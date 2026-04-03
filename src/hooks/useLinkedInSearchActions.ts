@@ -471,6 +471,30 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     if (filters.db_revenue_max) baseParams.db_revenue_max = filters.db_revenue_max;
     if (filters.db_funding_stage) baseParams.db_funding_stage = filters.db_funding_stage;
     if (filters.db_company_domain) baseParams.db_company_domain = filters.db_company_domain;
+
+    // Hiring velocity (org job count)
+    if (filters.db_org_num_jobs_min) baseParams.db_org_num_jobs_min = Number(filters.db_org_num_jobs_min);
+    if (filters.db_org_num_jobs_max) baseParams.db_org_num_jobs_max = Number(filters.db_org_num_jobs_max);
+  }
+
+  // Tenure at role (all API modes that support it)
+  if (filters.api === 'recruiter' || filters.api === 'database') {
+    if (filters.tenure_at_role_min != null) baseParams.tenure_at_role_min = filters.tenure_at_role_min;
+    if (filters.tenure_at_role_max != null) baseParams.tenure_at_role_max = filters.tenure_at_role_max;
+  }
+
+  // Past company (all modes)
+  if (filters.past_company?.length) {
+    baseParams.past_company = { include: filters.past_company.map(f => f.id) };
+  }
+
+  // Past job title (Recruiter + Sales Nav)
+  if ((filters.api === 'recruiter' || filters.api === 'sales_navigator') && filters.past_job_title?.length) {
+    baseParams.past_job_title = filters.past_job_title.map(item => ({
+      id: item.id,
+      name: item.name,
+      priority: item.priority,
+    }));
   }
 
   return baseParams;
