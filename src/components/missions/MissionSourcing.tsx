@@ -6,7 +6,8 @@ import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { countBriefFields } from '@/lib/missionUtils';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { useAgent } from '@/contexts/AgentContext';
+import { Sparkles, Loader2, Bot, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { JobDetails } from '@/types/jobDetails';
@@ -25,7 +26,27 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
   const showBriefToFiltersPrompt = hasBriefData && !hasFilters;
 
   const { updateProject } = useSourcingProjects();
+  const { openContextualAgent } = useAgent();
   const [isGeneratingFilters, setIsGeneratingFilters] = useState(false);
+
+  const handleOpenSearchAgent = useCallback(() => {
+    const jobTitle = jd.title || project.name || '';
+    const briefSummary = [
+      jd.title && `Poste : ${jd.title}`,
+      jd.client?.name && `Client : ${jd.client.name}`,
+      jd.location && `Localisation : ${jd.location}`,
+      jd.seniority && `Séniorité : ${jd.seniority}`,
+      jd.skills_must_have?.length && `Skills clés : ${jd.skills_must_have.join(', ')}`,
+      jd.experience_min != null && `Expérience : ${jd.experience_min}-${jd.experience_max ?? '?'} ans`,
+    ].filter(Boolean).join('\n');
+
+    openContextualAgent({
+      mode: 'sourcing',
+      briefContext: (project.job_details || {}) as Record<string, unknown>,
+      initialMessage: `Aide-moi à trouver des candidats pour "${jobTitle}".\n\nBrief :\n${briefSummary}`,
+      job: undefined,
+    });
+  }, [project, jd, openContextualAgent]);
 
   const handleGenerateFilters = useCallback(async () => {
     setIsGeneratingFilters(true);
@@ -122,6 +143,21 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
           </div>
         </div>
       )}
+
+      {/* AI Search Agent button */}
+      <div className="border-b border-border px-3 sm:px-4 py-2.5 flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Recherche par filtres ou via l'assistant IA conversationnel.
+        </p>
+        <button
+          onClick={handleOpenSearchAgent}
+          className="shrink-0 flex items-center gap-2 h-8 px-3 text-xs font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors rounded-md"
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Recherche IA</span>
+          <span className="sm:hidden">IA</span>
+        </button>
+      </div>
 
       {/* Search — suggestions are shown inline in SearchFiltersPanel */}
       <div className="p-2.5 sm:p-4">
