@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, Loader2, Plus, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
+import { X, Loader2, Plus, ChevronRight, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
 import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, LOCATION_SCOPE_OPTIONS } from './types';
+import { createPortal } from 'react-dom';
 
-// ===== Collapsible Section =====
+// ===== Filter Section (opens as fullscreen modal on click) =====
 interface FilterSectionProps {
   id: string;
   title: string;
@@ -23,7 +23,7 @@ interface FilterSectionProps {
   bgColorClass?: string;
 }
 
-export const FilterSection: React.FC<FilterSectionProps> = ({
+export const FilterSection: React.FC<FilterSectionProps> = React.memo(({
   id,
   title,
   icon,
@@ -33,51 +33,90 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
   onToggle,
   activeFiltersPreview,
   bgColorClass = '',
-}) => (
-  <Collapsible open={isOpen} onOpenChange={onToggle} className={`border-b border-border ${bgColorClass}`}>
-    <CollapsibleTrigger className="flex flex-col items-start w-full p-4 hover:bg-muted/50 transition-colors">
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
-          {badge !== undefined && badge > 0 && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
-              {badge}
-            </Badge>
-          )}
+}) => {
+  return (
+    <>
+      {/* Summary row — click to open modal */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`flex flex-col items-start w-full p-4 border-b border-border hover:bg-muted/50 transition-colors text-left ${bgColorClass}`}
+      >
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-2">
+            {icon}
+            <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
+            {badge !== undefined && badge > 0 && (
+              <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
+                {badge}
+              </Badge>
+            )}
+          </div>
+          <ChevronRight className="w-4 h-4 text-foreground/40" />
         </div>
-        <ChevronDown className={`w-4 h-4 text-foreground/40 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </div>
-      {/* Preview of active filters when collapsed */}
-      {!isOpen && activeFiltersPreview && activeFiltersPreview.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2 w-full">
-          {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
-             <Badge 
-              key={index} 
-              variant="outline" 
-              className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-border font-normal"
+        {activeFiltersPreview && activeFiltersPreview.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2 w-full">
+            {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
+              <Badge
+                key={index}
+                variant="outline"
+                className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-border font-normal"
+              >
+                {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
+              </Badge>
+            ))}
+            {activeFiltersPreview.length > 5 && (
+              <Badge
+                variant="outline"
+                className="text-xs h-5 px-1.5 bg-accent/50 text-foreground border-border font-normal"
+              >
+                +{activeFiltersPreview.length - 5}
+              </Badge>
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* Fullscreen modal via portal */}
+      {isOpen && createPortal(
+        <div className="fixed inset-0 z-[5500] flex flex-col bg-background pointer-events-auto">
+          {/* Header */}
+          <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              {icon}
+              <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
+              {badge !== undefined && badge > 0 && (
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
+                  {badge}
+                </Badge>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onToggle}
+              className="p-2 rounded-lg hover:bg-muted transition-colors"
             >
-              {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
-            </Badge>
-          ))}
-          {activeFiltersPreview.length > 5 && (
-            <Badge 
-              variant="outline" 
-              className="text-xs h-5 px-1.5 bg-accent/50 text-foreground border-border font-normal"
-            >
-              +{activeFiltersPreview.length - 5}
-            </Badge>
-          )}
-        </div>
+              <X className="w-5 h-5 text-foreground/60" />
+            </button>
+          </div>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="space-y-2">
+              {children}
+            </div>
+          </div>
+          {/* Footer */}
+          <div className="shrink-0 px-4 py-3 border-t border-border">
+            <Button onClick={onToggle} className="w-full">
+              Fermer
+            </Button>
+          </div>
+        </div>,
+        document.body
       )}
-    </CollapsibleTrigger>
-    <CollapsibleContent className="px-3 pb-3">
-      <div className="space-y-2">
-        {children}
-      </div>
-    </CollapsibleContent>
-  </Collapsible>
-);
+    </>
+  );
+});
 
 // ===== Filter Group =====
 interface FilterGroupProps {
