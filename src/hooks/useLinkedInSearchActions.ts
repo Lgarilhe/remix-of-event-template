@@ -188,19 +188,30 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
       if (schoolFilters.length > 0) {
         baseParams.school = schoolFilters;
       }
+    } else if (filters.api === 'database') {
+      // Database: send names (Apollo rejects numeric IDs)
+      baseParams.school = effectiveSchool.map(f => ({ id: f.id, name: f.name || f.id }));
     } else {
       baseParams.school = effectiveSchool.map(f => f.id);
     }
   }
 
-  // Industry
+  // Industry — send names for database mode (Apollo uses text tags, not LinkedIn IDs)
   if (filters.industry.length) {
-    baseParams.industry = { include: filters.industry.map(f => f.id) };
+    if (filters.api === 'database') {
+      baseParams.industry = filters.industry.map(f => f.name || f.id).filter(n => !/^\d+$/.test(n));
+    } else {
+      baseParams.industry = { include: filters.industry.map(f => f.id) };
+    }
   }
 
-  // Company
+  // Company — send names for database mode (Apollo searches by name, not LinkedIn IDs)
   if (filters.company.length) {
-    baseParams.company = { include: filters.company.map(f => f.id) };
+    if (filters.api === 'database') {
+      baseParams.company = filters.company.map(f => f.name || f.id).filter(n => !/^\d+$/.test(n));
+    } else {
+      baseParams.company = { include: filters.company.map(f => f.id) };
+    }
   }
 
   // Company keywords (Recruiter + Database)
@@ -248,13 +259,18 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
 
   // Company location (Sales Navigator)
   if (filters.company_location.length && filters.api === 'sales_navigator') {
-    baseParams.company_location = { include: filters.company_location.map(f => f.id) };
+    if (filters.api === 'database') {
+      baseParams.company_location = filters.company_location.map(f => ({ id: f.id, name: f.name || f.id }));
+    } else {
+      baseParams.company_location = { include: filters.company_location.map(f => f.id) };
+    }
   }
 
-  // Job title
+  // Job title — include name for database mode (Apollo rejects numeric IDs)
   if (filters.job_title.length) {
     baseParams.job_title = filters.job_title.map(item => ({
       id: item.id,
+      name: item.name || item.id,
       priority: item.priority,
     }));
   }
@@ -263,8 +279,12 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
   if (filters.skills.length) {
     baseParams.skills = filters.skills.map(item => {
       const isNumericId = Number.isFinite(Number(item.id)) && Number(item.id) > 0;
+      if (filters.api === 'database') {
+        // Database: always send name (Apollo rejects numeric IDs)
+        return { keywords: item.name || item.id, name: item.name || item.id, priority: item.priority };
+      }
       if (isNumericId) {
-        return { id: item.id, priority: item.priority };
+        return { id: item.id, name: item.name, priority: item.priority };
       }
       // Keywords-based: use the name field
       return { keywords: item.name || item.id, priority: item.priority };
