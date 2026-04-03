@@ -40,6 +40,7 @@ const AcceptMissionInvite = lazy(() => import("./pages/AcceptMissionInvite"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const PrivacyPage = lazy(() => import("./pages/Privacy"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
+const AgentsPage = lazy(() => import("./pages/Agents"));
 
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
 
@@ -147,6 +148,7 @@ const AppContent = () => {
           <Route path="/candidates" element={<ProtectedRoute><OrganizationGuard><AppLayout><Candidates /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/agents" element={<ProtectedRoute><OrganizationGuard><AppLayout><AgentsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><AppLayout><ATS /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           {/* Legacy redirects */}
