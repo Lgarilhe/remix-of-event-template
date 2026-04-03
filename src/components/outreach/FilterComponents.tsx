@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Checkbox } from '@/components/ui/checkbox';
 import { X, Loader2, Plus, ChevronRight, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
 import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, LOCATION_SCOPE_OPTIONS } from './types';
-import { createPortal } from 'react-dom';
+
 
 // ===== Filter Section (opens as fullscreen modal on click) =====
 interface FilterSectionProps {
@@ -76,14 +76,14 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
         )}
       </button>
 
-      {/* Fullscreen modal via portal */}
-      {isOpen && createPortal(
-        <div className="fixed inset-0 z-[49] flex flex-col bg-background pointer-events-auto">
+      {/* Expanded content — rendered inline (no portal needed, already inside a Dialog) */}
+      {isOpen && (
+        <div className="border border-border bg-background mb-2">
           {/* Header */}
-          <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
             <div className="flex items-center gap-2">
               {icon}
-              <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
+              <span className="text-xs font-semibold text-foreground uppercase tracking-wide">{title}</span>
               {badge !== undefined && badge > 0 && (
                 <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
                   {badge}
@@ -93,25 +93,18 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
             <button
               type="button"
               onClick={onToggle}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
             >
-              <X className="w-5 h-5 text-foreground/60" />
+              <X className="w-4 h-4 text-foreground/60" />
             </button>
           </div>
           {/* Content */}
-          <div className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="px-3 py-3">
             <div className="space-y-2">
               {children}
             </div>
           </div>
-          {/* Footer */}
-          <div className="shrink-0 px-4 py-3 border-t border-border">
-            <Button onClick={onToggle} className="w-full">
-              Fermer
-            </Button>
-          </div>
-        </div>,
-        document.body
+        </div>
       )}
     </>
 );
