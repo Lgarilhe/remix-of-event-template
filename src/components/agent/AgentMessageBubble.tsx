@@ -231,7 +231,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         {sampleProfiles.length > 0 && (
           <div className="space-y-2 mt-1">
             {sampleProfiles.map((p, i) => (
-              <SampleProfileCard key={i} profile={p} />
+              <SampleProfileCard key={i} profile={p} onSendFeedback={onSendFeedback} isBusy={isBusy} />
             ))}
           </div>
         )}
