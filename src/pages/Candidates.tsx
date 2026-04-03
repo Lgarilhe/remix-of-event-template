@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { User } from '@supabase/supabase-js';
 import { SEOHead } from '@/components/SEOHead';
 import { CandidateListView } from '@/components/candidates/CandidateListView';
 import { ShortlistSpace } from '@/components/candidates/ShortlistSpace';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { Users, Star, Loader2, Search, X } from 'lucide-react';
 import { useATSData, ATSCandidate } from '@/hooks/useATSData';
-import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-// Keep exported types for backward compatibility (used by other components)
+// Keep exported types for backward compatibility (used by ATS page, candidate components)
 export interface Candidate {
   id: string;
   name: string;
@@ -77,6 +74,9 @@ const SPACES = [
 
 type SpaceType = typeof SPACES[number]['value'];
 
+/** Shortlist stage keys — candidates at these stages appear in the shortlist */
+const SHORTLIST_STAGE_KEYS = new Set(['Pressenti', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné', 'Perdu']);
+
 export default function Candidates() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSpace = (searchParams.get('space') as SpaceType) || 'candidats';
@@ -86,25 +86,21 @@ export default function Candidates() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
 
-  // ATS candidates data
-  const { candidates, loading: atsLoading, isFetching, refetch, handleStageChange: atsStageChange, handleTagsChange } = useATSData();
+  // ATS candidates data (single source of truth)
+  const { candidates, loading: atsLoading, refetch, handleStageChange, handleTagsChange } = useATSData();
 
-  // Notion shortlist data
-  const { data: shortlistData = [], isLoading: shortlistLoading, error: shortlistError } = useNotionShortlist();
-  const { data: candidatesData = [] } = useNotionCandidates();
-  const [shortlist, setShortlist] = useState<ShortlistEntry[]>([]);
+  // Shortlist count for badge
+  const shortlistCount = React.useMemo(
+    () => candidates.filter(c => SHORTLIST_STAGE_KEYS.has(c.stage)).length,
+    [candidates]
+  );
 
-  useEffect(() => {
-    if (shortlistData.length > 0) setShortlist(shortlistData);
-  }, [shortlistData]);
-
-  // Update URL when space changes
   const switchSpace = (space: SpaceType) => {
     setActiveSpace(space);
     setSearchParams({ space });
   };
 
-  // Filter candidates by search
+  // Filter candidates by search (for candidats space)
   const filteredCandidates = React.useMemo(() => {
     if (!candidateSearch) return candidates;
     const s = candidateSearch.toLowerCase();
@@ -114,11 +110,6 @@ export default function Candidates() {
       c.jobTitle?.toLowerCase().includes(s)
     );
   }, [candidates, candidateSearch]);
-
-  // Shortlist stage change
-  const handleShortlistStageChange = (entryId: string, newStage: string) => {
-    setShortlist(prev => prev.map(entry => entry.id === entryId ? { ...entry, stage: newStage } : entry));
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,13 +127,13 @@ export default function Candidates() {
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Candidats</h1>
-              {(atsLoading || shortlistLoading) && (
+              {atsLoading && (
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               )}
             </div>
             <p className="text-xs sm:text-sm text-muted-foreground ml-10 sm:ml-[52px]">
               {candidates.length} candidat{candidates.length > 1 ? 's' : ''} en pipeline
-              {shortlist.length > 0 && ` • ${shortlist.length} en shortlist`}
+              {shortlistCount > 0 && ` · ${shortlistCount} en shortlist`}
             </p>
           </div>
 
@@ -151,7 +142,7 @@ export default function Candidates() {
             {SPACES.map((space, index) => {
               const Icon = space.icon;
               const isActive = activeSpace === space.value;
-              const count = space.value === 'candidats' ? candidates.length : shortlist.length;
+              const count = space.value === 'candidats' ? candidates.length : shortlistCount;
               return (
                 <button
                   key={space.value}
@@ -215,21 +206,22 @@ export default function Candidates() {
           {/* Shortlist space */}
           {activeSpace === 'shortlist' && (
             <ShortlistSpace
-              shortlist={shortlist}
-              loading={shortlistLoading}
-              error={shortlistError instanceof Error ? shortlistError : null}
-              onStageChange={handleShortlistStageChange}
+              candidates={candidates}
+              loading={atsLoading}
+              onStageChange={handleStageChange}
+              onTagsChange={handleTagsChange}
+              onRefresh={() => refetch()}
             />
           )}
         </div>
       </div>
 
-      {/* Candidate detail modal */}
-      {selectedCandidate && (
+      {/* Candidate detail modal (candidats space only) */}
+      {activeSpace === 'candidats' && selectedCandidate && (
         <CandidateDetailModal
           candidate={selectedCandidate}
           onClose={() => setSelectedCandidate(null)}
-          onStageChange={atsStageChange}
+          onStageChange={handleStageChange}
           onTagsChange={handleTagsChange}
           onRefresh={() => refetch()}
         />

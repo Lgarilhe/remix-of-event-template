@@ -1,96 +1,95 @@
 import React, { useState, useMemo } from 'react';
-import { ShortlistEntry, PIPELINE_STAGES } from '@/pages/Candidates';
-import { CandidatePipeline } from './CandidatePipeline';
-import { CandidateCard } from './CandidateCard';
-import { PipelineStats } from './PipelineStats';
-import { CandidateFilters } from './CandidateFilters';
-import { LayoutGrid, List, Loader2 } from 'lucide-react';
+import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
+import { CompanyLogo } from './CompanyLogo';
+import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { LayoutGrid, List, Loader2, Search, X, User, Star } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/EmptyState';
+import linkedinLogo from '@/assets/linkedin-logo.webp';
+
+/** Shortlist-worthy stages (advanced pipeline stages) */
+const SHORTLIST_STAGES = [
+  { key: 'Pressenti', label: 'Pressenti', color: 'bg-muted border-border' },
+  { key: 'Pré-qualif', label: 'Pré-qualif', color: 'bg-brand-cyan/10 border-brand-cyan/30' },
+  { key: 'CV envoyé', label: 'CV envoyé', color: 'bg-info/10 border-info/30' },
+  { key: 'ITW en cours', label: 'ITW en cours', color: 'bg-warning/10 border-warning/30' },
+  { key: 'Offre', label: 'Offre', color: 'bg-brand-purple/10 border-brand-purple/30' },
+  { key: 'Gagné', label: 'Gagné', color: 'bg-success/10 border-success/30' },
+  { key: 'Perdu', label: 'Perdu', color: 'bg-destructive/10 border-destructive/30' },
+];
+
+const SHORTLIST_STAGE_KEYS = new Set(SHORTLIST_STAGES.map(s => s.key));
 
 interface ShortlistSpaceProps {
-  shortlist: ShortlistEntry[];
+  candidates: ATSCandidate[];
   loading: boolean;
-  error: Error | null;
-  onStageChange: (entryId: string, newStage: string) => void;
+  onStageChange: (candidateId: string, newStage: string) => void;
+  onTagsChange?: (candidateId: string, tags: string[]) => void;
+  onRefresh: () => void;
+}
+
+/** Extract company name from headline */
+function extractCompany(headline: string | null): string | null {
+  if (!headline) return null;
+  for (const pattern of [/ at /i, / chez /i, / @ /i, / \| /i]) {
+    const parts = headline.split(pattern);
+    if (parts.length >= 2) return parts[parts.length - 1].trim();
+  }
+  const dashParts = headline.split(' - ');
+  if (dashParts.length >= 2) return dashParts[dashParts.length - 1].trim();
+  return null;
 }
 
 export const ShortlistSpace: React.FC<ShortlistSpaceProps> = ({
-  shortlist,
+  candidates,
   loading,
-  error,
   onStageChange,
+  onTagsChange,
+  onRefresh,
 }) => {
-  const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
-  const [filters, setFilters] = useState({
-    search: '',
-    stage: [] as string[],
-    expertise: [] as string[],
-    entity: [] as string[],
-    position: [] as string[],
-  });
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [search, setSearch] = useState('');
+  const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
 
-  const filterOptions = useMemo(() => {
-    const stages = new Set<string>();
-    const expertise = new Set<string>();
-    const entities = new Set<string>();
-    const positionsMap = new Map<string, string>();
-    shortlist.forEach(entry => {
-      if (entry.stage) stages.add(entry.stage);
-      if (entry.entity) entities.add(entry.entity);
-      entry.candidate?.expertise?.forEach(e => expertise.add(e));
-      entry.positions?.forEach(pos => { if (!positionsMap.has(pos.id)) positionsMap.set(pos.id, pos.name); });
-    });
-    return {
-      stages: Array.from(stages),
-      expertise: Array.from(expertise),
-      entities: Array.from(entities),
-      positions: Array.from(positionsMap.entries()).map(([id, name]) => ({ id, name })),
-    };
-  }, [shortlist]);
+  // Filter to shortlist-worthy stages
+  const shortlistCandidates = useMemo(() => {
+    return candidates.filter(c => SHORTLIST_STAGE_KEYS.has(c.stage));
+  }, [candidates]);
 
-  const filteredShortlist = useMemo(() => {
-    return shortlist.filter(entry => {
-      if (filters.search) {
-        const s = filters.search.toLowerCase();
-        if (
-          !entry.name?.toLowerCase().includes(s) &&
-          !entry.candidate?.name?.toLowerCase().includes(s) &&
-          !entry.candidate?.email?.toLowerCase().includes(s) &&
-          !entry.positions?.some(p => p.name.toLowerCase().includes(s))
-        ) return false;
-      }
-      if (filters.stage.length > 0 && entry.stage && !filters.stage.includes(entry.stage)) return false;
-      if (filters.entity.length > 0 && entry.entity && !filters.entity.includes(entry.entity)) return false;
-      if (filters.expertise.length > 0) {
-        const ce = entry.candidate?.expertise || [];
-        if (!filters.expertise.some(e => ce.includes(e))) return false;
-      }
-      if (filters.position.length > 0) {
-        const ep = entry.positions?.map(p => p.id) || [];
-        if (!filters.position.some(pid => ep.includes(pid))) return false;
-      }
-      return true;
-    });
-  }, [shortlist, filters]);
+  // Apply search filter
+  const filteredCandidates = useMemo(() => {
+    if (!search) return shortlistCandidates;
+    const s = search.toLowerCase();
+    return shortlistCandidates.filter(c =>
+      c.name?.toLowerCase().includes(s) ||
+      c.headline?.toLowerCase().includes(s) ||
+      c.jobTitle?.toLowerCase().includes(s)
+    );
+  }, [shortlistCandidates, search]);
 
-  const pipelineData = useMemo(() => {
-    const grouped: Record<string, ShortlistEntry[]> = {};
-    PIPELINE_STAGES.forEach(stage => { grouped[stage.key] = []; });
-    filteredShortlist.forEach(entry => {
-      const stage = entry.stage || 'Pressenti';
-      if (grouped[stage]) grouped[stage].push(entry);
-      else grouped['Pressenti'].push(entry);
+  // Group by stage for kanban
+  const kanbanData = useMemo(() => {
+    const grouped: Record<string, ATSCandidate[]> = {};
+    SHORTLIST_STAGES.forEach(stage => { grouped[stage.key] = []; });
+    filteredCandidates.forEach(c => {
+      if (grouped[c.stage]) grouped[c.stage].push(c);
     });
     return grouped;
-  }, [filteredShortlist]);
+  }, [filteredCandidates]);
+
+  // Stats
+  const totalShortlist = shortlistCandidates.length;
+  const wonCount = kanbanData['Gagné']?.length || 0;
+  const lostCount = kanbanData['Perdu']?.length || 0;
+  const activeCount = totalShortlist - wonCount - lostCount;
 
   const viewTabs = [
-    { value: 'pipeline' as const, label: 'Pipeline', icon: LayoutGrid },
+    { value: 'kanban' as const, label: 'Kanban', icon: LayoutGrid },
     { value: 'list' as const, label: 'Liste', icon: List },
   ];
 
-  if (loading && shortlist.length === 0) {
+  if (loading && candidates.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -98,22 +97,14 @@ export const ShortlistSpace: React.FC<ShortlistSpaceProps> = ({
     );
   }
 
-  if (error) {
-    return (
-      <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
-        <p className="text-destructive">{error.message}</p>
-      </div>
-    );
-  }
-
-  if (shortlist.length === 0) {
+  if (shortlistCandidates.length === 0 && !loading) {
     return (
       <EmptyState
-        icon={<LayoutGrid className="w-7 h-7" />}
-        title="Aucune shortlist"
-        description="Connectez Notion dans les paramètres pour synchroniser votre shortlist, ou ajoutez des candidats depuis le pipeline."
-        actionLabel="Paramètres"
-        actionHref="/settings?tab=integrations"
+        icon={<Star className="w-7 h-7" />}
+        title="Aucun candidat en shortlist"
+        description="Les candidats apparaissent ici lorsqu'ils atteignent les étapes avancées du pipeline (Pressenti, Pré-qualif, CV envoyé, etc.)."
+        actionLabel="Voir le pipeline"
+        actionHref="/pipeline"
       />
     );
   }
@@ -143,35 +134,189 @@ export const ShortlistSpace: React.FC<ShortlistSpaceProps> = ({
           })}
         </div>
 
-        <CandidateFilters
-          filters={filters}
-          onFiltersChange={setFilters}
-          options={filterOptions}
-        />
-      </div>
-
-      {/* Content */}
-      {viewMode === 'pipeline' ? (
-        <>
-          <PipelineStats data={pipelineData} stages={PIPELINE_STAGES} />
-          <CandidatePipeline
-            data={pipelineData}
-            stages={PIPELINE_STAGES}
-            onStageChange={onStageChange}
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 h-9 text-sm border-border"
           />
-        </>
-      ) : (
-        <div className="space-y-3">
-          {filteredShortlist.length === 0 ? (
-            <div className="bg-background border border-border p-12 text-center">
-              <p className="text-muted-foreground">Aucune candidature ne correspond à vos critères</p>
-            </div>
-          ) : (
-            filteredShortlist.map(entry => (
-              <CandidateCard key={entry.id} entry={entry} />
-            ))
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
+      </div>
+
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 gap-0 mb-4 border border-border bg-background">
+        <div className="p-3 border-r border-border">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-0.5">En cours</p>
+          <p className="text-xl font-bold text-foreground">{activeCount}</p>
+        </div>
+        <div className="p-3 border-r border-border bg-success/5">
+          <p className="text-xs text-success uppercase tracking-wider mb-0.5">Gagnés</p>
+          <p className="text-xl font-bold text-success">{wonCount}</p>
+        </div>
+        <div className="p-3 bg-destructive/5">
+          <p className="text-xs text-destructive uppercase tracking-wider mb-0.5">Perdus</p>
+          <p className="text-xl font-bold text-destructive">{lostCount}</p>
+        </div>
+      </div>
+
+      {/* Kanban view */}
+      {viewMode === 'kanban' && (
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {SHORTLIST_STAGES.map(stage => {
+            const stageCandidates = kanbanData[stage.key] || [];
+            return (
+              <div key={stage.key} className="min-w-[260px] w-[260px] shrink-0">
+                {/* Column header */}
+                <div className={cn("px-3 py-2 border border-border mb-2 flex items-center justify-between", stage.color)}>
+                  <span className="text-xs font-medium uppercase tracking-wider">{stage.label}</span>
+                  <span className="text-xs text-muted-foreground font-bold">{stageCandidates.length}</span>
+                </div>
+                {/* Cards */}
+                <div className="space-y-2">
+                  {stageCandidates.map(candidate => {
+                    const company = extractCompany(candidate.headline);
+                    return (
+                      <div
+                        key={candidate.id}
+                        className="bg-background border border-border p-3 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => setSelectedCandidate(candidate)}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center shrink-0 mt-0.5">
+                            <User className="w-3.5 h-3.5 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-medium text-foreground truncate">{candidate.name}</p>
+                              {candidate.linkedin && (
+                                <a
+                                  href={candidate.linkedin}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  className="shrink-0"
+                                >
+                                  <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 opacity-60 hover:opacity-100" />
+                                </a>
+                              )}
+                            </div>
+                            {company && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <CompanyLogo company={company} size="sm" />
+                                <span className="text-xs text-muted-foreground truncate">{company}</span>
+                              </div>
+                            )}
+                            {candidate.jobTitle && (
+                              <p className="text-[11px] text-muted-foreground/70 mt-1 truncate">
+                                {candidate.jobTitle}
+                              </p>
+                            )}
+                            {candidate.score != null && (
+                              <div className="mt-1.5 flex items-center gap-1">
+                                <div className="h-1 flex-1 bg-muted overflow-hidden border border-border">
+                                  <div
+                                    className={cn(
+                                      "h-full transition-all",
+                                      candidate.score >= 70 ? "bg-success" : candidate.score >= 40 ? "bg-warning" : "bg-destructive"
+                                    )}
+                                    style={{ width: `${candidate.score}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-bold text-muted-foreground">{candidate.score}%</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {stageCandidates.length === 0 && (
+                    <div className="border border-dashed border-border p-4 text-center">
+                      <p className="text-xs text-muted-foreground">Aucun candidat</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* List view */}
+      {viewMode === 'list' && (
+        <div className="border border-border bg-background divide-y divide-border">
+          {filteredCandidates.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-muted-foreground text-sm">Aucun candidat ne correspond à vos critères</p>
+            </div>
+          ) : (
+            filteredCandidates.map(candidate => {
+              const company = extractCompany(candidate.headline);
+              return (
+                <div
+                  key={candidate.id}
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-accent/30 transition-colors cursor-pointer"
+                  onClick={() => setSelectedCandidate(candidate)}
+                >
+                  <div className="w-8 h-8 rounded-full bg-muted border border-border flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground truncate">{candidate.name}</p>
+                      {candidate.linkedin && (
+                        <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="shrink-0">
+                          <img src={linkedinLogo} alt="LinkedIn" className="w-3.5 h-3.5 opacity-60 hover:opacity-100" />
+                        </a>
+                      )}
+                    </div>
+                    {candidate.headline && (
+                      <p className="text-xs text-muted-foreground truncate">{candidate.headline}</p>
+                    )}
+                  </div>
+                  {company && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <CompanyLogo company={company} size="sm" />
+                      <span className="text-sm text-foreground max-w-[150px] truncate hidden sm:block">{company}</span>
+                    </div>
+                  )}
+                  <span className="inline-block text-xs px-2 py-1 bg-muted text-muted-foreground border border-border shrink-0">
+                    {candidate.stage}
+                  </span>
+                  {candidate.score != null && (
+                    <span className={cn(
+                      "text-xs font-bold shrink-0",
+                      candidate.score >= 70 ? "text-success" : candidate.score >= 40 ? "text-warning" : "text-destructive"
+                    )}>
+                      {candidate.score}%
+                    </span>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* Detail modal */}
+      {selectedCandidate && (
+        <CandidateDetailModal
+          candidate={selectedCandidate}
+          onClose={() => setSelectedCandidate(null)}
+          onStageChange={onStageChange}
+          onTagsChange={onTagsChange}
+          onRefresh={onRefresh}
+        />
       )}
     </div>
   );
