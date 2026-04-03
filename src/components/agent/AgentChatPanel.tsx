@@ -424,7 +424,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           </div>
         ) : (
           messages.map((msg) => (
-            <AgentMessageBubble key={msg.id} message={msg} />
+            <AgentMessageBubble key={msg.id} message={msg} onSendFeedback={handleSend} isBusy={sending} />
           ))
         )}
 
