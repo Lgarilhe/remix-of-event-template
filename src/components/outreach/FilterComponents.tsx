@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Checkbox } from '@/components/ui/checkbox';
 import { X, Loader2, Plus, ChevronRight, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
 import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, LOCATION_SCOPE_OPTIONS } from './types';
-import { createPortal } from 'react-dom';
+
 
 // ===== Filter Section (opens as fullscreen modal on click) =====
 interface FilterSectionProps {
