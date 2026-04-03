@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* cache-bust: v2 */
 
 /* Skalr Design System — Qonto-inspired dark-first theme.
    All colors MUST be HSL.
