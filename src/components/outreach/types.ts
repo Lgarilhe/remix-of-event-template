@@ -176,6 +176,15 @@ export interface LinkedInFiltersState {
   db_org_job_titles: string;             // Job titles open at employer
   db_org_num_jobs_min: string;           // Min open positions
   db_org_num_jobs_max: string;           // Max open positions
+
+  // ── Apollo advanced filters ──
+  db_tech_must_have_all: string[];       // Technologies AND mode (all must match)
+  db_tech_exclude: string[];             // Technologies to exclude
+  db_org_job_locations: string[];        // Where the company is hiring
+  db_latest_funding_date_min: string;    // Latest funding after this date (YYYY-MM-DD)
+  db_total_funding_min: string;          // Total funding raised min (e.g. "1000000")
+  db_total_funding_max: string;          // Total funding raised max
+  db_org_not_locations: string[];        // Exclude company HQ locations
 }
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
@@ -241,6 +250,13 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   db_org_job_titles: '',
   db_org_num_jobs_min: '',
   db_org_num_jobs_max: '',
+  db_tech_must_have_all: [],
+  db_tech_exclude: [],
+  db_org_job_locations: [],
+  db_latest_funding_date_min: '',
+  db_total_funding_min: '',
+  db_total_funding_max: '',
+  db_org_not_locations: [],
 };
 
 // Predefined day ranges for activity filters
