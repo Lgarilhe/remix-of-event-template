@@ -166,6 +166,20 @@ export interface LinkedInFiltersState {
   activity_notes_days: number | null;      // Since X days (null = all time)
   tags: string[];                          // Tag IDs
 
+  // ── LinkedIn signal filters (Sales Nav / Recruiter) ──
+  changed_jobs: boolean | null;            // Sales Nav: recently changed jobs (Likely to Switch!)
+  posted_on_linkedin: boolean | null;      // Sales Nav: recently posted (active = responsive)
+  following_your_company: boolean | null;  // Sales Nav: following your company
+  viewed_your_profile: boolean | null;     // Sales Nav: viewed your profile recently
+  past_colleague: boolean | null;          // Sales Nav: past colleague
+  employment_type: string[];               // Recruiter PRO: FULL_TIME, PART_TIME, CONTRACT, INTERNSHIP
+  spoken_languages: Array<{ language: string; priority: string; scope: string }>; // Recruiter PRO
+  recently_joined_min: number | null;      // Recruiter: recently joined LinkedIn (min days)
+  recently_joined_max: number | null;      // Recruiter: recently joined LinkedIn (max days)
+  graduation_year_min: number | null;      // Recruiter: graduation year min
+  graduation_year_max: number | null;      // Recruiter: graduation year max
+  hide_previously_viewed: number | null;   // Recruiter: hide viewed in last N days
+
   // ── Base Konekt (database) only ──
   db_technologies: string[];              // Multi-select free text
   db_email_verified: boolean | null;      // Toggle: null = indifferent
@@ -240,6 +254,19 @@ export const INITIAL_FILTERS: LinkedInFiltersState = {
   activity_notes: null,
   activity_notes_days: null,
   tags: [],
+  // LinkedIn signal filters
+  changed_jobs: null,
+  posted_on_linkedin: null,
+  following_your_company: null,
+  viewed_your_profile: null,
+  past_colleague: null,
+  employment_type: [],
+  spoken_languages: [],
+  recently_joined_min: null,
+  recently_joined_max: null,
+  graduation_year_min: null,
+  graduation_year_max: null,
+  hide_previously_viewed: null,
   // Base Konekt defaults
   db_technologies: [],
   db_email_verified: null,

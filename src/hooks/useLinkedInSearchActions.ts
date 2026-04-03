@@ -492,6 +492,43 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     if (filters.tenure_at_role_max != null) baseParams.tenure_at_role_max = filters.tenure_at_role_max;
   }
 
+  // ── Sales Navigator signal filters ──
+  if (filters.api === 'sales_navigator') {
+    if (filters.changed_jobs === true) baseParams.changed_jobs = true;
+    if (filters.posted_on_linkedin === true) baseParams.posted_on_linkedin = true;
+    if (filters.following_your_company === true) baseParams.following_your_company = true;
+    if (filters.viewed_your_profile === true) baseParams.viewed_your_profile_recently = true;
+    if (filters.past_colleague === true) baseParams.past_colleague = true;
+    // Sales Nav tenure_at_role (array format)
+    if (filters.tenure_at_role_min != null || filters.tenure_at_role_max != null) {
+      const range: Record<string, number> = {};
+      if (filters.tenure_at_role_min != null) range.min = filters.tenure_at_role_min;
+      if (filters.tenure_at_role_max != null) range.max = filters.tenure_at_role_max;
+      baseParams.tenure_at_role = [range];
+    }
+  }
+
+  // ── Recruiter advanced filters ──
+  if (filters.api === 'recruiter') {
+    if (filters.employment_type?.length) baseParams.employment_type = filters.employment_type;
+    if (filters.spoken_languages?.length) baseParams.spoken_languages = filters.spoken_languages;
+    if (filters.recently_joined_min != null || filters.recently_joined_max != null) {
+      baseParams.recently_joined = [{
+        ...(filters.recently_joined_min != null && { min: filters.recently_joined_min }),
+        ...(filters.recently_joined_max != null && { max: filters.recently_joined_max }),
+      }];
+    }
+    if (filters.graduation_year_min != null || filters.graduation_year_max != null) {
+      const grad: Record<string, number> = {};
+      if (filters.graduation_year_min != null) grad.min = filters.graduation_year_min;
+      if (filters.graduation_year_max != null) grad.max = filters.graduation_year_max;
+      baseParams.graduation_year = grad;
+    }
+    if (filters.hide_previously_viewed != null) {
+      baseParams.hide_previously_viewed = { timespan: filters.hide_previously_viewed };
+    }
+  }
+
   // Past company (all modes)
   if (filters.past_company?.length) {
     baseParams.past_company = { include: filters.past_company.map(f => f.id) };
