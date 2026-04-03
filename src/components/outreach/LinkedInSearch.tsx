@@ -919,6 +919,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   return (
     <>
+      {activeProject && (
+        <FilterWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          jobDetails={wizardJobDetails}
+          currentFilters={search.filters}
+          suggestions={wizardSuggestions}
+          onApply={handleWizardApply}
+        />
+      )}
     <div className="w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
       {/* Filters bar — always visible */}
       <AppliedFiltersBar
