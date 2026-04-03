@@ -634,14 +634,49 @@ function CompanyLogo({ company, size = 16 }: { company: string; size?: number })
 }
 
 // ── Sample Profile Card (calibration phase) — with logos + actions ──
-function SampleProfileCard({ profile }: { profile: SampleProfile }) {
-  const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+const REJECTION_REASONS = [
+  { emoji: '📈', label: 'Trop senior / cher', key: 'senior' },
+  { emoji: '📉', label: 'Trop junior', key: 'junior' },
+  { emoji: '🔧', label: 'Mauvais stack technique', key: 'stack' },
+  { emoji: '🏢', label: 'Mauvais type d\'entreprise', key: 'company' },
+  { emoji: '📍', label: 'Mauvaise localisation', key: 'location' },
+  { emoji: '❌', label: 'Pas du tout pertinent', key: 'irrelevant' },
+];
 
-  // Extract company names from trajectory (e.g. "Datadog (2 ans)" → "Datadog")
+function SampleProfileCard({ profile, onSendFeedback, isBusy }: {
+  profile: SampleProfile;
+  onSendFeedback?: (text: string) => void;
+  isBusy?: boolean;
+}) {
+  const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const trajectoryCompanies = profile.trajectory.map(t => t.replace(/\s*\(.*\)/, '').trim());
+  const [feedbackSent, setFeedbackSent] = useState<'approved' | 'rejected' | null>(null);
+  const [showReasons, setShowReasons] = useState(false);
+
+  const handleApprove = () => {
+    if (!onSendFeedback || isBusy || feedbackSent) return;
+    setFeedbackSent('approved');
+    onSendFeedback(
+      `✅ Profil ${profile.index}/${profile.total} (${profile.name} — ${profile.title} @ ${profile.company}) : Oui, ce type de profil correspond bien à ce que je cherche.`
+    );
+  };
+
+  const handleReject = (reason: typeof REJECTION_REASONS[0]) => {
+    if (!onSendFeedback || isBusy || feedbackSent) return;
+    setFeedbackSent('rejected');
+    setShowReasons(false);
+    onSendFeedback(
+      `❌ Profil ${profile.index}/${profile.total} (${profile.name} — ${profile.title} @ ${profile.company}) : Non, pas ce profil. Raison : ${reason.label}.`
+    );
+  };
 
   return (
-    <div className="border border-border/60 rounded-xl overflow-hidden bg-card">
+    <div className={cn(
+      "border rounded-xl overflow-hidden bg-card transition-all duration-300",
+      feedbackSent === 'approved' ? "border-success/40 bg-success/5" :
+      feedbackSent === 'rejected' ? "border-muted-foreground/20 opacity-60" :
+      "border-border/60"
+    )}>
       {/* Header */}
       <div className="px-4 py-3 flex items-start gap-3">
         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
@@ -653,6 +688,12 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
             <span className="text-[10px] text-muted-foreground font-medium px-1.5 py-0.5 bg-muted rounded-full shrink-0">
               {profile.index}/{profile.total}
             </span>
+            {feedbackSent === 'approved' && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-success/15 text-success rounded-full shrink-0">✓ Validé</span>
+            )}
+            {feedbackSent === 'rejected' && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-muted text-muted-foreground rounded-full shrink-0">✗ Rejeté</span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
             <CompanyLogo company={profile.company} size={14} />
@@ -717,20 +758,58 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
       </div>
 
       {/* Action buttons */}
-      <div className="border-t border-border/30 px-4 py-2.5 flex items-center gap-2">
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-success/10 text-success hover:bg-success/20 transition-colors">
-          <ThumbsUp className="w-3 h-3" />
-          <span>Oui, ce type</span>
-        </button>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-warning/10 text-warning hover:bg-warning/20 transition-colors">
-          <ThumbsDown className="w-3 h-3" />
-          <span>Pas ce profil</span>
-        </button>
-        <div className="flex-1" />
-        <button className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Voir sur LinkedIn">
-          <ExternalLink className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {!feedbackSent && (
+        <div className="border-t border-border/30 px-4 py-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleApprove}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-success/10 text-success hover:bg-success/20 transition-colors disabled:opacity-40"
+            >
+              <ThumbsUp className="w-3 h-3" />
+              <span>Oui, ce type</span>
+            </button>
+            <button
+              onClick={() => setShowReasons(!showReasons)}
+              disabled={isBusy}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40",
+                showReasons ? "bg-warning/20 text-warning" : "bg-warning/10 text-warning hover:bg-warning/20"
+              )}
+            >
+              <ThumbsDown className="w-3 h-3" />
+              <span>Pas ce profil</span>
+            </button>
+          </div>
+
+          {/* Rejection reasons */}
+          <AnimatePresence>
+            {showReasons && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  {REJECTION_REASONS.map((reason) => (
+                    <button
+                      key={reason.key}
+                      onClick={() => handleReject(reason)}
+                      disabled={isBusy}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-foreground/70 bg-muted/50 hover:bg-muted hover:text-foreground transition-colors text-left disabled:opacity-40"
+                    >
+                      <span>{reason.emoji}</span>
+                      <span>{reason.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
