@@ -36,7 +36,7 @@ interface SampleProfile {
 function extractSampleProfiles(content: string): { profiles: SampleProfile[]; contentWithout: string } {
   const profiles: SampleProfile[] = [];
   let contentWithout = content;
-  const regex = /\[PROFILE\]\s*(\{[\s\S]*?\})\s*\[\/PROFILE\]/g;
+  const regex = /\[PROFILE\]\s*([\s\S]*?)\s*\[\/PROFILE\]/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     try {
