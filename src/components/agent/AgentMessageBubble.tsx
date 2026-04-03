@@ -145,6 +145,10 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
 
   // ── User message ──
   if (isUser) {
+    // Hide auto-injected context messages (brief + access diagnostic)
+    const isContextInjection = /=== BRIEF ===/.test(message.content) && /=== ACCÈS ===/.test(message.content);
+    if (isContextInjection) return null;
+
     return (
       <div className="flex justify-end animate-fade-in">
         <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed bg-foreground text-background rounded-2xl rounded-br-sm">
