@@ -96,7 +96,7 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
       ...exp,
       role: exp.role || exp.position, // Normalize position → role
     }));
-    const currentJobs = workExperience.filter((exp: any) => !exp.end && !exp.current === false);
+    const currentJobs = workExperience.filter((exp: any) => !exp.end && exp.current !== false);
     const currentJob = workExperience.find((exp: any) => exp.current === true) || currentJobs[0] || workExperience[0];
     const otherCurrentJobs = currentJobs.filter((j: any) => j !== currentJob);
     const pastJobs = workExperience.filter((exp: any) => exp.end || (exp.current === false)).slice(0, 5);
