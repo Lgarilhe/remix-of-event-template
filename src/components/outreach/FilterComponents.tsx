@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, Loader2, Plus, ChevronRight, Search, AlertTriangle, Check } from 'lucide-react';
+import { X, Loader2, Plus, ChevronRight, ChevronDown, Search, AlertTriangle, Check } from 'lucide-react';
 import { FilterItem, PriorityFilterItem, LocationFilterItem, FilterPriority, LocationScope, PRIORITY_OPTIONS, LOCATION_SCOPE_OPTIONS } from './types';
 import { createPortal } from 'react-dom';
 
