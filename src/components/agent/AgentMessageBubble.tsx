@@ -11,6 +11,10 @@ import { filterThinkingLines } from './filterThinking';
 interface AgentMessageBubbleProps {
   message: AgentMessage;
   isStreaming?: boolean;
+  /** Callback to send a feedback message to the agent */
+  onSendFeedback?: (text: string) => void;
+  /** Whether the agent is currently processing (disable actions) */
+  isBusy?: boolean;
 }
 
 export function extractOptions(content: string): string[] {
