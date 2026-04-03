@@ -369,13 +369,15 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
                 onCheckedChange={(checked) => onChange({ ...filters, hide_previously_viewed: checked ? 90 : null })}
               />
               {filters.hide_previously_viewed != null && (
-                <Input
-                  type="number"
-                  value={filters.hide_previously_viewed}
-                  onChange={e => onChange({ ...filters, hide_previously_viewed: Number(e.target.value) || 90 })}
-                  className="h-8 text-xs w-20"
-                  suffix="jours"
-                />
+                <div className="relative">
+                  <Input
+                    type="number"
+                    value={filters.hide_previously_viewed}
+                    onChange={e => onChange({ ...filters, hide_previously_viewed: Number(e.target.value) || 90 })}
+                    className="h-8 text-xs w-20 pr-10"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">jours</span>
+                </div>
               )}
               <span className="text-xs text-muted-foreground">
                 {filters.hide_previously_viewed != null ? `Vus il y a moins de ${filters.hide_previously_viewed}j` : 'Désactivé'}
