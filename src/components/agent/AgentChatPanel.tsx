@@ -517,5 +517,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           </button>
         </div>
       </div>
+    </div>
   );
 };
