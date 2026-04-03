@@ -78,7 +78,7 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
 
       {/* Fullscreen modal via portal */}
       {isOpen && createPortal(
-        <div className="fixed inset-0 z-[5500] flex flex-col bg-background pointer-events-auto">
+        <div className="fixed inset-0 z-[49] flex flex-col bg-background pointer-events-auto">
           {/* Header */}
           <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border">
             <div className="flex items-center gap-2">
