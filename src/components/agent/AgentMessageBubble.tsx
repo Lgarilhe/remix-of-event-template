@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Brain, ChevronDown, Search, BarChart3, Send, Activity } from 'lucide-react';
+import { Brain, ChevronDown, Search, BarChart3, Send, Activity, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
@@ -55,7 +55,6 @@ interface ParsedCandidate {
 }
 
 function extractCandidates(content: string): { candidates: ParsedCandidate[]; contentWithout: string } {
-  // Match patterns like: - **Name** — Title (Go/Maybe/No)  or  - **Name** - Title [Go]
   const candidateRegex = /^[-*]\s+\*{0,2}([A-ZÀ-ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-ÿ][a-zà-ÿ]+)+)\*{0,2}\s*[—–\-|:]\s*(.+?)(?:\s*[\[(](Go|Maybe|No|go|maybe|no)[\])])?$/gm;
   const candidates: ParsedCandidate[] = [];
   let contentWithout = content;
@@ -76,22 +75,52 @@ function extractCandidates(content: string): { candidates: ParsedCandidate[]; co
   return { candidates, contentWithout: contentWithout.trim() };
 }
 
+// ── Strip system tags from content ──
+function stripSystemTags(content: string, isStreaming: boolean): string {
+  let raw = content;
+  for (const tag of ['SEARCH_PLAN', 'AGENT_ACTION', 'OPTIONS']) {
+    raw = raw.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[\\/${tag}\\]`, 'g'), '');
+    if (isStreaming) {
+      const openIdx = raw.indexOf(`[${tag}]`);
+      if (openIdx !== -1) raw = raw.slice(0, openIdx);
+    }
+  }
+  // Also hide incomplete [PROFILE] tags during streaming
+  if (isStreaming) {
+    const profileOpenIdx = raw.indexOf('[PROFILE]');
+    if (profileOpenIdx !== -1) raw = raw.slice(0, profileOpenIdx);
+  }
+  return raw.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// ── Prose wrapper for markdown rendering ──
+function MarkdownProse({ content, className }: { content: string; className?: string }) {
+  return (
+    <div className={cn(
+      "prose prose-sm max-w-none",
+      "[&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5",
+      "[&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs",
+      "[&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-semibold",
+      "[&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-2.5 [&_h2]:mb-1 [&_h3]:mt-2 [&_h3]:mb-1",
+      "[&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded",
+      "[&_li]:marker:text-foreground/40",
+      "text-[13px] leading-relaxed text-foreground/80 [&_strong]:text-foreground",
+      className,
+    )}>
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </div>
+  );
+}
+
 export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, isStreaming }) => {
   const isUser = message.role === 'user';
   const isStatus = message.role === 'status';
   const thinking = message.metadata?.thinking as string | undefined;
 
-  // Strip system tags — for streaming, cut everything from an unclosed tag onward
-  let rawContent = message.content;
-  for (const tag of ['SEARCH_PLAN', 'AGENT_ACTION', 'OPTIONS']) {
-    // Remove complete tags
-    rawContent = rawContent.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[\\/${tag}\\]`, 'g'), '');
-    // If an opening tag remains (streaming, not yet closed), hide everything from it
-    const openIdx = rawContent.indexOf(`[${tag}]`);
-    if (openIdx !== -1) rawContent = rawContent.slice(0, openIdx);
-  }
-
-  const cleanContent = rawContent.replace(/\n{3,}/g, '\n\n').trim();
+  const cleanContent = useMemo(
+    () => stripSystemTags(message.content, !!isStreaming),
+    [message.content, isStreaming]
+  );
 
   const searchPlan = message.metadata?.search_plan as Record<string, unknown> | undefined;
 
@@ -103,7 +132,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       : Activity;
 
     return (
-      <div className="flex items-center gap-2.5 px-3 py-2 border border-border/8 bg-muted/20 text-xs animate-fade-in">
+      <div className="flex items-center gap-2.5 px-3 py-2 bg-muted/30 border border-border/50 rounded-lg text-xs animate-fade-in">
         <StatusIcon className="w-3.5 h-3.5 text-primary shrink-0" />
         <span className="text-muted-foreground font-medium">{cleanContent}</span>
       </div>
@@ -114,7 +143,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   if (isUser) {
     return (
       <div className="flex justify-end animate-fade-in">
-        <div className="max-w-[85%] px-3.5 py-2.5 text-sm leading-relaxed bg-foreground text-background">
+        <div className="max-w-[85%] px-4 py-3 text-[13px] leading-relaxed bg-foreground text-background rounded-2xl rounded-br-sm">
           <div className="[&_p]:my-0">
             <ReactMarkdown>{cleanContent}</ReactMarkdown>
           </div>
@@ -123,12 +152,32 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
     );
   }
 
-  // ── Assistant message ──
-  // Extract sample profiles first
+  // ── STREAMING: simplified view — just show clean markdown, no complex parsing ──
+  if (isStreaming) {
+    return (
+      <div className="animate-fade-in flex gap-2.5">
+        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+          <AnimatedOrb size={18} speed={6} />
+        </div>
+        <div className="flex-1 min-w-0">
+          {cleanContent ? (
+            <MarkdownProse content={cleanContent} />
+          ) : (
+            <div className="flex items-center gap-1.5 py-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-pulse" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary/20 animate-pulse" style={{ animationDelay: '300ms' }} />
+            </div>
+          )}
+          <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── FINAL assistant message — full parsing with rich cards ──
   const { profiles: sampleProfiles, contentWithout: afterProfiles } = extractSampleProfiles(cleanContent);
   const { candidates, contentWithout: afterCandidates } = extractCandidates(afterProfiles);
-
-  // Extract summary card if present
   const { summary, remaining: afterSummary } = extractSummary(afterCandidates);
 
   // Detect calibration step
@@ -143,61 +192,61 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   const displayContent = stepCurrent != null ? contentAfterStep : afterSummary;
 
   return (
-    <div className="animate-fade-in space-y-0">
-      {thinking && <ThinkingCard thinking={thinking} />}
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      className="flex gap-2.5"
+    >
+      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <AnimatedOrb size={18} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-2">
+        {thinking && <ThinkingCard thinking={thinking} />}
 
-      {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
+        {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
 
-      {stepCurrent != null && stepTotal != null && stepLabel && (
-        <StepCard
-          current={stepCurrent}
-          total={stepTotal}
-          title={stepLabel}
-          question={displayContent.split('\n\n')[0] || ''}
-        />
-      )}
+        {stepCurrent != null && stepTotal != null && stepLabel && (
+          <StepCard
+            current={stepCurrent}
+            total={stepTotal}
+            title={stepLabel}
+            question={displayContent.split('\n\n')[0] || ''}
+          />
+        )}
 
-      {/* Remaining content after step question — or full content if no step */}
-      {(() => {
-        const remaining = stepCurrent != null
-          ? displayContent.split('\n\n').slice(1).join('\n\n').trim()
-          : displayContent;
-        if (!remaining) return null;
-        return (
-          <div className="text-sm leading-relaxed">
-            <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:mt-2 [&_h3]:mb-1 [&_hr]:my-3 [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_li]:marker:text-foreground/50 text-sm text-foreground/80 [&_strong]:text-foreground">
-              <ReactMarkdown>{remaining}</ReactMarkdown>
-            </div>
+        {/* Remaining text content */}
+        {(() => {
+          const remaining = stepCurrent != null
+            ? displayContent.split('\n\n').slice(1).join('\n\n').trim()
+            : displayContent;
+          if (!remaining) return null;
+          return <MarkdownProse content={remaining} />;
+        })()}
+
+        {sampleProfiles.length > 0 && (
+          <div className="space-y-2 mt-1">
+            {sampleProfiles.map((p, i) => (
+              <SampleProfileCard key={i} profile={p} />
+            ))}
           </div>
-        );
-      })()}
+        )}
 
-      {sampleProfiles.length > 0 && (
-        <div className="space-y-2 mt-2">
-          {sampleProfiles.map((p, i) => (
-            <SampleProfileCard key={i} profile={p} />
-          ))}
-        </div>
-      )}
+        {candidates.length > 0 && (
+          <div className="space-y-1.5 mt-1">
+            {candidates.map((c, i) => (
+              <CandidateMiniCard key={i} candidate={c} />
+            ))}
+          </div>
+        )}
 
-      {candidates.length > 0 && (
-        <div className="space-y-1.5 mt-2">
-          {candidates.map((c, i) => (
-            <CandidateMiniCard key={i} candidate={c} />
-          ))}
-        </div>
-      )}
-
-      {searchPlan && <SearchPlanCard plan={searchPlan} conversationId={message.conversation_id} />}
-
-      {isStreaming && (
-        <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse mt-1" />
-      )}
-    </div>
+        {searchPlan && <SearchPlanCard plan={searchPlan} conversationId={message.conversation_id} />}
+      </div>
+    </motion.div>
   );
 };
 
-// ── Thinking Card (for saved messages with thinking metadata) ──
+// ── Thinking Card ──
 function ThinkingCard({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -207,19 +256,18 @@ function ThinkingCard({ thinking }: { thinking: string }) {
   if (displayLines.length === 0) return null;
 
   return (
-    <div className="border border-border bg-muted/20 overflow-hidden">
-      {/* Toggle header */}
+    <div className="border border-border/60 rounded-lg bg-muted/15 overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/30 transition-colors"
       >
-        <div className="h-[18px] w-[18px] flex items-center justify-center border border-border">
-          <Brain className="w-2.5 h-2.5 text-muted-foreground" />
+        <div className="h-5 w-5 rounded-md bg-muted flex items-center justify-center">
+          <Brain className="w-3 h-3 text-muted-foreground" />
         </div>
         <span className="text-xs text-muted-foreground font-medium flex-1">
           Réflexion terminée
         </span>
-        <span className="text-xs text-muted-foreground/50 tabular-nums">
+        <span className="text-[10px] text-muted-foreground/40 tabular-nums">
           {displayLines.length} étapes
         </span>
         <ChevronDown className={cn(
@@ -228,7 +276,6 @@ function ThinkingCard({ thinking }: { thinking: string }) {
         )} />
       </button>
 
-      {/* Expanded content */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -238,11 +285,11 @@ function ThinkingCard({ thinking }: { thinking: string }) {
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="overflow-hidden"
           >
-            <div className="border-t border-border/8 px-3 py-2.5 space-y-0.5 max-h-[240px] overflow-y-auto scrollbar-hide">
+            <div className="border-t border-border/30 px-3 py-2.5 space-y-0.5 max-h-[240px] overflow-y-auto scrollbar-hide">
               {displayLines.map((line, i) => (
                 <div key={i} className="flex items-start gap-2 py-0.5">
-                  <span className="mt-[6px] h-1 w-1 bg-foreground/15 shrink-0" />
-                  <p className="text-xs leading-relaxed font-mono text-muted-foreground/70">
+                  <span className="mt-[6px] h-1 w-1 rounded-full bg-foreground/15 shrink-0" />
+                  <p className="text-[11px] leading-relaxed font-mono text-muted-foreground/60">
                     {line}
                   </p>
                 </div>
@@ -260,31 +307,32 @@ function StepCard({ current, total, title, question }: {
   current: number; total: number; title: string; question: string;
 }) {
   return (
-    <div className="border border-border p-4 mb-2">
+    <div className="border border-border/60 rounded-xl p-4 bg-muted/10">
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-7 h-7 flex items-center justify-center text-xs font-semibold text-primary-foreground shrink-0 skalr-gradient-bg">
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-primary-foreground shrink-0 skalr-gradient-bg">
           {current}
         </div>
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Étape {current} sur {total}
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Étape {current}/{total}
           </p>
           <p className="text-sm font-semibold text-foreground">{title}</p>
         </div>
       </div>
       {question && (
-        <div className="text-sm text-foreground/70 leading-relaxed prose prose-sm max-w-none [&_p]:my-0 [&_strong]:text-foreground/80">
-          <ReactMarkdown>{question.replace(/^\*{0,2}➡️?\s*\d+\/\d+\s*[—–\-]\s*.+?\*{0,2}\s*/i, '').trim()}</ReactMarkdown>
-        </div>
+        <MarkdownProse
+          content={question.replace(/^\*{0,2}➡️?\s*\d+\/\d+\s*[—–\-]\s*.+?\*{0,2}\s*/i, '').trim()}
+          className="[&_p]:my-0 text-foreground/70"
+        />
       )}
       <div className="flex gap-1 mt-3">
         {Array.from({ length: total }).map((_, i) => (
           <div
             key={i}
             className={cn(
-              "h-[3px] flex-1",
+              "h-[3px] flex-1 rounded-full",
               i < current - 1
-                ? "bg-foreground/25"
+                ? "bg-foreground/20"
                 : i === current - 1
                   ? "skalr-gradient-bg"
                   : "bg-foreground/8"
@@ -312,20 +360,20 @@ const TECH_KEYWORDS = [
 function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
   return (
     <div
-      className="pl-4 py-3 bg-muted/10 mb-3"
+      className="pl-4 py-3 bg-muted/10 rounded-lg"
       style={{ borderLeft: '3px solid hsl(var(--skalr-purple))' }}
     >
       <p
-        className="text-xs font-bold uppercase tracking-wider mb-2.5"
+        className="text-[10px] font-bold uppercase tracking-wider mb-2.5"
         style={{ color: 'hsl(var(--skalr-purple))' }}
       >
         Résumé du poste
       </p>
       <div className="space-y-1.5">
         {items.map((item, i) => (
-          <div key={i} className="flex items-start gap-2.5 text-sm text-foreground/70 leading-relaxed">
+          <div key={i} className="flex items-start gap-2.5 text-[13px] text-foreground/70 leading-relaxed">
             <span
-              className="w-[5px] h-[5px] mt-[7px] shrink-0 opacity-40"
+              className="w-[5px] h-[5px] rounded-full mt-[7px] shrink-0 opacity-40"
               style={{ background: 'hsl(var(--skalr-purple))' }}
             />
             <span>{item}</span>
@@ -340,7 +388,7 @@ function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
               <span
                 key={i}
                 className={cn(
-                  "text-xs font-medium px-2 py-0.5",
+                  "text-[10px] font-medium px-2 py-0.5 rounded-md",
                   isXp
                     ? "bg-[hsl(var(--skalr-purple)/.12)] text-[hsl(var(--skalr-purple))]"
                     : "bg-muted text-muted-foreground"
@@ -386,7 +434,7 @@ function extractSummary(content: string): { summary: { items: string[]; tags: st
   return { summary: { items, tags: foundTags }, remaining };
 }
 
-// ── Search Plan Card — with auto LinkedIn count estimation ──
+// ── Search Plan Card ──
 function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown>; conversationId: string }) {
   const filters = (plan as any).filters || {};
   const stopConditions = (plan as any).stop_conditions || {};
@@ -395,7 +443,6 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
   const [countLoading, setCountLoading] = useState(false);
   const [countError, setCountError] = useState(false);
 
-  // Auto-fetch count on mount
   useEffect(() => {
     if (!conversationId) return;
     let cancelled = false;
@@ -435,14 +482,9 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
         })
         .filter(Boolean);
     }
-
     if (typeof value === 'string') {
-      return value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
+      return value.split(',').map((item) => item.trim()).filter(Boolean);
     }
-
     return [];
   };
 
@@ -453,66 +495,51 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
   const skills = normalizeList(filters.skills);
 
   const criteria: Array<{ label: string; value: string }> = [];
-
   if (typeof (plan as any).summary === 'string' && (plan as any).summary.trim()) {
     criteria.push({ label: 'Résumé', value: (plan as any).summary.trim() });
   }
-  if (keywords.length > 0) {
-    criteria.push({ label: 'Mots-clés', value: keywords.join(', ') });
-  }
-  if (locationKeywords.length > 0) {
-    criteria.push({ label: 'Localisation', value: locationKeywords.join(', ') });
-  }
+  if (keywords.length > 0) criteria.push({ label: 'Mots-clés', value: keywords.join(', ') });
+  if (locationKeywords.length > 0) criteria.push({ label: 'Localisation', value: locationKeywords.join(', ') });
   if (filters.calculated_experience_min != null) {
     criteria.push({ label: 'Expérience', value: `${filters.calculated_experience_min}–${filters.calculated_experience_max} ans` });
   }
-  if (titleKeywords.length > 0) {
-    criteria.push({ label: 'Titre', value: titleKeywords.join(', ') });
-  }
-  if (companyKeywords.length > 0) {
-    criteria.push({ label: 'Entreprises', value: companyKeywords.join(', ') });
-  }
-  if (skills.length > 0) {
-    criteria.push({ label: 'Compétences', value: skills.join(', ') });
-  }
+  if (titleKeywords.length > 0) criteria.push({ label: 'Titre', value: titleKeywords.join(', ') });
+  if (companyKeywords.length > 0) criteria.push({ label: 'Entreprises', value: companyKeywords.join(', ') });
+  if (skills.length > 0) criteria.push({ label: 'Compétences', value: skills.join(', ') });
 
   return (
-    <div className="border border-border overflow-hidden">
-      <div className="px-3.5 py-3 flex items-center justify-between border-b border-border">
+    <div className="border border-border/60 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 flex items-center justify-between bg-muted/20">
         <span className="text-xs font-bold uppercase tracking-wider text-foreground">
           Plan de recherche
         </span>
-        {/* LinkedIn count badge */}
         <div className="flex items-center gap-1.5">
           {countLoading ? (
-            <span className="text-xs text-muted-foreground/50 animate-pulse">
-              Estimation…
-            </span>
+            <span className="text-[10px] text-muted-foreground/50 animate-pulse">Estimation…</span>
           ) : countError ? (
-            <span className="text-xs text-muted-foreground/40">—</span>
+            <span className="text-[10px] text-muted-foreground/40">—</span>
           ) : estimatedCount !== null ? (
             <span className={cn(
-              "px-2 py-0.5 text-xs font-bold uppercase tracking-wider border-2 tabular-nums",
+              "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums",
               estimatedCount > 100
-                ? "border-success/30 text-success bg-success/5"
+                ? "bg-success/10 text-success border border-success/20"
                 : estimatedCount > 20
-                  ? "border-border text-foreground/70"
-                  : "border-warning/30 text-warning bg-warning/5"
+                  ? "bg-muted text-foreground/70 border border-border/50"
+                  : "bg-warning/10 text-warning border border-warning/20"
             )}>
-              {estimatedCount.toLocaleString('fr-FR')} profils LinkedIn
+              {estimatedCount.toLocaleString('fr-FR')} profils
             </span>
           ) : null}
         </div>
       </div>
 
-      {/* Criteria list */}
       {criteria.length > 0 && (
-        <div className="px-3.5 py-3 space-y-2.5">
+        <div className="px-4 py-3 space-y-2.5">
           {criteria.map((item, i) => (
             <div key={i} className="flex items-start gap-3">
-              <span className="h-1.5 w-1.5 bg-foreground/30 shrink-0 mt-[7px]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground/20 shrink-0 mt-[7px]" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{item.label}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</p>
                 <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
               </div>
             </div>
@@ -520,21 +547,20 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
         </div>
       )}
 
-      {/* Pills */}
       {(locationKeywords.length > 0 || filters.calculated_experience_min != null || stopConditions.target_go_profiles) && (
-        <div className="border-t border-border px-3.5 py-2.5 flex flex-wrap gap-1.5">
+        <div className="border-t border-border/30 px-4 py-2.5 flex flex-wrap gap-1.5">
           {locationKeywords.length > 0 && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider border border-border text-foreground/60">
+            <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-muted text-muted-foreground">
               {locationKeywords.join(', ')}
             </span>
           )}
           {filters.calculated_experience_min != null && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider border border-border text-foreground/60">
+            <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-muted text-muted-foreground">
               {filters.calculated_experience_min}–{filters.calculated_experience_max} ans
             </span>
           )}
           {stopConditions.target_go_profiles && (
-            <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider border border-border text-foreground/60">
+            <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-muted text-muted-foreground">
               {stopConditions.target_go_profiles} profils Go
             </span>
           )}
@@ -546,20 +572,48 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
 
 // ── Candidate Mini Card ──
 const scoreStyles: Record<string, string> = {
-  Go: 'bg-success/20 text-success',
-  Maybe: 'bg-warning/20 text-warning',
-  No: 'bg-red-500/20 text-red-700',
+  Go: 'bg-success/15 text-success border border-success/20',
+  Maybe: 'bg-warning/15 text-warning border border-warning/20',
+  No: 'bg-red-500/15 text-red-600 border border-red-500/20',
 };
+
+function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
+  const initials = candidate.name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('');
+
+  return (
+    <div className="border border-border/50 rounded-lg p-3 flex items-center gap-3 hover:bg-muted/30 transition-colors">
+      <div className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center text-[10px] font-bold shrink-0">
+        {initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground truncate">{candidate.name}</p>
+        <p className="text-xs text-muted-foreground truncate">{candidate.title}</p>
+      </div>
+      {candidate.score && (
+        <span className={cn(
+          "text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 uppercase tracking-wider",
+          scoreStyles[candidate.score] || ''
+        )}>
+          {candidate.score}
+        </span>
+      )}
+    </div>
+  );
+}
 
 // ── Sample Profile Card (calibration phase) ──
 function SampleProfileCard({ profile }: { profile: SampleProfile }) {
   const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-card">
+    <div className="border border-border/60 rounded-xl overflow-hidden bg-card">
       {/* Header */}
-      <div className="px-3.5 py-3 flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+      <div className="px-4 py-3 flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
           {initials}
         </div>
         <div className="flex-1 min-w-0">
@@ -582,7 +636,7 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
 
       {/* Trajectory */}
       {profile.trajectory.length > 0 && (
-        <div className="px-3.5 pb-2">
+        <div className="px-4 pb-2">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Parcours</p>
           <div className="flex items-center gap-1.5 text-xs text-foreground/70 overflow-x-auto">
             {profile.trajectory.map((t, i) => (
@@ -597,9 +651,9 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
 
       {/* Tags */}
       {profile.tags.length > 0 && (
-        <div className="px-3.5 pb-2 flex flex-wrap gap-1">
+        <div className="px-4 pb-2 flex flex-wrap gap-1">
           {profile.tags.map((tag, i) => (
-            <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+            <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 bg-primary/10 text-primary rounded-md">
               {tag}
             </span>
           ))}
@@ -607,7 +661,7 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
       )}
 
       {/* Strengths & Concerns */}
-      <div className="px-3.5 pb-3 space-y-1">
+      <div className="px-4 pb-3 space-y-1">
         {profile.strengths.map((s, i) => (
           <div key={`s-${i}`} className="flex items-start gap-1.5 text-xs">
             <span className="text-accent mt-0.5 shrink-0">✓</span>
@@ -621,34 +675,6 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
-  const initials = candidate.name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(w => w[0]?.toUpperCase())
-    .join('');
-
-  return (
-    <div className="border border-border p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors">
-      <div className="w-8 h-8 bg-foreground text-background flex items-center justify-center text-xs font-bold shrink-0">
-        {initials}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-foreground truncate">{candidate.name}</p>
-        <p className="text-xs text-muted-foreground truncate">{candidate.title}</p>
-      </div>
-      {candidate.score && (
-        <span className={cn(
-          "text-xs font-bold px-2 py-0.5 shrink-0 uppercase tracking-wider",
-          scoreStyles[candidate.score] || ''
-        )}>
-          {candidate.score}
-        </span>
-      )}
     </div>
   );
 }

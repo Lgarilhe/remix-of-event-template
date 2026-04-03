@@ -14,7 +14,6 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
   const [collapsed, setCollapsed] = useState(false);
   const prevThinking = useRef(isThinking);
 
-  // Auto-collapse 1s after thinking ends
   useEffect(() => {
     if (prevThinking.current && !isThinking) {
       const timer = setTimeout(() => setCollapsed(true), 1000);
@@ -29,13 +28,13 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
   const doneCount = steps.filter(s => s.status === 'done').length;
   const totalTriggered = steps.filter(s => s.status !== 'pending').length;
 
-  // Collapsed summary line
   if (collapsed && !isThinking) {
     return (
-      <div className="animate-fade-in">
+      <div className="animate-fade-in flex gap-2.5">
+        <div className="w-6 h-6 rounded-full bg-primary/10 shrink-0" />
         <button
           onClick={() => setCollapsed(false)}
-          className="w-full border border-border px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors text-left"
+          className="flex-1 border border-border/50 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors text-left"
         >
           <PhaseCircle status="done" />
           <span className="text-xs text-muted-foreground">
@@ -47,22 +46,27 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
   }
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in flex gap-2.5">
+      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        {isThinking && (
+          <div className="w-3 h-3 rounded-full border-2 border-transparent border-t-primary animate-spin" />
+        )}
+      </div>
       <div
         className={cn(
-          "border border-border overflow-hidden transition-shadow duration-300",
-          isThinking && "shadow-md"
+          "flex-1 border border-border/50 rounded-xl overflow-hidden transition-shadow duration-300",
+          isThinking && "shadow-sm"
         )}
       >
         {/* Header */}
-        <div className="flex items-center gap-2.5 px-3.5 py-3">
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5">
           {isThinking ? (
             <PhaseCircle status="active" />
           ) : (
             <PhaseCircle status="done" />
           )}
           <span className={cn(
-            "text-xs font-semibold flex-1 min-w-0 truncate uppercase tracking-wider",
+            "text-xs font-medium flex-1 min-w-0 truncate",
             isThinking ? "text-foreground" : "text-muted-foreground"
           )}>
             {isThinking
@@ -71,7 +75,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
             }
           </span>
           {doneCount > 0 && (
-            <span className="text-xs text-muted-foreground/60 shrink-0 tabular-nums font-mono">
+            <span className="text-[10px] text-muted-foreground/50 shrink-0 tabular-nums font-mono">
               {doneCount}/{steps.length}
             </span>
           )}
@@ -79,7 +83,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
         {/* Progress bar */}
         {steps.length > 0 && (
-          <div className="h-[2px] bg-accent/50 overflow-hidden">
+          <div className="h-[2px] bg-muted overflow-hidden">
             <div
               className={cn(
                 "h-full skalr-gradient-bg transition-all duration-500 ease-out",
@@ -92,13 +96,13 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
 
         {/* Phase list */}
         {steps.length > 0 && (
-          <div className="border-t border-border/8 px-3.5 py-3 space-y-1">
+          <div className="px-3.5 py-2.5 space-y-0.5">
             {steps.map((phase, i) => (
               <div
                 key={phase.id}
                 className={cn(
-                  "flex items-center gap-2.5 py-1.5 px-2 transition-colors animate-fade-in",
-                  phase.status === 'active' && "bg-accent/5"
+                  "flex items-center gap-2.5 py-1 px-2 rounded-md transition-colors animate-fade-in",
+                  phase.status === 'active' && "bg-primary/5"
                 )}
                 style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'backwards' }}
               >
@@ -108,7 +112,7 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
                   phase.status === 'active'
                     ? "text-foreground font-medium"
                     : phase.status === 'done'
-                      ? "text-foreground/70 line-through decoration-foreground/20"
+                      ? "text-foreground/60 line-through decoration-foreground/15"
                       : "text-muted-foreground/40"
                 )}>
                   {phase.label}
@@ -122,7 +126,6 @@ export const AgentThinkingDisplay: React.FC<AgentThinkingDisplayProps> = ({
   );
 };
 
-// ── Animated circle indicator ──
 function PhaseCircle({ status }: { status: 'pending' | 'active' | 'done' }) {
   if (status === 'done') {
     return (
@@ -135,17 +138,16 @@ function PhaseCircle({ status }: { status: 'pending' | 'active' | 'done' }) {
   if (status === 'active') {
     return (
       <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-accent/30" />
+        <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-primary/20" />
         <span className="absolute h-3.5 w-3.5 rounded-full border-2 border-transparent border-t-primary animate-spin" />
-        <span className="h-1.5 w-1.5 rounded-full bg-accent/60" />
+        <span className="h-1.5 w-1.5 rounded-full bg-primary/50" />
       </span>
     );
   }
 
-  // pending
   return (
     <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-      <span className="h-2.5 w-2.5 rounded-full border border-border" />
+      <span className="h-2.5 w-2.5 rounded-full border border-border/60" />
     </span>
   );
 }
