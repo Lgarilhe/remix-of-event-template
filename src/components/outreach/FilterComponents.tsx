@@ -23,7 +23,7 @@ interface FilterSectionProps {
   bgColorClass?: string;
 }
 
-export const FilterSection: React.FC<FilterSectionProps> = React.memo(({
+export const FilterSection: React.FC<FilterSectionProps> = ({
   id,
   title,
   icon,
@@ -33,8 +33,7 @@ export const FilterSection: React.FC<FilterSectionProps> = React.memo(({
   onToggle,
   activeFiltersPreview,
   bgColorClass = '',
-}) => {
-  return (
+}) => (
     <>
       {/* Summary row — click to open modal */}
       <button
@@ -115,8 +114,7 @@ export const FilterSection: React.FC<FilterSectionProps> = React.memo(({
         document.body
       )}
     </>
-  );
-});
+);
 
 // ===== Filter Group =====
 interface FilterGroupProps {
