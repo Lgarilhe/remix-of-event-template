@@ -152,19 +152,17 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               {education.map((edu: any, index: number) => {
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
-                <div key={index} className="p-3 sm:p-4 border border-border bg-background hover:border-border transition-colors">
-                {/* education card */}
-                </div>
-                );
-              })}
-            </div>
-          ) : (
+                <div key={index} className="p-3 sm:p-4 border border-border bg-background rounded-lg transition-colors">
+                  <div className="flex items-start gap-2.5 sm:gap-3">
+                    {schoolLogo ? (
+                      <img
+                        src={schoolLogo}
                         alt={edu.school || ''}
-                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5"
+                        className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5 rounded-lg"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                       />
                     ) : null}
-                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border border-border ${schoolLogo ? 'hidden' : ''}`}>
+                    <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 bg-muted flex items-center justify-center shrink-0 border border-border rounded-lg ${schoolLogo ? 'hidden' : ''}`}>
                       <GraduationCap className="w-4 h-4 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -173,7 +171,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                         {edu.degree}{edu.field_of_study && ` · ${edu.field_of_study}`}
                       </p>
                       {(edu.start?.year || edu.end?.year) && (
-                        <div className="flex items-center gap-2 mt-1 text-xs sm:text-xs text-muted-foreground/60">
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground/60">
                           <CalendarDays className="w-3 h-3" />
                           <span>{edu.start?.year || '?'}{edu.end?.year && ` → ${edu.end.year}`}</span>
                         </div>
