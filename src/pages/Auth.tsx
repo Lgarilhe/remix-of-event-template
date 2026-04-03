@@ -37,6 +37,7 @@ const Auth = () => {
   );
   const invitationTokenRef = useRef<string | null>(null);
   const handledAccessTokenRef = useRef<string | null>(null);
+  const [pendingAuthAccessToken, setPendingAuthAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     const storedToken = sessionStorage.getItem(PENDING_INVITATION_STORAGE_KEY);
@@ -140,30 +141,63 @@ const Auth = () => {
     const hash = window.location.hash;
     if (hash && (hash.includes('type=recovery') || hash.includes('type=magiclink'))) {
       setIsResettingPassword(true);
+      setPendingAuthAccessToken(null);
       return; // Don't check session or redirect
     }
 
+    let isActive = true;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isActive) return;
+
       if (event === 'PASSWORD_RECOVERY') {
         setIsResettingPassword(true);
-      } else if (event === 'SIGNED_IN' && !isResettingPassword && session?.access_token) {
-        handleAuthenticatedUser(session.access_token).catch(() => {
-          // Failsafe: if auth handling crashes, still navigate to app
-          navigate(withPreviewAccessToken(from), { replace: true });
-        });
+        setPendingAuthAccessToken(null);
+        return;
+      }
+
+      if (event === 'SIGNED_IN' && session?.access_token) {
+        setPendingAuthAccessToken(session.access_token);
       }
     });
 
-    getValidatedSession().then(({ session }) => {
-      if (session?.access_token && !isResettingPassword) {
-        handleAuthenticatedUser(session.access_token).catch(() => {
-          navigate(withPreviewAccessToken(from), { replace: true });
-        });
+    void getValidatedSession().then(({ session }) => {
+      if (!isActive || isResettingPassword || !session?.access_token) {
+        return;
       }
+
+      setPendingAuthAccessToken(session.access_token);
     });
 
-    return () => subscription.unsubscribe();
-  }, [handleAuthenticatedUser, isResettingPassword]);
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, [isResettingPassword]);
+
+  useEffect(() => {
+    if (isResettingPassword || !pendingAuthAccessToken) return;
+
+    let isActive = true;
+
+    void handleAuthenticatedUser(pendingAuthAccessToken)
+      .catch(() => {
+        if (isActive) {
+          navigate(withPreviewAccessToken(from), { replace: true });
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setPendingAuthAccessToken((currentToken) =>
+            currentToken === pendingAuthAccessToken ? null : currentToken
+          );
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [from, handleAuthenticatedUser, isResettingPassword, navigate, pendingAuthAccessToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
