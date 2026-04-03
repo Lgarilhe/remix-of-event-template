@@ -92,8 +92,8 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                     key={index}
                     className={`relative p-3 sm:p-4 border transition-colors ${
                       isCurrent
-                        ? 'bg-accent/5 border-border'
-                        : 'bg-background border-border hover:border-border'
+                       ? 'bg-accent/5 border-border rounded-lg'
+                       : 'bg-background border-border hover:border-border rounded-lg'
                     }`}
                   >
                     <div className="flex items-start gap-2.5 sm:gap-3">
@@ -102,11 +102,12 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                           src={exp.logo}
                           alt={exp.company || ''}
                           className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5"
+                         style={{ borderRadius: '0.5rem' }}
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
                         />
                       ) : null}
                       <div className={`mt-0.5 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0 border ${
-                        isCurrent ? 'bg-foreground text-background border-border' : 'bg-muted/60 border-border'
+                        isCurrent ? 'bg-foreground text-background border-border rounded-lg' : 'bg-muted/60 border-border rounded-lg'
                       } ${exp.logo ? 'hidden' : ''}`}>
                         <Briefcase className="w-4 h-4" />
                       </div>
@@ -152,10 +153,12 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                 const schoolLogo = edu.logo || edu.school_logo || edu.school_details?.logo;
                 return (
                 <div key={index} className="p-3 sm:p-4 border border-border bg-background hover:border-border transition-colors">
-                  <div className="flex items-start gap-2.5 sm:gap-3">
-                    {schoolLogo ? (
-                      <img
-                        src={schoolLogo}
+                {/* education card */}
+                </div>
+                );
+              })}
+            </div>
+          ) : (
                         alt={edu.school || ''}
                         className="mt-0.5 w-9 h-9 sm:w-10 sm:h-10 object-contain bg-background border border-border shrink-0 p-0.5"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling && ((e.target as HTMLImageElement).nextElementSibling as HTMLElement).classList.remove('hidden'); }}
