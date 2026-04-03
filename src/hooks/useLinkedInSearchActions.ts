@@ -257,8 +257,8 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     baseParams.groups = filters.groups.map(f => f.id);
   }
 
-  // Company location (Sales Navigator)
-  if (filters.company_location.length && filters.api === 'sales_navigator') {
+  // Company location (Sales Navigator + Database)
+  if (filters.company_location.length && (filters.api === 'sales_navigator' || filters.api === 'database')) {
     if (filters.api === 'database') {
       baseParams.company_location = filters.company_location.map(f => ({ id: f.id, name: f.name || f.id }));
     } else {
