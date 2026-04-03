@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
+import { FilterWizard } from './filter-wizard';
 import type { JobDetails } from '@/types/jobDetails';
 import { SKILL_SYNONYMS } from '@/hooks/linkedin/skillSynonyms';
 
@@ -1008,6 +1009,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onFindSimilar={handleFindSimilar}
         />
       </div>
+
+      {search.selectedJob ? (
+        <FilterWizard
+          open={search.showFilterWizard}
+          onOpenChange={search.setShowFilterWizard}
+          job={search.selectedJob}
+          accountId={selectedAccount ?? undefined}
+          onApplyFilters={(nextFilters) => {
+            search.setFilters((prev) => ({
+              ...prev,
+              ...nextFilters,
+            }));
+          }}
+        />
+      ) : null}
 
       {/* Refine Search Modal */}
       <RefineSearchModal
