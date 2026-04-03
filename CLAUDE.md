@@ -228,6 +228,84 @@ Frontend (buildSearchParams) → database-search edge function (mapFiltersToApol
 - If Unipile returns empty data, KEEP Apollo data (don't overwrite with empties)
 - linkedin_url only available AFTER bulk_match enrichment (not from search results)
 
+---
+
+## Unipile API (LinkedIn Integration)
+
+### Architecture
+```
+Frontend (invokeUnipile) → unipile-search edge function → Unipile API → LinkedIn
+```
+- Credentials per-org in `organization_integrations` table (unipile_api_key, unipile_dsn)
+- Fallback to env vars: `UNIPILE_API_KEY`, `UNIPILE_DSN`
+- Base URL: `https://{DSN}/api/v1`
+- Auth header: `X-API-KEY: {apiKey}`
+- All fetch calls use 15s timeout
+
+### LinkedIn API Types (Licenses)
+| License | API Value | Features |
+|---------|-----------|----------|
+| Classic | `classic` | Basic search, limited filters, no skills/role filter |
+| Recruiter | `recruiter` | Advanced search, Boolean keywords, role/skills/seniority, hiring projects, talent pools, spotlights |
+| Sales Navigator | `sales_navigator` | Account search, company filters, groups, past roles |
+
+### Main Actions (unipile-search edge function)
+
+**search** — `POST /linkedin/search?account_id={id}`
+- Accepts all LinkedIn filter params (keywords, location, role, skills, seniority, etc.)
+- Returns `{ success, results: LinkedInProfile[], cursor, total }`
+- Error `CONTENT_TOO_LARGE` if keywords >200 chars → auto-truncated
+- Auto-retry 3x on `multiple_sessions` error (0ms, 6s, 15s delays)
+
+**get_profile** — `GET /users/{profile_id}?account_id={id}`
+- Returns full profile (work_experience, education, skills, summary)
+- `profile_url` accepted as alternative → slug extracted
+- Profile data normalized (dates, network distance, Boolean flags)
+
+**get_parameters** — `GET /linkedin/search/parameters`
+- Autocomplete for filter values (location, company, school, skills...)
+- Params: `type`, `service` (RECRUITER/CLASSIC/SALES_NAVIGATOR), `keywords`
+- Returns `{ items: [{id, title}] }`
+
+**get_chats** — `GET /chats?account_id={id}`
+- Fetches from 3 folders in parallel: INBOX_LINKEDIN_CLASSIC, INBOX_LINKEDIN_RECRUITER, INBOX
+- Dedupes by chat ID, sorts newest first
+- Returns `{ chats, cursors, cursor }`
+
+**send_message** — `POST /chats/{chat_id}/messages` or `POST /chats` (new)
+- Multipart form-data format
+- InMail: set `is_inmail: true` + `subject` → uses `linkedin[api]: recruiter`
+
+**get_messages** — `GET /chats/{chat_id}/messages`
+- Returns `{ messages, cursor }`
+
+### Webhook Events (unipile-webhook)
+| Event | Action |
+|-------|--------|
+| `new_relation` | Update enrollment connection_status, resolve wait_connection step |
+| `message_received` | Mark enrollment as replied, cancel pending steps, auto-analyze |
+| `account_connected` | Update account_status → OK |
+| `account_disconnected` | Update status → CREDENTIALS, notify user |
+
+### Key Differences by License
+| Filter | Classic | Recruiter | Sales Nav | Database |
+|--------|---------|-----------|-----------|----------|
+| keywords | ✅ | ✅ | ✅ | ✅ (cleaned) |
+| location | IDs only | ID+priority+scope+radius | IDs | Names (normalized) |
+| role/job_title | ❌ | ✅ Boolean keywords | ✅ | ✅ person_titles |
+| skills | ❌ | ✅ ID+priority | ❌ | Text only |
+| seniority | Basic mapping | Full mapping + role injection | Full mapping | Apollo mapping |
+| company_keywords | ❌ | ✅ keywords+priority+scope | ❌ | ✅ q_organization_name |
+| degree | ❌ | ✅ include/exclude | ❌ | ❌ |
+| spotlight | ❌ | ✅ (OPEN_TO_WORK, ACTIVE_TALENT...) | ❌ | ❌ |
+
+### Error Handling
+- `429 RATE_LIMIT` → retry after 60s, toast "Trop de requêtes"
+- `400 CONTENT_TOO_LARGE` → auto-truncate keywords
+- `500 multiple_sessions` → auto-retry 3x
+- Network errors → French humanized messages
+- `CREDENTIALS` account status → prompt user to reconnect
+
 ### Deployment Warning
 **Edge functions are NOT auto-deployed by Lovable.** After merging changes to edge functions:
 ```bash
