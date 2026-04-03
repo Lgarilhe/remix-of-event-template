@@ -555,7 +555,90 @@ function DiagnosticCard({ data }: { data: DiagnosticData }) {
   );
 }
 
-// ── Extract summary from assistant content ──
+// ── Scoring Test Card ──
+function ScoringTestCard({ data }: { data: ScoringTestData }) {
+  const verdictConfig = {
+    pass: { icon: '✅', cls: 'text-accent bg-accent/10 border-accent/20' },
+    partial: { icon: '⚠️', cls: 'text-warning bg-warning/10 border-warning/20' },
+    fail: { icon: '❌', cls: 'text-destructive bg-destructive/10 border-destructive/20' },
+  };
+
+  const recConfig = {
+    go: { label: 'À contacter', cls: 'bg-accent/15 text-accent border-accent/20' },
+    maybe: { label: 'À évaluer', cls: 'bg-warning/15 text-warning border-warning/20' },
+    skip: { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground border-border' },
+  };
+
+  return (
+    <div className="border border-border/60 rounded-xl overflow-hidden bg-card">
+      {/* Header with purpose */}
+      <div className="px-4 py-3 border-b border-border/40 bg-muted/20">
+        <div className="flex items-center gap-2.5 mb-1.5">
+          <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center">
+            <BarChart3 className="w-3.5 h-3.5 text-primary" />
+          </div>
+          <span className="text-sm font-semibold text-foreground">Test de scoring</span>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed pl-[34px]">
+          {data.purpose}
+        </p>
+      </div>
+
+      {/* Profiles */}
+      <div className="divide-y divide-border/30">
+        {data.profiles.map((profile, i) => {
+          const rec = recConfig[profile.recommendation] || recConfig.maybe;
+          const scoreColor = profile.score >= 75 ? 'text-accent' : profile.score >= 50 ? 'text-warning' : 'text-destructive';
+
+          return (
+            <div key={i} className="px-4 py-3.5 space-y-2.5">
+              {/* Profile header with score */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-muted border border-border/40">
+                  <span className={cn("text-lg font-black tabular-nums", scoreColor)}>{profile.score}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{profile.name}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <CompanyLogo company={profile.company} size={14} />
+                    <p className="text-xs text-muted-foreground truncate">{profile.title} @ {profile.company}</p>
+                  </div>
+                </div>
+                <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider shrink-0", rec.cls)}>
+                  {rec.label}
+                </span>
+              </div>
+
+              {/* Criteria evaluations */}
+              <div className="space-y-1 pl-[52px]">
+                {profile.criteria.map((c, j) => {
+                  const v = verdictConfig[c.verdict] || verdictConfig.partial;
+                  return (
+                    <div key={j} className={cn("flex items-start gap-2 px-2.5 py-1.5 rounded-lg border text-xs", v.cls)}>
+                      <span className="shrink-0 mt-0.5">{v.icon}</span>
+                      <div className="min-w-0">
+                        <span className="font-semibold">{c.label}</span>
+                        <span className="text-foreground/60 ml-1.5">— {c.detail}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-4 py-2.5 border-t border-border/40 bg-primary/5">
+        <p className="text-[11px] text-primary font-medium text-center">
+          👆 Les scores vous semblent-ils justes ? Répondez ci-dessous.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function extractSummary(content: string): { summary: { items: string[]; tags: string[] } | null; remaining: string } {
   const match = content.match(
     /(?:\*{0,2})Résumé du poste(?:\*{0,2})\s*[\n:]\s*([\s\S]*?)(?=(?:\n[^\s·•\-])|(?:\n\s*(?:➡️|\d+\/\d+))|\s*$)/i
