@@ -229,11 +229,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
         })()}
 
         {sampleProfiles.length > 0 && (
-          <div className="space-y-2 mt-1">
-            {sampleProfiles.map((p, i) => (
-              <SampleProfileCard key={i} profile={p} onSendFeedback={onSendFeedback} isBusy={isBusy} />
-            ))}
-          </div>
+          <SampleProfilesGroup profiles={sampleProfiles} onSendFeedback={onSendFeedback} isBusy={isBusy} />
         )}
 
         {candidates.length > 0 && (
@@ -633,7 +629,7 @@ function CompanyLogo({ company, size = 16 }: { company: string; size?: number })
   );
 }
 
-// ── Sample Profile Card (calibration phase) — with logos + actions ──
+// ── Rejection reasons ──
 const REJECTION_REASONS = [
   { emoji: '📈', label: 'Trop senior / cher', key: 'senior' },
   { emoji: '📉', label: 'Trop junior', key: 'junior' },
@@ -643,38 +639,143 @@ const REJECTION_REASONS = [
   { emoji: '❌', label: 'Pas du tout pertinent', key: 'irrelevant' },
 ];
 
-function SampleProfileCard({ profile, onSendFeedback, isBusy }: {
-  profile: SampleProfile;
+type ProfileFeedback = {
+  verdict: 'approved' | 'rejected';
+  reason?: string;
+};
+
+// ── Group wrapper: collects feedback on ALL profiles before sending ──
+function SampleProfilesGroup({ profiles, onSendFeedback, isBusy }: {
+  profiles: SampleProfile[];
   onSendFeedback?: (text: string) => void;
   isBusy?: boolean;
 }) {
-  const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const trajectoryCompanies = profile.trajectory.map(t => t.replace(/\s*\(.*\)/, '').trim());
-  const [feedbackSent, setFeedbackSent] = useState<'approved' | 'rejected' | null>(null);
-  const [showReasons, setShowReasons] = useState(false);
+  const [feedbacks, setFeedbacks] = useState<Record<number, ProfileFeedback>>({});
+  const [sent, setSent] = useState(false);
 
-  const handleApprove = () => {
-    if (!onSendFeedback || isBusy || feedbackSent) return;
-    setFeedbackSent('approved');
-    onSendFeedback(
-      `✅ Profil ${profile.index}/${profile.total} (${profile.name} — ${profile.title} @ ${profile.company}) : Oui, ce type de profil correspond bien à ce que je cherche.`
-    );
+  const allRated = profiles.every(p => feedbacks[p.index] != null);
+  const ratedCount = Object.keys(feedbacks).length;
+
+  const handleFeedback = (index: number, fb: ProfileFeedback) => {
+    if (sent) return;
+    setFeedbacks(prev => ({ ...prev, [index]: fb }));
   };
 
-  const handleReject = (reason: typeof REJECTION_REASONS[0]) => {
-    if (!onSendFeedback || isBusy || feedbackSent) return;
-    setFeedbackSent('rejected');
+  const handleSendAll = () => {
+    if (!onSendFeedback || !allRated || sent) return;
+    setSent(true);
+
+    const lines = profiles.map(p => {
+      const fb = feedbacks[p.index];
+      if (!fb) return '';
+      if (fb.verdict === 'approved') {
+        return `✅ Profil ${p.index}/${p.total} (${p.name} — ${p.title} @ ${p.company}) : Ce type de profil correspond bien.`;
+      }
+      return `❌ Profil ${p.index}/${p.total} (${p.name} — ${p.title} @ ${p.company}) : Non. Raison : ${fb.reason || 'Non précisée'}.`;
+    }).filter(Boolean);
+
+    onSendFeedback(`Voici mon feedback sur les ${profiles.length} profils échantillons :\n\n${lines.join('\n')}`);
+  };
+
+  return (
+    <div className="space-y-2 mt-1">
+      {profiles.map((p) => (
+        <SampleProfileCard
+          key={p.index}
+          profile={p}
+          feedback={feedbacks[p.index] || null}
+          onFeedback={(fb) => handleFeedback(p.index, fb)}
+          locked={sent}
+        />
+      ))}
+
+      {/* Send button — appears once all profiles are rated */}
+      {!sent && ratedCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 pt-1"
+        >
+          <div className="flex-1 flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">
+              {ratedCount}/{profiles.length} profil{profiles.length > 1 ? 's' : ''} évalué{ratedCount > 1 ? 's' : ''}
+            </span>
+            <div className="flex gap-0.5">
+              {profiles.map((p) => (
+                <div
+                  key={p.index}
+                  className={cn(
+                    "w-2 h-2 rounded-full transition-colors",
+                    feedbacks[p.index]?.verdict === 'approved' ? "bg-success" :
+                    feedbacks[p.index]?.verdict === 'rejected' ? "bg-warning" :
+                    "bg-border"
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={handleSendAll}
+            disabled={!allRated || isBusy}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+              allRated && !isBusy
+                ? "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95"
+                : "bg-muted text-muted-foreground cursor-not-allowed"
+            )}
+          >
+            <Send className="w-3 h-3" />
+            <span>Envoyer mon feedback</span>
+          </button>
+        </motion.div>
+      )}
+
+      {sent && (
+        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+          <span className="h-1.5 w-1.5 rounded-full bg-success" />
+          Feedback envoyé — l'agent ajuste la recherche
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sample Profile Card (calibration phase) ──
+function SampleProfileCard({ profile, feedback, onFeedback, locked }: {
+  profile: SampleProfile;
+  feedback: ProfileFeedback | null;
+  onFeedback: (fb: ProfileFeedback) => void;
+  locked: boolean;
+}) {
+  const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const trajectoryCompanies = profile.trajectory.map(t => t.replace(/\s*\(.*\)/, '').trim());
+  const [showReasons, setShowReasons] = useState(false);
+  const [customReason, setCustomReason] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
+  const handleApprove = () => {
+    if (locked) return;
+    onFeedback({ verdict: 'approved' });
     setShowReasons(false);
-    onSendFeedback(
-      `❌ Profil ${profile.index}/${profile.total} (${profile.name} — ${profile.title} @ ${profile.company}) : Non, pas ce profil. Raison : ${reason.label}.`
-    );
+  };
+
+  const handleReject = (reason: string) => {
+    if (locked) return;
+    onFeedback({ verdict: 'rejected', reason });
+    setShowReasons(false);
+    setShowCustomInput(false);
+  };
+
+  const handleCustomReject = () => {
+    if (!customReason.trim() || locked) return;
+    handleReject(customReason.trim());
   };
 
   return (
     <div className={cn(
       "border rounded-xl overflow-hidden bg-card transition-all duration-300",
-      feedbackSent === 'approved' ? "border-success/40 bg-success/5" :
-      feedbackSent === 'rejected' ? "border-muted-foreground/20 opacity-60" :
+      feedback?.verdict === 'approved' ? "border-success/40 bg-success/5" :
+      feedback?.verdict === 'rejected' ? "border-warning/30 bg-warning/5" :
       "border-border/60"
     )}>
       {/* Header */}
@@ -688,11 +789,11 @@ function SampleProfileCard({ profile, onSendFeedback, isBusy }: {
             <span className="text-[10px] text-muted-foreground font-medium px-1.5 py-0.5 bg-muted rounded-full shrink-0">
               {profile.index}/{profile.total}
             </span>
-            {feedbackSent === 'approved' && (
+            {feedback?.verdict === 'approved' && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 bg-success/15 text-success rounded-full shrink-0">✓ Validé</span>
             )}
-            {feedbackSent === 'rejected' && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-muted text-muted-foreground rounded-full shrink-0">✗ Rejeté</span>
+            {feedback?.verdict === 'rejected' && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-warning/15 text-warning rounded-full shrink-0">✗ {feedback.reason}</span>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -758,23 +859,30 @@ function SampleProfileCard({ profile, onSendFeedback, isBusy }: {
       </div>
 
       {/* Action buttons */}
-      {!feedbackSent && (
+      {!locked && (
         <div className="border-t border-border/30 px-4 py-2.5 space-y-2">
           <div className="flex items-center gap-2">
             <button
               onClick={handleApprove}
-              disabled={isBusy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-success/10 text-success hover:bg-success/20 transition-colors disabled:opacity-40"
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                feedback?.verdict === 'approved'
+                  ? "bg-success/20 text-success ring-1 ring-success/30"
+                  : "bg-success/10 text-success hover:bg-success/20"
+              )}
             >
               <ThumbsUp className="w-3 h-3" />
               <span>Oui, ce type</span>
             </button>
             <button
-              onClick={() => setShowReasons(!showReasons)}
-              disabled={isBusy}
+              onClick={() => { setShowReasons(!showReasons); setShowCustomInput(false); }}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40",
-                showReasons ? "bg-warning/20 text-warning" : "bg-warning/10 text-warning hover:bg-warning/20"
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                feedback?.verdict === 'rejected'
+                  ? "bg-warning/20 text-warning ring-1 ring-warning/30"
+                  : showReasons
+                    ? "bg-warning/20 text-warning"
+                    : "bg-warning/10 text-warning hover:bg-warning/20"
               )}
             >
               <ThumbsDown className="w-3 h-3" />
@@ -796,15 +904,57 @@ function SampleProfileCard({ profile, onSendFeedback, isBusy }: {
                   {REJECTION_REASONS.map((reason) => (
                     <button
                       key={reason.key}
-                      onClick={() => handleReject(reason)}
-                      disabled={isBusy}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-foreground/70 bg-muted/50 hover:bg-muted hover:text-foreground transition-colors text-left disabled:opacity-40"
+                      onClick={() => handleReject(reason.label)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-foreground/70 bg-muted/50 hover:bg-muted hover:text-foreground transition-colors text-left"
                     >
                       <span>{reason.emoji}</span>
                       <span>{reason.label}</span>
                     </button>
                   ))}
+                  {/* "Autre" button */}
+                  <button
+                    onClick={() => setShowCustomInput(!showCustomInput)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-foreground/70 transition-colors text-left",
+                      showCustomInput ? "bg-muted text-foreground" : "bg-muted/50 hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <span>✏️</span>
+                    <span>Autre…</span>
+                  </button>
                 </div>
+
+                {/* Custom free-text input */}
+                <AnimatePresence>
+                  {showCustomInput && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="flex gap-1.5 mt-2">
+                        <input
+                          type="text"
+                          value={customReason}
+                          onChange={(e) => setCustomReason(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleCustomReject(); }}
+                          placeholder="Précisez la raison…"
+                          className="flex-1 text-xs bg-muted/30 border border-border/50 rounded-lg px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/30"
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleCustomReject}
+                          disabled={!customReason.trim()}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-warning/10 text-warning hover:bg-warning/20 transition-colors disabled:opacity-40"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             )}
           </AnimatePresence>
