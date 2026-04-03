@@ -212,8 +212,12 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   }
 
   // ── FINAL assistant message — full parsing with rich cards ──
-  const { diagnostic, remaining: afterDiagnostic } = extractDiagnostic(cleanContent);
-  const contentForParsing = diagnostic ? afterDiagnostic : cleanContent;
+  // Extract scoring test from raw content (before stripSystemTags removes it)
+  const { scoringTest, contentWithout: afterScoringTest } = extractScoringTest(message.content);
+  const cleanForParsing = stripSystemTags(afterScoringTest, false);
+  
+  const { diagnostic, remaining: afterDiagnostic } = extractDiagnostic(cleanForParsing);
+  const contentForParsing = diagnostic ? afterDiagnostic : cleanForParsing;
   const { profiles: sampleProfiles, contentWithout: afterProfiles } = extractSampleProfiles(contentForParsing);
   const { candidates, contentWithout: afterCandidates } = extractCandidates(afterProfiles);
   const { summary, remaining: afterSummary } = extractSummary(afterCandidates);
