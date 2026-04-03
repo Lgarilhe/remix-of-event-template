@@ -163,3 +163,76 @@ activeProject exists → useLinkedInSearch creates job from brief:
 - **Two filter formats coexist** — AI format vs LinkedInFiltersState, transformation in useLinkedInSearch
 - **Step reordering**: uses temp negative order values to avoid UNIQUE constraint, then reassigns positive
 - **Location deferred resolution**: if no LinkedIn account connected, location stays as keyword until account available
+
+---
+
+## Apollo API (Base Konekt)
+
+### Architecture
+```
+Frontend (buildSearchParams) → database-search edge function (mapFiltersToApollo) → Apollo API
+```
+- Apollo API key stored in Supabase secrets as `APOLLO_API_KEY`
+- Edge function `database-search` translates LinkedIn filter format to Apollo format
+- **Edge functions must be manually redeployed** after code changes (Lovable only deploys frontend)
+
+### Apollo Search Flow
+```
+1. mixed_people/api_search → returns basic metadata (name, title, company, city)
+   - NO linkedin_url, NO employment_history, NO email
+   - Returns pagination.total_entries at TOP LEVEL (not in pagination object)
+   
+2. people/bulk_match → enriches profiles (linkedin_url, employment_history, email, phone)
+   - Consumes 1 credit per profile
+   - Batch limit: 10 profiles per call
+   - This is where linkedin_url becomes available
+
+3. apolloToLinkedInProfile() → converts Apollo format to LinkedInProfile format
+```
+
+### Apollo Pagination
+- Apollo returns `total_entries` at top level of response (NOT inside `pagination` object)
+- `per_page` defaults to 25
+- Paginate by sending `page: 2`, `page: 3`, etc.
+- Calculate total pages: `Math.ceil(total_entries / per_page)`
+
+### Apollo Filter Mapping (mapFiltersToApollo)
+| LinkedIn Filter | Apollo Parameter | Notes |
+|----------------|-----------------|-------|
+| keywords (Boolean) | q_keywords | Boolean cleaned → simple terms |
+| role[].keywords | person_titles | Split on OR, include_similar_titles=true |
+| location[].name | person_locations | Must be simple "City, Country" format |
+| seniority | person_seniorities | Map: 1=intern, 2=entry, 4=senior, 5=manager... |
+| company_keywords | q_organization_name | DOESNT_HAVE excluded |
+| industry | q_organization_keyword_tags | Text tags, not LinkedIn IDs |
+| school | q_keywords (appended) | Names only, IDs skipped |
+| function | person_departments | Map: engineering, sales, product... |
+| company_headcount | organization_num_employees_ranges | Map A-I to "1,10", "11,50"... |
+| db_revenue_min/max | revenue_range[min]/[max] | Parse K/M/B suffixes |
+| db_funding_stage | organization_latest_funding_stage_cd | Seed, Series A/B/C... |
+| db_company_domain | q_organization_domains_list | Array of domains |
+| db_email_verified | contact_email_status: ["verified"] | Toggle |
+| db_technologies | currently_using_any_of_technology_uids | Array |
+
+### Apollo Limitations
+- Does NOT support Boolean syntax (AND/OR/NOT) → cleaned to simple terms
+- `person_locations` must be simple format ("Paris, France" not "Ville de Paris, Île-de-France, France")
+- q_keywords + person_titles AND'd together → too many keywords = 0 results
+- When person_titles present, reduce q_keywords to max 4 terms
+- Cap q_organization_name to 200 chars (prevents "Value too long" error)
+- Cap q_keywords to 500 chars
+
+### Apollo Profile Enrichment & Unipile
+- Apollo profiles have work_experience (via bulk_match) but NO summary ("À propos")
+- Unipile enrichment should ONLY trigger if profile lacks work_experience
+- If Unipile returns empty data, KEEP Apollo data (don't overwrite with empties)
+- linkedin_url only available AFTER bulk_match enrichment (not from search results)
+
+### Deployment Warning
+**Edge functions are NOT auto-deployed by Lovable.** After merging changes to edge functions:
+```bash
+supabase functions deploy database-search
+supabase functions deploy score-profile-job
+supabase functions deploy generate-search-filters
+```
+Or ask Lovable to redeploy. Without this, old code keeps running on Supabase.
