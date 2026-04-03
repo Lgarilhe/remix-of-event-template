@@ -57,6 +57,9 @@ export interface JobMatchResult {
   dataCompleteness?: 'full' | 'partial' | 'minimal';
   missingDataPoints?: string[];
   criteriaEvaluations?: Array<{ label: string; verdict: 'pass' | 'partial' | 'fail' | 'unknown'; reason: string }>;
+  likelyToSwitchScore?: number | null;
+  careerGrowthScore?: number | null;
+  switchSignals?: string[];
   skippedLLM?: boolean;
   processingTimeMs?: number;
   tokensUsed?: { input: number; output: number } | null;
@@ -274,6 +277,43 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
               <SkillTag key={i} skill={s.name} matched={s.matched} />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Power Scores: Likely to Switch + Career Growth */}
+      {(result.likelyToSwitchScore != null || result.careerGrowthScore != null) && (
+        <div className="flex flex-wrap gap-2">
+          {result.likelyToSwitchScore != null && (
+            <div className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md",
+              result.likelyToSwitchScore >= 70 ? "text-accent border-accent/30 bg-accent/5" :
+              result.likelyToSwitchScore >= 40 ? "text-warning border-warning/30 bg-warning/5" :
+              "text-muted-foreground border-border bg-muted/30"
+            )}>
+              <span>🔄</span>
+              <span>Mobilité: {result.likelyToSwitchScore}/100</span>
+            </div>
+          )}
+          {result.careerGrowthScore != null && (
+            <div className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md",
+              result.careerGrowthScore >= 70 ? "text-accent border-accent/30 bg-accent/5" :
+              result.careerGrowthScore >= 40 ? "text-warning border-warning/30 bg-warning/5" :
+              "text-muted-foreground border-border bg-muted/30"
+            )}>
+              <span>📈</span>
+              <span>Progression: {result.careerGrowthScore}/100</span>
+            </div>
+          )}
+          {result.switchSignals?.length ? (
+            <div className="w-full flex flex-wrap gap-1 mt-0.5">
+              {result.switchSignals.map((signal, i) => (
+                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
+                  {signal}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
 

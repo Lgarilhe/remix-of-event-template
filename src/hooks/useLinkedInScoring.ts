@@ -376,6 +376,9 @@ function mapScoringResult(raw: any): JobMatchResult {
     },
     // Criteria evaluations (per brief criteria)
     criteriaEvaluations: raw.criteriaEvaluations || [],
+    likelyToSwitchScore: raw.likelyToSwitchScore ?? null,
+    careerGrowthScore: raw.careerGrowthScore ?? null,
+    switchSignals: raw.switchSignals || [],
     // V2 fields passthrough
     hardFilterPassed: raw.hardFilterPassed,
     hardFilterKO: raw.hardFilterKO,
