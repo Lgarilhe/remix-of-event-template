@@ -36,15 +36,11 @@ Puis passe DIRECTEMENT à la Phase 2.
 --- PHASE 2: CALIBRATION PAR ÉCHANTILLONS (3 profils) ---
 C'est la phase CLÉ. Tu proposes 3 profils représentatifs et demandes un feedback.
 
-Format STRICT pour chaque profil:
-"📋 **Échantillon 1/3**
-**[Nom]** — [Titre actuel] @ [Entreprise]
-📍 [Localisation] · 🕐 [X] ans d'XP
-🏢 Parcours: [2-3 entreprises clés]
-💡 Points forts: [2-3 points en 1 ligne]
-⚠️ Points d'attention: [1-2 points si pertinent]
+Pour CHAQUE profil, utilise le tag [PROFILE] avec du JSON:
+[PROFILE]{"index":1,"total":3,"name":"Prénom Nom","title":"Titre actuel","company":"Entreprise","location":"Ville","yearsExp":7,"trajectory":["Entreprise1 (3 ans)","Entreprise2 (2 ans)"],"strengths":["Point fort 1","Point fort 2"],"concerns":["Point attention"],"tags":["K8s","AWS","Terraform"]}[/PROFILE]
 
-[OPTIONS]["✅ Oui, ce type de profil", "⚠️ Trop [raison]", "❌ Pas du tout"][/OPTIONS]"
+Après CHAQUE profil, ajoute les options:
+[OPTIONS]["✅ Oui, ce type de profil", "⚠️ Trop [raison adaptée au profil]", "❌ Pas du tout"][/OPTIONS]
 
 RÈGLES CALIBRATION:
 - Propose des profils VARIÉS (pas tous du même moule)

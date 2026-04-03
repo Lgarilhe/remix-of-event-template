@@ -19,6 +19,35 @@ export function extractOptions(content: string): string[] {
   try { return JSON.parse(match[1]); } catch { return []; }
 }
 
+interface SampleProfile {
+  index: number;
+  total: number;
+  name: string;
+  title: string;
+  company: string;
+  location: string;
+  yearsExp: number;
+  trajectory: string[];
+  strengths: string[];
+  concerns: string[];
+  tags: string[];
+}
+
+function extractSampleProfiles(content: string): { profiles: SampleProfile[]; contentWithout: string } {
+  const profiles: SampleProfile[] = [];
+  let contentWithout = content;
+  const regex = /\[PROFILE\]\s*(\{[\s\S]*?\})\s*\[\/PROFILE\]/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      profiles.push(parsed);
+      contentWithout = contentWithout.replace(match[0], '');
+    } catch {}
+  }
+  return { profiles, contentWithout: contentWithout.trim() };
+}
+
 interface ParsedCandidate {
   name: string;
   title: string;
@@ -95,7 +124,9 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
   }
 
   // ── Assistant message ──
-  const { candidates, contentWithout: afterCandidates } = extractCandidates(cleanContent);
+  // Extract sample profiles first
+  const { profiles: sampleProfiles, contentWithout: afterProfiles } = extractSampleProfiles(cleanContent);
+  const { candidates, contentWithout: afterCandidates } = extractCandidates(afterProfiles);
 
   // Extract summary card if present
   const { summary, remaining: afterSummary } = extractSummary(afterCandidates);
@@ -140,6 +171,14 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
           </div>
         );
       })()}
+
+      {sampleProfiles.length > 0 && (
+        <div className="space-y-2 mt-2">
+          {sampleProfiles.map((p, i) => (
+            <SampleProfileCard key={i} profile={p} />
+          ))}
+        </div>
+      )}
 
       {candidates.length > 0 && (
         <div className="space-y-1.5 mt-2">
@@ -511,6 +550,80 @@ const scoreStyles: Record<string, string> = {
   Maybe: 'bg-warning/20 text-warning',
   No: 'bg-red-500/20 text-red-700',
 };
+
+// ── Sample Profile Card (calibration phase) ──
+function SampleProfileCard({ profile }: { profile: SampleProfile }) {
+  const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden bg-card">
+      {/* Header */}
+      <div className="px-3.5 py-3 flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+          {initials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-foreground truncate">{profile.name}</p>
+            <span className="text-[10px] text-muted-foreground font-medium px-1.5 py-0.5 bg-muted rounded-full shrink-0">
+              {profile.index}/{profile.total}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground truncate">
+            {profile.title} @ {profile.company}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+            <span>📍 {profile.location}</span>
+            <span>·</span>
+            <span>{profile.yearsExp} ans d'XP</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Trajectory */}
+      {profile.trajectory.length > 0 && (
+        <div className="px-3.5 pb-2">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Parcours</p>
+          <div className="flex items-center gap-1.5 text-xs text-foreground/70 overflow-x-auto">
+            {profile.trajectory.map((t, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span className="text-muted-foreground/30">→</span>}
+                <span className="whitespace-nowrap">{t}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tags */}
+      {profile.tags.length > 0 && (
+        <div className="px-3.5 pb-2 flex flex-wrap gap-1">
+          {profile.tags.map((tag, i) => (
+            <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Strengths & Concerns */}
+      <div className="px-3.5 pb-3 space-y-1">
+        {profile.strengths.map((s, i) => (
+          <div key={`s-${i}`} className="flex items-start gap-1.5 text-xs">
+            <span className="text-accent mt-0.5 shrink-0">✓</span>
+            <span className="text-foreground/70">{s}</span>
+          </div>
+        ))}
+        {profile.concerns.map((c, i) => (
+          <div key={`c-${i}`} className="flex items-start gap-1.5 text-xs">
+            <span className="text-warning mt-0.5 shrink-0">⚠</span>
+            <span className="text-foreground/70">{c}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
   const initials = candidate.name
