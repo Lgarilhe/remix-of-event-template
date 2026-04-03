@@ -4,12 +4,20 @@ const AUTH_VALIDATION_TIMEOUT_MS = 4000;
 let isInvalidatingLocalSession = false;
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs = AUTH_VALIDATION_TIMEOUT_MS): Promise<T> => {
-  return await Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      window.setTimeout(() => reject(new Error('AUTH_VALIDATION_TIMEOUT')), timeoutMs);
-    }),
-  ]);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = globalThis.setTimeout(() => reject(new Error('AUTH_VALIDATION_TIMEOUT')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
 };
 
 /**
@@ -80,9 +88,30 @@ const invalidateLocalSession = () => {
  * and clears corrupted tokens if the JWT is bad.
  */
 export const getValidatedSession = async () => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  let session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'] | null = null;
+
+  try {
+    const {
+      data,
+      error,
+    } = await withTimeout(supabase.auth.getSession());
+
+    if (error) {
+      if (isDefinitiveInvalidSessionError(error)) {
+        invalidateLocalSession();
+      }
+
+      return { session: null, user: null };
+    }
+
+    session = data.session;
+  } catch (error) {
+    if (isDefinitiveInvalidSessionError(error)) {
+      invalidateLocalSession();
+    }
+
+    return { session: null, user: null };
+  }
 
   if (!session?.access_token) {
     return { session: null, user: null };
