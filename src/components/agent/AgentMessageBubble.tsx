@@ -116,7 +116,7 @@ function MarkdownProse({ content, className }: { content: string; className?: st
   );
 }
 
-export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, isStreaming }) => {
+export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, isStreaming, onSendFeedback, isBusy }) => {
   const isUser = message.role === 'user';
   const isStatus = message.role === 'status';
   const thinking = message.metadata?.thinking as string | undefined;
