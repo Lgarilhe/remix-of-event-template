@@ -463,12 +463,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       />
 
       {/* Input bar */}
-      <div className="shrink-0 bg-background border-t border-border px-4 py-3 z-10 space-y-2">
+      <div className="shrink-0 bg-background/80 backdrop-blur-sm border-t border-border/60 px-4 py-3 z-10 space-y-2">
         {selectedJob && conversationId !== jobSentForConv && (
           <div className="flex items-center gap-1.5">
-            <span className="bg-accent/10 text-xs px-2 py-1 border border-accent/30 flex items-center gap-1.5 truncate max-w-full">
+            <span className="bg-primary/5 text-xs px-2.5 py-1 rounded-lg border border-primary/15 flex items-center gap-1.5 truncate max-w-full">
               <span>📋</span>
-              <span className="truncate">{selectedJob.title}</span>
+              <span className="truncate text-foreground/70">{selectedJob.title}</span>
               <button
                 onClick={() => setSelectedJob(null)}
                 className="ml-0.5 text-muted-foreground hover:text-foreground transition-colors"
@@ -479,7 +479,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             </span>
           </div>
         )}
-        <div className="flex items-end gap-2 border border-border focus-within:border-border focus-within:shadow-sm transition-all duration-200 px-3 py-2">
+        <div className="flex items-end gap-2 rounded-xl border border-border/60 focus-within:border-primary/30 focus-within:shadow-sm transition-all duration-200 px-3 py-2.5 bg-muted/20">
           <textarea
             ref={inputRef}
             value={input}
@@ -503,27 +503,19 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className={cn(
-              "h-7 w-7 flex items-center justify-center shrink-0 transition-all duration-150 active:scale-90",
+              "h-8 w-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-150 active:scale-90",
               input.trim() && !sending
-                ? "bg-foreground text-background hover:bg-accent"
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >
             {sending ? (
-              <div className="h-7 w-7 flex items-center justify-center relative">
-                <div className="h-5 w-5 border border-border relative">
-                  <div
-                    className="absolute w-[5px] h-[5px] -top-[2.5px] -left-[2.5px] skalr-gradient-bg animate-[spin_1.5s_linear_infinite]"
-                    style={{ transformOrigin: '12.5px 12.5px' }}
-                  />
-                </div>
-              </div>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Send className="w-3 h-3" />
+              <Send className="w-3.5 h-3.5" />
             )}
           </button>
         </div>
       </div>
-    </div>
   );
 };
