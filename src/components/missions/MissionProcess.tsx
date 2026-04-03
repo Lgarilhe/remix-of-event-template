@@ -98,9 +98,9 @@ const StepCard: React.FC<StepCardProps> = ({
       onDragOver={(e) => { e.preventDefault(); onDragOver(index); }}
       onDragEnd={onDragEnd}
       className={cn(
-        "border border-border bg-background transition-all",
-        isDragging && "opacity-50",
-        isDragTarget && "border-accent border-2",
+        "rounded-lg border border-border bg-card transition-all",
+        isDragging && "opacity-50 scale-[0.98]",
+        isDragTarget && "border-primary/40 shadow-sm",
       )}
     >
       {/* Header */}
@@ -109,7 +109,7 @@ const StepCard: React.FC<StepCardProps> = ({
           <GripVertical className="w-4 h-4" />
         </div>
 
-        <div className="flex items-center justify-center w-7 h-7 bg-foreground text-background text-xs font-bold shrink-0">
+        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
           {index + 1}
         </div>
 
@@ -120,26 +120,26 @@ const StepCard: React.FC<StepCardProps> = ({
               const val = e.target.value.trim();
               if (val && val !== step.name) onUpdate({ id: step.id, name: val });
             }}
-            className="text-sm font-bold uppercase tracking-wider text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 px-1 -mx-1 w-full"
+            className="text-sm font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 w-full"
           />
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {step.is_eliminatory && (
-            <span className="flex items-center gap-1 px-2 py-0.5 bg-red-600 text-white text-xs font-bold uppercase tracking-wider">
-              <Zap className="w-2.5 h-2.5" /> Éliminatoire
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-destructive/10 text-destructive text-xs font-medium border border-destructive/20">
+              <Zap className="w-3 h-3" /> Éliminatoire
             </span>
           )}
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="w-3 h-3" /> {step.duration_minutes}min
+            <Clock className="w-3.5 h-3.5" /> {step.duration_minutes}min
           </span>
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <User className="w-3 h-3" /> {step.interviewer_name || INTERVIEWER_TYPE_LABELS[step.interviewer_type]}
+            <User className="w-3.5 h-3.5" /> {step.interviewer_name || INTERVIEWER_TYPE_LABELS[step.interviewer_type]}
           </span>
-          <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground">
+          <button onClick={() => setExpanded(!expanded)} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
             <ChevronDown className={cn("w-4 h-4 transition-transform", expanded && "rotate-180")} />
           </button>
-          <button onClick={() => onDelete(step.id)} className="text-muted-foreground hover:text-red-500 transition-colors">
+          <button onClick={() => onDelete(step.id)} className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -147,7 +147,7 @@ const StepCard: React.FC<StepCardProps> = ({
 
       {/* Expanded content */}
       {expanded && (
-        <div className="px-4 pb-4 pt-1 border-t border-border space-y-4">
+        <div className="px-4 pb-4 pt-3 border-t border-border/50 space-y-4 bg-muted/20">
           {/* Description */}
           <div className="space-y-1">
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</label>
@@ -155,7 +155,7 @@ const StepCard: React.FC<StepCardProps> = ({
               defaultValue={step.description || ''}
               onBlur={(e) => onUpdate({ id: step.id, description: e.target.value || null })}
               placeholder="Description de l'étape..."
-              className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+              className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
             />
           </div>
 
@@ -167,7 +167,7 @@ const StepCard: React.FC<StepCardProps> = ({
                 type="number"
                 defaultValue={step.duration_minutes}
                 onBlur={(e) => onUpdate({ id: step.id, duration_minutes: Number(e.target.value) || 30 })}
-                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -175,7 +175,7 @@ const StepCard: React.FC<StepCardProps> = ({
               <select
                 value={step.interviewer_type}
                 onChange={(e) => onUpdate({ id: step.id, interviewer_type: e.target.value as any })}
-                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
               >
                 <option value="internal">Interne</option>
                 <option value="client">Client</option>
@@ -188,7 +188,7 @@ const StepCard: React.FC<StepCardProps> = ({
                 defaultValue={step.interviewer_name || ''}
                 onBlur={(e) => onUpdate({ id: step.id, interviewer_name: e.target.value || null })}
                 placeholder="Nom..."
-                className="w-full h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
               />
             </div>
             <div className="space-y-1">
@@ -198,8 +198,8 @@ const StepCard: React.FC<StepCardProps> = ({
                 className={cn(
                   "w-full h-9 px-3 text-xs font-bold uppercase tracking-wider border transition-colors",
                   step.is_eliminatory
-                    ? "bg-red-600 text-white border-red-600"
-                    : "bg-background text-muted-foreground border-border hover:border-border"
+                    ? "bg-destructive text-destructive-foreground border-destructive"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted/50"
                 )}
               >
                 {step.is_eliminatory ? '⚡ Oui' : 'Non'}
@@ -212,7 +212,7 @@ const StepCard: React.FC<StepCardProps> = ({
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Objectifs</label>
             <div className="flex flex-wrap gap-1.5">
               {step.objectives.map((obj, i) => (
-                <span key={i} className="flex items-center gap-1 px-2 py-1 bg-accent/50 border border-border text-xs font-medium text-foreground">
+                <span key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/50 border border-border text-xs font-medium text-foreground">
                   ☑ {obj}
                   <button
                     onClick={() => onUpdate({ id: step.id, objectives: step.objectives.filter((_, j) => j !== i) })}
@@ -289,7 +289,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   };
 
   return (
-    <div className="mt-8 pt-6 border-t border-border">
+    <div className="mt-6 pt-6 border-t border-border">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-muted-foreground" />
@@ -313,7 +313,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <select
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
-            className="flex-1 h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+            className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
           >
             <option value="">Sélectionner un membre...</option>
             {availableMembers.map((m: any) => (
@@ -356,14 +356,14 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
       ) : (
         <div className="space-y-2">
           {team.map((member: any) => (
-            <div key={member.id} className="flex items-center gap-3 px-4 py-2 border border-border">
-              <div className="w-7 h-7 bg-foreground/10 flex items-center justify-center">
-                <User className="w-3.5 h-3.5 text-foreground" />
+            <div key={member.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-card">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                <User className="w-4 h-4 text-muted-foreground" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">{getMemberName(member.user_id)}</p>
+                <p className="text-sm font-medium text-foreground truncate">{getMemberName(member.user_id)}</p>
               </div>
-              <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground">
+              <span className="px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50">
                 {ROLE_LABELS[member.role] || member.role}
               </span>
               {!readOnly && (
@@ -407,7 +407,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="email@freelance.com"
-                className="flex-1 h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+                className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -450,9 +450,9 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                     <p className="text-xs text-foreground truncate">{inv.email}</p>
                   </div>
                   <span className={cn(
-                    "px-2 py-0.5 text-xs font-bold uppercase tracking-wider border",
-                    inv.status === 'accepted' ? "border-green-600 text-green-600" :
-                    inv.status === 'pending' ? "border-amber-500 text-amber-600" :
+                    "px-2 py-0.5 text-xs font-medium rounded-md border",
+                    inv.status === 'accepted' ? "border-success/30 text-success bg-success/10" :
+                    inv.status === 'pending' ? "border-warning/30 text-warning bg-warning/10" :
                     "border-border text-muted-foreground"
                   )}>
                     {inv.status === 'pending' ? 'En attente' : inv.status === 'accepted' ? 'Acceptée' : inv.status === 'rejected' ? 'Refusée' : 'Expirée'}
@@ -582,7 +582,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
   };
 
   return (
-    <div className="bg-background border border-border p-4 sm:p-6">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Contextual banner */}
       <MissionContextBanner
         icon="🏗️"
@@ -593,27 +593,29 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
         className="mb-4"
       />
       {readOnly && (
-        <div className="mb-4 px-3 py-2 border border-border bg-muted/30 flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="px-4 py-3 rounded-lg border border-border bg-muted/30 flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">
             👁️ Lecture seule — le process est défini par le lead recruteur
           </span>
         </div>
       )}
       {/* Process header stats */}
       {steps.length > 0 && (
-        <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b border-border">
-          <div className="flex items-center gap-6">
-            <div>
-              <p className="text-lg font-bold text-foreground">{steps.length}</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étapes</p>
+        <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border border-border bg-card">
+          <div className="flex items-center gap-6 flex-1">
+            <div className="text-center">
+              <p className="text-2xl font-semibold text-foreground tabular-nums">{steps.length}</p>
+              <p className="text-xs text-muted-foreground">Étapes</p>
             </div>
-            <div>
-              <p className="text-lg font-bold text-foreground">{steps.reduce((sum, s) => sum + s.duration_minutes, 0)} min</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Durée totale</p>
+            <div className="w-px h-8 bg-border" />
+            <div className="text-center">
+              <p className="text-2xl font-semibold text-foreground tabular-nums">{steps.reduce((sum, s) => sum + s.duration_minutes, 0)}<span className="text-sm ml-0.5">min</span></p>
+              <p className="text-xs text-muted-foreground">Durée totale</p>
             </div>
-            <div>
-              <p className="text-lg font-bold text-foreground">{steps.filter(s => s.is_eliminatory).length}</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Éliminatoires</p>
+            <div className="w-px h-8 bg-border" />
+            <div className="text-center">
+              <p className="text-2xl font-semibold text-foreground tabular-nums">{steps.filter(s => s.is_eliminatory).length}</p>
+              <p className="text-xs text-muted-foreground">Éliminatoires</p>
             </div>
           </div>
           {!readOnly && (
@@ -650,10 +652,13 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
         </div>
       ) : steps.length === 0 ? (
-        <div className="border border-dashed border-border p-6">
-          <div className="text-3xl mb-3 text-center">🏗️</div>
-          <p className="text-sm text-muted-foreground mb-5 text-center">
-            {readOnly ? 'Aucune étape définie pour cette mission.' : 'Choisissez un template ou laissez l\'IA suggérer un process.'}
+        <div className="rounded-lg border border-dashed border-border p-8 text-center">
+          <div className="text-4xl mb-4">🏗️</div>
+          <h3 className="text-sm font-semibold text-foreground mb-1">
+            {readOnly ? 'Aucune étape définie' : 'Configurez votre process d\'interview'}
+          </h3>
+          <p className="text-xs text-muted-foreground mb-6 max-w-sm mx-auto">
+            {readOnly ? 'Aucune étape définie pour cette mission.' : 'Choisissez un template adapté ou laissez l\'IA analyser le brief pour suggérer le process idéal.'}
           </p>
           {!readOnly && (
             <div className="space-y-4">
@@ -677,13 +682,13 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
                     key={key}
                     onClick={() => initializeFromTemplate(tpl.steps)}
                     disabled={isAdding}
-                    className="border border-border p-3 text-left hover:border-border hover:shadow-sm transition-all disabled:opacity-50"
+                    className="rounded-lg border border-border bg-card p-4 text-left hover:border-primary/30 hover:shadow-sm transition-all disabled:opacity-50 group"
                   >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <FileText className="w-3 h-3 text-muted-foreground" />
-                      <p className="text-xs font-bold uppercase tracking-wider text-foreground">{tpl.label}</p>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <FileText className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <p className="text-sm font-semibold text-foreground">{tpl.label}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">{tpl.description}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{tpl.description}</p>
                   </button>
                 ))}
               </div>
@@ -693,13 +698,13 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
       ) : (
         <div className="relative">
           {/* Vertical connector line */}
-          <div className="absolute left-[30px] top-[28px] bottom-[28px] w-[2px] bg-foreground/10" />
+          <div className="absolute left-[30px] top-[28px] bottom-[28px] w-[2px] bg-border" />
 
-          <div className="relative space-y-0">
+          <div className="relative space-y-2">
             {/* Fixed first step: Submit candidate */}
-            <div className="flex items-center gap-3 px-4 py-3 relative z-10">
-              <div className="flex items-center justify-center w-7 h-7 bg-muted border border-border text-muted-foreground text-xs font-bold shrink-0">→</div>
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Candidat soumis</span>
+            <div className="flex items-center gap-3 px-4 py-2 relative z-10">
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-muted border border-border text-muted-foreground text-xs font-medium shrink-0">→</div>
+              <span className="text-xs font-medium text-muted-foreground">Candidat soumis</span>
             </div>
 
             {/* Draggable steps */}
@@ -720,9 +725,9 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
             ))}
 
             {/* Fixed last step: Hired */}
-            <div className="flex items-center gap-3 px-4 py-3 relative z-10">
-              <div className="flex items-center justify-center w-7 h-7 bg-accent text-background text-xs font-bold shrink-0">✓</div>
-              <span className="text-xs font-bold uppercase tracking-wider text-foreground">Embauché</span>
+            <div className="flex items-center gap-3 px-4 py-2 relative z-10">
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-success/10 border border-success/30 text-success text-xs font-medium shrink-0">✓</div>
+              <span className="text-xs font-medium text-success">Embauché</span>
             </div>
           </div>
         </div>
@@ -738,7 +743,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
               onKeyDown={(e) => { if (e.key === 'Enter') handleAddStep(); if (e.key === 'Escape') setAddingStep(false); }}
               autoFocus
               placeholder="Nom de l'étape..."
-              className="flex-1 h-9 px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors"
+              className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
             />
             <button
               onClick={handleAddStep}
