@@ -214,6 +214,7 @@ export const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message,
       <div className="flex-1 min-w-0 space-y-2">
         {thinking && <ThinkingCard thinking={thinking} />}
 
+        {diagnostic && <DiagnosticCard data={diagnostic} />}
         {summary && <SummaryCard items={summary.items} tags={summary.tags} />}
 
         {stepCurrent != null && stepTotal != null && stepLabel && (
