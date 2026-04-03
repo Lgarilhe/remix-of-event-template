@@ -35,6 +35,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, errorInfo);
+
+    // Auto-reload for stale chunk errors (after deploys)
+    if (isChunkLoadError(error)) {
+      const reloaded = sessionStorage.getItem('chunk-reload');
+      if (!reloaded) {
+        sessionStorage.setItem('chunk-reload', '1');
+        reloadWithPreviewAccessToken();
+        return;
+      }
+    }
+
     Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
   }
 
