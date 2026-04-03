@@ -374,6 +374,8 @@ function mapScoringResult(raw: any): JobMatchResult {
       contractMismatch: raw.contractMismatch || raw.contract_mismatch || null,
       skipReason: raw.skipReason || raw.skip_reason || null,
     },
+    // Criteria evaluations (per brief criteria)
+    criteriaEvaluations: raw.criteriaEvaluations || [],
     // V2 fields passthrough
     hardFilterPassed: raw.hardFilterPassed,
     hardFilterKO: raw.hardFilterKO,

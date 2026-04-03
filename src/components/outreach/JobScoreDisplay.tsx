@@ -56,6 +56,7 @@ export interface JobMatchResult {
   dimensions?: ScoringDimensions;
   dataCompleteness?: 'full' | 'partial' | 'minimal';
   missingDataPoints?: string[];
+  criteriaEvaluations?: Array<{ label: string; verdict: 'pass' | 'partial' | 'fail' | 'unknown'; reason: string }>;
   skippedLLM?: boolean;
   processingTimeMs?: number;
   tokensUsed?: { input: number; output: number } | null;
@@ -272,6 +273,35 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
             {allSkills.map((s, i) => (
               <SkillTag key={i} skill={s.name} matched={s.matched} />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Criteria evaluations from brief */}
+      {result.criteriaEvaluations && result.criteriaEvaluations.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+            <Target className="w-3 h-3" /> Critères du brief
+          </p>
+          <div className="space-y-1">
+            {result.criteriaEvaluations.map((ce, i) => {
+              const verdictConfig = {
+                pass: { icon: CheckCircle2, cls: 'text-accent border-accent/30 bg-accent/5', label: 'OK' },
+                partial: { icon: AlertCircle, cls: 'text-warning border-warning/30 bg-warning/5', label: 'Partiel' },
+                fail: { icon: XCircle, cls: 'text-destructive border-destructive/30 bg-destructive/5', label: 'KO' },
+                unknown: { icon: Search, cls: 'text-muted-foreground border-border bg-muted/30', label: '?' },
+              }[ce.verdict] || { icon: AlertCircle, cls: 'text-muted-foreground border-border bg-muted/30', label: '?' };
+              const Icon = verdictConfig.icon;
+              return (
+                <div key={i} className={cn("flex items-start gap-2 px-2.5 py-1.5 border rounded-md text-xs", verdictConfig.cls)}>
+                  <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold">{ce.label}</span>
+                    <span className="text-muted-foreground ml-1.5">— {ce.reason}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

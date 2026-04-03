@@ -107,6 +107,7 @@ interface ScoringResult {
   llmScore: number | null;
   pedigreeScore?: number | null;
   notableCompanies?: string[] | null;
+  criteriaEvaluations?: Array<{ label: string; verdict: string; reason: string }>;
   finalScore: number;
   confidenceScore: number;
   dimensions: Record<string, DimensionScore>;
@@ -955,6 +956,7 @@ interface LLMResult {
   mustHavePassed: boolean;
   mustHaveUncertain: boolean;
   mustHaveDetails: string | null;
+  criteriaEvaluations: Array<{ label: string; verdict: string; reason: string }>;
   tokensUsed: { input: number; output: number };
 }
 
@@ -1076,11 +1078,13 @@ ${workExpText}
 6. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
 
 7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste. Intègre la qualité du pedigree dans le score global — un candidat avec les bonnes compétences ET un parcours dans des boîtes exigeantes mérite un score supérieur à un profil équivalent dans des ESN.
+
+8. **Évaluation des critères du manager** : Si des critères d'évaluation sont fournis dans "Détails" (section CRITÈRES D'ÉVALUATION DU MANAGER), évalue CHAQUE critère individuellement. Pour chaque critère, donne un verdict ("pass", "partial", "fail", "unknown") et une justification courte (max 20 mots). Respecte les deal-breakers et les poids.
 ${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
 
 Réponds UNIQUEMENT en JSON compact :
-{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3 noms d'entreprises notables du parcours, ou null"]}
-pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "failed" / "uncertain".`,
+{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3"],"criteriaEvaluations":[{"label":"nom du critère","verdict":"pass","reason":"justification courte"}]}
+pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "failed" / "uncertain". criteriaEvaluations: évaluation de chaque critère du manager si fournis, sinon [].`,
   );
 
   let lastError: Error | null = null;
@@ -1146,6 +1150,7 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
     mustHavePassed: parsed.mustHavePassed === "failed" ? false : true,
     mustHaveUncertain: parsed.mustHavePassed === "uncertain",
     mustHaveDetails: parsed.mustHaveDetails || null,
+    criteriaEvaluations: Array.isArray(parsed.criteriaEvaluations) ? parsed.criteriaEvaluations : [],
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
       output: data.usage?.output_tokens || 0,
@@ -1234,7 +1239,8 @@ ${profileSections}
 Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-100), pedigree (0-100), score global (0-100), must-have ("passed"/"failed"/"uncertain").
 
 Réponds UNIQUEMENT avec un JSON ARRAY, un objet par candidat dans l'ORDRE, format :
-[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"]}]
+[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"],"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif courte"}]}]
+verdict: "pass"/"partial"/"fail"/"unknown". criteriaEvaluations: évalue chaque critère du manager si fournis dans le contexte du poste, sinon [].
 JSON uniquement, sans markdown.`;
 
   console.log(`[llm-batch] Scoring ${inputs.length} profiles in single call`);
@@ -1362,6 +1368,7 @@ JSON uniquement, sans markdown.`;
       mustHavePassed: parsed.mustHavePassed === "failed" ? false : true,
       mustHaveUncertain: parsed.mustHavePassed === "uncertain",
       mustHaveDetails: parsed.mustHaveDetails || null,
+      criteriaEvaluations: Array.isArray(parsed.criteriaEvaluations) ? parsed.criteriaEvaluations : [],
       tokensUsed: tokensPerProfile,
     });
   }
@@ -2224,6 +2231,7 @@ Deno.serve(async (req) => {
         dimensions: weighted.dimensions,
         dataCompleteness: weighted.dataCompleteness,
         missingDataPoints: weighted.missingDataPoints,
+        criteriaEvaluations: llmResult?.criteriaEvaluations || [],
         skippedLLM: llmResult === null,
         processingTimeMs: Date.now() - ps.startTime,
         tokensUsed: llmResult?.tokensUsed ?? null,
