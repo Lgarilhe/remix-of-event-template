@@ -767,6 +767,76 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Market insights — quick sample without enrichment for analytics
+    if (action === "insights") {
+      const apolloPayload = mapFiltersToApollo({ ...body, limit: 100 });
+      apolloPayload.per_page = 100; // Max sample for insights
+
+      console.log("[database-search] Insights payload:", JSON.stringify(apolloPayload));
+
+      const response = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+          "X-Api-Key": apolloApiKey,
+        },
+        body: JSON.stringify(apolloPayload),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("[database-search] Insights Apollo error:", response.status, errText);
+        return json({ success: false, error: "Erreur lors de l'analyse du marché" });
+      }
+
+      const data = await response.json();
+      const rawPeople = data.people || [];
+      const totalEntries = Number(data.total_entries ?? data.pagination?.total_entries ?? rawPeople.length);
+
+      // Aggregate insights from raw data (no enrichment needed)
+      const locationCounts: Record<string, number> = {};
+      const companyCounts: Record<string, number> = {};
+      const titleCounts: Record<string, number> = {};
+      const seniorityDistribution: Record<string, number> = {};
+
+      for (const p of rawPeople) {
+        // Location
+        const city = p.city || p.state || 'Inconnu';
+        const country = p.country || '';
+        const loc = country ? `${city}, ${country}` : city;
+        locationCounts[loc] = (locationCounts[loc] || 0) + 1;
+
+        // Company
+        const company = p.organization_name || p.organization?.name || 'Inconnu';
+        if (company !== 'Inconnu') companyCounts[company] = (companyCounts[company] || 0) + 1;
+
+        // Title
+        const title = p.title || '';
+        if (title) titleCounts[title] = (titleCounts[title] || 0) + 1;
+
+        // Seniority
+        const seniority = p.seniority || 'unknown';
+        seniorityDistribution[seniority] = (seniorityDistribution[seniority] || 0) + 1;
+      }
+
+      // Sort and take top entries
+      const sortDesc = (obj: Record<string, number>, limit = 10) =>
+        Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, count]) => ({ name, count }));
+
+      return json({
+        success: true,
+        insights: {
+          totalAvailable: totalEntries,
+          sampleSize: rawPeople.length,
+          topLocations: sortDesc(locationCounts),
+          topCompanies: sortDesc(companyCounts, 15),
+          topTitles: sortDesc(titleCounts),
+          seniorityDistribution: sortDesc(seniorityDistribution),
+        },
+      });
+    }
+
     // Get profile details (for enrichment / profile view)
     if (action === "get_profile") {
       const profileId = body.profile_id || body.linkedin_url;
