@@ -408,6 +408,117 @@ function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
   );
 }
 
+// ── Diagnostic Card ──
+interface DiagnosticData {
+  briefSummary: string;
+  access: string;
+  pool: string;
+  strategy: string;
+  pointsToValidate: string[];
+  closingQuestion: string;
+}
+
+function extractDiagnostic(content: string): { diagnostic: DiagnosticData | null; remaining: string } {
+  // Detect diagnostic pattern: contains "Brief analysé" or "Diagnostic" header + "Points à valider"
+  const hasDiagnostic = /(?:brief\s*analys[ée]|diagnostic)/i.test(content) && /points?\s*à\s*valider/i.test(content);
+  if (!hasDiagnostic) return { diagnostic: null, remaining: content };
+
+  // Extract brief summary line
+  const briefMatch = content.match(/📋\s*Brief\s*analys[ée]\s*:\s*([^\n]+)/i) || content.match(/Brief\s*analys[ée]\s*:\s*([^\n]+)/i);
+  const briefSummary = briefMatch ? briefMatch[1].trim() : '';
+
+  // Extract access info
+  const accessMatch = content.match(/🔌\s*Accès\s*:\s*([^\n📊🎯⚠️]*)/i) || content.match(/Accès\s*:\s*([^\n📊🎯⚠️]*)/i);
+  const access = accessMatch ? accessMatch[1].trim() : '';
+
+  // Extract pool estimate
+  const poolMatch = content.match(/📊\s*Vivier\s*estimé\s*:\s*([^\n🎯⚠️]*)/i) || content.match(/Vivier\s*estimé\s*:\s*([^\n🎯⚠️]*)/i);
+  const pool = poolMatch ? poolMatch[1].trim() : '';
+
+  // Extract strategy
+  const strategyMatch = content.match(/🎯\s*Stratégie\s*:\s*([^\n⚠️]*)/i) || content.match(/Stratégie\s*:\s*([^\n⚠️]*)/i);
+  const strategy = strategyMatch ? strategyMatch[1].trim() : '';
+
+  // Extract points to validate
+  const pointsMatch = content.match(/(?:⚠️\s*)?Points?\s*à\s*valider\s*:?\s*([\s\S]*?)(?=\n\n[^•\-*\s]|Commençons|$)/i);
+  const pointsRaw = pointsMatch ? pointsMatch[1] : '';
+  const pointsToValidate = pointsRaw
+    .split(/\n/)
+    .map(l => l.replace(/^[•\-*·]\s*/, '').trim())
+    .filter(l => l.length > 5);
+
+  // Extract closing question (last paragraph)
+  const closingMatch = content.match(/\n\n([^•\-*\n][^\n]*\?[^\n]*)\s*$/);
+  const closingQuestion = closingMatch ? closingMatch[1].trim() : '';
+
+  return {
+    diagnostic: { briefSummary, access, pool, strategy, pointsToValidate, closingQuestion },
+    remaining: '',
+  };
+}
+
+function DiagnosticCard({ data }: { data: DiagnosticData }) {
+  const infoItems = [
+    { icon: FileText, label: 'Brief', value: data.briefSummary },
+    { icon: Wifi, label: 'Accès', value: data.access },
+    { icon: Target, label: 'Vivier estimé', value: data.pool },
+    { icon: Search, label: 'Stratégie', value: data.strategy },
+  ].filter(i => i.value);
+
+  return (
+    <div className="border border-border/60 rounded-xl overflow-hidden bg-card">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border/40 bg-muted/20">
+        <div className="w-6 h-6 rounded-lg skalr-gradient-bg flex items-center justify-center">
+          <Search className="w-3.5 h-3.5 text-primary-foreground" />
+        </div>
+        <span className="text-sm font-semibold text-foreground">Diagnostic</span>
+      </div>
+
+      {/* Info grid */}
+      <div className="px-4 py-3 space-y-2.5">
+        {infoItems.map((item, i) => (
+          <div key={i} className="flex items-start gap-2.5">
+            <item.icon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{item.label}</span>
+              <p className="text-[13px] text-foreground/80 leading-relaxed">{item.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Points to validate */}
+      {data.pointsToValidate.length > 0 && (
+        <div className="px-4 py-3 border-t border-border/40 bg-amber-500/5">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Points à valider</span>
+          </div>
+          <div className="space-y-1.5">
+            {data.pointsToValidate.map((point, i) => (
+              <div key={i} className="flex items-start gap-2 text-[13px] text-foreground/70 leading-relaxed">
+                <span className="w-1 h-1 rounded-full bg-amber-500/50 mt-[8px] shrink-0" />
+                <span>{point}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Closing question */}
+      {data.closingQuestion && (
+        <div className="px-4 py-3 border-t border-border/40 bg-muted/10">
+          <div className="flex items-start gap-2">
+            <MessageCircle className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+            <p className="text-[13px] font-medium text-foreground/90">{data.closingQuestion}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Extract summary from assistant content ──
 function extractSummary(content: string): { summary: { items: string[]; tags: string[] } | null; remaining: string } {
   const match = content.match(
