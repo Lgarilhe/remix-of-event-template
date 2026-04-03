@@ -31,22 +31,46 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   const handleOpenSearchAgent = useCallback(() => {
     const jobTitle = jd.title || project.name || '';
-    const briefSummary = [
+
+    // Build comprehensive brief summary with ALL available fields
+    const briefLines = [
       jd.title && `Poste : ${jd.title}`,
-      jd.client?.name && `Client : ${jd.client.name}`,
+      jd.contract_type && `Contrat : ${jd.contract_type}`,
+      jd.client?.name && `Client : ${jd.client.name}${jd.client.sector ? ` (${jd.client.sector})` : ''}`,
       jd.location && `Localisation : ${jd.location}`,
+      jd.remote_policy && `Remote : ${jd.remote_policy}`,
       jd.seniority && `Séniorité : ${jd.seniority}`,
-      jd.skills_must_have?.length && `Skills clés : ${jd.skills_must_have.join(', ')}`,
-      jd.experience_min != null && `Expérience : ${jd.experience_min}-${jd.experience_max ?? '?'} ans`,
+      (jd.experience_min != null || jd.experience_max != null) && `Expérience : ${jd.experience_min ?? '?'}-${jd.experience_max ?? '?'} ans`,
+      (jd.salary_min || jd.salary_max) && `Salaire : ${jd.salary_min ?? '?'}-${jd.salary_max ?? '?'}${jd.salary_currency || '€'}${jd.salary_type === 'daily' ? '/jour' : '/an'}`,
+      jd.skills_must_have?.length && `Skills must-have : ${jd.skills_must_have.join(', ')}`,
+      jd.skills_should_have?.length && `Skills should-have : ${jd.skills_should_have.join(', ')}`,
+      jd.skills_nice_to_have?.length && `Skills nice-to-have : ${jd.skills_nice_to_have.join(', ')}`,
+      jd.skills_to_avoid?.length && `Skills à éviter : ${jd.skills_to_avoid.join(', ')}`,
+      jd.certifications?.length && `Certifications : ${jd.certifications.join(', ')}`,
+      jd.languages?.length && `Langues : ${jd.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}`,
+      jd.mission_description && `Description : ${jd.mission_description.slice(0, 300)}`,
+      jd.context && `Contexte : ${jd.context.slice(0, 200)}`,
+      jd.evaluation_criteria?.length && `Critères d'évaluation (${jd.evaluation_criteria.length}) : ${jd.evaluation_criteria.slice(0, 5).map((c: any) => `${c.label}${c.deal_breaker ? ' [DEAL-BREAKER]' : ''}`).join(', ')}`,
+      jd.target_companies?.length && `Entreprises cibles : ${jd.target_companies.flatMap((cat: any) => cat.companies?.map((c: any) => c.name) || []).slice(0, 5).join(', ')}`,
     ].filter(Boolean).join('\n');
+
+    // Build access info
+    const linkedInAccount = accounts.find(a => a.id === selectedAccount);
+    const accessLines = [
+      linkedInAccount
+        ? `Compte LinkedIn : ${linkedInAccount.name || linkedInAccount.identifier} (${linkedInAccount.status})${(linkedInAccount as any).subscriptions?.recruiter ? ' — Licence Recruiter' : (linkedInAccount as any).subscriptions?.sales_navigator ? ' — Licence Sales Navigator' : ' — Licence Classic'}`
+        : 'Pas de compte LinkedIn connecté',
+      'Base Konekt (Apollo) : disponible',
+      hasFilters ? `Filtres déjà générés : oui` : 'Filtres : non générés',
+    ].join('\n');
 
     openContextualAgent({
       mode: 'sourcing',
       briefContext: (project.job_details || {}) as Record<string, unknown>,
-      initialMessage: `Aide-moi à trouver des candidats pour "${jobTitle}".\n\nBrief :\n${briefSummary}`,
+      initialMessage: `Aide-moi à trouver des candidats pour "${jobTitle}".\n\n=== BRIEF ===\n${briefLines}\n\n=== ACCÈS ===\n${accessLines}`,
       job: undefined,
     });
-  }, [project, jd, openContextualAgent]);
+  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent]);
 
   const handleGenerateFilters = useCallback(async () => {
     setIsGeneratingFilters(true);
