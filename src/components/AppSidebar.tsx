@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Sparkles, Search, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Sparkles, Search, Sun, Moon, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -28,6 +28,7 @@ const MAIN_NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/missions', label: 'Missions', icon: Target },
   { to: '/pipeline', label: 'Pipeline', icon: Kanban },
+  { to: '/candidates', label: 'Candidats', icon: Users },
   { to: '/inbox', label: 'Messages', icon: MessageSquare, badgeKey: 'unread' as const },
 ];
 
