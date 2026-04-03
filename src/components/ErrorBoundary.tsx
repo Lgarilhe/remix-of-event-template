@@ -3,6 +3,17 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as Sentry from '@sentry/react';
 import { reloadWithPreviewAccessToken } from '@/lib/previewToken';
 
+const isChunkLoadError = (error: Error | null) => {
+  if (!error) return false;
+  const msg = error.message || '';
+  return [
+    'Failed to fetch dynamically imported module',
+    'Importing a module script failed',
+    'Failed to load module script',
+    'ChunkLoadError',
+  ].some((needle) => msg.includes(needle));
+};
+
 interface Props {
   children: ReactNode;
 }
@@ -24,6 +35,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, errorInfo);
+
+    // Auto-reload for stale chunk errors (after deploys)
+    if (isChunkLoadError(error)) {
+      const reloaded = sessionStorage.getItem('chunk-reload');
+      if (!reloaded) {
+        sessionStorage.setItem('chunk-reload', '1');
+        reloadWithPreviewAccessToken();
+        return;
+      }
+    }
+
     Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
   }
 
