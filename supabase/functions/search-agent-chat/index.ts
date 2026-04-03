@@ -143,9 +143,9 @@ Pose les questions de configuration AVANT de lancer. UNE question par message, c
 
 QUESTION 1 — Volume quotidien:
 "📊 **Combien de profils par jour ?**
-L'agent va sourcer et scorer des profils en continu. Plus il en traite, plus de crédits consommés."
+L'agent va sourcer et scorer des profils en continu."
 
-[OPTIONS]["10 profils/jour (~40 cr/j)", "25 profils/jour (~100 cr/j)", "50 profils/jour (~200 cr/j)", "Personnalisé..."][/OPTIONS]
+[OPTIONS]["10 profils/jour", "25 profils/jour", "50 profils/jour", "Personnalisé..."][/OPTIONS]
 
 QUESTION 2 — Mode de validation:
 "✅ **Review ou shortlist automatique ?**"
@@ -154,17 +154,25 @@ QUESTION 2 — Mode de validation:
 
 QUESTION 3 — Modèle IA:
 "🧠 **Quel modèle pour le scoring ?**
-Un modèle plus puissant donne de meilleurs scores mais coûte plus cher."
+Un modèle plus puissant donne de meilleurs scores mais coûte plus cher.
+(1 crédit Konekt = 1 000 tokens sur Sonnet)"
 
-[OPTIONS]["⚡ Haiku — Rapide et économique (~1 cr/profil)", "⚖️ Sonnet — Équilibré, recommandé (~4 cr/profil)", "🧠 Opus — Précision maximale (~15 cr/profil)"][/OPTIONS]
+[OPTIONS]["⚡ Haiku — Rapide (~2 cr/profil)", "⚖️ Sonnet — Recommandé (~4 cr/profil)", "🧠 Opus — Précision max (~8 cr/profil)"][/OPTIONS]
 
 QUESTION 4 — Apprentissage contextuel:
 "📚 **Sources d'apprentissage ?**
 L'agent peut utiliser des données supplémentaires pour mieux scorer, mais ça consomme plus de crédits."
 
-[OPTIONS]["📋 Brief uniquement (standard)", "📋+💬 Brief + historique messages (meilleur contexte)", "📋+💬+📊 Brief + messages + pipeline ATS (max intelligence)"][/OPTIONS]
+[OPTIONS]["📋 Brief uniquement (standard)", "📋+💬 Brief + historique messages (+1 cr/profil)", "📋+💬+📊 Brief + messages + pipeline ATS (+2 cr/profil)"][/OPTIONS]
 
-Après les 4 réponses, RÉCAPITULE les réglages:
+Après les 4 réponses, CALCULE les crédits réels:
+- Crédits scoring/profil: Haiku=2, Sonnet=4, Opus=8
+- Crédits contexte/profil: Brief=0, +Messages=1, +ATS=2
+- Crédits/profil total = scoring + contexte
+- Crédits/jour = profils_par_jour × crédits_par_profil
+- Crédits/mois estimés = crédits_par_jour × 22 (jours ouvrés)
+
+RÉCAPITULE les réglages avec le VRAI calcul:
 
 "⚙️ **Configuration de l'agent:**
 
@@ -174,7 +182,9 @@ Après les 4 réponses, RÉCAPITULE les réglages:
 | Mode validation | [review/auto/mixte] |
 | Modèle scoring | [haiku/sonnet/opus] |
 | Sources | [brief/brief+messages/brief+messages+ATS] |
-| **Estimation crédits** | **~[X] cr/jour** |
+| **Coût/profil** | **~[X] cr** |
+| **Estimation/jour** | **~[X] cr/jour** |
+| **Estimation/mois** | **~[X] cr/mois** |
 
 📍 Retrouvez cet agent dans la section **Agents** de l'app."
 
