@@ -396,6 +396,53 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
     payload.person_departments = func.map((f) => deptMap[f.toLowerCase()] || f);
   }
 
+  // ─── Apollo advanced filters ──────────────────────────────────────────
+
+  // Technologies AND mode (all must match)
+  const techMustAll = params.db_tech_must_have_all as string[] | undefined;
+  if (techMustAll?.length) {
+    payload.currently_using_all_of_technology_uids = techMustAll;
+  }
+
+  // Technologies exclusion
+  const techExclude = params.db_tech_exclude as string[] | undefined;
+  if (techExclude?.length) {
+    payload.currently_not_using_any_of_technology_uids = techExclude;
+  }
+
+  // Where the company is currently hiring
+  const orgJobLocations = params.db_org_job_locations as string[] | undefined;
+  if (orgJobLocations?.length) {
+    payload.organization_job_locations = orgJobLocations;
+  }
+
+  // Latest funding date (e.g., companies that raised in the last 12 months)
+  const latestFundingDateMin = params.db_latest_funding_date_min as string | undefined;
+  if (latestFundingDateMin) {
+    payload.latest_funding_date_range = { min: latestFundingDateMin };
+  }
+
+  // Total funding raised range
+  const totalFundingMin = params.db_total_funding_min as string | undefined;
+  const totalFundingMax = params.db_total_funding_max as string | undefined;
+  if (totalFundingMin || totalFundingMax) {
+    const range: Record<string, number> = {};
+    if (totalFundingMin) range.min = Number(totalFundingMin);
+    if (totalFundingMax) range.max = Number(totalFundingMax);
+    payload.total_funding_range = range;
+  }
+
+  // Exclude company HQ locations
+  const orgNotLocations = params.db_org_not_locations as string[] | undefined;
+  if (orgNotLocations?.length) {
+    payload.organization_not_locations = orgNotLocations;
+  }
+
+  // Always include similar titles for broader results
+  if (payload.person_titles && !(payload as any).include_similar_titles) {
+    payload.include_similar_titles = true;
+  }
+
   // Log non-spec params (these may be silently ignored by Apollo api_search endpoint)
   const nonSpecParams = ['person_departments', 'q_organization_keyword_tags', 'q_organization_name', 'person_not_titles', 'organization_latest_funding_stage_cd'];
   const usedNonSpec = nonSpecParams.filter(p => payload[p] !== undefined);
@@ -525,6 +572,10 @@ function apolloToLinkedInProfile(p: Record<string, unknown>): Record<string, unk
     is_open_to_work: false,
     open_profile: false,
     is_open_profile: false,
+
+    // Apollo engagement signals (from enrichment)
+    is_likely_to_engage: p.is_likely_to_engage ?? null,
+    intent_strength: p.intent_strength ?? null,
 
     // Contact info (revealed separately, not included in search)
     emails: [],

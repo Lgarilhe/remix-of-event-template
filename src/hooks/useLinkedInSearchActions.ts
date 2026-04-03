@@ -475,6 +475,15 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     // Hiring velocity (org job count)
     if (filters.db_org_num_jobs_min) baseParams.db_org_num_jobs_min = Number(filters.db_org_num_jobs_min);
     if (filters.db_org_num_jobs_max) baseParams.db_org_num_jobs_max = Number(filters.db_org_num_jobs_max);
+
+    // Apollo advanced filters
+    if (filters.db_tech_must_have_all?.length) baseParams.db_tech_must_have_all = filters.db_tech_must_have_all;
+    if (filters.db_tech_exclude?.length) baseParams.db_tech_exclude = filters.db_tech_exclude;
+    if (filters.db_org_job_locations?.length) baseParams.db_org_job_locations = filters.db_org_job_locations;
+    if (filters.db_latest_funding_date_min) baseParams.db_latest_funding_date_min = filters.db_latest_funding_date_min;
+    if (filters.db_total_funding_min) baseParams.db_total_funding_min = filters.db_total_funding_min;
+    if (filters.db_total_funding_max) baseParams.db_total_funding_max = filters.db_total_funding_max;
+    if (filters.db_org_not_locations?.length) baseParams.db_org_not_locations = filters.db_org_not_locations;
   }
 
   // Tenure at role (all API modes that support it)
