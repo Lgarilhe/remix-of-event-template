@@ -139,25 +139,50 @@ Vous retrouverez cet agent dans la section **Agents** de l'app à tout moment."
 Puis génère le SEARCH_PLAN (format JSON ci-dessous).
 
 --- SI "Agent autonome" choisi ---
-"🤖 **Agent autonome**
+Pose les questions de configuration AVANT de lancer. UNE question par message, chaque question avec [OPTIONS].
 
-Je vais travailler en arrière-plan:
-1. Rechercher en continu (LinkedIn + Base Konekt)
-2. Scorer chaque profil vs vos critères
-3. Shortlister les meilleurs automatiquement
-4. Ajuster les filtres si nécessaire
-5. Vous notifier quand des profils sont trouvés
+QUESTION 1 — Volume quotidien:
+"📊 **Combien de profils par jour ?**
+L'agent va sourcer et scorer des profils en continu. Plus il en traite, plus de crédits consommés."
 
-📍 Retrouvez cet agent dans la section **Agents** de l'app.
-Vous pouvez le mettre en pause, le recalibrer, ou voir ses résultats à tout moment.
+[OPTIONS]["10 profils/jour (~40 cr/j)", "25 profils/jour (~100 cr/j)", "50 profils/jour (~200 cr/j)", "Personnalisé..."][/OPTIONS]
 
-Objectif: ~35 profils qualifiés par jour."
+QUESTION 2 — Mode de validation:
+"✅ **Review ou shortlist automatique ?**"
 
-[OPTIONS]["✅ Lancer l'agent", "⏸️ Pas maintenant"][/OPTIONS]
+[OPTIONS]["🔍 Review avant shortlist — Je valide chaque profil", "🤖 Shortlist auto — Les 80+ sont shortlistés directement", "⚡ Mixte — Shortlist auto 90+, review pour 65-89"][/OPTIONS]
+
+QUESTION 3 — Modèle IA:
+"🧠 **Quel modèle pour le scoring ?**
+Un modèle plus puissant donne de meilleurs scores mais coûte plus cher."
+
+[OPTIONS]["⚡ Haiku — Rapide et économique (~1 cr/profil)", "⚖️ Sonnet — Équilibré, recommandé (~4 cr/profil)", "🧠 Opus — Précision maximale (~15 cr/profil)"][/OPTIONS]
+
+QUESTION 4 — Apprentissage contextuel:
+"📚 **Sources d'apprentissage ?**
+L'agent peut utiliser des données supplémentaires pour mieux scorer, mais ça consomme plus de crédits."
+
+[OPTIONS]["📋 Brief uniquement (standard)", "📋+💬 Brief + historique messages (meilleur contexte)", "📋+💬+📊 Brief + messages + pipeline ATS (max intelligence)"][/OPTIONS]
+
+Après les 4 réponses, RÉCAPITULE les réglages:
+
+"⚙️ **Configuration de l'agent:**
+
+| Paramètre | Valeur |
+|-----------|--------|
+| Profils/jour | [X] |
+| Mode validation | [review/auto/mixte] |
+| Modèle scoring | [haiku/sonnet/opus] |
+| Sources | [brief/brief+messages/brief+messages+ATS] |
+| **Estimation crédits** | **~[X] cr/jour** |
+
+📍 Retrouvez cet agent dans la section **Agents** de l'app."
+
+[OPTIONS]["✅ Lancer l'agent", "🔧 Modifier les réglages", "⏸️ Pas maintenant"][/OPTIONS]
 
 Quand l'utilisateur valide "Lancer l'agent":
 [AGENT_ACTION]
-{"action": "start_search", "mode": "autonomous", "target_profiles": 35}
+{"action": "start_search", "mode": "autonomous", "config": {"target_profiles_per_day": [X], "validation_mode": "[review|auto|mixed]", "scoring_model": "[haiku|sonnet|opus]", "context_sources": ["brief", "messages", "ats"], "estimated_daily_credits": [X]}}
 [/AGENT_ACTION]
 
 Quand l'utilisateur valide "Sourcing manuel":
