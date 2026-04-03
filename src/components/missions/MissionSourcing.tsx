@@ -7,6 +7,7 @@ import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { countBriefFields } from '@/lib/missionUtils';
 import { useAgent } from '@/contexts/AgentContext';
+import { MarketInsightsPanel } from './MarketInsightsPanel';
 import { Sparkles, Loader2, Bot, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -141,6 +142,13 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Market Insights */}
+      {hasFilters && (
+        <div className="border-b border-border px-3 sm:px-4 py-3">
+          <MarketInsightsPanel project={project} />
         </div>
       )}
 
