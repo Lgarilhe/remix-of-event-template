@@ -431,24 +431,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
   return (
     <div className="h-[calc(100vh-220px)] bg-background border border-border overflow-y-auto">
-      {/* Reset AI Filters Button */}
-      {hasAiFilters && (
-        <div className="sticky top-0 z-10 bg-warning/10 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-amber-700">
-            <Sparkles className="w-4 h-4" />
-            <span>Filtres générés par l'IA actifs</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleResetAiFilters}
-            className="text-amber-700 hover:text-amber-900 hover:bg-warning/10 gap-1.5"
-          >
-            <X className="w-3.5 h-3.5" />
-            Réinitialiser
-          </Button>
-        </div>
-      )}
       <div>
         {/* ===== BASIC / GEOGRAPHIC FILTERS (extracted) ===== */}
         <BasicFiltersSection
