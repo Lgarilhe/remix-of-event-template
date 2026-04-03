@@ -281,7 +281,7 @@ const SkillsWithEndorse: React.FC<{
         return (
           <span
             key={index}
-            className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-border font-medium hover:border-border transition-colors inline-flex items-center gap-1.5"
+              className="text-xs px-2.5 py-1.5 bg-background text-foreground border border-border font-medium hover:border-border transition-colors inline-flex items-center gap-1.5 rounded-md"
           >
             {skill.name || skill}
             {skill.endorsement_count != null && (
