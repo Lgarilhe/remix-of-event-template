@@ -309,32 +309,31 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   return (
     <div className="flex flex-col h-full bg-background relative animate-slide-in-right">
       {/* Chat header */}
-      <div className="relative overflow-hidden flex items-center gap-3 px-4 py-3 border-b-2 border-border shrink-0">
-        <div className="absolute inset-0 skalr-gradient-bg opacity-10" />
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
         <button
           onClick={() => setShowList(true)}
-          className="relative z-10 h-8 w-8 flex items-center justify-center border border-border hover:bg-accent/10 transition-colors"
+          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-foreground" />
         </button>
-        <AnimatedOrb size={28} speed={4}>
+        <AnimatedOrb size={24} speed={4}>
           <Bot className="w-3 h-3 text-foreground/70" />
         </AnimatedOrb>
-        <div className="flex-1 min-w-0 relative z-10">
-          <h3 className="text-sm font-bold uppercase tracking-wider truncate text-foreground">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold truncate text-foreground">
             {conversation?.job_title || 'Agent'}
           </h3>
           {statusLabel && (
             <div className="flex items-center gap-1.5 mt-0.5">
               {isActive && (
                 <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/50" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/50" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
                 </span>
               )}
               <p className={cn(
-                "text-xs uppercase tracking-wider",
-                isActive ? "text-primary" : "text-muted-foreground"
+                "text-[11px]",
+                isActive ? "text-primary font-medium" : "text-muted-foreground"
               )}>
                 {statusLabel}
               </p>
@@ -345,7 +344,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-hide">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-6">
             {/* Brutal square scanner */}
