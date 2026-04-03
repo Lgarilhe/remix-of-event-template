@@ -110,7 +110,7 @@ function extractCandidates(content: string): { candidates: ParsedCandidate[]; co
 // ── Strip system tags from content ──
 function stripSystemTags(content: string, isStreaming: boolean): string {
   let raw = content;
-  for (const tag of ['SEARCH_PLAN', 'AGENT_ACTION', 'OPTIONS']) {
+  for (const tag of ['SEARCH_PLAN', 'AGENT_ACTION', 'OPTIONS', 'SCORING_TEST']) {
     raw = raw.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[\\/${tag}\\]`, 'g'), '');
     if (isStreaming) {
       const openIdx = raw.indexOf(`[${tag}]`);
