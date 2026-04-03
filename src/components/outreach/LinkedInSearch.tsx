@@ -919,7 +919,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   );
 
   return (
-    <div className="w-full max-w-full min-w-0 lg:h-[calc(100dvh-5rem)]">
+    <div className="w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]">
       {/* Filters bar — always visible */}
       <AppliedFiltersBar
         filters={search.filters}
@@ -931,19 +931,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         loading={search.loading}
         hasSearched={search.hasSearched}
       />
-
-      {/* Filters modal — large overlay */}
-      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <DialogContent className="w-full h-full max-w-full max-h-full sm:max-w-[90vw] sm:w-[90vw] sm:max-h-[85vh] sm:h-auto overflow-y-auto p-0 gap-0 rounded-none sm:rounded-lg">
-          <DialogTitle className="sr-only">Filtres de recherche</DialogTitle>
-          <div className="p-4 sm:p-6">
-            {filtersPanel}
-          </div>
-        </DialogContent>
-      </Dialog>
-
+...
       {/* Results panel — full width */}
-      <div className="min-w-0 lg:min-h-0">
+      <div className="min-w-0 min-h-0 flex-1">
         <SearchResultsPanel
           results={search.results}
           mergedResults={mergedResults}
