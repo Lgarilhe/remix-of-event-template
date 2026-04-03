@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Brain, ChevronDown, Search, BarChart3, Send, Activity, User } from 'lucide-react';
+import { Brain, ChevronDown, Search, BarChart3, Send, Activity, ThumbsUp, ThumbsDown, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AgentMessage } from '@/hooks/useAgentChat';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
@@ -605,9 +605,36 @@ function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
   );
 }
 
-// ── Sample Profile Card (calibration phase) ──
+// ── Helper: get company logo URL ──
+function companyLogoUrl(company: string): string {
+  const domain = company
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    + '.com';
+  return `https://logo.clearbit.com/${domain}`;
+}
+
+function CompanyLogo({ company, size = 16 }: { company: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      src={companyLogoUrl(company)}
+      alt={company}
+      width={size}
+      height={size}
+      className="rounded-sm shrink-0 object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+// ── Sample Profile Card (calibration phase) — with logos + actions ──
 function SampleProfileCard({ profile }: { profile: SampleProfile }) {
   const initials = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  // Extract company names from trajectory (e.g. "Datadog (2 ans)" → "Datadog")
+  const trajectoryCompanies = profile.trajectory.map(t => t.replace(/\s*\(.*\)/, '').trim());
 
   return (
     <div className="border border-border/60 rounded-xl overflow-hidden bg-card">
@@ -623,9 +650,12 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
               {profile.index}/{profile.total}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground truncate">
-            {profile.title} @ {profile.company}
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <CompanyLogo company={profile.company} size={14} />
+            <p className="text-xs text-muted-foreground truncate">
+              {profile.title} @ {profile.company}
+            </p>
+          </div>
           <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
             <span>📍 {profile.location}</span>
             <span>·</span>
@@ -634,17 +664,23 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
         </div>
       </div>
 
-      {/* Trajectory */}
+      {/* Trajectory with company logos */}
       {profile.trajectory.length > 0 && (
         <div className="px-4 pb-2">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Parcours</p>
-          <div className="flex items-center gap-1.5 text-xs text-foreground/70 overflow-x-auto">
-            {profile.trajectory.map((t, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <span className="text-muted-foreground/30">→</span>}
-                <span className="whitespace-nowrap">{t}</span>
-              </React.Fragment>
-            ))}
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Parcours</p>
+          <div className="flex items-center gap-2 text-xs text-foreground/70 overflow-x-auto no-scrollbar">
+            {profile.trajectory.map((t, i) => {
+              const companyName = trajectoryCompanies[i];
+              return (
+                <React.Fragment key={i}>
+                  {i > 0 && <span className="text-muted-foreground/30">→</span>}
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    <CompanyLogo company={companyName} size={14} />
+                    {t}
+                  </span>
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       )}
@@ -661,7 +697,7 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
       )}
 
       {/* Strengths & Concerns */}
-      <div className="px-4 pb-3 space-y-1">
+      <div className="px-4 pb-2.5 space-y-1">
         {profile.strengths.map((s, i) => (
           <div key={`s-${i}`} className="flex items-start gap-1.5 text-xs">
             <span className="text-accent mt-0.5 shrink-0">✓</span>
@@ -674,6 +710,22 @@ function SampleProfileCard({ profile }: { profile: SampleProfile }) {
             <span className="text-foreground/70">{c}</span>
           </div>
         ))}
+      </div>
+
+      {/* Action buttons */}
+      <div className="border-t border-border/30 px-4 py-2.5 flex items-center gap-2">
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-success/10 text-success hover:bg-success/20 transition-colors">
+          <ThumbsUp className="w-3 h-3" />
+          <span>Oui, ce type</span>
+        </button>
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-warning/10 text-warning hover:bg-warning/20 transition-colors">
+          <ThumbsDown className="w-3 h-3" />
+          <span>Pas ce profil</span>
+        </button>
+        <div className="flex-1" />
+        <button className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Voir sur LinkedIn">
+          <ExternalLink className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );
