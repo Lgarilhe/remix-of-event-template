@@ -5,129 +5,35 @@ import { useAICredits } from '@/hooks/useAICredits';
 import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import {
-  CheckCircle2, AlertCircle, XCircle, Globe, Linkedin,
-  Sparkle, Search, ChevronDown, Zap,
+  CheckCircle2, AlertCircle, XCircle, Globe,
+  Sparkle, Search, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countBriefFields } from '@/lib/missionUtils';
+import linkedinLogo from '@/assets/linkedin-logo.svg';
 import type { JobDetails } from '@/types/jobDetails';
 
 /* ─── Props ─── */
 interface SourcingReadinessPanelProps {
   project: SourcingProject;
   selectedAccount: string | null;
-  /** Current source: 'linkedin' or 'database' */
   searchSource?: 'linkedin' | 'database';
-  /** Switch source at parent level */
   onSourceChange?: (source: 'linkedin' | 'database') => void;
-  /** Trigger auto-fill from brief */
   onAutoFill?: () => void;
   autoFillLoading?: boolean;
-  /** Trigger search */
   onSearch?: () => void;
-  /** Are filters ready (has at least keywords or role) */
   filtersReady?: boolean;
-  /** Account display name */
   accountName?: string | null;
-  /** Account status */
   accountStatus?: string | null;
 }
 
-/* ─── Check item ─── */
 type CheckStatus = 'ok' | 'warning' | 'error';
 
-const statusIcon = {
-  ok: <CheckCircle2 className="w-4 h-4 text-accent" />,
-  warning: <AlertCircle className="w-4 h-4 text-primary" />,
-  error: <XCircle className="w-4 h-4 text-destructive" />,
+const statusDot = {
+  ok: 'bg-accent',
+  warning: 'bg-primary',
+  error: 'bg-destructive',
 };
-
-const CheckItem: React.FC<{
-  status: CheckStatus;
-  label: string;
-  detail?: string;
-  highlight?: boolean;
-  delay?: number;
-}> = ({ status, label, detail, highlight = false, delay = 0 }) => (
-  <motion.div
-    initial={{ opacity: 0, x: -8 }}
-    animate={{ opacity: 1, x: 0 }}
-    transition={{ delay, duration: 0.3 }}
-    className={cn(
-      'flex items-center gap-2.5 py-2 px-3 transition-colors',
-      highlight ? 'bg-accent/5' : '',
-      status === 'ok' && !highlight && 'opacity-60',
-    )}
-  >
-    {statusIcon[status]}
-    <div className="min-w-0 flex-1">
-      <p className={cn(
-        'text-xs font-medium leading-tight',
-        highlight ? 'text-foreground' : 'text-foreground/80',
-      )}>{label}</p>
-      {detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}
-    </div>
-  </motion.div>
-);
-
-/* ─── Source Card ─── */
-const SourceCard: React.FC<{
-  selected: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  badge: React.ReactNode;
-  delay: number;
-}> = ({ selected, onClick, icon, title, description, badge, delay }) => (
-  <motion.button
-    initial={{ opacity: 0, y: 12 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay, duration: 0.4, type: 'spring' }}
-    onClick={onClick}
-    className={cn(
-      'flex-1 text-left border p-4 transition-all group relative overflow-hidden',
-      selected
-        ? 'border-accent bg-accent/5 shadow-md'
-        : 'border-border bg-background hover:border-border',
-    )}
-  >
-    {selected && (
-      <motion.div
-        layoutId="source-selected-indicator"
-        className="absolute top-0 left-0 w-full h-0.5 bg-accent"
-      />
-    )}
-    <div className="flex items-start gap-3">
-      <div className={cn(
-        'w-10 h-10 flex items-center justify-center border shrink-0',
-        selected
-          ? 'bg-accent/10 border-accent/30'
-          : 'bg-accent/50 border-border',
-      )}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-0.5">{title}</h4>
-        <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
-        <div className="mt-2">{badge}</div>
-      </div>
-    </div>
-  </motion.button>
-);
-
-/* ─── Status Badge ─── */
-const StatusBadge: React.FC<{ status: CheckStatus; label: string }> = ({ status, label }) => (
-  <span className={cn(
-    'inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider px-2 py-0.5 border',
-    status === 'ok' && 'text-accent border-accent/30 bg-accent/10',
-    status === 'warning' && 'text-primary border-accent/30 bg-accent/10',
-    status === 'error' && 'text-destructive border-destructive/30 bg-destructive/10',
-  )}>
-    {statusIcon[status]}
-    {label}
-  </span>
-);
 
 /* ═══════════════════════════════════════════════
    MAIN COMPONENT
@@ -151,203 +57,183 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
   const brief = countBriefFields(jd);
   const [showManualFilters, setShowManualFilters] = useState(false);
 
-  // Account status derivation
   const isAccountOk = accountStatus === 'OK' || accountStatus === 'CONNECTED';
   const hasAccount = !!selectedAccount;
-  const accountStatusCheck: CheckStatus = !hasAccount ? 'error' : isAccountOk ? 'ok' : 'warning';
-
-  // Brief status
+  const accountCheck: CheckStatus = !hasAccount ? 'error' : isAccountOk ? 'ok' : 'warning';
   const briefStatus: CheckStatus = brief.filled >= 8 ? 'ok' : brief.filled >= 4 ? 'warning' : 'error';
-
-  // Credits status
   const creditsOk = !creditsLoading && creditsRemaining > 0;
-
-  // Quota for invitations
   const invitationQuota = quota.getQuotaUsage('invitationsSent');
   const invitationNearLimit = quota.isNearLimit('invitationsSent');
 
+  // Checks for the inline status strip
+  const checks: { status: CheckStatus; label: string; show: boolean }[] = [
+    { status: briefStatus, label: `Brief ${brief.filled}/${brief.total}`, show: true },
+    { status: creditsOk ? 'ok' : 'error', label: creditsLoading ? '...' : `${creditsRemaining.toLocaleString('fr-FR')} cr`, show: true },
+    { status: invitationNearLimit ? 'warning' : 'ok', label: `${invitationQuota.current}/${invitationQuota.limit} inv.`, show: searchSource === 'linkedin' },
+    { status: accountCheck, label: hasAccount ? (isAccountOk ? 'Connecté' : 'Déconnecté') : 'Non lié', show: searchSource === 'linkedin' },
+  ];
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="w-full max-w-2xl space-y-6"
+      transition={{ duration: 0.4 }}
+      className="w-full max-w-xl mx-auto space-y-5"
     >
-      {/* ── Section 1: Source Choice ── */}
-      <div>
-        <motion.h3
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2"
-        >
-          <Zap className="w-3.5 h-3.5 text-primary" />
-          Choisissez votre source
-        </motion.h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <SourceCard
-            selected={searchSource === 'linkedin'}
-            onClick={() => onSourceChange?.('linkedin')}
-            delay={0.1}
-            icon={<Linkedin className="w-5 h-5 text-linkedin" />}
-            title="LinkedIn"
-            description="Recherche directe via votre compte"
-            badge={
-              <StatusBadge
-                status={accountStatusCheck}
-                label={
-                  !hasAccount ? 'Non configuré'
-                    : isAccountOk ? `Connecté${accountName ? ` · ${accountName}` : ''}`
-                    : 'Déconnecté'
-                }
-              />
-            }
-          />
-
-          <SourceCard
-            selected={searchSource === 'database'}
-            onClick={() => onSourceChange?.('database')}
-            delay={0.2}
-            icon={<Globe className="w-5 h-5 text-foreground" />}
-            title="Base Konekt"
-            description="200M+ profils, sans licence LinkedIn"
-            badge={
-              <StatusBadge status="ok" label="Aucun conflit de session" />
-            }
-          />
-        </div>
-      </div>
-
-      {/* ── Section 2: Checklist ── */}
-      <div>
-        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-          Vérifications
-        </h3>
-        <div className="border border-border divide-y divide-foreground/5">
-          <CheckItem
-            status={briefStatus}
-            label={`Brief complété (${brief.filled}/${brief.total} champs)`}
-            detail={brief.filled < 4 ? 'Complétez le brief pour de meilleurs résultats' : undefined}
-            highlight={briefStatus !== 'ok'}
-            delay={0.15}
-          />
-          <CheckItem
-            status={creditsOk ? 'ok' : 'error'}
-            label={creditsLoading
-              ? 'Chargement des crédits...'
-              : `Crédits IA disponibles (${creditsRemaining.toLocaleString('fr-FR')} cr)`}
-            highlight={!creditsOk}
-            delay={0.25}
-          />
-          {searchSource === 'linkedin' && (
-            <>
-              <CheckItem
-                status={invitationNearLimit ? 'warning' : 'ok'}
-                label={`Quotas LinkedIn : ${invitationQuota.current}/${invitationQuota.limit} invitations aujourd'hui`}
-                highlight={invitationNearLimit}
-                delay={0.35}
-              />
-              <CheckItem
-                status={accountStatusCheck}
-                label={
-                  hasAccount
-                    ? `Compte LinkedIn actif${accountName ? ` : ${accountName}` : ''}`
-                    : 'Aucun compte LinkedIn connecté'
-                }
-                detail={!hasAccount ? 'Connectez un compte dans Paramètres' : undefined}
-                highlight={accountStatusCheck !== 'ok'}
-                delay={0.45}
-              />
-            </>
+      {/* ── Source Toggle ── */}
+      <div className="flex items-center gap-1.5 p-1 bg-muted/30 rounded-lg border border-border w-fit mx-auto">
+        <button
+          onClick={() => onSourceChange?.('linkedin')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-md text-xs font-medium transition-all',
+            searchSource === 'linkedin'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
           )}
-        </div>
+        >
+          <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 rounded-sm" />
+          LinkedIn
+        </button>
+        <button
+          onClick={() => onSourceChange?.('database')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-md text-xs font-medium transition-all',
+            searchSource === 'database'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Globe className="w-4 h-4" />
+          Base Konekt
+        </button>
       </div>
 
-      {/* ── Section 3: Filters ── */}
-      <div className="space-y-3">
-        {onAutoFill && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+      {/* ── Source Info ── */}
+      <motion.div
+        key={searchSource}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="text-center"
+      >
+        {searchSource === 'linkedin' ? (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Recherche directe via votre compte LinkedIn</p>
+            <p className={cn(
+              'text-xs font-medium inline-flex items-center gap-1.5',
+              accountCheck === 'ok' ? 'text-accent' : accountCheck === 'warning' ? 'text-primary' : 'text-destructive',
+            )}>
+              <span className={cn('w-1.5 h-1.5 rounded-full', statusDot[accountCheck])} />
+              {!hasAccount ? 'Aucun compte connecté' : isAccountOk ? (accountName || 'Connecté') : 'Compte déconnecté'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">200M+ profils, sans licence LinkedIn requise</p>
+            <p className="text-xs font-medium text-accent inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              Prêt
+            </p>
+          </div>
+        )}
+      </motion.div>
+
+      {/* ── Status Strip ── */}
+      <div className="flex items-center justify-center gap-3 flex-wrap">
+        {checks.filter(c => c.show).map((c, i) => (
+          <span
+            key={i}
+            className={cn(
+              'inline-flex items-center gap-1.5 text-xs py-1 px-2.5 rounded-full border',
+              c.status === 'ok' && 'text-accent/80 border-accent/20 bg-accent/5',
+              c.status === 'warning' && 'text-primary/80 border-primary/20 bg-primary/5',
+              c.status === 'error' && 'text-destructive/80 border-destructive/20 bg-destructive/5',
+            )}
           >
-            <ShimmerButton
-              onClick={onAutoFill}
-              disabled={autoFillLoading || brief.filled < 3}
-              className="w-full h-11 text-xs"
-              shimmerDuration="1.5s"
-            >
-              {autoFillLoading ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                >
-                  <Sparkle className="w-4 h-4" />
-                </motion.div>
-              ) : (
+            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', statusDot[c.status])} />
+            {c.label}
+          </span>
+        ))}
+      </div>
+
+      {/* ── Auto-fill CTA ── */}
+      {onAutoFill && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <ShimmerButton
+            onClick={onAutoFill}
+            disabled={autoFillLoading || brief.filled < 3}
+            className="w-full h-11 text-xs"
+            shimmerDuration="1.5s"
+          >
+            {autoFillLoading ? (
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              >
                 <Sparkle className="w-4 h-4" />
-              )}
-              <span className="font-bold">Générer les filtres automatiquement</span>
-              <span className="text-xs opacity-70">~4 cr</span>
-            </ShimmerButton>
+              </motion.div>
+            ) : (
+              <Sparkle className="w-4 h-4" />
+            )}
+            <span className="font-bold">Générer les filtres automatiquement</span>
+            <span className="text-xs opacity-70">~4 cr</span>
+          </ShimmerButton>
+        </motion.div>
+      )}
+
+      {/* Manual toggle */}
+      <motion.button
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        onClick={() => setShowManualFilters(!showManualFilters)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mx-auto"
+      >
+        <span>ou configurez manuellement</span>
+        <ChevronDown className={cn('w-3 h-3 transition-transform', showManualFilters && 'rotate-180')} />
+      </motion.button>
+
+      <AnimatePresence>
+        {showManualFilters && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="overflow-hidden"
+          >
+            <div className="border border-border rounded-lg p-4 bg-muted/10">
+              <p className="text-xs text-muted-foreground text-center">
+                Utilisez le panneau de filtres à gauche pour configurer manuellement votre recherche.
+              </p>
+            </div>
           </motion.div>
         )}
+      </AnimatePresence>
 
-        {/* Manual toggle */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          onClick={() => setShowManualFilters(!showManualFilters)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider transition-colors mx-auto"
-        >
-          <span>ou configurez manuellement</span>
-          <ChevronDown
-            className={cn(
-              'w-3 h-3 transition-transform',
-              showManualFilters && 'rotate-180',
-            )}
-          />
-        </motion.button>
-
-        <AnimatePresence>
-          {showManualFilters && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden"
-            >
-              <div className="border border-border p-4 bg-muted/20">
-                <p className="text-xs text-muted-foreground text-center">
-                  Utilisez le panneau de filtres à gauche pour configurer manuellement votre recherche.
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* ── Sticky Search CTA ── */}
+      {/* ── Search CTA ── */}
       {(filtersReady || onSearch) && (
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, type: 'spring' }}
+          transition={{ delay: 0.4, type: 'spring' }}
           className="sticky bottom-4 pt-2"
         >
           <button
             onClick={onSearch}
             disabled={!filtersReady}
             className={cn(
-              'w-full h-12 flex items-center justify-center gap-2.5 text-sm font-bold uppercase tracking-wider border-2 transition-all',
+              'w-full h-11 flex items-center justify-center gap-2 text-sm font-semibold rounded-lg border transition-all',
               filtersReady
-                ? 'border-border bg-foreground text-background hover:bg-foreground/90 shadow-md hover:shadow-sm'
-                : 'border-border bg-accent/50 text-muted-foreground cursor-not-allowed',
+                ? 'border-foreground/20 bg-foreground text-background hover:bg-foreground/90 shadow-md'
+                : 'border-border bg-muted/30 text-muted-foreground cursor-not-allowed',
             )}
           >
-            <Search className="w-5 h-5" />
+            <Search className="w-4 h-4" />
             Lancer la recherche
           </button>
         </motion.div>
