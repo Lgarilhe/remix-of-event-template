@@ -368,7 +368,204 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     <div className="bg-background border border-border flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
       {/* HEADER: Search + count + filters + actions — unified compact bar */}
       <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
-...
+        <Button
+          onClick={onSearch}
+          disabled={loading || !selectedJob}
+          size="sm"
+          className="bg-primary hover:bg-primary/90 shrink-0"
+        >
+          {loading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+          ) : (
+            <Search className="w-3.5 h-3.5 mr-1.5" />
+          )}
+          {loading ? '...' : 'Rechercher'}
+        </Button>
+
+        {hasSearched && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="font-semibold text-foreground">{displayResults.length}</span>
+            {total !== null && <span className="text-muted-foreground/60"> / {total.toLocaleString()}</span>}
+          </span>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Pool toggle */}
+        {poolCount > 0 && onSetShowPoolView && (
+          <Button
+            variant={showPoolView ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => onSetShowPoolView(!showPoolView)}
+            className="h-7 px-2 text-xs gap-1 shrink-0"
+          >
+            <Database className="w-3 h-3" />
+            {showPoolView ? 'Pool' : 'Résultats'}
+          </Button>
+        )}
+      </div>
+
+      {/* TOOLBAR: Status filters + actions — single compact row */}
+      {selectedJob && hasSearched && displayResults.length > 0 && (
+        <div className="flex items-center gap-1 px-2 sm:px-3 py-1 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
+          {/* Status filter pills */}
+          <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
+            {([
+              { value: 'all' as const, emoji: '👥', count: mergedResults.length },
+              { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
+              { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
+              { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
+              { value: 'known' as const, emoji: '📋', count: statusCounts.known },
+              { value: 'dismissed' as const, emoji: '📦', count: statusCounts.dismissed },
+            ]).map(({ value, emoji, count }) => {
+              const isActive = statusFilter === value || 
+                (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
+              return (
+                <button
+                  key={value}
+                  onClick={() => onSetStatusFilter(value)}
+                  className={`flex items-center gap-1 h-6 px-1.5 text-xs transition-colors shrink-0 ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                  }`}
+                >
+                  <span className="text-xs">{emoji}</span>
+                  {count > 0 && <span className="font-medium">{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Separator */}
+          <div className="w-px h-5 bg-border shrink-0 mx-0.5" />
+
+          {/* Scorer les pertinents */}
+          {selectedProfiles.size === 0 && selectedJob && filteredResults.some((p: any) => p._preScore?.tier === 'high' && !jobScores[p.id]) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const highTier = filteredResults
+                  .filter((p: any) => p._preScore?.tier === 'high' && !jobScores[p.id])
+                  .map(p => p.id);
+                if (highTier.length === 0) {
+                  toast.info('Aucun profil à haut potentiel non scoré');
+                  return;
+                }
+                highTier.forEach(id => onToggleProfileSelection(id));
+                toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
+              }}
+              className="h-6 px-2 text-xs gap-1 text-emerald-400 hover:bg-success/10 shrink-0"
+              disabled={scoringInProgress}
+            >
+              <Sparkles className="w-3 h-3" />
+              <span className="hidden sm:inline">Scorer pertinents</span>
+            </Button>
+          )}
+
+          {/* Bulk action icons (when profiles selected) */}
+          {selectedProfiles.size > 0 && (
+            <div className="flex items-center gap-0.5 shrink-0">
+              <span className="text-xs font-semibold text-primary px-1">{selectedProfiles.size}</span>
+              <button onClick={onBatchScore} disabled={scoringInProgress} className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-40" title="Scorer">
+                {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
+              </button>
+              {activeProject && (
+                <button onClick={onBulkAddToProject} className="p-1 hover:bg-muted rounded-sm text-emerald-600 hover:text-emerald-700" title="Ajouter au projet">
+                  <FolderPlus className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button onClick={onBulkDismiss} className="p-1 hover:bg-muted rounded-sm text-destructive hover:text-destructive/80" title="Archiver">
+                <Archive className="w-3.5 h-3.5" />
+              </button>
+              {selectedAccount && (
+                <>
+                  <button onClick={() => onSetShowBulkInMailModal(true)} className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground" title="InMail groupé">
+                    <Mail className="w-3.5 h-3.5" />
+                  </button>
+                  <SequenceEnrollButton
+                    selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
+                    accountId={selectedAccount}
+                    selectedJob={selectedJob}
+                    onSuccess={onSequenceEnrollSuccess}
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Sort by score */}
+          {Object.keys(jobScores).length > 0 && (
+            <button
+              onClick={() => onSetSortByScore(!sortByScore)}
+              className={`p-1 rounded-sm shrink-0 ${sortByScore ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+              title={sortByScore ? 'Tri par score actif' : 'Trier par score'}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Select all */}
+          <div className="flex items-center gap-1 pl-1 border-l border-border shrink-0">
+            <Checkbox
+              checked={allSelectableSelected && selectableProfiles.length > 0}
+              onCheckedChange={onToggleSelectAll}
+              id="select-all"
+              className="h-3.5 w-3.5"
+            />
+            <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">Tout</label>
+          </div>
+        </div>
+      )}
+
+      {/* Scored sub-filters (inline, only when scored active) */}
+      {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted') && statusCounts.scored > 0 && (
+        <div className="flex items-center justify-between px-2 sm:px-3 py-1 border-b border-border/50 bg-muted/20 shrink-0 gap-2 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-px bg-muted/30 p-px border border-border shrink-0">
+            {([
+              { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
+              { value: 'scored_go' as const, label: '✅ Go', count: statusCounts.scored_go },
+              { value: 'scored_maybe' as const, label: '🤔 Maybe', count: statusCounts.scored_maybe },
+              { value: 'scored_not_contacted' as const, label: '🆕 New', count: statusCounts.scored_not_contacted },
+            ]).map(({ value, label, count }) => (
+              <button
+                key={value}
+                onClick={() => onSetStatusFilter(value)}
+                className={`h-5 px-1.5 text-xs shrink-0 transition-colors ${
+                  statusFilter === value
+                    ? 'bg-secondary text-secondary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label} {count > 0 && <span className="opacity-70">{count}</span>}
+              </button>
+            ))}
+          </div>
+          <Select value={scoredSortBy} onValueChange={(v) => onSetScoredSortBy(v as ScoredSortBy)}>
+            <SelectTrigger className="h-5 w-auto min-w-[120px] max-w-[160px] text-xs border-border bg-muted/30 gap-1 px-1.5">
+              <ArrowUpDown className="w-2.5 h-2.5 shrink-0" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="score_desc" className="text-xs"><span className="flex items-center gap-1"><ArrowDown className="w-3 h-3" /> Score ↓</span></SelectItem>
+              <SelectItem value="score_asc" className="text-xs"><span className="flex items-center gap-1"><ArrowUp className="w-3 h-3" /> Score ↑</span></SelectItem>
+              <SelectItem value="recent" className="text-xs"><span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Récents</span></SelectItem>
+              <SelectItem value="name" className="text-xs"><span className="flex items-center gap-1"><SortAsc className="w-3 h-3" /> A→Z</span></SelectItem>
+              <SelectItem value="tech_desc" className="text-xs"><span className="flex items-center gap-1">🔧 Tech ↓</span></SelectItem>
+              <SelectItem value="xp_desc" className="text-xs"><span className="flex items-center gap-1">📊 Expérience ↓</span></SelectItem>
+              <SelectItem value="domain_desc" className="text-xs"><span className="flex items-center gap-1">🏢 Domaine ↓</span></SelectItem>
+              <SelectItem value="fit_desc" className="text-xs"><span className="flex items-center gap-1">🤝 Culture fit ↓</span></SelectItem>
+              <SelectItem value="soft_desc" className="text-xs"><span className="flex items-center gap-1">💬 Soft skills ↓</span></SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Results list */}
       <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto" ref={scrollAreaRef}>
         {loading && results.length === 0 ? (
