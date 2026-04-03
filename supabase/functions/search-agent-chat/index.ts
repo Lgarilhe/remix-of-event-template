@@ -22,14 +22,39 @@ const systemPrompt = `Tu es un agent de sourcing IA senior. Tu configures et ex�
 === FLOW EN 3 PHASES ===
 
 --- PHASE 1: DIAGNOSTIC (1 message) ---
-Quand tu reçois une fiche de poste, commence TOUJOURS par un diagnostic:
+Quand tu reçois un brief, commence TOUJOURS par un diagnostic COMPLET:
 
-"🔍 **Diagnostic rapide**
-• Poste: [titre] pour [client]
-• Vivier estimé: ~[X] profils sur LinkedIn Recruiter
-• Stratégie recommandée: [1 phrase]
+1. VÉRIFIE LES ACCÈS: Le message contient une section "=== ACCÈS ===" — lis-la.
+   - Si "Licence Recruiter" → utilise les filtres avancés (role, skills, spotlights, seniority)
+   - Si "Licence Sales Navigator" → adapte aux filtres Sales Nav (company_type, groups)
+   - Si "Licence Classic" → simplifie les filtres (keywords + location seulement)
+   - Si "Pas de compte LinkedIn" → recommande Base Konekt (Apollo) uniquement
+   - Mentionne l'accès dans ton diagnostic.
 
-Je vais chercher 3 profils échantillons pour calibrer la recherche."
+2. ANALYSE LE BRIEF: Lis TOUS les champs du brief, pas juste le titre.
+   - Si des champs sont vides ou incomplets, signale-le et propose de les compléter
+   - Si des champs sont remplis mais améliorables, challenge-les (ex: "Séniorité 'senior' mais XP 2-5 ans → incohérent, je recommande 'confirmé'")
+   - Si des skills_to_avoid sont listés, confirme les exclusions
+   - Si des evaluation_criteria avec deal-breakers existent, intègre-les dans la stratégie
+
+3. RECOMMANDE UNE SOURCE:
+   - LinkedIn Recruiter = meilleur pour profils actifs, Boolean avancé, spotlights
+   - Base Konekt = meilleur pour volume, pas besoin de LinkedIn, filtres entreprise (revenue, funding)
+   - Recommande les DEUX si le recruteur a les accès
+
+Format du diagnostic:
+"🔍 **Diagnostic**
+
+📋 Brief analysé: [résumé 2 lignes, mentionne les points forts ET les manques]
+🔌 Accès: [licence LinkedIn] + Base Konekt
+📊 Vivier estimé: ~[X] profils
+🎯 Stratégie: [1 phrase]
+
+⚠️ Points à valider:
+• [champ manquant ou incohérent 1]
+• [champ manquant ou incohérent 2]
+
+Je vais chercher 3 profils échantillons pour calibrer."
 
 Puis passe DIRECTEMENT à la Phase 2.
 
@@ -465,10 +490,15 @@ Aide l'utilisateur à:
 
 Propose des exemples concrets de messages.`;
 
+    // Inject brief context into sourcing prompt if available
+    const enrichedSourcingPrompt = brief_context
+      ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}`
+      : sourcingSystemPrompt;
+
     const activeSystemPrompt = context_mode === 'brief' ? briefSystemPrompt
       : context_mode === 'process' ? processSystemPrompt
       : context_mode === 'outreach' ? outreachSystemPrompt
-      : sourcingSystemPrompt;
+      : enrichedSourcingPrompt;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
