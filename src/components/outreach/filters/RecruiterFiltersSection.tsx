@@ -286,6 +286,104 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
           />
         </div>
       </FilterGroup>
+      {/* ── Sales Navigator Signal Filters ── */}
+      {filters.api === 'sales_navigator' && (
+        <>
+          <FilterGroup title="Signaux de prospection">
+            <div className="space-y-2">
+              {([
+                { key: 'changed_jobs' as const, label: '🔄 A changé de poste récemment', desc: '"Likely to Switch" natif LinkedIn' },
+                { key: 'posted_on_linkedin' as const, label: '📝 A publié sur LinkedIn', desc: 'Actif récemment = plus réceptif' },
+                { key: 'following_your_company' as const, label: '👀 Suit votre entreprise', desc: 'Lead chaud' },
+                { key: 'viewed_your_profile' as const, label: '🔍 A vu votre profil', desc: 'Signal d\'intention fort' },
+                { key: 'past_colleague' as const, label: '🤝 Ancien collègue', desc: 'Connexion réseau' },
+              ] as const).map(item => (
+                <div key={item.key} className="flex items-center gap-3">
+                  <Switch
+                    checked={filters[item.key] === true}
+                    onCheckedChange={(checked) => onChange({ ...filters, [item.key]: checked || null })}
+                  />
+                  <div>
+                    <span className="text-xs font-medium">{item.label}</span>
+                    <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </FilterGroup>
+        </>
+      )}
+
+      {/* ── Recruiter Advanced Filters ── */}
+      {filters.api === 'recruiter' && (
+        <>
+          <FilterGroup title="Type de contrat">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: 'FULL_TIME', label: 'CDI' },
+                { value: 'PART_TIME', label: 'Temps partiel' },
+                { value: 'CONTRACT', label: 'CDD / Freelance' },
+                { value: 'INTERNSHIP', label: 'Stage' },
+              ].map(opt => (
+                <Badge
+                  key={opt.value}
+                  variant={filters.employment_type?.includes(opt.value) ? 'default' : 'outline'}
+                  className="cursor-pointer text-xs"
+                  onClick={() => {
+                    const current = filters.employment_type || [];
+                    const next = current.includes(opt.value)
+                      ? current.filter(v => v !== opt.value)
+                      : [...current, opt.value];
+                    onChange({ ...filters, employment_type: next });
+                  }}
+                >
+                  {opt.label}
+                </Badge>
+              ))}
+            </div>
+          </FilterGroup>
+
+          <FilterGroup title="Année de diplôme">
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                placeholder="Min (ex: 2015)"
+                value={filters.graduation_year_min ?? ''}
+                onChange={e => onChange({ ...filters, graduation_year_min: e.target.value ? Number(e.target.value) : null })}
+                className="h-8 text-xs"
+              />
+              <Input
+                type="number"
+                placeholder="Max (ex: 2022)"
+                value={filters.graduation_year_max ?? ''}
+                onChange={e => onChange({ ...filters, graduation_year_max: e.target.value ? Number(e.target.value) : null })}
+                className="h-8 text-xs"
+              />
+            </div>
+          </FilterGroup>
+
+          <FilterGroup title="Cacher les profils déjà vus">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={filters.hide_previously_viewed != null}
+                onCheckedChange={(checked) => onChange({ ...filters, hide_previously_viewed: checked ? 90 : null })}
+              />
+              {filters.hide_previously_viewed != null && (
+                <Input
+                  type="number"
+                  value={filters.hide_previously_viewed}
+                  onChange={e => onChange({ ...filters, hide_previously_viewed: Number(e.target.value) || 90 })}
+                  className="h-8 text-xs w-20"
+                  suffix="jours"
+                />
+              )}
+              <span className="text-xs text-muted-foreground">
+                {filters.hide_previously_viewed != null ? `Vus il y a moins de ${filters.hide_previously_viewed}j` : 'Désactivé'}
+              </span>
+            </div>
+          </FilterGroup>
+        </>
+      )}
     </FilterSection>
   );
 };
