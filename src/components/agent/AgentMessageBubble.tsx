@@ -52,6 +52,34 @@ function extractSampleProfiles(content: string): { profiles: SampleProfile[]; co
   return { profiles, contentWithout: contentWithout.trim() };
 }
 
+// ── Scoring Test data ──
+interface ScoringTestProfile {
+  name: string;
+  title: string;
+  company: string;
+  score: number;
+  recommendation: 'go' | 'maybe' | 'skip';
+  criteria: Array<{ label: string; verdict: 'pass' | 'partial' | 'fail'; detail: string }>;
+}
+
+interface ScoringTestData {
+  purpose: string;
+  profiles: ScoringTestProfile[];
+}
+
+function extractScoringTest(content: string): { scoringTest: ScoringTestData | null; contentWithout: string } {
+  const regex = /\[SCORING_TEST\]\s*([\s\S]*?)\s*\[\/SCORING_TEST\]/;
+  const match = content.match(regex);
+  if (!match) return { scoringTest: null, contentWithout: content };
+  try {
+    const parsed = JSON.parse(match[1]);
+    const contentWithout = content.replace(match[0], '').trim();
+    return { scoringTest: parsed, contentWithout };
+  } catch {
+    return { scoringTest: null, contentWithout: content };
+  }
+}
+
 interface ParsedCandidate {
   name: string;
   title: string;
