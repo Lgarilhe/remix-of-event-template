@@ -626,7 +626,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-0 overflow-x-auto no-scrollbar border-b border-border bg-muted/20">
+        <div className="flex gap-0 overflow-x-auto no-scrollbar border-b border-border bg-muted/20 mx-4 mt-3 rounded-lg overflow-hidden border">
           <DetailTab active={activeDetailTab === 'resume'} emoji="📋" label="Résumé" onClick={() => setActiveDetailTab('resume')} />
           <DetailTab active={activeDetailTab === 'historique'} emoji="🕐" label="Historique" count={timeline.length} onClick={() => setActiveDetailTab('historique')} />
           <DetailTab active={activeDetailTab === 'evolutions'} emoji="📈" label="Évolutions" count={evolutions.length} onClick={() => setActiveDetailTab('evolutions')} />
