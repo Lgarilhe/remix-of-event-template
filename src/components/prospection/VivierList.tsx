@@ -1233,7 +1233,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                 onChange={e => setCityInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') updateFilters({ city: cityInput || null }); }}
                 onBlur={() => { if (cityInput !== (filters.city || '')) updateFilters({ city: cityInput || null }); }}
-                className="pl-8 h-8 text-xs border-border/60"
+                className="pl-8 h-8 text-xs border-border/60 rounded-lg"
               />
             </div>
             {filters.city && (
