@@ -1413,7 +1413,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
               {initials}
             </div>
             {enrichment?.is_relevant === true && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-foreground text-background flex items-center justify-center text-[8px]">✓</div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[8px]">✓</div>
             )}
             {enrichment?.is_relevant === false && (
               <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted text-muted-foreground flex items-center justify-center text-[8px]">✗</div>
