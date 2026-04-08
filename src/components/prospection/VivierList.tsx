@@ -37,6 +37,33 @@ function statusToStageOrder(status: string | null): number {
   return 0;
 }
 
+function firstNonEmpty(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function normalizeComparableText(value?: string | null) {
+  if (!value) return null;
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function isSameComparableText(a?: string | null, b?: string | null) {
+  const normalizedA = normalizeComparableText(a);
+  const normalizedB = normalizeComparableText(b);
+  return !!normalizedA && !!normalizedB && normalizedA === normalizedB;
+}
+
+function buildRoleSummary(title?: string | null, company?: string | null) {
+  if (title && company) return `${title} chez ${company}`;
+  return title || company || '—';
+}
+
 function SectionHeader({ emoji, label, count }: { emoji: string; label: string; count?: number }) {
   return (
     <div className="flex items-center gap-2 mb-2.5">
@@ -356,7 +383,42 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   // Parse Apollo employment history and find role at last interaction date
   const careerAnalysis = useMemo(() => {
     const apolloData = enrichment?.apollo_data;
-    const employmentHistory: { title: string; organization_name: string; start_date?: string; end_date?: string; current?: boolean }[] = apolloData?.employment_history || [];
+    const employmentHistory = (Array.isArray(apolloData?.employment_history) ? apolloData.employment_history : [])
+      .map((role: any) => ({
+        title: firstNonEmpty(role?.title),
+        organization_name: firstNonEmpty(role?.organization_name, role?.organization?.name),
+        start_date: firstNonEmpty(role?.start_date) || undefined,
+        end_date: firstNonEmpty(role?.end_date) || undefined,
+        current: Boolean(role?.current),
+      }))
+      .filter((role: any) => role.title || role.organization_name)
+      .sort((a: any, b: any) => {
+        const aCurrent = !a.end_date || a.current;
+        const bCurrent = !b.end_date || b.current;
+        if (aCurrent !== bCurrent) return aCurrent ? -1 : 1;
+        const endCompare = (b.end_date || '').localeCompare(a.end_date || '');
+        if (endCompare !== 0) return endCompare;
+        return (b.start_date || '').localeCompare(a.start_date || '');
+      });
+
+    const fallbackRole = (() => {
+      const title = firstNonEmpty(apolloData?.title, enrichment?.current_job_title);
+      const organization_name = firstNonEmpty(
+        apolloData?.organization_name,
+        apolloData?.organization?.name,
+        enrichment?.current_company,
+      );
+
+      if (!title && !organization_name) return null;
+
+      return {
+        title,
+        organization_name,
+        start_date: undefined,
+        end_date: undefined,
+        current: true,
+      };
+    })();
     
     // Find last interaction date from business dates only (never sync timestamps)
     const shortlistDates = shortlists
@@ -370,7 +432,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       .sort()
       .reverse();
     // Use last shortlist date as primary, fallback to notes
-    const lastInteractionDate = shortlistDates[0] || noteDates[0] || null;
+    const lastInteractionDate = shortlistDates[0] || noteDates[0] || contact?.last_interaction_date || null;
     const lastInteractionTs = lastInteractionDate ? new Date(lastInteractionDate).getTime() : null;
 
     // Find all current roles (no end_date or marked current)
@@ -398,15 +460,28 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       });
       currentRole = scored[0].role;
     }
-    
-    // Fallback: use Apollo root-level title/org (LinkedIn headline) if no current in history
-    if (!currentRole && apolloData?.title) {
-      currentRole = { title: apolloData.title, organization_name: apolloData.organization_name || apolloData.organization?.name || '', start_date: undefined, end_date: undefined, current: true };
+
+    if (currentRole || fallbackRole) {
+      currentRole = {
+        title: currentRole?.title || fallbackRole?.title || null,
+        organization_name: currentRole?.organization_name || fallbackRole?.organization_name || null,
+        start_date: currentRole?.start_date,
+        end_date: currentRole?.end_date,
+        current: currentRole?.current ?? fallbackRole?.current,
+      };
     }
+
     // If still no current role, use the most recent role as "last known"
-    const lastKnownRole = currentRole || employmentHistory[0] || null;
+    const lastKnownRole = currentRole || employmentHistory[0] || fallbackRole || null;
     // Keep track of secondary concurrent roles for display
-    const secondaryCurrentRoles = allCurrentRoles.filter(r => r !== currentRole);
+    const secondaryCurrentRoles = allCurrentRoles
+      .filter(r => r !== currentRole)
+      .map(r => ({
+        ...r,
+        title: r.title || null,
+        organization_name: r.organization_name || null,
+      }))
+      .filter(r => r.title || r.organization_name);
     
     // Find role at the time of last interaction
     let roleAtLastInteraction: typeof currentRole = null;
@@ -453,41 +528,43 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
     const items: { emoji: string; title: string; detail: string; type: 'positive' | 'neutral' | 'negative' }[] = [];
     
     const { roleAtLastInteraction, currentRole, lastKnownRole, secondaryCurrentRoles, careerMoves, lastInteractionDate } = careerAnalysis;
+    const currentTitle = firstNonEmpty(currentRole?.title, enrichment?.current_job_title);
+    const currentCompany = firstNonEmpty(currentRole?.organization_name, enrichment?.current_company);
     
     // Case: no current role detected (person left last known company)
     if (!currentRole && lastKnownRole && lastInteractionDate) {
       items.push({
         emoji: '❓',
         title: 'Poste actuel inconnu',
-        detail: `Dernier poste connu : ${lastKnownRole.title} chez ${lastKnownRole.organization_name} (terminé${lastKnownRole.end_date ? ' en ' + new Date(lastKnownRole.end_date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''})`,
+        detail: `Dernier poste connu : ${buildRoleSummary(lastKnownRole.title, lastKnownRole.organization_name)} (terminé${lastKnownRole.end_date ? ' en ' + new Date(lastKnownRole.end_date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''})`,
         type: 'negative'
       });
     }
     
     // Career move analysis based on Apollo history
-    if (roleAtLastInteraction && currentRole && lastInteractionDate) {
-      const sameCompany = roleAtLastInteraction.organization_name === currentRole.organization_name;
-      const sameRole = roleAtLastInteraction.title === currentRole.title;
+    if (roleAtLastInteraction && (currentTitle || currentCompany) && lastInteractionDate) {
+      const sameCompany = isSameComparableText(roleAtLastInteraction.organization_name, currentCompany);
+      const sameRole = isSameComparableText(roleAtLastInteraction.title, currentTitle);
       
       if (!sameCompany) {
         items.push({ 
           emoji: '🔄', 
           title: 'Changement d\'entreprise', 
-          detail: `Lors de nos derniers échanges (${relativeTime(lastInteractionDate)}), était ${roleAtLastInteraction.title} chez ${roleAtLastInteraction.organization_name}. Aujourd'hui : ${currentRole.title} chez ${currentRole.organization_name}`, 
+          detail: `Lors de nos derniers échanges (${relativeTime(lastInteractionDate)}), était ${buildRoleSummary(roleAtLastInteraction.title, roleAtLastInteraction.organization_name)}. Aujourd'hui : ${buildRoleSummary(currentTitle, currentCompany)}`, 
           type: 'positive' 
         });
       } else if (!sameRole) {
         items.push({ 
           emoji: '📈', 
           title: 'Évolution interne', 
-          detail: `Promotion chez ${currentRole.organization_name} : ${roleAtLastInteraction.title} → ${currentRole.title}`, 
+          detail: `Évolution chez ${currentCompany || roleAtLastInteraction.organization_name || 'la même entreprise'} : ${roleAtLastInteraction.title || 'poste précédent'} → ${currentTitle || 'poste actuel'}`, 
           type: 'positive' 
         });
-      } else {
+      } else if (currentTitle || currentCompany) {
         items.push({ 
           emoji: '🏢', 
           title: 'Même poste', 
-          detail: `Toujours ${currentRole.title} chez ${currentRole.organization_name} depuis nos derniers échanges (${relativeTime(lastInteractionDate)})`, 
+          detail: `Toujours ${buildRoleSummary(currentTitle, currentCompany)} depuis nos derniers échanges (${relativeTime(lastInteractionDate)})`, 
           type: 'neutral' 
         });
       }
@@ -512,32 +589,32 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           type: 'neutral'
         });
       }
-    } else if (!lastInteractionDate && currentRole && enrichment) {
+    } else if (!lastInteractionDate && enrichment) {
       // No interaction history — compare CRM data vs current Apollo data
-      const crmCompany = contact?.company_name;
-      const crmTitle = contact?.contact_type || contact?.title;
-      const sameCompany = crmCompany && currentRole.organization_name && crmCompany.toLowerCase() === currentRole.organization_name.toLowerCase();
-      const sameTitle = crmTitle && currentRole.title && crmTitle.toLowerCase() === currentRole.title.toLowerCase();
+      const crmCompany = firstNonEmpty(contact?.company_name);
+      const crmTitle = firstNonEmpty(contact?.contact_type);
+      const sameCompany = isSameComparableText(crmCompany, currentCompany);
+      const sameTitle = isSameComparableText(crmTitle, currentTitle);
 
-      if (crmCompany && !sameCompany) {
+      if (crmCompany && currentCompany && !sameCompany) {
         items.push({
           emoji: '🔄',
           title: 'Changement d\'entreprise',
-          detail: `Référencé chez ${crmCompany} dans le CRM. Aujourd'hui : ${currentRole.title} chez ${currentRole.organization_name}`,
+          detail: `Référencé chez ${crmCompany} dans le CRM. Aujourd'hui : ${buildRoleSummary(currentTitle, currentCompany)}`,
           type: 'positive'
         });
-      } else if (crmTitle && !sameTitle && sameCompany) {
+      } else if (crmTitle && currentTitle && !sameTitle && sameCompany) {
         items.push({
           emoji: '📈',
           title: 'Évolution interne',
-          detail: `Était "${crmTitle}" → maintenant "${currentRole.title}" chez ${currentRole.organization_name}`,
+          detail: `Était "${crmTitle}" → maintenant "${currentTitle}"${currentCompany ? ` chez ${currentCompany}` : ''}`,
           type: 'positive'
         });
-      } else if (currentRole.title) {
+      } else if (currentTitle || currentCompany) {
         items.push({
           emoji: '💼',
           title: 'Poste actuel',
-          detail: `${currentRole.title}${currentRole.organization_name ? ` chez ${currentRole.organization_name}` : ''}`,
+          detail: buildRoleSummary(currentTitle, currentCompany),
           type: 'neutral'
         });
       }
@@ -553,14 +630,19 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       }
     } else if (enrichment) {
       // Fallback to basic enrichment comparison
-      if (enrichment.still_same_company === false && enrichment.company_change_detail) {
-        items.push({ emoji: '🔄', title: 'Changement de poste', detail: enrichment.company_change_detail, type: 'positive' });
+      if (enrichment.company_change_detail) {
+        items.push({
+          emoji: enrichment.still_same_company === false ? '🔄' : '📈',
+          title: enrichment.still_same_company === false ? 'Changement de poste' : 'Évolution détectée',
+          detail: enrichment.company_change_detail,
+          type: 'positive'
+        });
       }
-      if (enrichment.still_same_company === true) {
+      if (enrichment.still_same_company === true && (enrichment.current_company || contact?.company_name)) {
         items.push({ emoji: '🏢', title: 'Même entreprise', detail: `Toujours chez ${enrichment.current_company || contact?.company_name || '—'}`, type: 'neutral' });
       }
-      if (enrichment.current_job_title && items.length === 0) {
-        items.push({ emoji: '💼', title: 'Poste actuel', detail: `${enrichment.current_job_title}${enrichment.current_company ? ` chez ${enrichment.current_company}` : ''}`, type: 'neutral' });
+      if ((enrichment.current_job_title || enrichment.current_company) && items.length === 0) {
+        items.push({ emoji: '💼', title: 'Poste actuel', detail: buildRoleSummary(enrichment.current_job_title, enrichment.current_company), type: 'neutral' });
       }
     }
 
@@ -596,6 +678,15 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
   const primaryRole = careerAnalysis.currentRole;
   const displayTitle = primaryRole?.title || enrichment?.current_job_title || contact.contact_type || null;
   const displayCompany = primaryRole?.organization_name || enrichment?.current_company || contact.company_name;
+  const hasAnyEnrichmentSignal = !!(
+    enrichment && (
+      careerAnalysis.employmentHistory.length > 0 ||
+      enrichment.current_job_title ||
+      enrichment.current_company ||
+      enrichment.company_change_detail ||
+      (Array.isArray(enrichment.notable_events) && enrichment.notable_events.length > 0)
+    )
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -933,8 +1024,12 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                   {evolutions.length === 0 && careerAnalysis.employmentHistory.length === 0 ? (
                     <div className="text-center py-10">
                       <TrendingUp className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
-                      <p className="text-xs text-muted-foreground">Aucune évolution détectée</p>
-                      <p className="text-xs text-muted-foreground mt-1">Enrichissez ce contact pour détecter les changements</p>
+                      <p className="text-xs text-muted-foreground">{hasAnyEnrichmentSignal ? 'Aucun changement confirmé' : 'Aucune évolution détectée'}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {hasAnyEnrichmentSignal
+                          ? 'Le profil a bien été enrichi, mais aucun mouvement de carrière exploitable n’a été identifié.'
+                          : 'Enrichissez ce contact pour détecter les changements'}
+                      </p>
                     </div>
                   ) : (
                     <>
