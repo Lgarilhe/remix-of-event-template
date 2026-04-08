@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 const MAIN_NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/missions', label: 'Missions', icon: Target },
+  { to: '/prospection', label: 'Prospection', icon: Building2 },
   { to: '/pipeline', label: 'Pipeline', icon: Kanban },
   { to: '/candidates', label: 'Candidats', icon: Users },
   { to: '/inbox', label: 'Messages', icon: MessageSquare, badgeKey: 'unread' as const },
