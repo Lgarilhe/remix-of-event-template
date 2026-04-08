@@ -43,7 +43,7 @@ function SectionHeader({ emoji, label, count }: { emoji: string; label: string; 
       <span className="text-sm">{emoji}</span>
       <span className="text-xs font-bold uppercase tracking-wider text-foreground">{label}</span>
       {count !== undefined && (
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">{count}</span>
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums bg-muted/50 px-1.5 py-0.5 rounded-md">{count}</span>
       )}
     </div>
   );
@@ -53,7 +53,7 @@ function SectionHeader({ emoji, label, count }: { emoji: string; label: string; 
 function StatBlock({ value, label, highlight }: { value: number; label: string; highlight?: boolean }) {
   return (
     <div className={cn(
-      "border p-3 text-center transition-colors",
+      "border rounded-lg p-3 text-center transition-colors",
       highlight ? "border-border bg-foreground text-background" : "border-border bg-muted/30"
     )}>
       <div className="text-xl font-bold tabular-nums">{value}</div>
