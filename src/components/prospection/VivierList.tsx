@@ -1626,7 +1626,7 @@ function ContactsView() {
       {/* Progress bar */}
       {isEnriching && (
         <div className="space-y-1">
-          <div className="h-1 bg-border overflow-hidden">
+          <div className="h-1 bg-border rounded-full overflow-hidden">
             <div className="h-full bg-foreground transition-all duration-300" style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }} />
           </div>
           <div className="text-xs text-muted-foreground uppercase tracking-wider">{progress.done} / {progress.total} traités</div>
