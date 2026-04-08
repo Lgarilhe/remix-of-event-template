@@ -1455,7 +1455,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
         {/* Status badges + stats */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
           {enrichment?.generated_message && (
-            <div className="flex items-center gap-1 px-2 py-1 border border-border bg-foreground text-background text-xs font-medium shrink-0">
+            <div className="flex items-center gap-1 px-2 py-1 border border-border rounded-md bg-foreground text-background text-xs font-medium shrink-0">
               {enrichment.message_type === 'sms' ? '📱' : '💬'} Message prêt
             </div>
           )}
