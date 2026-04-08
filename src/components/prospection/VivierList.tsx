@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw, ArrowRightLeft, Clock, MessageSquare, UserCheck, TrendingUp, Calendar, Star } from 'lucide-react';
+import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw, ArrowRightLeft, Clock, MessageSquare, UserCheck, TrendingUp, Calendar, Star, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
