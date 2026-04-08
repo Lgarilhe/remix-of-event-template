@@ -1610,7 +1610,7 @@ function ContactsView() {
                   key={f}
                   onClick={() => setEnrichFilter(f)}
                   className={cn(
-                    "h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border shrink-0 transition-colors",
+                    "h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border rounded-lg shrink-0 transition-colors",
                     idx === 0 ? "border-l-0 sm:ml-2 sm:border-l" : "border-l-0",
                     enrichFilter === f ? "bg-accent text-foreground" : "bg-background text-foreground hover:bg-muted"
                   )}
