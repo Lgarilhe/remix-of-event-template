@@ -606,7 +606,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
         </div>
 
         {/* Stats bar */}
-        <div className="grid grid-cols-4 gap-0 border-b border-border">
+        <div className="grid grid-cols-4 gap-0 border-b border-border rounded-lg overflow-hidden mx-4 mt-4 border">
           <div className="p-2.5 text-center border-r border-border">
             <div className="text-lg font-bold tabular-nums">{contact.shortlist_count}</div>
             <div className="text-[8px] uppercase tracking-wider text-muted-foreground">Shortlists</div>
