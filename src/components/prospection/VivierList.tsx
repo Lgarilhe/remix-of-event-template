@@ -1335,7 +1335,7 @@ function CompanyCard({ company, index, onClick }: { company: VivierCompany; inde
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
       onClick={onClick}
-      className="w-full text-left border border-border bg-card hover:bg-muted/30 transition-all duration-150 group"
+      className="w-full text-left border border-border rounded-lg bg-card hover:bg-muted/30 hover:shadow-sm transition-all duration-150 group"
     >
       {/* Top section */}
       <div className="p-3 sm:p-4 space-y-2.5">
