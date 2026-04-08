@@ -560,12 +560,12 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-border">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l border-border rounded-l-xl">
         {/* Hero header */}
-        <div className="bg-foreground text-background p-5 sm:p-6">
+        <div className="bg-foreground text-background p-5 sm:p-6 rounded-tl-xl">
           <div className="flex items-start gap-4">
             <div className={cn(
-              "h-14 w-14 border-2 flex items-center justify-center text-lg font-bold uppercase shrink-0",
+              "h-14 w-14 rounded-lg border-2 flex items-center justify-center text-lg font-bold uppercase shrink-0",
               isEnriched ? "border-[hsl(var(--primary))]" : "border-background/30"
             )}>
               {(contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
