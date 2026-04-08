@@ -1237,7 +1237,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
               />
             </div>
             {filters.city && (
-              <button onClick={() => { setCityInput(''); updateFilters({ city: null }); }} className="h-8 px-2 text-xs border border-border hover:bg-muted transition-colors">✕</button>
+              <button onClick={() => { setCityInput(''); updateFilters({ city: null }); }} className="h-8 px-2 text-xs border border-border rounded-lg hover:bg-muted transition-colors">✕</button>
             )}
           </div>
 
