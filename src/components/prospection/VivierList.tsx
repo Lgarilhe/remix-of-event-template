@@ -1341,7 +1341,7 @@ function CompanyCard({ company, index, onClick }: { company: VivierCompany; inde
       <div className="p-3 sm:p-4 space-y-2.5">
         <div className="flex items-start gap-3">
           {/* Avatar */}
-          <div className="h-10 w-10 sm:h-11 sm:w-11 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 uppercase">
+          <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-lg bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 uppercase">
             {initials}
           </div>
 
