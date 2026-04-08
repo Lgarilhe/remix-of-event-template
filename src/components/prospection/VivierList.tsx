@@ -104,9 +104,9 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l border-border rounded-l-xl">
         {/* Hero header */}
-        <div className="bg-foreground text-background p-5 sm:p-6">
+        <div className="bg-foreground text-background p-5 sm:p-6 rounded-tl-xl">
           <div className="flex items-start gap-4">
-            <div className="h-14 w-14 border-2 border-background/30 flex items-center justify-center text-lg font-bold uppercase shrink-0">
+            <div className="h-14 w-14 rounded-lg border-2 border-background/30 flex items-center justify-center text-lg font-bold uppercase shrink-0">
               {(company.company_name || '??').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
