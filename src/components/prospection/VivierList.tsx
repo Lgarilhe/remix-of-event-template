@@ -1279,7 +1279,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                   key={String(opt.value)}
                   onClick={() => updateFilters({ contact_type: opt.value })}
                   className={cn(
-                    "h-7 px-2.5 text-xs font-medium border transition-colors",
+                    "h-7 px-2.5 text-xs font-medium border rounded-md transition-colors",
                     filters.contact_type === opt.value
                       ? "border-border bg-foreground text-background"
                       : "border-border text-foreground hover:border-border"
