@@ -1219,7 +1219,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="space-y-2 border border-border p-3 bg-muted/20"
+          className="space-y-2 border border-border rounded-lg p-3 bg-muted/20"
         >
           <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Filtres avancés</div>
 
