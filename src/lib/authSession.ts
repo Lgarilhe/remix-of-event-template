@@ -3,6 +3,24 @@ import { supabase } from '@/integrations/supabase/client';
 const AUTH_VALIDATION_TIMEOUT_MS = 4000;
 let isInvalidatingLocalSession = false;
 
+const decodeJwtPayload = (token: string) => {
+  const [, payload] = token.split('.');
+  if (!payload || typeof globalThis.atob !== 'function') return null;
+
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+    return JSON.parse(globalThis.atob(padded)) as { sub?: unknown };
+  } catch {
+    return null;
+  }
+};
+
+const hasValidJwtSubject = (token: string) => {
+  const payload = decodeJwtPayload(token);
+  return typeof payload?.sub === 'string' && payload.sub.trim().length > 0;
+};
+
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs = AUTH_VALIDATION_TIMEOUT_MS): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -114,6 +132,11 @@ export const getValidatedSession = async () => {
   }
 
   if (!session?.access_token) {
+    return { session: null, user: null };
+  }
+
+  if (!hasValidJwtSubject(session.access_token)) {
+    invalidateLocalSession();
     return { session: null, user: null };
   }
 
