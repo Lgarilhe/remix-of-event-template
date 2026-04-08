@@ -41,7 +41,7 @@ const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const PrivacyPage = lazy(() => import("./pages/Privacy"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 const AgentsPage = lazy(() => import("./pages/Agents"));
-
+const Prospection = lazy(() => import("./pages/Prospection"));
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
 
 const AppContent = () => {
@@ -150,11 +150,11 @@ const AppContent = () => {
           <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/agents" element={<ProtectedRoute><OrganizationGuard><AppLayout><AgentsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><AppLayout><ATS /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          {/* Legacy redirects */}
-          <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
-          <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
-          <Route path="/prospection" element={<Navigate to={withPreviewAccessToken('/missions', '?tab=prospection')} replace />} />
+            <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+            <Route path="/prospection" element={<ProtectedRoute><OrganizationGuard><AppLayout><Prospection /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+            {/* Legacy redirects */}
+            <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
+            <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
           <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><AppLayout><Dashboard /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><Qualification /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><AppLayout><ScorecardFullPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
