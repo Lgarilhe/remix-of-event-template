@@ -1514,8 +1514,8 @@ function CompaniesView() {
           ))}
         </div>
       ) : companies.length === 0 ? (
-        <div className="border border-border p-12 text-center">
-          <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+        <div className="border border-border rounded-lg p-12 text-center">
+          <div className="w-14 h-14 rounded-xl bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <Building2 className="w-7 h-7" />
           </div>
           <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Aucune société</h3>
