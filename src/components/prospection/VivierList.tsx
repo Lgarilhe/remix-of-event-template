@@ -512,6 +512,45 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
           type: 'neutral'
         });
       }
+    } else if (!lastInteractionDate && currentRole && enrichment) {
+      // No interaction history — compare CRM data vs current Apollo data
+      const crmCompany = contact?.company_name;
+      const crmTitle = contact?.contact_type || contact?.title;
+      const sameCompany = crmCompany && currentRole.organization_name && crmCompany.toLowerCase() === currentRole.organization_name.toLowerCase();
+      const sameTitle = crmTitle && currentRole.title && crmTitle.toLowerCase() === currentRole.title.toLowerCase();
+
+      if (crmCompany && !sameCompany) {
+        items.push({
+          emoji: '🔄',
+          title: 'Changement d\'entreprise',
+          detail: `Référencé chez ${crmCompany} dans le CRM. Aujourd'hui : ${currentRole.title} chez ${currentRole.organization_name}`,
+          type: 'positive'
+        });
+      } else if (crmTitle && !sameTitle && sameCompany) {
+        items.push({
+          emoji: '📈',
+          title: 'Évolution interne',
+          detail: `Était "${crmTitle}" → maintenant "${currentRole.title}" chez ${currentRole.organization_name}`,
+          type: 'positive'
+        });
+      } else if (currentRole.title) {
+        items.push({
+          emoji: '💼',
+          title: 'Poste actuel',
+          detail: `${currentRole.title}${currentRole.organization_name ? ` chez ${currentRole.organization_name}` : ''}`,
+          type: 'neutral'
+        });
+      }
+
+      if (secondaryCurrentRoles.length > 0) {
+        const rolesList = secondaryCurrentRoles.map(r => `${r.title} @ ${r.organization_name}`).join(', ');
+        items.push({
+          emoji: '🔀',
+          title: `${secondaryCurrentRoles.length} rôle${secondaryCurrentRoles.length > 1 ? 's' : ''} en parallèle`,
+          detail: rolesList,
+          type: 'neutral'
+        });
+      }
     } else if (enrichment) {
       // Fallback to basic enrichment comparison
       if (enrichment.still_same_company === false && enrichment.company_change_detail) {
@@ -520,7 +559,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
       if (enrichment.still_same_company === true) {
         items.push({ emoji: '🏢', title: 'Même entreprise', detail: `Toujours chez ${enrichment.current_company || contact?.company_name || '—'}`, type: 'neutral' });
       }
-      if (enrichment.current_job_title) {
+      if (enrichment.current_job_title && items.length === 0) {
         items.push({ emoji: '💼', title: 'Poste actuel', detail: `${enrichment.current_job_title}${enrichment.current_company ? ` chez ${enrichment.current_company}` : ''}`, type: 'neutral' });
       }
     }
