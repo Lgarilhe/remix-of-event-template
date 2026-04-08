@@ -1161,7 +1161,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
       <div className="flex gap-2">
         <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60" />
+          <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60 rounded-lg" />
         </div>
         <button
           onClick={() => setShowMore(!showMore)}
