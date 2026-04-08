@@ -43,7 +43,7 @@ function SectionHeader({ emoji, label, count }: { emoji: string; label: string; 
       <span className="text-sm">{emoji}</span>
       <span className="text-xs font-bold uppercase tracking-wider text-foreground">{label}</span>
       {count !== undefined && (
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">{count}</span>
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums bg-muted/50 px-1.5 py-0.5 rounded-md">{count}</span>
       )}
     </div>
   );
@@ -53,7 +53,7 @@ function SectionHeader({ emoji, label, count }: { emoji: string; label: string; 
 function StatBlock({ value, label, highlight }: { value: number; label: string; highlight?: boolean }) {
   return (
     <div className={cn(
-      "border p-3 text-center transition-colors",
+      "border rounded-lg p-3 text-center transition-colors",
       highlight ? "border-border bg-foreground text-background" : "border-border bg-muted/30"
     )}>
       <div className="text-xl font-bold tabular-nums">{value}</div>
@@ -102,11 +102,11 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-border">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l border-border rounded-l-xl">
         {/* Hero header */}
-        <div className="bg-foreground text-background p-5 sm:p-6">
+        <div className="bg-foreground text-background p-5 sm:p-6 rounded-tl-xl">
           <div className="flex items-start gap-4">
-            <div className="h-14 w-14 border-2 border-background/30 flex items-center justify-center text-lg font-bold uppercase shrink-0">
+            <div className="h-14 w-14 rounded-lg border-2 border-background/30 flex items-center justify-center text-lg font-bold uppercase shrink-0">
               {(company.company_name || '??').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
@@ -133,7 +133,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
             <p className="text-xs text-muted-foreground leading-relaxed">{company.description}</p>
           )}
 
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5 rounded-lg overflow-hidden">
             <StatBlock value={company.contact_count} label="Contacts" />
             <StatBlock value={company.shortlist_count} label="Shortlists" highlight={company.shortlist_count >= 10} />
             <StatBlock value={company.placement_count} label="Placements" highlight={company.placement_count > 0} />
@@ -560,12 +560,12 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-border">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l border-border rounded-l-xl">
         {/* Hero header */}
-        <div className="bg-foreground text-background p-5 sm:p-6">
+        <div className="bg-foreground text-background p-5 sm:p-6 rounded-tl-xl">
           <div className="flex items-start gap-4">
             <div className={cn(
-              "h-14 w-14 border-2 flex items-center justify-center text-lg font-bold uppercase shrink-0",
+              "h-14 w-14 rounded-lg border-2 flex items-center justify-center text-lg font-bold uppercase shrink-0",
               isEnriched ? "border-[hsl(var(--primary))]" : "border-background/30"
             )}>
               {(contact.full_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
@@ -606,7 +606,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
         </div>
 
         {/* Stats bar */}
-        <div className="grid grid-cols-4 gap-0 border-b border-border">
+        <div className="grid grid-cols-4 gap-0 border-b border-border rounded-lg overflow-hidden mx-4 mt-4 border">
           <div className="p-2.5 text-center border-r border-border">
             <div className="text-lg font-bold tabular-nums">{contact.shortlist_count}</div>
             <div className="text-[8px] uppercase tracking-wider text-muted-foreground">Shortlists</div>
@@ -626,7 +626,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-0 overflow-x-auto no-scrollbar border-b border-border bg-muted/20">
+        <div className="flex gap-0 overflow-x-auto no-scrollbar border-b border-border bg-muted/20 mx-4 mt-3 rounded-lg overflow-hidden border">
           <DetailTab active={activeDetailTab === 'resume'} emoji="📋" label="Résumé" onClick={() => setActiveDetailTab('resume')} />
           <DetailTab active={activeDetailTab === 'historique'} emoji="🕐" label="Historique" count={timeline.length} onClick={() => setActiveDetailTab('historique')} />
           <DetailTab active={activeDetailTab === 'evolutions'} emoji="📈" label="Évolutions" count={evolutions.length} onClick={() => setActiveDetailTab('evolutions')} />
@@ -1092,10 +1092,10 @@ function EngagementBar({ shortlists, placements, notes, contacts }: { shortlists
   const fills = [0, 25, 50, 75, 100];
   return (
     <div className="flex items-center gap-2 w-full">
-      <div className="flex-1 h-1 bg-border overflow-hidden">
+      <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
         <div
           className={cn(
-            "h-full transition-all duration-500",
+            "h-full rounded-full transition-all duration-500",
             level >= 3 ? "bg-foreground" : level >= 2 ? "bg-muted-foreground" : "bg-border"
           )}
           style={{ width: `${fills[level]}%` }}
@@ -1128,7 +1128,7 @@ function StatPill({ icon, value, label, highlight }: { icon: React.ReactNode; va
   if (value === 0) return null;
   return (
     <div className={cn(
-      "flex items-center gap-1.5 px-2 py-1 border text-xs font-medium shrink-0",
+      "flex items-center gap-1.5 px-2 py-1 border rounded-md text-xs font-medium shrink-0",
       highlight ? "border-border bg-foreground text-background" : "border-border bg-background text-foreground"
     )}>
       {icon}
@@ -1161,12 +1161,12 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
       <div className="flex gap-2">
         <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60" />
+          <Input placeholder="Rechercher…" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} className="pl-9 h-9 text-xs border-border/60 rounded-lg" />
         </div>
         <button
           onClick={() => setShowMore(!showMore)}
           className={cn(
-            "relative overflow-hidden h-9 px-3 flex items-center gap-1.5 border text-xs font-medium uppercase tracking-wider shrink-0 transition-colors group",
+            "relative overflow-hidden h-9 px-3 flex items-center gap-1.5 border rounded-lg text-xs font-medium uppercase tracking-wider shrink-0 transition-colors group",
             showMore || activeFilterCount > 0
               ? "border-border bg-foreground text-background"
               : "border-border text-foreground hover:border-border"
@@ -1174,7 +1174,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
         >
           <span className="relative z-10">Filtres</span>
           {activeFilterCount > 0 && (
-            <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
+            <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center rounded-full">{activeFilterCount}</span>
           )}
         </button>
       </div>
@@ -1219,7 +1219,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="space-y-2 border border-border p-3 bg-muted/20"
+          className="space-y-2 border border-border rounded-lg p-3 bg-muted/20"
         >
           <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Filtres avancés</div>
 
@@ -1233,11 +1233,11 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                 onChange={e => setCityInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') updateFilters({ city: cityInput || null }); }}
                 onBlur={() => { if (cityInput !== (filters.city || '')) updateFilters({ city: cityInput || null }); }}
-                className="pl-8 h-8 text-xs border-border/60"
+                className="pl-8 h-8 text-xs border-border/60 rounded-lg"
               />
             </div>
             {filters.city && (
-              <button onClick={() => { setCityInput(''); updateFilters({ city: null }); }} className="h-8 px-2 text-xs border border-border hover:bg-muted transition-colors">✕</button>
+              <button onClick={() => { setCityInput(''); updateFilters({ city: null }); }} className="h-8 px-2 text-xs border border-border rounded-lg hover:bg-muted transition-colors">✕</button>
             )}
           </div>
 
@@ -1253,7 +1253,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                 key={String(opt.value)}
                 onClick={() => updateFilters({ has_placements: opt.value })}
                 className={cn(
-                  "h-7 px-2.5 text-xs font-medium border transition-colors",
+                  "h-7 px-2.5 text-xs font-medium border rounded-md transition-colors",
                   filters.has_placements === opt.value
                     ? "border-border bg-foreground text-background"
                     : "border-border text-foreground hover:border-border"
@@ -1279,7 +1279,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
                   key={String(opt.value)}
                   onClick={() => updateFilters({ contact_type: opt.value })}
                   className={cn(
-                    "h-7 px-2.5 text-xs font-medium border transition-colors",
+                    "h-7 px-2.5 text-xs font-medium border rounded-md transition-colors",
                     filters.contact_type === opt.value
                       ? "border-border bg-foreground text-background"
                       : "border-border text-foreground hover:border-border"
@@ -1335,13 +1335,13 @@ function CompanyCard({ company, index, onClick }: { company: VivierCompany; inde
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
       onClick={onClick}
-      className="w-full text-left border border-border bg-card hover:bg-muted/30 transition-all duration-150 group"
+      className="w-full text-left border border-border rounded-lg bg-card hover:bg-muted/30 hover:shadow-sm transition-all duration-150 group"
     >
       {/* Top section */}
       <div className="p-3 sm:p-4 space-y-2.5">
         <div className="flex items-start gap-3">
           {/* Avatar */}
-          <div className="h-10 w-10 sm:h-11 sm:w-11 bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 uppercase">
+          <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-lg bg-foreground text-background flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 uppercase">
             {initials}
           </div>
 
@@ -1400,23 +1400,23 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.025, 0.3), duration: 0.25 }}
       onClick={onClick}
-      className="w-full text-left border border-border bg-card hover:bg-muted/30 transition-all duration-150 group"
+      className="w-full text-left border border-border rounded-lg bg-card hover:bg-muted/30 hover:shadow-sm transition-all duration-150 group"
     >
       <div className="p-3 sm:p-4 space-y-2.5">
         <div className="flex items-start gap-3">
           {/* Avatar with enrichment indicator */}
           <div className="relative shrink-0">
             <div className={cn(
-              "h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center text-xs sm:text-sm font-bold uppercase",
+              "h-10 w-10 sm:h-11 sm:w-11 rounded-lg flex items-center justify-center text-xs sm:text-sm font-bold uppercase",
               isEnriched ? "bg-foreground text-background" : "bg-muted text-foreground"
             )}>
               {initials}
             </div>
             {enrichment?.is_relevant === true && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-foreground text-background flex items-center justify-center text-[8px]">✓</div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[8px]">✓</div>
             )}
             {enrichment?.is_relevant === false && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted text-muted-foreground flex items-center justify-center text-[8px]">✗</div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-[8px]">✗</div>
             )}
           </div>
 
@@ -1455,7 +1455,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
         {/* Status badges + stats */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
           {enrichment?.generated_message && (
-            <div className="flex items-center gap-1 px-2 py-1 border border-border bg-foreground text-background text-xs font-medium shrink-0">
+            <div className="flex items-center gap-1 px-2 py-1 border border-border rounded-md bg-foreground text-background text-xs font-medium shrink-0">
               {enrichment.message_type === 'sms' ? '📱' : '💬'} Message prêt
             </div>
           )}
@@ -1501,7 +1501,7 @@ function CompaniesView() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="border border-border p-4 space-y-2">
+             <div key={i} className="border border-border rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-3">
                 <Skeleton className="h-11 w-11" />
                 <div className="flex-1 space-y-1.5">
@@ -1514,8 +1514,8 @@ function CompaniesView() {
           ))}
         </div>
       ) : companies.length === 0 ? (
-        <div className="border border-border p-12 text-center">
-          <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+        <div className="border border-border rounded-lg p-12 text-center">
+          <div className="w-14 h-14 rounded-xl bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <Building2 className="w-7 h-7" />
           </div>
           <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Aucune société</h3>
@@ -1586,7 +1586,7 @@ function ContactsView() {
         <button
           onClick={() => handleEnrichAll(false)}
           disabled={isEnriching || contacts.length === 0}
-          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border bg-foreground text-background text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border rounded-lg bg-foreground text-background text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
         >
           <Sparkles className="w-3 h-3 relative z-10" />
           <span className="relative z-10">{isEnriching ? 'Enrichissement…' : 'Enrichir'}</span>
@@ -1595,7 +1595,7 @@ function ContactsView() {
           <button
             onClick={() => handleEnrichAll(true)}
             disabled={isEnriching || contacts.length === 0}
-            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border border-l-0 text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border border-l-0 rounded-r-lg text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
           >
             <RefreshCw className="w-3 h-3 relative z-10" />
             <span className="relative z-10 hidden sm:inline">Ré-enrichir</span>
@@ -1610,7 +1610,7 @@ function ContactsView() {
                   key={f}
                   onClick={() => setEnrichFilter(f)}
                   className={cn(
-                    "h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border shrink-0 transition-colors",
+                    "h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border rounded-lg shrink-0 transition-colors",
                     idx === 0 ? "border-l-0 sm:ml-2 sm:border-l" : "border-l-0",
                     enrichFilter === f ? "bg-accent text-foreground" : "bg-background text-foreground hover:bg-muted"
                   )}
@@ -1626,7 +1626,7 @@ function ContactsView() {
       {/* Progress bar */}
       {isEnriching && (
         <div className="space-y-1">
-          <div className="h-1 bg-border overflow-hidden">
+          <div className="h-1 bg-border rounded-full overflow-hidden">
             <div className="h-full bg-foreground transition-all duration-300" style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }} />
           </div>
           <div className="text-xs text-muted-foreground uppercase tracking-wider">{progress.done} / {progress.total} traités</div>
@@ -1644,7 +1644,7 @@ function ContactsView() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="border border-border p-4 space-y-2">
+            <div key={i} className="border border-border rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-3">
                 <Skeleton className="h-11 w-11" />
                 <div className="flex-1 space-y-1.5">
@@ -1657,8 +1657,8 @@ function ContactsView() {
           ))}
         </div>
       ) : filteredContacts.length === 0 ? (
-        <div className="border border-border p-12 text-center">
-          <div className="w-14 h-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+        <div className="border border-border rounded-lg p-12 text-center">
+          <div className="w-14 h-14 rounded-xl bg-foreground text-background flex items-center justify-center mx-auto mb-4">
             <Users className="w-7 h-7" />
           </div>
           <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Aucun contact</h3>
@@ -1701,24 +1701,24 @@ export function VivierList() {
   const [activeSubTab, setActiveSubTab] = useState<'companies' | 'contacts'>('companies');
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-0 w-fit">
-        {subTabs.map((tab, index) => {
+    <div className="space-y-4">
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border">
+        {subTabs.map((tab) => {
           const isActive = activeSubTab === tab.value;
           return (
             <button
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
               className={cn(
-                "relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
-                index > 0 && "border-l-0",
+                "flex items-center gap-1.5 h-8 px-4 text-xs font-medium uppercase tracking-wider rounded-md transition-all duration-200",
                 isActive
-                  ? "bg-accent text-foreground"
-                  : "bg-background text-foreground"
+                  ? "bg-foreground text-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
-              <span className="text-sm relative z-10">{tab.emoji}</span>
-              <span className="relative z-10">{tab.label}</span>
+              <span className="text-sm">{tab.emoji}</span>
+              <span>{tab.label}</span>
             </button>
           );
         })}
