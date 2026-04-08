@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw, ArrowRightLeft, Clock, MessageSquare, UserCheck, TrendingUp, Calendar, Star } from 'lucide-react';
+import { Search, Mail, Building2, ChevronLeft, ChevronRight, Users, FileText, Trophy, MapPin, Briefcase, Sparkles, Copy, Check, ExternalLink, Phone, RefreshCw, ArrowRightLeft, Clock, MessageSquare, UserCheck, TrendingUp, Calendar, Star, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -862,6 +862,205 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                       <div className="text-xs font-semibold">{recruiterStats[0]?.name || '—'}</div>
                     </div>
                   </div>
+
+                  {/* ── Apollo Company Intel ── */}
+                  {(() => {
+                    const apolloData = enrichment?.apollo_data;
+                    const org = apolloData?.organization;
+                    if (!org && !apolloData) return null;
+
+                    const companyName = org?.name || apolloData?.organization_name || enrichment?.current_company;
+                    const industry = org?.industry || org?.subindustry;
+                    const headcount = org?.estimated_num_employees || org?.employee_count;
+                    const fundingTotal = org?.total_funding ? `$${(org.total_funding / 1_000_000).toFixed(1)}M` : org?.total_funding_printed;
+                    const lastFundingRound = org?.latest_funding_round_type;
+                    const lastFundingDate = org?.latest_funding_round_date;
+                    const lastFundingAmount = org?.latest_funding_amount ? `$${(org.latest_funding_amount / 1_000_000).toFixed(1)}M` : null;
+                    const foundedYear = org?.founded_year;
+                    const techStack = org?.current_technologies || [];
+                    const websiteUrl = org?.website_url || org?.primary_domain;
+                    const shortDescription = org?.short_description || org?.seo_description;
+                    const linkedinUrl = org?.linkedin_url;
+                    const publiclyTraded = org?.publicly_traded_symbol;
+                    // Open jobs / departmental headcount
+                    const departmentalHeadcount = org?.departmental_head_count;
+                    const openJobsCount = org?.num_current_job_openings || org?.current_job_openings?.length;
+                    const recentNews = org?.news_items || org?.recent_news || [];
+                    // Person-level extras
+                    const personEmail = apolloData?.email;
+                    const personPhone = apolloData?.phone_numbers?.[0]?.sanitized_number || apolloData?.personal_numbers?.[0];
+                    const personDepartments = apolloData?.departments;
+                    const personSeniority = apolloData?.seniority;
+                    const personTwitter = apolloData?.twitter_url;
+
+                    const hasCompanyData = !!(industry || headcount || fundingTotal || foundedYear || shortDescription || techStack.length > 0 || openJobsCount);
+                    const hasPersonExtras = !!(personEmail || personPhone || personDepartments?.length || personSeniority || personTwitter);
+
+                    if (!hasCompanyData && !hasPersonExtras) return null;
+
+                    return (
+                      <>
+                        {/* Company Intel */}
+                        {hasCompanyData && (
+                          <div className="border border-border mt-4">
+                            <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 bg-muted/20">
+                              <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-xs font-bold uppercase tracking-wider">Intel Entreprise</span>
+                              {companyName && <span className="ml-auto text-xs text-muted-foreground">{companyName}</span>}
+                            </div>
+                            <div className="p-4 space-y-3">
+                              {shortDescription && (
+                                <p className="text-xs text-muted-foreground leading-relaxed">{shortDescription}</p>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-2">
+                                {industry && (
+                                  <div className="border border-border p-2">
+                                    <div className="text-[8px] uppercase tracking-wider text-muted-foreground">Secteur</div>
+                                    <div className="text-xs font-semibold mt-0.5">{industry}</div>
+                                  </div>
+                                )}
+                                {headcount && (
+                                  <div className="border border-border p-2">
+                                    <div className="text-[8px] uppercase tracking-wider text-muted-foreground">Effectif</div>
+                                    <div className="text-xs font-semibold mt-0.5">{typeof headcount === 'number' ? headcount.toLocaleString() : headcount}</div>
+                                  </div>
+                                )}
+                                {foundedYear && (
+                                  <div className="border border-border p-2">
+                                    <div className="text-[8px] uppercase tracking-wider text-muted-foreground">Fondée</div>
+                                    <div className="text-xs font-semibold mt-0.5">{foundedYear}</div>
+                                  </div>
+                                )}
+                                {openJobsCount ? (
+                                  <div className="border border-[hsl(var(--primary))] bg-[hsl(var(--accent))] p-2">
+                                    <div className="text-[8px] uppercase tracking-wider text-muted-foreground">Postes ouverts</div>
+                                    <div className="text-xs font-bold mt-0.5 text-[hsl(var(--primary))]">{openJobsCount} 🔥</div>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {/* Funding */}
+                              {(fundingTotal || lastFundingRound) && (
+                                <div className="border border-border p-3 bg-muted/10">
+                                  <div className="text-[8px] uppercase tracking-wider text-muted-foreground mb-1">Financement</div>
+                                  <div className="text-xs font-semibold">
+                                    {fundingTotal && <span>{fundingTotal} levés</span>}
+                                    {lastFundingRound && (
+                                      <span className="text-muted-foreground">
+                                        {fundingTotal ? ' · ' : ''}Dernier tour : {lastFundingRound}
+                                        {lastFundingAmount ? ` (${lastFundingAmount})` : ''}
+                                        {lastFundingDate ? ` — ${lastFundingDate}` : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {publiclyTraded && (
+                                    <div className="text-xs text-muted-foreground mt-1">📈 Cotée : {publiclyTraded}</div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Tech stack */}
+                              {techStack.length > 0 && (
+                                <div>
+                                  <div className="text-[8px] uppercase tracking-wider text-muted-foreground mb-1.5">Stack technique</div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(techStack as string[]).slice(0, 15).map((tech: string, i: number) => (
+                                      <span key={i} className="text-[10px] px-1.5 py-0.5 border border-border bg-muted/30 text-foreground">
+                                        {tech}
+                                      </span>
+                                    ))}
+                                    {techStack.length > 15 && (
+                                      <span className="text-[10px] px-1.5 py-0.5 text-muted-foreground">+{techStack.length - 15}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Departmental headcount */}
+                              {departmentalHeadcount && Object.keys(departmentalHeadcount).length > 0 && (
+                                <div>
+                                  <div className="text-[8px] uppercase tracking-wider text-muted-foreground mb-1.5">Effectif par département</div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {Object.entries(departmentalHeadcount)
+                                      .filter(([, v]) => (v as number) > 0)
+                                      .sort(([, a], [, b]) => (b as number) - (a as number))
+                                      .slice(0, 8)
+                                      .map(([dept, count]) => (
+                                        <span key={dept} className="text-[10px] px-1.5 py-0.5 border border-border text-foreground">
+                                          {dept}: {count as number}
+                                        </span>
+                                      ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* News */}
+                              {(recentNews as any[]).length > 0 && (
+                                <div>
+                                  <div className="text-[8px] uppercase tracking-wider text-muted-foreground mb-1.5">Actualités</div>
+                                  <div className="space-y-1.5">
+                                    {(recentNews as any[]).slice(0, 3).map((news: any, i: number) => (
+                                      <div key={i} className="text-xs text-muted-foreground leading-snug">
+                                        {news.title && <span className="font-medium text-foreground">{news.title}</span>}
+                                        {news.date && <span className="ml-1 text-[10px]">({news.date})</span>}
+                                        {news.url && (
+                                          <a href={news.url} target="_blank" rel="noopener noreferrer" className="ml-1 text-[hsl(var(--skalr-purple))] hover:underline">↗</a>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Links */}
+                              <div className="flex gap-3 pt-1">
+                                {websiteUrl && (
+                                  <a href={websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[hsl(var(--skalr-purple))] hover:underline flex items-center gap-1">
+                                    <ExternalLink className="w-3 h-3" /> Site web
+                                  </a>
+                                )}
+                                {linkedinUrl && (
+                                  <a href={linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[hsl(var(--skalr-purple))] hover:underline flex items-center gap-1">
+                                    <ExternalLink className="w-3 h-3" /> LinkedIn
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Person extras */}
+                        {hasPersonExtras && (
+                          <div className="border border-border mt-3">
+                            <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 bg-muted/20">
+                              <User className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-xs font-bold uppercase tracking-wider">Infos supplémentaires</span>
+                            </div>
+                            <div className="p-4 space-y-2">
+                              {personEmail && (
+                                <div className="text-xs flex items-center gap-2"><Mail className="w-3 h-3 text-muted-foreground shrink-0" /> <span className="font-medium">{personEmail}</span></div>
+                              )}
+                              {personPhone && (
+                                <div className="text-xs flex items-center gap-2"><Phone className="w-3 h-3 text-muted-foreground shrink-0" /> <span className="font-medium">{personPhone}</span></div>
+                              )}
+                              {personSeniority && (
+                                <div className="text-xs flex items-center gap-2"><TrendingUp className="w-3 h-3 text-muted-foreground shrink-0" /> <span>Séniorité : <span className="font-medium">{personSeniority}</span></span></div>
+                              )}
+                              {personDepartments?.length > 0 && (
+                                <div className="text-xs flex items-center gap-2"><Briefcase className="w-3 h-3 text-muted-foreground shrink-0" /> <span>Département : <span className="font-medium">{personDepartments.join(', ')}</span></span></div>
+                              )}
+                              {personTwitter && (
+                                <a href={personTwitter} target="_blank" rel="noopener noreferrer" className="text-xs text-[hsl(var(--skalr-purple))] hover:underline flex items-center gap-1">
+                                  <ExternalLink className="w-3 h-3" /> Twitter/X
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
