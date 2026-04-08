@@ -1092,10 +1092,10 @@ function EngagementBar({ shortlists, placements, notes, contacts }: { shortlists
   const fills = [0, 25, 50, 75, 100];
   return (
     <div className="flex items-center gap-2 w-full">
-      <div className="flex-1 h-1 bg-border overflow-hidden">
+      <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
         <div
           className={cn(
-            "h-full transition-all duration-500",
+            "h-full rounded-full transition-all duration-500",
             level >= 3 ? "bg-foreground" : level >= 2 ? "bg-muted-foreground" : "bg-border"
           )}
           style={{ width: `${fills[level]}%` }}
