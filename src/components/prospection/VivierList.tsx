@@ -1701,24 +1701,24 @@ export function VivierList() {
   const [activeSubTab, setActiveSubTab] = useState<'companies' | 'contacts'>('companies');
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-0 w-fit">
-        {subTabs.map((tab, index) => {
+    <div className="space-y-4">
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border">
+        {subTabs.map((tab) => {
           const isActive = activeSubTab === tab.value;
           return (
             <button
               key={tab.value}
               onClick={() => setActiveSubTab(tab.value)}
               className={cn(
-                "relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
-                index > 0 && "border-l-0",
+                "flex items-center gap-1.5 h-8 px-4 text-xs font-medium uppercase tracking-wider rounded-md transition-all duration-200",
                 isActive
-                  ? "bg-accent text-foreground"
-                  : "bg-background text-foreground"
+                  ? "bg-foreground text-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
-              <span className="text-sm relative z-10">{tab.emoji}</span>
-              <span className="relative z-10">{tab.label}</span>
+              <span className="text-sm">{tab.emoji}</span>
+              <span>{tab.label}</span>
             </button>
           );
         })}
