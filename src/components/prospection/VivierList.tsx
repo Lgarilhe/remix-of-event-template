@@ -1501,7 +1501,7 @@ function CompaniesView() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="border border-border p-4 space-y-2">
+             <div key={i} className="border border-border rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-3">
                 <Skeleton className="h-11 w-11" />
                 <div className="flex-1 space-y-1.5">
