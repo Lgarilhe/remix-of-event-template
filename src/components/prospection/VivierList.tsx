@@ -1586,7 +1586,7 @@ function ContactsView() {
         <button
           onClick={() => handleEnrichAll(false)}
           disabled={isEnriching || contacts.length === 0}
-          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border bg-foreground text-background text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+          className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border rounded-lg bg-foreground text-background text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
         >
           <Sparkles className="w-3 h-3 relative z-10" />
           <span className="relative z-10">{isEnriching ? 'Enrichissement…' : 'Enrichir'}</span>
