@@ -1128,7 +1128,7 @@ function StatPill({ icon, value, label, highlight }: { icon: React.ReactNode; va
   if (value === 0) return null;
   return (
     <div className={cn(
-      "flex items-center gap-1.5 px-2 py-1 border text-xs font-medium shrink-0",
+      "flex items-center gap-1.5 px-2 py-1 border rounded-md text-xs font-medium shrink-0",
       highlight ? "border-border bg-foreground text-background" : "border-border bg-background text-foreground"
     )}>
       {icon}
