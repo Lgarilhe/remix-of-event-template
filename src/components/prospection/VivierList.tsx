@@ -1174,7 +1174,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
         >
           <span className="relative z-10">Filtres</span>
           {activeFilterCount > 0 && (
-            <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center">{activeFilterCount}</span>
+            <span className="relative z-10 bg-background text-foreground text-xs font-bold w-4 h-4 flex items-center justify-center rounded-full">{activeFilterCount}</span>
           )}
         </button>
       </div>
