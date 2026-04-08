@@ -1595,7 +1595,7 @@ function ContactsView() {
           <button
             onClick={() => handleEnrichAll(true)}
             disabled={isEnriching || contacts.length === 0}
-            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border border-l-0 text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
+            className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border border-l-0 rounded-r-lg text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30 shrink-0"
           >
             <RefreshCw className="w-3 h-3 relative z-10" />
             <span className="relative z-10 hidden sm:inline">Ré-enrichir</span>
