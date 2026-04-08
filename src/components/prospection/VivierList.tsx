@@ -102,7 +102,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l-2 border-border">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 border-l border-border rounded-l-xl">
         {/* Hero header */}
         <div className="bg-foreground text-background p-5 sm:p-6">
           <div className="flex items-start gap-4">
