@@ -133,7 +133,7 @@ function CompanyDetailSheet({ company, open, onOpenChange }: { company: VivierCo
             <p className="text-xs text-muted-foreground leading-relaxed">{company.description}</p>
           )}
 
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5 rounded-lg overflow-hidden">
             <StatBlock value={company.contact_count} label="Contacts" />
             <StatBlock value={company.shortlist_count} label="Shortlists" highlight={company.shortlist_count >= 10} />
             <StatBlock value={company.placement_count} label="Placements" highlight={company.placement_count > 0} />
