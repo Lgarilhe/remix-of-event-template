@@ -1407,7 +1407,7 @@ function ContactCard({ contact, enrichment, index, onClick }: { contact: VivierC
           {/* Avatar with enrichment indicator */}
           <div className="relative shrink-0">
             <div className={cn(
-              "h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center text-xs sm:text-sm font-bold uppercase",
+              "h-10 w-10 sm:h-11 sm:w-11 rounded-lg flex items-center justify-center text-xs sm:text-sm font-bold uppercase",
               isEnriched ? "bg-foreground text-background" : "bg-muted text-foreground"
             )}>
               {initials}
