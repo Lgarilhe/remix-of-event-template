@@ -956,9 +956,11 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                         </div>
                       )}
 
-                      <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 font-medium">
-                        Changements depuis nos derniers échanges
-                      </div>
+                      {evolutions.length > 0 && (
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 font-medium">
+                          {careerAnalysis.lastInteractionDate ? 'Changements depuis nos derniers échanges' : 'Situation actuelle'}
+                        </div>
+                      )}
                       {evolutions.map((evo, i) => (
                         <div key={i} className={cn(
                           "border-2 p-4 space-y-1.5",
