@@ -1166,7 +1166,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
         <button
           onClick={() => setShowMore(!showMore)}
           className={cn(
-            "relative overflow-hidden h-9 px-3 flex items-center gap-1.5 border text-xs font-medium uppercase tracking-wider shrink-0 transition-colors group",
+            "relative overflow-hidden h-9 px-3 flex items-center gap-1.5 border rounded-lg text-xs font-medium uppercase tracking-wider shrink-0 transition-colors group",
             showMore || activeFilterCount > 0
               ? "border-border bg-foreground text-background"
               : "border-border text-foreground hover:border-border"
