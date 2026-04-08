@@ -22,12 +22,6 @@ const useRedirectIfAuthenticated = () => {
     let isMounted = true;
 
     const validateSessionInBackground = async () => {
-      const {
-        data: { session: localSession },
-      } = await supabase.auth.getSession();
-
-      if (!localSession?.user || !isMounted) return;
-
       const { session } = await getValidatedSession();
 
       if (!isMounted || !session?.user) return;
