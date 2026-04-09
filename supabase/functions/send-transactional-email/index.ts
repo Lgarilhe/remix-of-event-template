@@ -167,12 +167,15 @@ Deno.serve(async (req) => {
 
   if (suppressed) {
     // Log the suppressed attempt
-    await supabase.from('email_send_log').insert({
+    const { error: suppressedLogError } = await supabase.from('email_send_log').insert({
       message_id: messageId,
       template_name: templateName,
       recipient_email: effectiveRecipient,
       status: 'suppressed',
     })
+    if (suppressedLogError) {
+      console.error('Failed to log suppressed email', { error: suppressedLogError, messageId })
+    }
 
     console.log('Email suppressed', { effectiveRecipient, templateName })
     return new Response(
@@ -200,13 +203,16 @@ Deno.serve(async (req) => {
       error: tokenLookupError,
       email: normalizedEmail,
     })
-    await supabase.from('email_send_log').insert({
+    const { error: tokenLookupLogError } = await supabase.from('email_send_log').insert({
       message_id: messageId,
       template_name: templateName,
       recipient_email: effectiveRecipient,
       status: 'failed',
       error_message: 'Failed to look up unsubscribe token',
     })
+    if (tokenLookupLogError) {
+      console.error('Failed to log token lookup failure', { error: tokenLookupLogError, messageId })
+    }
     return new Response(
       JSON.stringify({ error: 'Failed to prepare email' }),
       {
@@ -233,13 +239,16 @@ Deno.serve(async (req) => {
       console.error('Failed to create unsubscribe token', {
         error: tokenError,
       })
-      await supabase.from('email_send_log').insert({
+      const { error: tokenCreateLogError } = await supabase.from('email_send_log').insert({
         message_id: messageId,
         template_name: templateName,
         recipient_email: effectiveRecipient,
         status: 'failed',
         error_message: 'Failed to create unsubscribe token',
       })
+      if (tokenCreateLogError) {
+        console.error('Failed to log token creation failure', { error: tokenCreateLogError, messageId })
+      }
       return new Response(
         JSON.stringify({ error: 'Failed to prepare email' }),
         {
@@ -262,13 +271,16 @@ Deno.serve(async (req) => {
         error: reReadError,
         email: normalizedEmail,
       })
-      await supabase.from('email_send_log').insert({
+      const { error: tokenConfirmLogError } = await supabase.from('email_send_log').insert({
         message_id: messageId,
         template_name: templateName,
         recipient_email: effectiveRecipient,
         status: 'failed',
         error_message: 'Failed to confirm unsubscribe token storage',
       })
+      if (tokenConfirmLogError) {
+        console.error('Failed to log token confirmation failure', { error: tokenConfirmLogError, messageId })
+      }
       return new Response(
         JSON.stringify({ error: 'Failed to prepare email' }),
         {
@@ -284,7 +296,7 @@ Deno.serve(async (req) => {
     console.warn('Unsubscribe token already used but email not suppressed', {
       email: normalizedEmail,
     })
-    await supabase.from('email_send_log').insert({
+    const { error: tokenUsedLogError } = await supabase.from('email_send_log').insert({
       message_id: messageId,
       template_name: templateName,
       recipient_email: effectiveRecipient,
@@ -292,6 +304,9 @@ Deno.serve(async (req) => {
       error_message:
         'Unsubscribe token used but email missing from suppressed list',
     })
+    if (tokenUsedLogError) {
+      console.error('Failed to log token-used suppression', { error: tokenUsedLogError, messageId })
+    }
     return new Response(
       JSON.stringify({ success: false, reason: 'email_suppressed' }),
       {
@@ -320,12 +335,15 @@ Deno.serve(async (req) => {
   // The dispatcher (process-email-queue) handles sending, retries, and rate-limit backoff.
 
   // Log pending BEFORE enqueue so we have a record even if enqueue crashes
-  await supabase.from('email_send_log').insert({
+  const { error: pendingLogError } = await supabase.from('email_send_log').insert({
     message_id: messageId,
     template_name: templateName,
     recipient_email: effectiveRecipient,
     status: 'pending',
   })
+  if (pendingLogError) {
+    console.error('Failed to log pending email status', { error: pendingLogError, messageId, templateName })
+  }
 
   const { error: enqueueError } = await supabase.rpc('enqueue_email', {
     queue_name: 'transactional_emails',
@@ -352,13 +370,16 @@ Deno.serve(async (req) => {
       effectiveRecipient,
     })
 
-    await supabase.from('email_send_log').insert({
+    const { error: enqueueLogError } = await supabase.from('email_send_log').insert({
       message_id: messageId,
       template_name: templateName,
       recipient_email: effectiveRecipient,
       status: 'failed',
       error_message: 'Failed to enqueue email',
     })
+    if (enqueueLogError) {
+      console.error('Failed to log enqueue failure', { error: enqueueLogError, messageId })
+    }
 
     return new Response(JSON.stringify({ error: 'Failed to enqueue email' }), {
       status: 500,

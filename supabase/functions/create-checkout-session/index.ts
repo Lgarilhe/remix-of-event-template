@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
       stripeCustomerId = customer.id;
 
       // Save customer ID
-      await adminClient
+      const { error: upsertError } = await adminClient
         .from("organization_subscriptions")
         .upsert({
           organization_id,
@@ -140,6 +140,11 @@ Deno.serve(async (req) => {
           plan_id: sub ? undefined : "free",
           billing_cycle: sub ? undefined : "monthly",
         }, { onConflict: "organization_id" });
+
+      if (upsertError) {
+        console.error("[create-checkout] Failed to save Stripe customer ID", { error: upsertError, organization_id, stripeCustomerId });
+        return json({ error: "Failed to save payment configuration" }, 500);
+      }
     }
 
     // Build base URLs
