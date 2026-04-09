@@ -6,12 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-let CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+/** Per-request Notion credentials — resolved inside handler, passed to helpers. */
+interface NotionCreds { notionApiKey: string; candidatsDatabaseId: string; shortlistDatabaseId: string; }
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -36,22 +36,23 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
   return fetchWithTimeout(url, options);
 }
 
-async function resolveOrgCredentials(orgId: string | null) {
-  if (!orgId) return;
-  try {
-    const { data } = await supabase
-      .from('organization_integrations')
-      .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
-      .eq('organization_id', orgId)
-      .single();
-    if (!data?.notion_connected) return;
-    if (data.notion_api_key) NOTION_API_KEY = data.notion_api_key;
-    if (data.notion_candidats_db_id) CANDIDATS_DATABASE_ID = data.notion_candidats_db_id;
-    if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
-    console.log('[add-to-shortlist] Using org-specific Notion credentials');
-  } catch (e) {
-    console.warn('[add-to-shortlist] Failed to load org credentials:', e);
+async function resolveOrgCredentials(orgId: string): Promise<NotionCreds> {
+  const { data } = await supabase
+    .from('organization_integrations')
+    .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
+    .eq('organization_id', orgId)
+    .single();
+
+  if (!data?.notion_connected || !data.notion_api_key) {
+    throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
+
+  console.log('[add-to-shortlist] Using org-specific Notion credentials');
+  return {
+    notionApiKey: data.notion_api_key,
+    candidatsDatabaseId: data.notion_candidats_db_id || Deno.env.get("NOTION_CANDIDATS_DB_ID")!,
+    shortlistDatabaseId: data.notion_shortlist_db_id || Deno.env.get("NOTION_SHORTLIST_DB_ID")!,
+  };
 }
 
 interface AddToShortlistData {
@@ -86,11 +87,11 @@ interface AddToShortlistData {
 
 // ── Notion API helpers ──────────────────────────────────────────────
 
-async function notionQuery(databaseId: string, filter: Record<string, unknown>) {
+async function notionQuery(databaseId: string, notionApiKey: string, filter: Record<string, unknown>) {
   const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -103,7 +104,7 @@ async function notionQuery(databaseId: string, filter: Record<string, unknown>) 
   return response.json();
 }
 
-async function createNotionPage(databaseId: string, properties: Record<string, unknown>, children?: unknown[]) {
+async function createNotionPage(databaseId: string, notionApiKey: string, properties: Record<string, unknown>, children?: unknown[]) {
   const body: Record<string, unknown> = {
     parent: { database_id: databaseId },
     properties,
@@ -113,7 +114,7 @@ async function createNotionPage(databaseId: string, properties: Record<string, u
   const response = await fetchWithRetry('https://api.notion.com/v1/pages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -127,11 +128,11 @@ async function createNotionPage(databaseId: string, properties: Record<string, u
   return response.json();
 }
 
-async function updateNotionPage(pageId: string, properties: Record<string, unknown>) {
+async function updateNotionPage(pageId: string, notionApiKey: string, properties: Record<string, unknown>) {
   const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'PATCH',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -147,30 +148,30 @@ async function updateNotionPage(pageId: string, properties: Record<string, unkno
 
 // ── Search helpers ──────────────────────────────────────────────────
 
-async function searchCandidateByLinkedIn(linkedinUrl: string): Promise<string | null> {
-  const data = await notionQuery(CANDIDATS_DATABASE_ID, {
+async function searchCandidateByLinkedIn(linkedinUrl: string, creds: NotionCreds): Promise<string | null> {
+  const data = await notionQuery(creds.candidatsDatabaseId, creds.notionApiKey, {
     property: 'URL Linkedin',
     url: { equals: linkedinUrl },
   });
   return data?.results?.[0]?.id ?? null;
 }
 
-async function searchCandidateByName(name: string): Promise<string | null> {
-  const data = await notionQuery(CANDIDATS_DATABASE_ID, {
+async function searchCandidateByName(name: string, creds: NotionCreds): Promise<string | null> {
+  const data = await notionQuery(creds.candidatsDatabaseId, creds.notionApiKey, {
     property: 'Nom',
     title: { equals: name },
   });
   return data?.results?.[0]?.id ?? null;
 }
 
-async function checkExistingShortlist(candidateId: string, jobId?: string): Promise<string | null> {
+async function checkExistingShortlist(candidateId: string, creds: NotionCreds, jobId?: string): Promise<string | null> {
   const filters: unknown[] = [
     { property: 'Candidats', relation: { contains: candidateId } },
   ];
   if (jobId) {
     filters.push({ property: '💼 Postes', relation: { contains: jobId } });
   }
-  const data = await notionQuery(SHORTLIST_DATABASE_ID, { and: filters });
+  const data = await notionQuery(creds.shortlistDatabaseId, creds.notionApiKey, { and: filters });
   return data?.results?.[0]?.id ?? null;
 }
 
@@ -220,9 +221,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    await resolveOrgCredentials(data.organization_id || null);
+    if (!data.organization_id) throw new Error('organization_id est requis');
+    const creds = await resolveOrgCredentials(data.organization_id);
 
-    if (!NOTION_API_KEY) throw new Error('NOTION_API_KEY is not configured');
     if (!data.name) throw new Error('Name is required');
 
     console.log('Adding to shortlist:', data.name, 'for job:', data.jobTitle);
@@ -232,10 +233,10 @@ Deno.serve(async (req) => {
     let candidateExisted = false;
 
     if (data.linkedinUrl) {
-      candidateId = await searchCandidateByLinkedIn(data.linkedinUrl);
+      candidateId = await searchCandidateByLinkedIn(data.linkedinUrl, creds);
     }
     if (!candidateId) {
-      candidateId = await searchCandidateByName(data.name);
+      candidateId = await searchCandidateByName(data.name, creds);
     }
 
     if (candidateId) {
@@ -257,7 +258,7 @@ Deno.serve(async (req) => {
       if (data.etat) updates['Etat'] = { select: { name: data.etat } };
 
       if (Object.keys(updates).length > 0) {
-        await updateNotionPage(candidateId, updates);
+        await updateNotionPage(candidateId, creds.notionApiKey, updates);
       }
     }
 
@@ -324,17 +325,17 @@ Deno.serve(async (req) => {
       if (data.etat) props['Etat'] = { select: { name: data.etat } };
 
       console.log('Creating new candidate...');
-      const result = await createNotionPage(CANDIDATS_DATABASE_ID, props);
+      const result = await createNotionPage(creds.candidatsDatabaseId, creds.notionApiKey, props);
       candidateId = result.id;
       console.log('Candidate created:', candidateId);
     }
 
     // ── 3. Anti-doublon shortlist ────────────────────────────────
-    const existingShortlistId = await checkExistingShortlist(candidateId!, data.jobId);
+    const existingShortlistId = await checkExistingShortlist(candidateId!, creds, data.jobId);
     if (existingShortlistId) {
       // Update existing shortlist etape if needed
       if (data.etape) {
-        await updateNotionPage(existingShortlistId, {
+        await updateNotionPage(existingShortlistId, creds.notionApiKey, {
           'Etape': { select: { name: data.etape } },
         });
       }
@@ -393,7 +394,7 @@ Deno.serve(async (req) => {
     }
 
     console.log('Creating shortlist entry...');
-    const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProps);
+    const shortlistResult = await createNotionPage(creds.shortlistDatabaseId, creds.notionApiKey, shortlistProps);
     console.log('Shortlist created:', shortlistResult.id);
 
     return new Response(

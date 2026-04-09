@@ -6,8 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// No global integration credentials — always resolved from organization_integrations
-let NOTION_API_KEY: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -46,8 +44,8 @@ async function resolveOrgCredentials(orgId: string) {
     throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
 
-  NOTION_API_KEY = data.notion_api_key;
   console.log('[update-notion-job] Using org-specific Notion credentials');
+  return { notionApiKey: data.notion_api_key };
 }
 
 /**
@@ -142,7 +140,7 @@ Deno.serve(async (req) => {
     if (!organization_id) {
       throw new Error('organization_id est requis');
     }
-    await resolveOrgCredentials(organization_id);
+    const { notionApiKey } = await resolveOrgCredentials(organization_id);
 
     if (!pageId || !updates || typeof updates !== 'object') {
       throw new Error('Missing pageId or updates');
@@ -162,7 +160,7 @@ Deno.serve(async (req) => {
       if (mapping.notionKey === '__title__') {
         const pageResp = await fetchWithRetry(`https://api.notion.com/v1/pages/${pageId}`, {
           headers: {
-            'Authorization': `Bearer ${NOTION_API_KEY}`,
+            'Authorization': `Bearer ${notionApiKey}`,
             'Notion-Version': '2022-06-28',
           },
         });
@@ -190,7 +188,7 @@ Deno.serve(async (req) => {
     const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${pageId}`, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Authorization': `Bearer ${notionApiKey}`,
         'Notion-Version': '2022-06-28',
         'Content-Type': 'application/json',
       },

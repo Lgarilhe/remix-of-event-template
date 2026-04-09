@@ -6,10 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// No global integration credentials — resolved from organization_integrations when org_id provided
-let NOTION_API_KEY: string | undefined;
-let NOTION_DATABASE_ID: string | undefined;
-
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -40,16 +36,16 @@ interface ContactSubmission {
   message: string;
 }
 
-async function createNotionPage(data: ContactSubmission) {
+async function createNotionPage(data: ContactSubmission, notionApiKey: string, notionDatabaseId: string) {
   const response = await fetchWithRetry("https://api.notion.com/v1/pages", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${NOTION_API_KEY}`,
+      "Authorization": `Bearer ${notionApiKey}`,
       "Content-Type": "application/json",
       "Notion-Version": "2022-06-28",
     },
     body: JSON.stringify({
-      parent: { database_id: NOTION_DATABASE_ID },
+      parent: { database_id: notionDatabaseId },
       properties: {
         "Nom complet": {
           title: [{ text: { content: data.name } }],
@@ -126,6 +122,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Verify org membership — prevent cross-org Notion access
+    const userId = claimsData.claims.sub as string;
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('organization_id', organization_id)
+      .maybeSingle();
+    if (!membership) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const { data: integrationData } = await supabase
       .from('organization_integrations')
       .select('notion_api_key, notion_leads_db_id, notion_connected')
@@ -139,8 +147,8 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    NOTION_API_KEY = integrationData.notion_api_key;
-    NOTION_DATABASE_ID = integrationData.notion_leads_db_id;
+    const notionApiKey = integrationData.notion_api_key;
+    const notionDatabaseId = integrationData.notion_leads_db_id;
 
     if (!name || !email || !message) {
       return new Response(
@@ -151,7 +159,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Creating Notion page for lead: ${name}`);
     
-    const notionPage = await createNotionPage({ name, email, company, message });
+    const notionPage = await createNotionPage({ name, email, company, message }, notionApiKey, notionDatabaseId);
     
     console.log("Notion page created successfully:", notionPage.id);
 
