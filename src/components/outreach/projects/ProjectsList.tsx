@@ -382,10 +382,35 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
         </div>
       </div>
 
-      {/* Count */}
-      <div className="text-xs text-muted-foreground">
-        {sortedProjects.length} projet{sortedProjects.length > 1 ? 's' : ''}
-        {sortedProjects.length !== unifiedProjects.length && ` (sur ${unifiedProjects.length})`}
+      {/* Count + Bulk actions */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {sortedProjects.length > 0 && (
+            <Checkbox
+              checked={selectedKeys.size === sortedProjects.length && sortedProjects.length > 0}
+              onCheckedChange={toggleSelectAll}
+              aria-label="Tout sélectionner"
+            />
+          )}
+          <span>
+            {selectedKeys.size > 0
+              ? `${selectedKeys.size} sélectionné${selectedKeys.size > 1 ? 's' : ''}`
+              : `${sortedProjects.length} projet${sortedProjects.length > 1 ? 's' : ''}${sortedProjects.length !== unifiedProjects.length ? ` (sur ${unifiedProjects.length})` : ''}`
+            }
+          </span>
+        </div>
+        {selectedKeys.size > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            className="h-8 text-xs gap-1.5"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Supprimer ({selectedKeys.size})
+          </Button>
+        )}
       </div>
 
       {/* Projects list */}
