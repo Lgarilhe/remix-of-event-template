@@ -727,12 +727,12 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
         const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const orgId = auth.userId ? await resolveOrgIdFromUser(auth.userId, svcSettle) : null;
         if (orgId && auth.userId) {
-          settleCredits(svcSettle, {
+          await settleCredits(svcSettle, {
             organizationId: orgId, userId: auth.userId!,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
-          }).catch((e: unknown) => console.warn("[generate-search-filters] settle error:", e));
+          }).catch((e: unknown) => console.error("[generate-search-filters] settle error:", e));
         }
       } catch (e) { console.warn("[generate-search-filters] settle skipped:", e); }
     }

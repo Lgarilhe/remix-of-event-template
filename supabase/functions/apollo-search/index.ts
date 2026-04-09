@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
       const errText = await apolloResponse.text();
       console.error('[Apollo] API error:', apolloResponse.status, errText);
       return new Response(JSON.stringify({ success: false, error: `Apollo API error: ${apolloResponse.status}`, details: errText }), {
-        status: 200,
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

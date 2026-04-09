@@ -692,12 +692,12 @@ Propose des exemples concrets de messages.`;
                 const orgId = await resolveOrgIdFromUser(user.id, adminClient as any);
                 if (orgId) {
                   const { settleCredits } = await import("../_shared/settle-credits.ts");
-                  settleCredits(adminClient as any, {
+                  await settleCredits(adminClient as any, {
                     organizationId: orgId, userId: user.id,
                     aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
                     tokensInput: _tokensIn, tokensOutput: _tokensOut,
                     description: _aiParams.description,
-                  }).catch((e) => console.warn("[search-agent-chat] settle error:", e));
+                  }).catch((e) => console.error("[search-agent-chat] settle error:", e));
                 }
               } catch (e) { console.warn("[search-agent-chat] settle skipped:", e); }
             }

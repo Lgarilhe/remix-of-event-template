@@ -408,8 +408,8 @@ Analyse cette conversation et retourne le JSON.`;
       console.error("[analyze-response] AI API error:", response.status, errorText);
       // Return fallback analysis instead of crashing
       return new Response(
-        JSON.stringify({ 
-          success: true,
+        JSON.stringify({
+          success: false,
           analysis: {
             intent: 'neutral',
             intentConfidence: 0,
