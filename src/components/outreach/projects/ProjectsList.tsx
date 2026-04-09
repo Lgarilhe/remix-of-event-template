@@ -442,10 +442,21 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
             return (
               <div
                 key={project.key}
-                className="bg-background border border-border p-5 sm:p-6 shadow-sm hover:shadow-sm transition-all cursor-pointer"
+                className={cn(
+                  "bg-background border border-border p-5 sm:p-6 shadow-sm hover:shadow-sm transition-all cursor-pointer",
+                  selectedKeys.has(project.key) && "ring-2 ring-primary/30 border-primary/40"
+                )}
                 onClick={() => navigateToWorkspace(project)}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  {/* Checkbox */}
+                  <div className="hidden sm:flex items-start pt-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedKeys.has(project.key)}
+                      onCheckedChange={() => toggleSelect(project.key)}
+                      aria-label={`Sélectionner ${project.name}`}
+                    />
+                  </div>
                   {/* Left: Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
