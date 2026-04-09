@@ -1505,6 +1505,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
 }) {
   const [cityInput, setCityInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
+  const [companyInput, setCompanyInput] = useState('');
   const [showMore, setShowMore] = useState(false);
 
   const activeFilterCount = [
