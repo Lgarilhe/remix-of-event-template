@@ -42,6 +42,14 @@ export interface VivierFilters {
   city: string | null;
   has_placements: boolean | null;
   sort_by: string;
+  // New filters
+  has_email: boolean | null;
+  has_notes: boolean | null;
+  has_appointments: boolean | null;
+  last_interaction_days: number | null;
+  status: string | null;
+  title: string | null;
+  min_contacts: number;
 }
 
 const DEFAULT_FILTERS: VivierFilters = {
@@ -52,6 +60,13 @@ const DEFAULT_FILTERS: VivierFilters = {
   city: null,
   has_placements: null,
   sort_by: 'recent',
+  has_email: null,
+  has_notes: null,
+  has_appointments: null,
+  last_interaction_days: null,
+  status: null,
+  title: null,
+  min_contacts: 0,
 };
 
 export function useVivierContacts() {
@@ -77,6 +92,12 @@ export function useVivierContacts() {
         p_city: activeFilters.city || null,
         p_has_placements: activeFilters.has_placements,
         p_sort_by: activeFilters.sort_by || 'recent',
+        p_has_email: activeFilters.has_email,
+        p_has_notes: activeFilters.has_notes,
+        p_has_appointments: activeFilters.has_appointments,
+        p_last_interaction_days: activeFilters.last_interaction_days,
+        p_status: activeFilters.status,
+        p_title: activeFilters.title || null,
       });
       if (error) throw error;
       const rows = (data || []) as any[];
@@ -127,6 +148,9 @@ export function useVivierCompanies() {
         p_city: activeFilters.city || null,
         p_has_placements: activeFilters.has_placements,
         p_sort_by: activeFilters.sort_by || 'recent',
+        p_has_notes: activeFilters.has_notes,
+        p_last_interaction_days: activeFilters.last_interaction_days,
+        p_min_contacts: activeFilters.min_contacts,
       });
       if (error) throw error;
       const rows = (data || []) as any[];
