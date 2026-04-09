@@ -60,15 +60,16 @@ const Settings = () => {
   const [newName, setNewName] = useState('');
   const [savingName, setSavingName] = useState(false);
 
-  const { data: memberProfiles = [] } = useQuery({
+  const { data: memberProfiles = [], isError: isMemberProfilesError } = useQuery({
     queryKey: ['member-profiles', members.map(m => m.user_id)],
     queryFn: async () => {
       if (!members.length) return [];
       const userIds = members.map(m => m.user_id);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('user_id, display_name')
         .in('user_id', userIds);
+      if (error) throw error;
       return data || [];
     },
     enabled: members.length > 0,
@@ -254,6 +255,9 @@ const Settings = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
+                    {isMemberProfilesError && (
+                      <p className="text-xs text-destructive py-2">Erreur lors du chargement des profils membres.</p>
+                    )}
                     {isLoading ? (
                       <div className="flex justify-center py-8">
                         <BrutalLoader compact />

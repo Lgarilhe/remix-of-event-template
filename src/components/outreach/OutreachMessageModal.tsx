@@ -73,6 +73,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   });
   const [customInstructions, setCustomInstructions] = useState('');
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Reset state when profile changes
   const profileKey = profile?.id || `${profile?.first_name}-${profile?.last_name}`;
@@ -134,6 +135,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
 
   const generateMessage = async () => {
     setLoading(true);
+    setGenerateError(null);
     try {
       const profileData = buildProfileData();
       
@@ -202,8 +204,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       }
       if (data?.personalization_points) setPersonalizationPoints(data.personalization_points);
       setHasGenerated(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Generate message error:', err);
+      setGenerateError(err?.message || 'Erreur lors de la génération du message');
       toast.error('Erreur lors de la génération du message');
     } finally {
       setLoading(false);
@@ -471,6 +474,11 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
               className="w-full px-3 py-2 text-sm rounded-md border border-border bg-muted/20 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
             />
           </div>
+
+          {/* ── Error message ── */}
+          {generateError && (
+            <p className="text-xs text-destructive">{generateError}</p>
+          )}
 
           {/* ── Generate CTA ── */}
           {!hasGenerated && (

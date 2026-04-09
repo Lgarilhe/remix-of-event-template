@@ -369,7 +369,7 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
               if (!canCreateJob) {
                 import('sonner').then(({ toast }) => {
                   toast.error(`Limite de ${limits.max_jobs} projets atteinte. Passez au plan supérieur.`);
-                });
+                }).catch(() => {});
                 return;
               }
               setCreateInitialTab(undefined);

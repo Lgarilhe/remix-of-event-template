@@ -24,7 +24,7 @@ export const MyLinkedInAccount = () => {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
-    });
+    }).catch(() => {});
   }, []);
 
   const myMapping = currentUserId ? getMappingForUser(currentUserId) : null;

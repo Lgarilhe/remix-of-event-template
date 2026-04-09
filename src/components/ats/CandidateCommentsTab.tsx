@@ -35,6 +35,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
   const [comments, setComments] = useState<Comment[]>([]);
   const [members, setMembers] = useState<MemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
@@ -78,12 +79,17 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
   // Fetch comments
   const fetchComments = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    setLoadError(false);
+    const { data, error } = await supabase
       .from('candidate_comments')
       .select('*')
       .eq('candidate_id', candidateId)
       .order('created_at', { ascending: true });
-    setComments(data || []);
+    if (error) {
+      setLoadError(true);
+    } else {
+      setComments(data || []);
+    }
     setLoading(false);
   }, [candidateId]);
 
@@ -286,7 +292,11 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
       </div>
 
       {/* Comments list */}
-      {loading ? (
+      {loadError ? (
+        <div className="flex flex-col items-center justify-center py-8 text-destructive">
+          <p className="text-xs font-medium">Erreur lors du chargement des commentaires.</p>
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>

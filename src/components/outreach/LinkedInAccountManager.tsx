@@ -92,7 +92,7 @@ export const LinkedInAccountManager: React.FC<LinkedInAccountManagerProps> = ({
             localStorage.setItem('outreach_sender_name', firstName);
           }
         }
-      });
+      }).catch(() => {});
     }
   }, []);
 

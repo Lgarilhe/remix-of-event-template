@@ -129,6 +129,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [briefText, setBriefText] = useState('');
   const [briefAnalyzing, setBriefAnalyzing] = useState(false);
   const [briefAnalysis, setBriefAnalysis] = useState<BriefAnalysisResult | null>(null);
+  const [briefError, setBriefError] = useState<string | null>(null);
   const [briefName, setBriefName] = useState('');
   const [briefClientName, setBriefClientName] = useState('');
   const [urlSuggestion, setUrlSuggestion] = useState<string | null>(null);
@@ -223,6 +224,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     if (!briefText.trim() || briefText.trim().length < 20) return;
     setBriefAnalyzing(true);
     setBriefAnalysis(null);
+    setBriefError(null);
 
     try {
       const syntheticJob = {
@@ -263,6 +265,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
       toast.success('Analyse terminée — vérifiez et créez la mission');
     } catch (err: any) {
+      setBriefError(err.message || "Erreur lors de l'analyse");
       toast.error(err.message || "Erreur lors de l'analyse");
     } finally {
       setBriefAnalyzing(false);
@@ -595,6 +598,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                           Importer
                         </button>
                       </motion.div>
+                    )}
+
+                    {briefError && (
+                      <p className="text-xs text-destructive">{briefError}</p>
                     )}
 
                     <button

@@ -138,7 +138,8 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
   const records = allRecords;
   const error = null;
 
-  if (error || !records) return [];
+  if (error) throw error;
+  if (!records) return [];
 
   return records.map((r: any) => {
     // Use pipeline_stage if set, otherwise derive from status

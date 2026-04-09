@@ -22,7 +22,7 @@ const AgentsPage = () => {
   const { organizationId } = useOrganization();
   const { openAgent } = useAgent();
 
-  const { data: conversations, isLoading } = useQuery({
+  const { data: conversations, isLoading, isError } = useQuery({
     queryKey: ['agent-conversations', organizationId],
     queryFn: async () => {
       const { data, error } = await (supabase
@@ -50,6 +50,16 @@ const AgentsPage = () => {
     return (
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-6">
         <BrutalLoader variant="default" rows={3} messages={['Chargement des agents...']} />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-6">
+        <div className="border border-destructive/30 bg-destructive/10 p-6 text-center">
+          <p className="text-sm text-destructive">Erreur lors du chargement des agents.</p>
+        </div>
       </div>
     );
   }

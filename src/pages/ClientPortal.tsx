@@ -42,6 +42,7 @@ export default function ClientPortal() {
   const [data, setData] = useState<ClientPortalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
     if (!token) { setNotFound(true); setLoading(false); return; }
@@ -77,12 +78,15 @@ export default function ClientPortal() {
         setData(portalData);
       } catch (err) {
         console.error('Portal fetch error:', err);
-        setNotFound(true);
+        setFetchError(true);
       } finally {
         setLoading(false);
       }
     };
-    fetchPortal();
+    fetchPortal().catch(() => {
+      setFetchError(true);
+      setLoading(false);
+    });
   }, [token]);
 
   if (loading) {
@@ -91,6 +95,21 @@ export default function ClientPortal() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-6 h-6 border border-border border-t-foreground animate-spin" />
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Chargement du portail client...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <SEOHead title="Portail client | Skalr" description="Accès client" />
+        <div className="text-center max-w-md">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h1 className="text-sm font-bold uppercase tracking-wider text-foreground mb-2">Erreur de chargement</h1>
+          <p className="text-xs text-muted-foreground">
+            Impossible de charger le portail client. Veuillez réessayer plus tard ou contacter votre recruteur.
+          </p>
         </div>
       </div>
     );
