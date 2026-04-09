@@ -111,6 +111,11 @@ export function useVivierContacts() {
         p_last_interaction_days: activeFilters.last_interaction_days,
         p_status: activeFilters.status,
         p_title: activeFilters.title || null,
+        p_has_phone: activeFilters.has_phone,
+        p_min_notes: activeFilters.min_notes,
+        p_min_appointments: activeFilters.min_appointments,
+        p_min_placements: activeFilters.min_placements,
+        p_company_name: activeFilters.company_name || null,
       });
       if (error) throw error;
       const rows = (data || []) as any[];
@@ -164,6 +169,11 @@ export function useVivierCompanies() {
         p_has_notes: activeFilters.has_notes,
         p_last_interaction_days: activeFilters.last_interaction_days,
         p_min_contacts: activeFilters.min_contacts,
+        p_headcount: activeFilters.headcount,
+        p_min_notes: activeFilters.min_notes,
+        p_min_appointments: activeFilters.min_appointments,
+        p_min_placements: activeFilters.min_placements,
+        p_has_appointments: activeFilters.has_appointments,
       });
       if (error) throw error;
       const rows = (data || []) as any[];
