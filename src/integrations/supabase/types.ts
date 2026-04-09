@@ -4942,6 +4942,41 @@ export type Database = {
               total_count: number
             }[]
           }
+        | {
+            Args: {
+              p_city?: string
+              p_has_appointments?: boolean
+              p_has_notes?: boolean
+              p_has_placements?: boolean
+              p_headcount?: string
+              p_last_interaction_days?: number
+              p_limit?: number
+              p_min_appointments?: number
+              p_min_contacts?: number
+              p_min_notes?: number
+              p_min_placements?: number
+              p_min_shortlists?: number
+              p_offset?: number
+              p_search?: string
+              p_sort_by?: string
+              p_source_base?: string
+            }
+            Returns: {
+              appointment_count: number
+              city: string
+              company_airtable_id: string
+              company_name: string
+              contact_count: number
+              description: string
+              headcount: string
+              last_interaction_date: string
+              note_count: number
+              placement_count: number
+              shortlist_count: number
+              source_base: string
+              total_count: number
+            }[]
+          }
       get_vivier_contacts:
         | {
             Args: {
@@ -4984,6 +5019,48 @@ export type Database = {
               p_has_placements?: boolean
               p_last_interaction_days?: number
               p_limit?: number
+              p_min_shortlists?: number
+              p_offset?: number
+              p_search?: string
+              p_sort_by?: string
+              p_source_base?: string
+              p_status?: string
+              p_title?: string
+            }
+            Returns: {
+              airtable_id: string
+              appointment_count: number
+              city: string
+              company_airtable_id: string
+              company_name: string
+              contact_type: string
+              email: string
+              full_name: string
+              last_interaction_date: string
+              note_count: number
+              placement_count: number
+              shortlist_count: number
+              source_base: string
+              status: string
+              title: string
+              total_count: number
+            }[]
+          }
+        | {
+            Args: {
+              p_city?: string
+              p_company_name?: string
+              p_contact_type?: string
+              p_has_appointments?: boolean
+              p_has_email?: boolean
+              p_has_notes?: boolean
+              p_has_phone?: boolean
+              p_has_placements?: boolean
+              p_last_interaction_days?: number
+              p_limit?: number
+              p_min_appointments?: number
+              p_min_notes?: number
+              p_min_placements?: number
               p_min_shortlists?: number
               p_offset?: number
               p_search?: string

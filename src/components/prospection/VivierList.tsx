@@ -1505,6 +1505,7 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
 }) {
   const [cityInput, setCityInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
+  const [companyInput, setCompanyInput] = useState('');
   const [showMore, setShowMore] = useState(false);
 
   const activeFilterCount = [
@@ -1521,6 +1522,12 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
     filters.status,
     filters.title,
     filters.min_contacts > 0 ? true : null,
+    filters.has_phone !== null ? true : null,
+    filters.min_notes > 0 ? true : null,
+    filters.min_appointments > 0 ? true : null,
+    filters.min_placements > 0 ? true : null,
+    filters.company_name,
+    filters.headcount,
   ].filter(Boolean).length;
 
   return (
@@ -1799,17 +1806,129 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
             </div>
           )}
 
+          {/* Phone filter (contacts only) */}
+          {!isCompanyView && (
+            <div className="flex gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground self-center mr-1">Téléphone :</span>
+              {([
+                { label: 'Tous', value: null },
+                { label: 'Avec tél.', value: true },
+                { label: 'Sans tél.', value: false },
+              ] as const).map(opt => (
+                <button
+                  key={String(opt.value)}
+                  onClick={() => updateFilters({ has_phone: opt.value })}
+                  className={cn(
+                    "h-7 px-2.5 text-xs font-medium border rounded-md transition-colors",
+                    filters.has_phone === opt.value
+                      ? "border-border bg-foreground text-background"
+                      : "border-border text-foreground hover:border-border"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Company name filter (contacts only) */}
+          {!isCompanyView && (
+            <div className="flex gap-2">
+              <div className="flex-1 min-w-0 relative">
+                <Building2 className="absolute left-2.5 top-2 h-3 w-3 text-muted-foreground" />
+                <Input
+                  placeholder="Nom de société…"
+                  value={companyInput}
+                  onChange={e => setCompanyInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') updateFilters({ company_name: companyInput || null }); }}
+                  onBlur={() => { if (companyInput !== (filters.company_name || '')) updateFilters({ company_name: companyInput || null }); }}
+                  className="pl-8 h-8 text-xs border-border/60 rounded-lg"
+                />
+              </div>
+              {filters.company_name && (
+                <button onClick={() => { setCompanyInput(''); updateFilters({ company_name: null }); }} className="h-8 px-2 text-xs border border-border rounded-lg hover:bg-muted transition-colors">✕</button>
+              )}
+            </div>
+          )}
+
+          {/* Min notes filter */}
+          <div className="flex gap-2 items-center">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Min. notes :</span>
+            <Select value={String(filters.min_notes)} onValueChange={v => updateFilters({ min_notes: Number(v) })}>
+              <SelectTrigger className="w-[100px] h-8 text-xs border-border/60 inline-flex"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Tous</SelectItem>
+                <SelectItem value="1">≥ 1</SelectItem>
+                <SelectItem value="2">≥ 2</SelectItem>
+                <SelectItem value="5">≥ 5</SelectItem>
+                <SelectItem value="10">≥ 10</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Min RDV filter */}
+          <div className="flex gap-2 items-center">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Min. RDV :</span>
+            <Select value={String(filters.min_appointments)} onValueChange={v => updateFilters({ min_appointments: Number(v) })}>
+              <SelectTrigger className="w-[100px] h-8 text-xs border-border/60 inline-flex"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Tous</SelectItem>
+                <SelectItem value="1">≥ 1</SelectItem>
+                <SelectItem value="2">≥ 2</SelectItem>
+                <SelectItem value="3">≥ 3</SelectItem>
+                <SelectItem value="5">≥ 5</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Min placements filter */}
+          <div className="flex gap-2 items-center">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Min. placements :</span>
+            <Select value={String(filters.min_placements)} onValueChange={v => updateFilters({ min_placements: Number(v) })}>
+              <SelectTrigger className="w-[100px] h-8 text-xs border-border/60 inline-flex"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Tous</SelectItem>
+                <SelectItem value="1">≥ 1</SelectItem>
+                <SelectItem value="2">≥ 2</SelectItem>
+                <SelectItem value="3">≥ 3</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Headcount filter (companies only) */}
+          {isCompanyView && (
+            <div className="flex gap-2 items-center">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Effectif :</span>
+              <Select value={filters.headcount || 'all'} onValueChange={v => updateFilters({ headcount: v === 'all' ? null : v })}>
+                <SelectTrigger className="w-[160px] h-8 text-xs border-border/60 inline-flex"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les effectifs</SelectItem>
+                  <SelectItem value="1-10">1-10</SelectItem>
+                  <SelectItem value="11-50">11-50</SelectItem>
+                  <SelectItem value="51-200">51-200</SelectItem>
+                  <SelectItem value="201-500">201-500</SelectItem>
+                  <SelectItem value="501-1000">501-1000</SelectItem>
+                  <SelectItem value="1001-5000">1001-5000</SelectItem>
+                  <SelectItem value="5001-10000">5001-10000</SelectItem>
+                  <SelectItem value="10001+">10001+</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Reset button */}
           {activeFilterCount > 0 && (
             <button
               onClick={() => {
                 setCityInput('');
                 setTitleInput('');
+                setCompanyInput('');
                 updateFilters({
                   source_base: null, min_shortlists: 1, city: null, has_placements: null,
                   contact_type: null, sort_by: 'recent', has_email: null, has_notes: null,
                   has_appointments: null, last_interaction_days: null, status: null, title: null,
-                  min_contacts: 0,
+                  min_contacts: 0, has_phone: null, min_notes: 0, min_appointments: 0,
+                  min_placements: 0, company_name: null, headcount: null,
                 });
               }}
               className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
