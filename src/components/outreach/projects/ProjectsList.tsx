@@ -133,7 +133,6 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const createMode = searchParams.get('create');
