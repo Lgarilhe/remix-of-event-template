@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { config as loadDotenv } from 'dotenv';
+
+// Load .env from project root
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+loadDotenv({ path: resolve(__dirname, '.env') });
 
 /**
  * E2E Playwright configuration for Skalr.
