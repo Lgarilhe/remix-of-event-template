@@ -50,6 +50,13 @@ export interface VivierFilters {
   status: string | null;
   title: string | null;
   min_contacts: number;
+  // Extra filters
+  has_phone: boolean | null;
+  min_notes: number;
+  min_appointments: number;
+  min_placements: number;
+  company_name: string | null;
+  headcount: string | null;
 }
 
 const DEFAULT_FILTERS: VivierFilters = {
@@ -67,6 +74,12 @@ const DEFAULT_FILTERS: VivierFilters = {
   status: null,
   title: null,
   min_contacts: 0,
+  has_phone: null,
+  min_notes: 0,
+  min_appointments: 0,
+  min_placements: 0,
+  company_name: null,
+  headcount: null,
 };
 
 export function useVivierContacts() {
