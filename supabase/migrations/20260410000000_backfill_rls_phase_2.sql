@@ -6,8 +6,6 @@
 -- NOT NULL constraint deferred to a separate migration after validation.
 -- ============================================================================
 
-BEGIN;
-
 -- ============================================================================
 -- ÉTAPE 1: Backfill organization_id on all NULL rows
 -- ============================================================================
@@ -484,5 +482,3 @@ CREATE POLICY "mission_team_view_sequences"
 CREATE POLICY "Public can view published hunt missions"
   ON public.sourcing_projects FOR SELECT
   USING (hunt_mode = true AND hunt_status = 'published');
-
-COMMIT;
