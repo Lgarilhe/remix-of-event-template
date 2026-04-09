@@ -1522,6 +1522,12 @@ function VivierFilterBar({ searchInput, setSearchInput, onSearch, filters, updat
     filters.status,
     filters.title,
     filters.min_contacts > 0 ? true : null,
+    filters.has_phone !== null ? true : null,
+    filters.min_notes > 0 ? true : null,
+    filters.min_appointments > 0 ? true : null,
+    filters.min_placements > 0 ? true : null,
+    filters.company_name,
+    filters.headcount,
   ].filter(Boolean).length;
 
   return (
