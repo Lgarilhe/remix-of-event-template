@@ -240,6 +240,44 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     }
   };
 
+  const toggleSelect = useCallback((key: string) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedKeys.size === sortedProjects.length) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(sortedProjects.map(p => p.key)));
+    }
+  }, [sortedProjects, selectedKeys.size]);
+
+  const handleBulkDelete = useCallback(async () => {
+    const toDelete = sortedProjects.filter(
+      p => selectedKeys.has(p.key) && p.sourcingProject
+    );
+    if (toDelete.length === 0) return;
+    const msg = `Supprimer ${toDelete.length} mission${toDelete.length > 1 ? 's' : ''} ? L'historique des candidats sera conservé.`;
+    if (!window.confirm(msg)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(toDelete.map(p => deleteProject(p.sourcingProject!.id)));
+      setSelectedKeys(new Set());
+      const { toast } = await import('sonner');
+      toast.success(`${toDelete.length} mission${toDelete.length > 1 ? 's' : ''} supprimée${toDelete.length > 1 ? 's' : ''}`);
+    } catch {
+      const { toast } = await import('sonner');
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [sortedProjects, selectedKeys, deleteProject]);
+
   const toSourcingProject = (project: UnifiedProject): SourcingProject => {
     if (project.sourcingProject) return project.sourcingProject;
     return {
