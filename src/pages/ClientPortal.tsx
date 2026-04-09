@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { SEOHead } from '@/components/SEOHead';
-import { Loader2, Users, Clock, MessageSquare } from 'lucide-react';
+import { Users, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -49,91 +48,33 @@ export default function ClientPortal() {
 
     const fetchPortal = async () => {
       try {
-        // 1. Get token data
-        const { data: tokenRow, error: tokenErr } = await supabase
-          .from('client_portal_tokens')
-          .select('*')
-          .eq('token', token)
-          .maybeSingle();
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/client-portal-data?token=${encodeURIComponent(token)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${anonKey}`,
+              'apikey': anonKey,
+            },
+          }
+        );
 
-        if (tokenErr || !tokenRow) { setNotFound(true); setLoading(false); return; }
-
-        // Check expiration
-        if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+        if (!res.ok) {
           setNotFound(true);
           setLoading(false);
           return;
         }
 
-        // Update last_accessed_at (fire-and-forget with error logging)
-        supabase.from('client_portal_tokens')
-          .update({ last_accessed_at: new Date().toISOString() })
-          .eq('id', tokenRow.id)
-          .then(({ error }) => { if (error) console.warn('Failed to update last_accessed_at:', error); });
-
-        // 2. Get organization info
-        const { data: org } = await supabase
-          .from('organizations')
-          .select('name, logo_url')
-          .eq('id', tokenRow.organization_id)
-          .maybeSingle();
-
-        // 3. Get projects
-        const projectIds = tokenRow.project_ids as string[] | null;
-        let projectsQuery = supabase
-          .from('sourcing_projects')
-          .select('id, name, status')
-          .eq('organization_id', tokenRow.organization_id);
-
-        if (projectIds && projectIds.length > 0) {
-          projectsQuery = projectsQuery.in('id', projectIds);
-        }
-
-        const { data: projects, error: projErr } = await projectsQuery.order('created_at', { ascending: false });
-        if (projErr || !projects || projects.length === 0) {
-          setData({
-            client_name: tokenRow.client_name,
-            org_name: org?.name || null,
-            org_logo: org?.logo_url || null,
-            projects: [],
-            permissions: parsePermissions(tokenRow.permissions),
-          });
+        const portalData: ClientPortalData = await res.json();
+        if (!portalData.client_name) {
+          setNotFound(true);
           setLoading(false);
           return;
         }
 
-        // 4. Get ALL candidates in one query (no N+1)
-        const allProjectIds = projects.map(p => p.id);
-        const { data: allCandidates, error: candErr } = await supabase
-          .from('job_candidate_status')
-          .select('id, candidate_name, candidate_headline, pipeline_stage, score, updated_at, created_at, project_id')
-          .in('project_id', allProjectIds)
-          .order('updated_at', { ascending: false });
-
-        if (candErr) console.warn('Failed to load candidates:', candErr);
-
-        // Group candidates by project
-        const candidatesByProject = new Map<string, PortalCandidate[]>();
-        (allCandidates || []).forEach(c => {
-          const list = candidatesByProject.get(c.project_id) || [];
-          list.push(c as PortalCandidate);
-          candidatesByProject.set(c.project_id, list);
-        });
-
-        const portalProjects: PortalProject[] = projects.map(proj => ({
-          id: proj.id,
-          name: proj.name,
-          status: proj.status,
-          candidates: candidatesByProject.get(proj.id) || [],
-        }));
-
-        setData({
-          client_name: tokenRow.client_name,
-          org_name: org?.name || null,
-          org_logo: org?.logo_url || null,
-          projects: portalProjects,
-          permissions: parsePermissions(tokenRow.permissions),
-        });
+        setData(portalData);
       } catch (err) {
         console.error('Portal fetch error:', err);
         setNotFound(true);
@@ -282,6 +223,7 @@ export default function ClientPortal() {
                           projectId={project.id}
                           clientName={data.client_name}
                           canFillScorecard={data.permissions.can_fill_scorecard}
+                          portalToken={token!}
                         />
                       )}
                     </React.Fragment>
@@ -301,15 +243,4 @@ export default function ClientPortal() {
       </footer>
     </div>
   );
-}
-
-/** Parse permissions from DB with safe defaults */
-function parsePermissions(raw: any): { can_comment: boolean; can_see_names: boolean; can_fill_scorecard: boolean } {
-  const defaults = { can_comment: true, can_see_names: true, can_fill_scorecard: true };
-  if (!raw || typeof raw !== 'object') return defaults;
-  return {
-    can_comment: typeof raw.can_comment === 'boolean' ? raw.can_comment : defaults.can_comment,
-    can_see_names: typeof raw.can_see_names === 'boolean' ? raw.can_see_names : defaults.can_see_names,
-    can_fill_scorecard: typeof raw.can_fill_scorecard === 'boolean' ? raw.can_fill_scorecard : defaults.can_fill_scorecard,
-  };
 }

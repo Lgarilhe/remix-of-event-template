@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Star, Send, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -16,6 +15,7 @@ interface PortalCandidateScoringProps {
   projectId: string;
   clientName: string;
   canFillScorecard: boolean;
+  portalToken: string;
 }
 
 const CRITERIA = [
@@ -27,7 +27,7 @@ const CRITERIA = [
 ];
 
 export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
-  candidate, projectId, clientName, canFillScorecard,
+  candidate, projectId, clientName, canFillScorecard, portalToken,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [ratings, setRatings] = useState<Record<string, number>>({});
@@ -55,34 +55,47 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
     }
     setSubmitting(true);
     try {
-      // Store as candidate_evaluation via anon access
-      // Since the portal is public, we store the evaluation with the client name as author
       const ratedCount = Object.keys(ratings).length;
       const totalScore = Object.values(ratings).reduce((sum, r) => sum + r, 0);
       const overallScore = Math.round((totalScore / ratedCount) * 10) / 10;
 
-      const { error } = await supabase
-        .from('candidate_evaluations')
-        .insert({
-          candidate_id: candidate.id,
-          job_id: projectId,
-          criteria: CRITERIA.map(c => ({
-            id: c.key,
-            label: c.label,
-            description: c.description,
-            category: c.key,
-            weight: 2,
-          })),
-          ratings,
-          comments: comment ? { general: comment } : {},
-          overall_score: overallScore,
-          recommendation: recommendation || null,
-          summary: `Évaluation par ${clientName} — Score: ${overallScore}/5`,
-          ai_generated: false,
-          created_by: '00000000-0000-0000-0000-000000000000', // Anonymous portal user
-        });
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/client-portal-data`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${anonKey}`,
+            'apikey': anonKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token: portalToken,
+            evaluation: {
+              candidate_id: candidate.id,
+              criteria: CRITERIA.map(c => ({
+                id: c.key,
+                label: c.label,
+                description: c.description,
+                category: c.key,
+                weight: 2,
+              })),
+              ratings,
+              comments: comment ? { general: comment } : {},
+              overall_score: overallScore,
+              recommendation: recommendation || null,
+              summary: `Évaluation par ${clientName} — Score: ${overallScore}/5`,
+            },
+          }),
+        }
+      );
 
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erreur lors de l\'envoi');
+      }
+
       setSubmitted(true);
       toast.success('Merci pour votre évaluation !');
     } catch (err: any) {
