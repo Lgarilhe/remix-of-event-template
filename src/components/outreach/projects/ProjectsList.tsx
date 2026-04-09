@@ -6,6 +6,7 @@ import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
 import { UnifiedProject, mergeProjectsAndJobs } from '@/types/projects';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
