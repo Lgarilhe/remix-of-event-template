@@ -34,7 +34,7 @@ export default function Marketplace() {
   const [filterRemote, setFilterRemote] = useState('');
 
   // Fetch published hunt missions
-  const { data: missions = [], isLoading } = useQuery({
+  const { data: missions = [], isLoading, isError } = useQuery({
     queryKey: ['marketplace-missions'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -172,7 +172,11 @@ export default function Marketplace() {
           </div>
 
           {/* Mission cards */}
-          {isLoading ? (
+          {isError ? (
+            <div className="border border-destructive/30 bg-destructive/10 p-6 text-center">
+              <p className="text-sm text-destructive">Erreur lors du chargement des missions.</p>
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
             </div>

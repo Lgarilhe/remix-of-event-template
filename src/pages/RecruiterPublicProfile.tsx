@@ -52,6 +52,10 @@ const RecruiterPublicProfile: React.FC = () => {
           setProfile(data as unknown as RecruiterProfile);
         }
         setLoading(false);
+      })
+      .catch(() => {
+        setNotFound(true);
+        setLoading(false);
       });
   }, [slug]);
 

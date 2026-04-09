@@ -71,6 +71,7 @@ const AGENT_MESSAGES = [
 /* ─── Component ─── */
 export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => {
   const [phase, setPhase] = useState<'scanning' | 'results' | 'error'>('scanning');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sources, setSources] = useState<ScanSource[]>(SCAN_SOURCES.map(s => ({ ...s, done: false })));
   const [bubbles, setBubbles] = useState<AgentBubble[]>([]);
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
@@ -159,8 +160,9 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           categories: mappedCategories,
           quickWins: data.quick_wins || [],
         };
-      } catch (err) {
+      } catch (err: any) {
         console.error('[SceneAudit] Error:', err);
+        if (!signal.aborted) setErrorMessage(err?.message || 'Erreur lors de l\'analyse');
         return null;
       }
     };
@@ -285,8 +287,14 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
             animate={{ opacity: 1, y: 0 }}
             className="text-center py-8 space-y-3"
           >
+            <p className="text-sm text-destructive font-medium">
+              Impossible d'analyser votre marque employeur pour le moment.
+            </p>
+            {errorMessage && (
+              <p className="text-xs text-muted-foreground">{errorMessage}</p>
+            )}
             <p className="text-sm text-muted-foreground">
-              Impossible d'analyser votre marque employeur pour le moment. Vous pouvez passer cette étape et y revenir plus tard.
+              Vous pouvez passer cette étape et y revenir plus tard.
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
               <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">

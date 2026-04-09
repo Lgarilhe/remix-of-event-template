@@ -84,6 +84,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(new Set());
   const [selectedStage, setSelectedStage] = useState<InterviewStage | ''>('');
   const [showCoaching, setShowCoaching] = useState(false);
@@ -98,6 +99,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setLoadError(false);
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
@@ -126,6 +128,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         }
       } catch (err) {
         console.error('Error loading evaluations:', err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -441,6 +444,14 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-xs text-destructive">Erreur lors du chargement des évaluations.</p>
       </div>
     );
   }

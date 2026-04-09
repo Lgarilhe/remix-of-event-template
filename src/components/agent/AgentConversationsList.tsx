@@ -22,10 +22,14 @@ const statusMap: Record<string, { label: string; className: string; pulse?: bool
 export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversations }) => {
   const [conversations, setConversations] = useState<AgentConversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     listConversations().then(data => {
       setConversations(data);
+      setLoading(false);
+    }).catch(() => {
+      setLoadError(true);
       setLoading(false);
     });
   }, [listConversations]);
@@ -58,6 +62,17 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
             <div className="w-3 h-3 bg-accent/50 shrink-0" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <div className="text-center">
+          <p className="text-xs font-bold uppercase tracking-wider text-destructive">Erreur de chargement</p>
+          <p className="text-xs mt-1 text-muted-foreground">Impossible de récupérer les conversations.</p>
+        </div>
       </div>
     );
   }

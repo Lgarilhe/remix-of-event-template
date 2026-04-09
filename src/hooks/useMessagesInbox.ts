@@ -833,7 +833,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
                 return combined;
               });
             }
-          });
+          }).catch(() => {});
         }
         return; // Skip the finally setLoadingMessages since we already set it
       }

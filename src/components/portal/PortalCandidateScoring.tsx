@@ -35,6 +35,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
   const [recommendation, setRecommendation] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!canFillScorecard || submitted) {
     if (submitted) {
@@ -54,6 +55,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
       return;
     }
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const ratedCount = Object.keys(ratings).length;
       const totalScore = Object.values(ratings).reduce((sum, r) => sum + r, 0);
@@ -99,6 +101,7 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
       setSubmitted(true);
       toast.success('Merci pour votre évaluation !');
     } catch (err: any) {
+      setSubmitError(err?.message || 'Erreur lors de l\'envoi');
       toast.error(err?.message || 'Erreur lors de l\'envoi');
     } finally {
       setSubmitting(false);
@@ -180,6 +183,11 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
               className="w-full min-h-[60px] px-3 py-2 text-sm border border-border bg-background text-foreground resize-y focus:border-border focus:outline-none"
             />
           </div>
+
+          {/* Error */}
+          {submitError && (
+            <p className="text-xs text-destructive">{submitError}</p>
+          )}
 
           {/* Submit */}
           <button

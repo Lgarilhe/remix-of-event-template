@@ -21,6 +21,8 @@ export default function AcceptMissionInvite() {
       } else {
         setStatus('error');
       }
+    }).catch(() => {
+      setStatus('error');
     });
   }, [token, accept]);
 

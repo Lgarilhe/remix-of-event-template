@@ -32,7 +32,7 @@ export const MyEmailAccount = () => {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
-    });
+    }).catch(() => {});
   }, []);
 
   // Fetch email accounts from Unipile
@@ -58,7 +58,7 @@ export const MyEmailAccount = () => {
   useEffect(() => {
     loadEmailAccounts().then(accounts => {
       if (accounts) previousCountRef.current = accounts.length;
-    });
+    }).catch(() => {});
   }, [loadEmailAccounts]);
 
   // Stop polling on unmount

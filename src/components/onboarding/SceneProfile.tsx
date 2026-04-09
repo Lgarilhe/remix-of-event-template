@@ -90,7 +90,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
         if (meta?.full_name) setDisplayName(meta.full_name);
         else if (meta?.name) setDisplayName(meta.name);
       }
-    });
+    }).catch(() => {});
   }, [savedState]);
 
   useEffect(() => {

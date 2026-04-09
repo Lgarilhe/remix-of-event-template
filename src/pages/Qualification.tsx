@@ -127,7 +127,8 @@ export default function Qualification() {
           .from('qualification_sessions')
           .update({ notes, status: 'in_progress' })
           .eq('id', id)
-          .then(() => console.log('Auto-saved notes'));
+          .then(() => console.log('Auto-saved notes'))
+          .catch(() => console.warn('Auto-save failed'));
       }
     }, 10000);
     return () => clearTimeout(timer);

@@ -71,7 +71,7 @@ export function useAttendeePictures(organizationId: string | null) {
         const batch = toFetch.slice(idx, idx + 3);
         if (batch.length === 0) return;
         idx += 3;
-        Promise.all(batch.map((id) => fetchPicture(id))).then(next);
+        Promise.all(batch.map((id) => fetchPicture(id))).then(next).catch(() => {});
       };
       next();
     },
