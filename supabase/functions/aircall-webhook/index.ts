@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (orgData?.organization_id) {
-          fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+          await fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({

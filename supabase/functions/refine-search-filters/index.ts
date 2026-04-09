@@ -191,12 +191,12 @@ ${JSON.stringify(currentFilters, null, 2)}`;
         const orgId = userId ? await resolveOrgIdFromUser(userId, svc as any) : null;
         if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(svc as any, {
+          await settleCredits(svc as any, {
             organizationId: orgId, userId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
-          }).catch((e) => console.warn("[refine-search-filters] settle error:", e));
+          }).catch((e) => console.error("[refine-search-filters] settle error:", e));
         }
       } catch (e) { console.warn("[refine-search-filters] settle skipped:", e); }
     }

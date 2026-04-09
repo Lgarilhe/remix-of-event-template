@@ -574,7 +574,7 @@ Deno.serve(async (req) => {
           .limit(1);
         const resolvedOrgId = memberMapping?.[0]?.organization_id;
         if (resolvedOrgId) {
-          fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
+          await fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${serviceKeyRag}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -605,14 +605,14 @@ Deno.serve(async (req) => {
         const orgId = organization_id || await resolveOrgIdFromUser(settleUserId, adminClient).catch(() => null);
         if (orgId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(adminClient, {
+          await settleCredits(adminClient, {
             organizationId: orgId, userId: settleUserId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
-          }).catch((e) => console.warn("[auto-analyze-message] settle error:", e));
+          }).catch((e) => console.error("[auto-analyze-message] settle error:", e));
         }
-      } catch (e) { console.warn("[auto-analyze-message] settle skipped:", e); }
+      } catch (e) { console.error("[auto-analyze-message] settle skipped:", e); }
     }
 
     return new Response(JSON.stringify({

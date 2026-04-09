@@ -249,12 +249,12 @@ Deno.serve(async (req) => {
                 const orgId = userId ? await resolveOrgIdFromUser(userId, adminClient) as string | null : null;
                 if (orgId) {
                   const { settleCredits } = await import("../_shared/settle-credits.ts");
-                  settleCredits(adminClient, {
+                  await settleCredits(adminClient, {
                     organizationId: orgId, userId: userId!,
                     aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
                     tokensInput: _tokensIn, tokensOutput: _tokensOut,
                     description: _aiParams.description,
-                  }).catch((e) => console.warn("[chat-filter-assistant] settle error:", e));
+                  }).catch((e) => console.error("[chat-filter-assistant] settle error:", e));
                 }
               } catch (e) { console.warn("[chat-filter-assistant] settle skipped:", e); }
             }

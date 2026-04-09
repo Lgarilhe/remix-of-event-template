@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
     if (!createdBy) {
       console.error('[calendly-webhook] No user found to assign session');
       return new Response(JSON.stringify({ success: false, error: 'No user found' }), {
-        status: 200,
+        status: 422,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -538,7 +538,7 @@ Deno.serve(async (req) => {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     }), {
-      status: 200, // Return 200 so Calendly doesn't retry
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

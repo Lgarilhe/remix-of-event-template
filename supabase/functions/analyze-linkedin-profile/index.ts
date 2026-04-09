@@ -131,9 +131,10 @@ Règles:
       return new Response(JSON.stringify({ analysis }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } catch {
       console.error("JSON parse error, Content:", content?.slice(0, 200));
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
+        error: "Failed to parse AI response",
         analysis: { summary: content?.slice(0, 100) || "Analyse indisponible", strengths: ["Analyse non structurée disponible"], concerns: ["Veuillez réessayer"], fit_score: 50, recommendation: "Voir le profil complet" }
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch (error) {
     console.error("Error analyzing profile:", error);

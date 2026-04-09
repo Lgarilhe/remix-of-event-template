@@ -295,14 +295,14 @@ Deno.serve(async (req) => {
           const orgId = authUserId ? await resolveOrgIdFromUser(authUserId, adminClient as any) : null;
           if (orgId && authUserId) {
             const { settleCredits } = await import("../_shared/settle-credits.ts");
-            settleCredits(adminClient as any, {
+            await settleCredits(adminClient as any, {
               organizationId: orgId, userId: authUserId,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
               tokensInput: _tokensIn, tokensOutput: _tokensOut,
               description: _aiParams.description,
-            }).catch((e) => console.warn("[nurturing-analyzer] settle error:", e));
+            }).catch((e) => console.error("[nurturing-analyzer] settle error:", e));
           }
-        } catch (e) { console.warn("[nurturing-analyzer] settle skipped:", e); }
+        } catch (e) { console.error("[nurturing-analyzer] settle skipped:", e); }
       }
 
       return new Response(
@@ -474,12 +474,12 @@ Deno.serve(async (req) => {
           const orgId = authUserId ? await resolveOrgIdFromUser(authUserId, adminClient as any) : null;
           if (orgId && authUserId) {
             const { settleCredits } = await import("../_shared/settle-credits.ts");
-            settleCredits(adminClient as any, {
+            await settleCredits(adminClient as any, {
               organizationId: orgId, userId: authUserId,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
               tokensInput: message._tokensIn, tokensOutput: message._tokensOut,
               description: _aiParams.description,
-            }).catch((e) => console.warn("[nurturing-analyzer] settle error:", e));
+            }).catch((e) => console.error("[nurturing-analyzer] settle error:", e));
           }
         } catch (e) { console.warn("[nurturing-analyzer] settle skipped:", e); }
       }

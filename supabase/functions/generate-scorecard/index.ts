@@ -227,7 +227,7 @@ Génère la scorecard d'évaluation sur mesure.`;
       const candidateId = candidateProfile.linkedin_id || candidateProfile.provider_id || candidateProfile.name;
       if (orgId && candidateId) {
         const criteriaLabels = (parsed.criteria || []).map((c: any) => c.label).join(', ');
-        fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
+        await fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${serviceKeyRag}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -253,12 +253,12 @@ Génère la scorecard d'évaluation sur mesure.`;
         const orgId = userId ? await resolveOrgIdFromUser(userId, adminClient) : null;
         if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(adminClient, {
+          await settleCredits(adminClient, {
             organizationId: orgId, userId: userId!,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
-          }).catch((e) => console.warn("[generate-scorecard] settle error:", e));
+          }).catch((e) => console.error("[generate-scorecard] settle error:", e));
         }
       } catch (e) { console.warn("[generate-scorecard] settle skipped:", e); }
     }
