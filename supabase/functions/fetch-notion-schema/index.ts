@@ -7,11 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// No global integration credentials — always resolved from organization_integrations
-let NOTION_API_KEY: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-let POSTES_DATABASE_ID: string | undefined;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -48,9 +45,8 @@ async function resolveOrgCredentials(orgId: string) {
     throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
 
-  NOTION_API_KEY = data.notion_api_key;
-  if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
   console.log('[fetch-notion-schema] Using org-specific Notion credentials');
+  return { notionApiKey: data.notion_api_key, postesDatabaseId: data.notion_postes_db_id || undefined };
 }
 
 const CACHE_KEY = "notion:schema:postes:v1";
@@ -93,7 +89,7 @@ Deno.serve(async (req) => {
     if (!orgId) {
       throw new Error('organization_id est requis');
     }
-    await resolveOrgCredentials(orgId);
+    const { notionApiKey, postesDatabaseId } = await resolveOrgCredentials(orgId);
 
     // Check cache first
     const { data: cached } = await supabase
@@ -112,9 +108,9 @@ Deno.serve(async (req) => {
     }
 
     // Fetch database schema from Notion
-    const resp = await fetchWithRetry(`https://api.notion.com/v1/databases/${POSTES_DATABASE_ID}`, {
+    const resp = await fetchWithRetry(`https://api.notion.com/v1/databases/${postesDatabaseId}`, {
       headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Authorization': `Bearer ${notionApiKey}`,
         'Notion-Version': '2022-06-28',
       },
     });

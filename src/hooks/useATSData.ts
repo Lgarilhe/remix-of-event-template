@@ -120,7 +120,8 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
   const allRecords: any[] = [];
   let from = 0;
   const PAGE_SIZE = 1000;
-  while (true) {
+  const MAX_PAGES = 100; // Safety cap: 100 × 1000 = 100k rows max
+  for (let page_i = 0; page_i < MAX_PAGES; page_i++) {
     const { data: page, error: pageError } = await supabase
       .from('job_candidate_status')
       .select(JCS_DISPLAY_COLUMNS)
@@ -130,6 +131,9 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
     allRecords.push(...page);
     if (page.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
+    if (page_i === MAX_PAGES - 1) {
+      console.warn(`[useATSData] fetchLocalCandidates hit max page cap (${MAX_PAGES}), ${allRecords.length} rows loaded`);
+    }
   }
   const records = allRecords;
   const error = null;

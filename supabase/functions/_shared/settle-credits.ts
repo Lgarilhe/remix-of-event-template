@@ -91,7 +91,12 @@ export async function settleCredits(
     const { credits } = calculateTokenCredits(tokensInput, tokensOutput, modelId, aiAction);
     const costUsd = calculateUSDCost(tokensInput, tokensOutput, modelId);
 
-    // Get current balance
+    // --- Atomic settle via optimistic concurrency control ---
+    // Read-then-conditional-write: the UPDATE's WHERE clause includes the
+    // exact plan_credits and topup_credits we read, so if another request
+    // modified the row between our SELECT and UPDATE, 0 rows match and we retry.
+
+    // Step 1: Read current balance
     const { data: bal } = await adminClient
       .from("ai_credit_balances")
       .select("plan_credits, topup_credits")
@@ -101,13 +106,12 @@ export async function settleCredits(
     const planCredits = bal?.plan_credits ?? 0;
     const topupCredits = bal?.topup_credits ?? 0;
     const total = planCredits + topupCredits;
-
     if (total < credits) {
       console.warn(`[settle-credits] Insufficient credits for org ${organizationId}: ${total} < ${credits}`);
       return { credits, success: false };
     }
 
-    // FIFO: plan first, then topup
+    // Step 2: FIFO computation
     let fromPlan = 0;
     let fromTopup = 0;
     let newPlanCredits = planCredits;
@@ -125,17 +129,112 @@ export async function settleCredits(
 
     const source = fromPlan > 0 && fromTopup > 0 ? "mixed" : fromTopup > 0 ? "topup" : "plan";
     const remainingTotal = newPlanCredits + newTopupCredits;
+    const newTimestamp = new Date().toISOString();
 
-    // Update balance
-    await adminClient
+    // Step 3: Conditional UPDATE — only succeeds if balance hasn't changed since read.
+    // This is optimistic concurrency control: the WHERE on plan_credits + topup_credits
+    // ensures that if another request modified the row between our SELECT and UPDATE,
+    // this UPDATE matches 0 rows and we retry.
+    const { data: writeResult } = await adminClient
       .from("ai_credit_balances")
       .update({
         plan_credits: newPlanCredits,
         topup_credits: newTopupCredits,
         credits_total: remainingTotal,
-        updated_at: new Date().toISOString(),
+        updated_at: newTimestamp,
       })
-      .eq("organization_id", organizationId);
+      .eq("organization_id", organizationId)
+      .eq("plan_credits", planCredits)
+      .eq("topup_credits", topupCredits)
+      .select("organization_id");
+
+    // If 0 rows matched, another request modified the balance concurrently — retry once.
+    if (!writeResult || writeResult.length === 0) {
+      console.warn(`[settle-credits] Concurrent modification detected for org ${organizationId}, retrying...`);
+
+      // Re-read and retry once
+      const { data: bal2 } = await adminClient
+        .from("ai_credit_balances")
+        .select("plan_credits, topup_credits")
+        .eq("organization_id", organizationId)
+        .single();
+
+      const pc2 = bal2?.plan_credits ?? 0;
+      const tc2 = bal2?.topup_credits ?? 0;
+      const total2 = pc2 + tc2;
+
+      if (total2 < credits) {
+        console.warn(`[settle-credits] Insufficient credits after retry for org ${organizationId}: ${total2} < ${credits}`);
+        return { credits, success: false };
+      }
+
+      let fromPlan2 = 0;
+      let fromTopup2 = 0;
+      let npc2 = pc2;
+      let ntc2 = tc2;
+
+      if (pc2 >= credits) {
+        fromPlan2 = credits;
+        npc2 = pc2 - credits;
+      } else {
+        fromPlan2 = pc2;
+        fromTopup2 = credits - pc2;
+        npc2 = 0;
+        ntc2 = tc2 - fromTopup2;
+      }
+
+      const source2 = fromPlan2 > 0 && fromTopup2 > 0 ? "mixed" : fromTopup2 > 0 ? "topup" : "plan";
+      const remaining2 = npc2 + ntc2;
+
+      const { data: retryResult } = await adminClient
+        .from("ai_credit_balances")
+        .update({
+          plan_credits: npc2,
+          topup_credits: ntc2,
+          credits_total: remaining2,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("organization_id", organizationId)
+        .eq("plan_credits", pc2)
+        .eq("topup_credits", tc2)
+        .select("organization_id");
+
+      if (!retryResult || retryResult.length === 0) {
+        console.warn(`[settle-credits] Retry failed for org ${organizationId}, aborting settle`);
+        return { credits, success: false };
+      }
+
+      // Log transaction with retry values
+      await adminClient.from("ai_credit_transactions").insert({
+        organization_id: organizationId,
+        user_id: userId,
+        action: aiAction,
+        amount: -credits,
+        credits_used: credits,
+        tokens_input: tokensInput,
+        tokens_output: tokensOutput,
+        model_id: modelId,
+        cost_usd: costUsd,
+        source: source2,
+        balance_after: remaining2,
+        description,
+        metadata: {
+          model: modelId,
+          tokens_input: tokensInput,
+          tokens_output: tokensOutput,
+          cost_usd: costUsd,
+          from_plan: fromPlan2,
+          from_topup: fromTopup2,
+        },
+      });
+
+      console.log(
+        `[settle-credits] org=${organizationId} action=${aiAction} model=${modelId} ` +
+        `tokens=${tokensInput}+${tokensOutput} credits=${credits} remaining=${remaining2} (after retry)`
+      );
+
+      return { credits, success: true };
+    }
 
     // Log transaction
     await adminClient.from("ai_credit_transactions").insert({

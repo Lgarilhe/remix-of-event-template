@@ -8,14 +8,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Default credentials (env vars) — used as fallback when no org-specific credentials exist
-// No global integration credentials — always resolved from organization_integrations
-let NOTION_API_KEY: string | undefined;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-let POSTES_DATABASE_ID: string | undefined;
-let SHORTLIST_DATABASE_ID: string | undefined;
+
+/** Per-request Notion credentials — resolved inside handler, passed to helpers. */
+interface NotionCreds { notionApiKey: string; postesDatabaseId?: string; shortlistDatabaseId?: string; }
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -58,10 +56,12 @@ async function resolveOrgCredentials(orgId: string) {
     throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
 
-  NOTION_API_KEY = data.notion_api_key;
-  if (data.notion_postes_db_id) POSTES_DATABASE_ID = data.notion_postes_db_id;
-  if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
   console.log('[fetch-notion-jobs] Using org-specific Notion credentials for org:', orgId);
+  return {
+    notionApiKey: data.notion_api_key,
+    postesDatabaseId: data.notion_postes_db_id || undefined,
+    shortlistDatabaseId: data.notion_shortlist_db_id || undefined,
+  } as NotionCreds;
 }
 
 // Cache expiry for skills: 24 hours
@@ -283,16 +283,16 @@ function getTitleFromProperties(properties: Record<string, NotionProperty>): str
   return 'Sans titre';
 }
 
-async function fetchNotionDatabase(databaseId: string, filter?: any) {
+async function fetchNotionDatabase(databaseId: string, notionApiKey: string, filter?: any) {
   const body: any = { page_size: 100 };
   if (filter) {
     body.filter = filter;
   }
-  
+
   const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -309,7 +309,7 @@ async function fetchNotionDatabase(databaseId: string, filter?: any) {
 
 // Notion database queries return max 100 rows per call. To avoid missing items (e.g. a published job
 // that ends up beyond the first page), paginate until has_more=false.
-async function fetchNotionDatabaseAll(databaseId: string, filter?: any): Promise<{ results: NotionPage[] }> {
+async function fetchNotionDatabaseAll(databaseId: string, notionApiKey: string, filter?: any): Promise<{ results: NotionPage[] }> {
   const results: NotionPage[] = [];
   let startCursor: string | null = null;
 
@@ -321,7 +321,7 @@ async function fetchNotionDatabaseAll(databaseId: string, filter?: any): Promise
     const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Authorization': `Bearer ${notionApiKey}`,
         'Notion-Version': '2022-06-28',
         'Content-Type': 'application/json',
       },
@@ -344,10 +344,10 @@ async function fetchNotionDatabaseAll(databaseId: string, filter?: any): Promise
   return { results };
 }
 
-async function getTitlePropertyName(databaseId: string): Promise<string> {
+async function getTitlePropertyName(databaseId: string, notionApiKey: string): Promise<string> {
   const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}`, {
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${notionApiKey}`,
       'Notion-Version': '2022-06-28',
     },
   });
@@ -366,14 +366,14 @@ async function getTitlePropertyName(databaseId: string): Promise<string> {
   return 'Name';
 }
 
-async function fetchCompanyDetails(companyIds: string[]): Promise<Map<string, any>> {
+async function fetchCompanyDetails(companyIds: string[], notionApiKey: string): Promise<Map<string, any>> {
   const companies = new Map();
-  
+
   for (const id of companyIds) {
     try {
       const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${id}`, {
         headers: {
-          'Authorization': `Bearer ${NOTION_API_KEY}`,
+          'Authorization': `Bearer ${notionApiKey}`,
           'Notion-Version': '2022-06-28',
         },
       });
@@ -411,7 +411,7 @@ interface TransversalCriteria {
 }
 
 // Fetch page body content (blocks/children) and convert to plain text
-async function fetchPageBody(pageId: string): Promise<string> {
+async function fetchPageBody(pageId: string, notionApiKey: string): Promise<string> {
   const textParts: string[] = [];
   let startCursor: string | undefined;
 
@@ -422,7 +422,7 @@ async function fetchPageBody(pageId: string): Promise<string> {
 
     const response = await fetchWithRetry(url.toString(), {
       headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Authorization': `Bearer ${notionApiKey}`,
         'Notion-Version': '2022-06-28',
       },
     });
@@ -471,16 +471,16 @@ async function fetchPageBody(pageId: string): Promise<string> {
 }
 
 // Batch fetch page bodies with concurrency control
-async function fetchPageBodies(pageIds: string[], concurrency = 5): Promise<Map<string, string>> {
+async function fetchPageBodies(pageIds: string[], notionApiKey: string, concurrency = 5): Promise<Map<string, string>> {
   const bodiesMap = new Map<string, string>();
   const uniqueIds = [...new Set(pageIds)];
-  
+
   // Process in batches to avoid rate limiting
   for (let i = 0; i < uniqueIds.length; i += concurrency) {
     const batch = uniqueIds.slice(i, i + concurrency);
     const results = await Promise.all(batch.map(async (id) => {
       try {
-        const body = await fetchPageBody(id);
+        const body = await fetchPageBody(id, notionApiKey);
         return { id, body };
       } catch (error) {
         console.error(`Failed to fetch body for ${id}:`, error);
@@ -495,25 +495,25 @@ async function fetchPageBodies(pageIds: string[], concurrency = 5): Promise<Map<
   return bodiesMap;
 }
 
-async function fetchTransversalCriteria(criteriaIds: string[]): Promise<Map<string, TransversalCriteria>> {
+async function fetchTransversalCriteria(criteriaIds: string[], notionApiKey: string): Promise<Map<string, TransversalCriteria>> {
   const criteriaMap = new Map<string, TransversalCriteria>();
-  
+
   if (criteriaIds.length === 0) return criteriaMap;
-  
+
   // Batch fetch all unique criteria IDs
   const uniqueIds = [...new Set(criteriaIds)];
-  
+
   // Fetch properties and bodies in parallel
   const [_, bodiesMap] = await Promise.all([
     Promise.resolve(), // placeholder for parallel structure
-    fetchPageBodies(uniqueIds),
+    fetchPageBodies(uniqueIds, notionApiKey),
   ]);
-  
+
   await Promise.all(uniqueIds.map(async (id) => {
     try {
       const response = await fetchWithRetry(`https://api.notion.com/v1/pages/${id}`, {
         headers: {
-          'Authorization': `Bearer ${NOTION_API_KEY}`,
+          'Authorization': `Bearer ${notionApiKey}`,
           'Notion-Version': '2022-06-28',
         },
       });
@@ -594,7 +594,7 @@ function mergeTransversalCriteria(
   return merged;
 }
 
-async function fetchCandidateCounts(jobIds: string[]): Promise<Map<string, CandidateCounts>> {
+async function fetchCandidateCounts(jobIds: string[], creds: NotionCreds): Promise<Map<string, CandidateCounts>> {
   const countsMap = new Map<string, CandidateCounts>();
   
   // Initialize counts for all jobs
@@ -606,7 +606,7 @@ async function fetchCandidateCounts(jobIds: string[]): Promise<Map<string, Candi
     // Fetch all shortlist entries that are in active stages
     const activeStages = ['CV envoyé', 'ITW 1', 'ITW 2', 'ITW 3', 'ITW Final', 'Offre', 'Pré-qualif', 'Contacté', 'Pressenti'];
     
-    const shortlistData = await fetchNotionDatabaseAll(SHORTLIST_DATABASE_ID, {
+    const shortlistData = await fetchNotionDatabaseAll(creds.shortlistDatabaseId!, creds.notionApiKey, {
       property: 'Etape',
       select: {
         is_not_empty: true
@@ -759,7 +759,7 @@ Deno.serve(async (req) => {
     if (!membership) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    await resolveOrgCredentials(organizationId);
+    const creds = await resolveOrgCredentials(organizationId);
 
     // Parse pagination parameters from query string or body
     const url = new URL(req.url);
@@ -768,9 +768,9 @@ Deno.serve(async (req) => {
     // Usage: POST body { "debugTitle": "Responsable IT Corporate" }
     if (typeof body?.debugTitle === 'string' && body.debugTitle.trim()) {
       const debugTitle = body.debugTitle.trim();
-      const titlePropName = await getTitlePropertyName(POSTES_DATABASE_ID);
+      const titlePropName = await getTitlePropertyName(creds.postesDatabaseId!, creds.notionApiKey);
 
-      const debugData = await fetchNotionDatabase(POSTES_DATABASE_ID, {
+      const debugData = await fetchNotionDatabase(creds.postesDatabaseId!, creds.notionApiKey, {
         property: titlePropName,
         title: {
           contains: debugTitle,
@@ -829,7 +829,7 @@ Deno.serve(async (req) => {
     }
 
     // Fetch jobs from Notion - only active ones (Publié status)
-    const jobsData = await fetchNotionDatabaseAll(POSTES_DATABASE_ID, {
+    const jobsData = await fetchNotionDatabaseAll(creds.postesDatabaseId!, creds.notionApiKey, {
       property: 'État',
       status: {
         equals: 'Publié'
@@ -863,11 +863,11 @@ Deno.serve(async (req) => {
 
     // Fetch company details, candidate counts, cached skills, transversal criteria, and job bodies in parallel
     const [companies, candidateCounts, cachedSkills, transversalCriteriaMap, jobBodiesMap] = await Promise.all([
-      fetchCompanyDetails(Array.from(companyIds)),
-      fetchCandidateCounts(jobIds),
+      fetchCompanyDetails(Array.from(companyIds), creds.notionApiKey),
+      fetchCandidateCounts(jobIds, creds),
       getCachedSkills(jobIds),
-      fetchTransversalCriteria(Array.from(transversalCriteriaIds)),
-      fetchPageBodies(jobIds, 5),
+      fetchTransversalCriteria(Array.from(transversalCriteriaIds), creds.notionApiKey),
+      fetchPageBodies(jobIds, creds.notionApiKey, 5),
     ]);
 
     // Find jobs that need AI skill extraction (not in cache)

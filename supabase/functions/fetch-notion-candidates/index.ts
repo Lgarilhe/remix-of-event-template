@@ -8,10 +8,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// No global integration credentials — always resolved from organization_integrations
-let NOTION_API_KEY: string | undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+/** Per-request Notion credentials — resolved inside handler, passed to helpers. */
+interface NotionCreds { notionApiKey: string; candidatsDatabaseId?: string; shortlistDatabaseId?: string; }
 
 // 5 min cache to protect Notion + make ATS instant on refresh.
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -91,10 +92,7 @@ async function setCache(cacheKey: string, payload: unknown): Promise<void> {
     console.error('Cache write error:', e);
   }
 }
-let CANDIDATS_DATABASE_ID: string | undefined;
-let SHORTLIST_DATABASE_ID: string | undefined;
-
-async function resolveOrgNotionCredentials(orgId: string) {
+async function resolveOrgNotionCredentials(orgId: string): Promise<NotionCreds> {
   const { data } = await supabase
     .from('organization_integrations')
     .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
@@ -105,10 +103,12 @@ async function resolveOrgNotionCredentials(orgId: string) {
     throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
 
-  NOTION_API_KEY = data.notion_api_key;
-  if (data.notion_candidats_db_id) CANDIDATS_DATABASE_ID = data.notion_candidats_db_id;
-  if (data.notion_shortlist_db_id) SHORTLIST_DATABASE_ID = data.notion_shortlist_db_id;
   console.log('[fetch-notion-candidates] Using org-specific Notion credentials');
+  return {
+    notionApiKey: data.notion_api_key,
+    candidatsDatabaseId: data.notion_candidats_db_id || undefined,
+    shortlistDatabaseId: data.notion_shortlist_db_id || undefined,
+  };
 }
 
 interface NotionRichText {
@@ -191,6 +191,7 @@ function extractFormula(prop: NotionProperty | undefined): string | number | nul
 
 async function queryNotionDatabase(
   databaseId: string,
+  notionApiKey: string,
   options?: { filter?: Record<string, unknown>; fetchAll?: boolean }
 ) {
   const allResults: any[] = [];
@@ -214,7 +215,7 @@ async function queryNotionDatabase(
     const response = await pacedFetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
+        'Authorization': `Bearer ${notionApiKey}`,
         'Notion-Version': '2022-06-28',
         'Content-Type': 'application/json',
       },
@@ -239,11 +240,11 @@ async function queryNotionDatabase(
   return { results: allResults };
 }
 
-async function getNotionPage(pageId: string) {
+async function getNotionPage(pageId: string, notionApiKey: string) {
   const response = await pacedFetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${notionApiKey}`,
       'Notion-Version': '2022-06-28',
     },
   });
@@ -308,7 +309,7 @@ Deno.serve(async (req) => {
     if (!orgId) {
       throw new Error('organization_id est requis');
     }
-    await resolveOrgNotionCredentials(orgId);
+    const creds = await resolveOrgNotionCredentials(orgId);
 
     const type = url.searchParams.get('type') || 'shortlist';
     const forceRefresh = url.searchParams.get('refresh') === 'true';
@@ -347,7 +348,7 @@ Deno.serve(async (req) => {
 
     if (type === 'candidates') {
       // Fetch all candidates
-      const data = await queryNotionDatabase(CANDIDATS_DATABASE_ID, { fetchAll: true });
+      const data = await queryNotionDatabase(creds.candidatsDatabaseId!, creds.notionApiKey, { fetchAll: true });
       
       const candidates = data.results.map((page: { id: string; properties: Record<string, NotionProperty> }) => {
         const props = page.properties;
@@ -382,7 +383,7 @@ Deno.serve(async (req) => {
       );
     } else {
       // Fetch shortlist (candidatures with pipeline)
-      const data = await queryNotionDatabase(SHORTLIST_DATABASE_ID, { fetchAll: true });
+      const data = await queryNotionDatabase(creds.shortlistDatabaseId!, creds.notionApiKey, { fetchAll: true });
       
       // Cache for Notion pages/positions to avoid duplicate fetches
       const positionCache: Record<string, string> = {};
@@ -390,7 +391,7 @@ Deno.serve(async (req) => {
 
       async function getNotionPageCached(id: string) {
         if (pageCache.has(id)) return pageCache.get(id);
-        const page = await getNotionPage(id);
+        const page = await getNotionPage(id, creds.notionApiKey);
         if (page) pageCache.set(id, page);
         return page;
       }
