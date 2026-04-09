@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("client-portal-data error:", error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal error" }),
+      JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -198,12 +198,12 @@ async function handleSubmitEvaluation(req: Request, supabase: any) {
     }
   }
 
-  // 5. Insert evaluation
+  // 5. Insert evaluation — use DB-resolved project_id, not client-supplied job_id
   const { error: insertErr } = await supabase
     .from("candidate_evaluations")
     .insert({
       candidate_id: evaluation.candidate_id,
-      job_id: evaluation.job_id,
+      job_id: candidate.project_id,
       organization_id: tokenRow.organization_id,
       criteria: evaluation.criteria,
       ratings: evaluation.ratings,

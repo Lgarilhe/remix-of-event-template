@@ -74,7 +74,6 @@ export const PortalCandidateScoring: React.FC<PortalCandidateScoringProps> = ({
             token: portalToken,
             evaluation: {
               candidate_id: candidate.id,
-              job_id: projectId,
               criteria: CRITERIA.map(c => ({
                 id: c.key,
                 label: c.label,
