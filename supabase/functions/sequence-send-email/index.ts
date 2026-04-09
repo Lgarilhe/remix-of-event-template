@@ -336,11 +336,19 @@ Deno.serve(async (req) => {
     // 2. Determine recipient email
     const recipientEmail = enrollment.email_used || null;
     if (!recipientEmail) {
-      await supabase.from('sequence_step_executions').update({
+      const { error: noEmailUpdateError } = await supabase.from('sequence_step_executions').update({
         status: 'failed',
         error_message: 'no_email: No email address available for this candidate',
         executed_at: new Date().toISOString(),
       }).eq('id', execution_id);
+
+      if (noEmailUpdateError) {
+        console.error('[sequence-send-email] Failed to update execution status (no_email)', { error: noEmailUpdateError, execution_id });
+        return new Response(JSON.stringify({ error: 'Failed to update execution status' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       return new Response(JSON.stringify({ error: 'no_email' }), {
         status: 200,
@@ -456,10 +464,17 @@ Deno.serve(async (req) => {
     const trackingId = generateTrackingId();
 
     // Insert tracking record
-    await supabase.from('sequence_email_tracking').insert({
+    const { error: trackingInsertError } = await supabase.from('sequence_email_tracking').insert({
       execution_id,
       tracking_id: trackingId,
     });
+    if (trackingInsertError) {
+      console.error('[sequence-send-email] Failed to insert tracking record', { error: trackingInsertError, execution_id, trackingId });
+      return new Response(JSON.stringify({ error: 'Failed to create email tracking record' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Wrap links for click tracking
     htmlBody = wrapLinksForTracking(htmlBody, trackingId, SUPABASE_URL);
@@ -492,7 +507,7 @@ Deno.serve(async (req) => {
 
     // 10. Update execution status
     if (sendResult.success) {
-      await supabase.from('sequence_step_executions').update({
+      const { error: sentUpdateError } = await supabase.from('sequence_step_executions').update({
         status: 'sent',
         executed_at: new Date().toISOString(),
         final_message: htmlBody,
@@ -501,12 +516,22 @@ Deno.serve(async (req) => {
         ai_snippet: aiSnippet,
         personalized_subject: subject,
       }).eq('id', execution_id);
+      if (sentUpdateError) {
+        console.error('[sequence-send-email] Failed to update execution status (sent)', { error: sentUpdateError, execution_id });
+        return new Response(JSON.stringify({ error: 'Email sent but failed to update execution status' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       // Update tracking record with message ID
       if (sendResult.messageId) {
-        await supabase.from('sequence_email_tracking').update({
+        const { error: trackingUpdateError } = await supabase.from('sequence_email_tracking').update({
           email_message_id: sendResult.messageId,
         }).eq('tracking_id', trackingId);
+        if (trackingUpdateError) {
+          console.error('[sequence-send-email] Failed to update tracking record with message ID', { error: trackingUpdateError, trackingId });
+        }
       }
 
       return new Response(JSON.stringify({
@@ -523,19 +548,25 @@ Deno.serve(async (req) => {
       if (isRateLimit) {
         // Reschedule in 1 hour
         const retryAt = new Date(Date.now() + 3600000).toISOString();
-        await supabase.from('sequence_step_executions').update({
+        const { error: rateLimitUpdateError } = await supabase.from('sequence_step_executions').update({
           status: 'scheduled',
           error_message: `Rate limit, rescheduled: ${sendResult.error}`,
           scheduled_at: retryAt,
         }).eq('id', execution_id);
+        if (rateLimitUpdateError) {
+          console.error('[sequence-send-email] Failed to reschedule rate-limited execution', { error: rateLimitUpdateError, execution_id });
+        }
       } else {
         const isBounce = errorStr.includes('bounce') || errorStr.includes('invalid') || errorStr.includes('not found');
-        await supabase.from('sequence_step_executions').update({
+        const { error: failUpdateError } = await supabase.from('sequence_step_executions').update({
           status: isBounce ? 'bounced' : 'failed',
           error_message: sendResult.error,
           executed_at: new Date().toISOString(),
           channel: 'email',
         }).eq('id', execution_id);
+        if (failUpdateError) {
+          console.error('[sequence-send-email] Failed to update execution status (failed/bounced)', { error: failUpdateError, execution_id });
+        }
       }
 
       return new Response(JSON.stringify({
