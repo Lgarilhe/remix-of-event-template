@@ -141,32 +141,16 @@ CREATE POLICY "client_portal_tokens_read_by_token" ON public.client_portal_token
 
 ---
 
-### 2.2 `message_analysis_cache` — INSERT WITH CHECK(true)
+### 2.2 `message_analysis_cache` — INSERT WITH CHECK(true) — DÉJÀ CORRIGÉ
 
 | Champ | Valeur |
 |---|---|
 | **Table** | `message_analysis_cache` |
 | **Policy** | `Authenticated users can insert analysis cache` |
 | **Opération** | INSERT |
-| **WITH CHECK actuel** | `true` |
-| **Migration** | `20260311123043_0bb1bf15...sql` |
-| **Impact** | N'importe quel utilisateur authentifié peut insérer dans le cache d'analyse avec n'importe quel `account_id`, potentiellement polluant le cache d'autres utilisateurs/orgs. |
-
-**WITH CHECK corrigé proposé :**
-```sql
-DROP POLICY IF EXISTS "Authenticated users can insert analysis cache"
-  ON public.message_analysis_cache;
-
-CREATE POLICY "Users can insert own analysis cache"
-  ON public.message_analysis_cache FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.member_linkedin_accounts mla
-      WHERE mla.linkedin_account_id = message_analysis_cache.account_id
-        AND mla.user_id = auth.uid()
-    )
-  );
-```
+| **WITH CHECK actuel** | ~~`true`~~ → corrigé en `organization_id = get_user_org_id(auth.uid()) OR (org IS NULL AND EXISTS member_linkedin_accounts check)` |
+| **Migration correctrice** | `20260318083930_232441fa...sql` |
+| **Statut** | **CORRIGÉ.** SELECT, INSERT et UPDATE sont maintenant org-scoped. Il reste uniquement la policy **DELETE manquante** (voir §4). |
 
 ---
 
@@ -313,69 +297,102 @@ Les policies `sourcing_projects_public_portal_read` et `jcs_public_portal_read` 
 
 **→ Résolu par les corrections du §1.**
 
-### 5.2 mission_team ne vérifie pas que le projet appartient à l'org de l'utilisateur invité
+### 5.2 mission_team — policy actuelle et risque résiduel
 
-| Champ | Valeur |
-|---|---|
-| **Table** | `sourcing_projects` |
-| **Policy** | `Mission team members can view assigned projects` / `mission_team_view_projects` |
-| **Opération** | SELECT |
-| **USING actuel** | `id IN (SELECT mt.project_id FROM mission_team mt WHERE mt.user_id = auth.uid())` |
-| **Risque** | Un utilisateur ajouté à `mission_team` accède au projet même s'il est dans une autre org. C'est **voulu** pour les freelances. Mais la table `mission_team` n'a pas de colonne `organization_id` propre — le contrôle repose entièrement sur l'INSERT policy de `mission_team`. |
+La policy `mission_team` a été corrigée dans `20260326183825` pour éviter la récursion infinie. L'état actuel utilise des fonctions `SECURITY DEFINER` :
 
-**Analyse de l'INSERT policy de mission_team :**
 ```sql
--- Policy actuelle (20260325120000 / 20260326182810)
-FOR ALL USING (
-  project_id IN (
-    SELECT sp.id FROM sourcing_projects sp
-    WHERE sp.organization_id IN (
-      SELECT om.organization_id FROM organization_members om
-      WHERE om.user_id = auth.uid()
+-- Policy actuelle (20260326183825)
+CREATE POLICY "mission_team_policy" ON public.mission_team FOR ALL
+USING (
+  user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM public.organization_members om
+    WHERE om.user_id = auth.uid()
+    AND om.organization_id = (
+      SELECT sp.organization_id FROM sourcing_projects sp
+      WHERE sp.id = mission_team.project_id LIMIT 1
     )
   )
-)
+);
+
+-- sourcing_projects et job_candidate_status utilisent des SECURITY DEFINER :
+-- is_mission_team_member(auth.uid(), id)
+-- is_mission_team_member_for_project(auth.uid(), project_id)
 ```
-Seuls les membres de l'org propriétaire du projet peuvent ajouter des entrées à `mission_team`. C'est correct. **Mais** il manque une vérification que le `user_id` ajouté est bien un membre de l'org OU un invité valide (`mission_invitations`).
 
-**Risque** : Un admin de Org A peut ajouter n'importe quel `user_id` (même d'Org B) à la mission_team, donnant à cet utilisateur accès au projet sans invitation formelle.
+**Ce qui est correct :**
+- Les membres de l'org propriétaire peuvent gérer mission_team
+- Le membre lui-même (`user_id = auth.uid()`) peut voir son propre enregistrement
+- Les fonctions SECURITY DEFINER évitent la récursion RLS
 
-**USING corrigé proposé (WITH CHECK pour INSERT) :**
+**Risque résiduel — INSERT sans vérification d'invitation :**
+
+La policy FOR ALL couvre aussi INSERT. Un admin de Org A peut ajouter **n'importe quel `user_id`** (même d'Org B) à la mission_team, donnant à cet utilisateur accès au projet sans invitation formelle via `mission_invitations`.
+
+**USING corrigé proposé — séparer INSERT avec WITH CHECK :**
 ```sql
+-- Remplacer la policy FOR ALL par des policies séparées
 DROP POLICY IF EXISTS "mission_team_policy" ON public.mission_team;
-DROP POLICY IF EXISTS "Users can see team for their org projects" ON public.mission_team;
 
--- SELECT : org members + le membre lui-même
-CREATE POLICY "mission_team_select" ON public.mission_team
+-- SELECT/UPDATE/DELETE : même logique qu'aujourd'hui
+CREATE POLICY "mission_team_read_manage" ON public.mission_team
   FOR SELECT USING (
     user_id = auth.uid()
-    OR project_id IN (
-      SELECT sp.id FROM sourcing_projects sp
-      WHERE sp.organization_id IN (
-        SELECT om.organization_id FROM organization_members om
-        WHERE om.user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.organization_members om
+      WHERE om.user_id = auth.uid()
+      AND om.organization_id = (
+        SELECT sp.organization_id FROM sourcing_projects sp
+        WHERE sp.id = mission_team.project_id LIMIT 1
       )
     )
   );
 
--- INSERT : uniquement les membres de l'org propriétaire
--- ET le user_id doit être soit membre de l'org, soit avoir une invitation acceptée
+CREATE POLICY "mission_team_update" ON public.mission_team
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.organization_members om
+      WHERE om.user_id = auth.uid()
+      AND om.organization_id = (
+        SELECT sp.organization_id FROM sourcing_projects sp
+        WHERE sp.id = mission_team.project_id LIMIT 1
+      )
+    )
+  );
+
+CREATE POLICY "mission_team_delete" ON public.mission_team
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.organization_members om
+      WHERE om.user_id = auth.uid()
+      AND om.organization_id = (
+        SELECT sp.organization_id FROM sourcing_projects sp
+        WHERE sp.id = mission_team.project_id LIMIT 1
+      )
+    )
+  );
+
+-- INSERT : org member + le user_id ajouté doit être membre OU avoir une invitation
 CREATE POLICY "mission_team_insert" ON public.mission_team
   FOR INSERT WITH CHECK (
-    project_id IN (
-      SELECT sp.id FROM sourcing_projects sp
-      WHERE sp.organization_id IN (
-        SELECT om.organization_id FROM organization_members om
-        WHERE om.user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM public.organization_members om
+      WHERE om.user_id = auth.uid()
+      AND om.organization_id = (
+        SELECT sp.organization_id FROM sourcing_projects sp
+        WHERE sp.id = mission_team.project_id LIMIT 1
       )
     )
     AND (
-      -- Le user ajouté est membre de l'org
+      -- Le user ajouté est membre de l'org du projet
       EXISTS (
         SELECT 1 FROM organization_members om2
-        JOIN sourcing_projects sp2 ON sp2.organization_id = om2.organization_id
-        WHERE sp2.id = mission_team.project_id
-          AND om2.user_id = mission_team.user_id
+        WHERE om2.user_id = mission_team.user_id
+        AND om2.organization_id = (
+          SELECT sp.organization_id FROM sourcing_projects sp
+          WHERE sp.id = mission_team.project_id LIMIT 1
+        )
       )
       -- OU le user a une invitation acceptée pour ce projet
       OR EXISTS (
@@ -383,18 +400,6 @@ CREATE POLICY "mission_team_insert" ON public.mission_team
         WHERE mi.project_id = mission_team.project_id
           AND mi.accepted_by = mission_team.user_id
           AND mi.status = 'accepted'
-      )
-    )
-  );
-
--- UPDATE/DELETE : org members uniquement
-CREATE POLICY "mission_team_manage" ON public.mission_team
-  FOR ALL USING (
-    project_id IN (
-      SELECT sp.id FROM sourcing_projects sp
-      WHERE sp.organization_id IN (
-        SELECT om.organization_id FROM organization_members om
-        WHERE om.user_id = auth.uid()
       )
     )
   );
@@ -470,7 +475,7 @@ CREATE POLICY "mission_team_view_process_steps" ON public.mission_process_steps
 | # | Table | Action | Risque |
 |---|---|---|---|
 | H1 | `client_portal_tokens` | Remplacer `USING(true)` par RPC SECURITY DEFINER | Énumération de tous les tokens portail |
-| H2 | `message_analysis_cache` | Restreindre INSERT au compte LinkedIn de l'utilisateur | Pollution du cache cross-org |
+| H2 | `message_analysis_cache` | ~~Restreindre INSERT~~ **DÉJÀ CORRIGÉ** (migration 20260318083930). Reste : ajouter policy DELETE | Pollution du cache cross-org |
 | H3 | `sequence_email_tracking` | Supprimer SELECT anon, passer par edge function | Fuite des tracking IDs email |
 | H4 | `mission_team` | Ajouter WITH CHECK sur INSERT vérifiant invitation ou membership | Ajout arbitraire de user_ids externes |
 
