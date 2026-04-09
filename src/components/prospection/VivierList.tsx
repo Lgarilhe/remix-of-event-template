@@ -64,6 +64,31 @@ function buildRoleSummary(title?: string | null, company?: string | null) {
   return title || company || '—';
 }
 
+type ApolloListLabel = {
+  name?: unknown;
+  label?: unknown;
+  title?: unknown;
+};
+
+function normalizeApolloLabelList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+
+  const normalized = values
+    .map((value) => {
+      if (typeof value === 'string') return value.trim();
+      if (value && typeof value === 'object') {
+        const candidate = value as ApolloListLabel;
+        if (typeof candidate.name === 'string') return candidate.name.trim();
+        if (typeof candidate.label === 'string') return candidate.label.trim();
+        if (typeof candidate.title === 'string') return candidate.title.trim();
+      }
+      return '';
+    })
+    .filter((value): value is string => value.length > 0);
+
+  return Array.from(new Set(normalized));
+}
+
 function SectionHeader({ emoji, label, count }: { emoji: string; label: string; count?: number }) {
   return (
     <div className="flex items-center gap-2 mb-2.5">
@@ -877,7 +902,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     const lastFundingDate = org?.latest_funding_round_date;
                     const lastFundingAmount = org?.latest_funding_amount ? `$${(org.latest_funding_amount / 1_000_000).toFixed(1)}M` : null;
                     const foundedYear = org?.founded_year;
-                    const techStack = org?.current_technologies || [];
+                    const techStack = normalizeApolloLabelList(org?.current_technologies);
                     const websiteUrl = org?.website_url || org?.primary_domain;
                     const shortDescription = org?.short_description || org?.seo_description;
                     const linkedinUrl = org?.linkedin_url;
@@ -889,7 +914,7 @@ function EnrichedContactSheet({ contact, enrichment, open, onOpenChange, onCopyM
                     // Person-level extras
                     const personEmail = apolloData?.email;
                     const personPhone = apolloData?.phone_numbers?.[0]?.sanitized_number || apolloData?.personal_numbers?.[0];
-                    const personDepartments = apolloData?.departments;
+                    const personDepartments = normalizeApolloLabelList(apolloData?.departments);
                     const personSeniority = apolloData?.seniority;
                     const personTwitter = apolloData?.twitter_url;
 
