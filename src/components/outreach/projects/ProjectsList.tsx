@@ -8,6 +8,7 @@ import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
 import { UnifiedProject, mergeProjectsAndJobs } from '@/types/projects';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import {
   FolderOpen,
