@@ -1738,6 +1738,12 @@ function normalizeProfileData(raw: Record<string, unknown>): Record<string, unkn
       start: parseDateValue(proj.start),
       end: parseDateValue(proj.end),
     }));
+  }
+
+  // Ensure contact_info is preserved
+  // provider_id -> keep for reference
+
+  return result;
 }
 
 /**
@@ -1786,10 +1792,4 @@ async function handleEndorseSkill(
     JSON.stringify({ success: true, ...data }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
-}
-
-  // Ensure contact_info is preserved
-  // provider_id → keep for reference
-  
-  return result;
 }
