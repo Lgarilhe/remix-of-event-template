@@ -75,6 +75,32 @@ export function computeReadiness(project: SourcingProject): StepReadiness[] {
         : null,
       nextAction: null,
     },
+    {
+      id: 'pipeline',
+      isComplete: hasCandidates,
+      isReady: hasCandidates,
+      isLocked: !hasCandidates,
+      completionPercent: hasCandidates ? 100 : 0,
+      blockerMessage: !hasCandidates
+        ? 'Ajoutez des candidats au pipeline depuis le sourcing.'
+        : null,
+      nextAction: !hasCandidates
+        ? { label: 'Aller au sourcing', tab: 'sourcing' }
+        : null,
+    },
+    {
+      id: 'insights',
+      isComplete: hasMessaged,
+      isReady: hasCandidates,
+      isLocked: !hasCandidates,
+      completionPercent: hasMessaged ? 100 : 0,
+      blockerMessage: !hasCandidates
+        ? 'Des données de pipeline sont nécessaires pour afficher les insights.'
+        : null,
+      nextAction: !hasCandidates
+        ? { label: 'Aller au sourcing', tab: 'sourcing' }
+        : null,
+    },
   ];
 }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Settings2, Search, Send, Check, Lock } from 'lucide-react';
+import { FileText, Settings2, Search, Send, Check, Lock, BarChart2, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { countBriefFields } from '@/lib/missionUtils';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -67,9 +67,15 @@ const steps: StepConfig[] = [
 
 /* ─── Secondary tabs ─── */
 
-const secondarySteps = [
-  { value: 'pipeline', label: 'Pipeline' },
-  { value: 'insights', label: 'Insights' },
+interface SecondaryStepConfig {
+  value: string;
+  label: string;
+  icon?: typeof Layers;
+}
+
+const secondarySteps: SecondaryStepConfig[] = [
+  { value: 'pipeline', label: 'Pipeline', icon: Layers },
+  { value: 'insights', label: 'Insights', icon: BarChart2 },
   { value: 'config', label: 'Config' },
 ];
 
@@ -168,23 +174,34 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
         {/* Secondary tabs */}
         {secondarySteps.map((tab) => {
           const isActive = activeTab === tab.value;
+          const tabReadiness = readiness.find(r => r.id === tab.value);
+          const isLocked = tabReadiness?.isLocked ?? false;
+          const TabIcon = tab.icon;
           return (
             <button
               key={tab.value}
               onClick={() => onTabChange(tab.value)}
+              title={isLocked && tabReadiness?.blockerMessage ? tabReadiness.blockerMessage : undefined}
               className={cn(
-                "relative flex items-center px-3 py-2 transition-colors rounded-md",
+                "relative flex items-center gap-2 px-3 py-2 transition-colors rounded-md",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
-                isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                isLocked
+                  ? "text-muted-foreground/40 cursor-not-allowed"
+                  : isActive
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
+              {isLocked ? (
+                <Lock className="w-3.5 h-3.5 text-muted-foreground/40" />
+              ) : TabIcon ? (
+                <TabIcon className={cn("w-3.5 h-3.5", isActive ? "text-foreground" : "")} />
+              ) : null}
               <span className={cn("text-xs font-medium whitespace-nowrap")}>
                 {tab.label}
               </span>
 
-              {isActive && (
+              {isActive && !isLocked && (
                 <motion.div
                   layoutId="missionTabIndicator"
                   className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-full"
@@ -200,6 +217,8 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
       <div className="sm:hidden flex items-center gap-0.5 overflow-x-auto scrollbar-hide border-b border-border px-1">
         {[...steps.map(s => ({ value: s.value, label: s.label })), ...secondarySteps].map((tab) => {
           const isActive = activeTab === tab.value;
+          const tabReadiness = readiness.find(r => r.id === tab.value);
+          const isLocked = tabReadiness?.isLocked ?? false;
           return (
             <button
               key={tab.value}
@@ -207,13 +226,16 @@ export const MissionProgressBar: React.FC<MissionProgressBarProps> = ({
               className={cn(
                 "relative flex items-center gap-1 h-9 px-3 shrink-0 transition-colors rounded-md",
                 "text-xs font-medium",
-                isActive
-                  ? "text-foreground"
-                  : "text-muted-foreground"
+                isLocked
+                  ? "text-muted-foreground/40 cursor-not-allowed"
+                  : isActive
+                    ? "text-foreground"
+                    : "text-muted-foreground"
               )}
             >
+              {isLocked && <Lock className="w-3 h-3" />}
               <span>{tab.label}</span>
-              {isActive && (
+              {isActive && !isLocked && (
                 <motion.div
                   layoutId="missionTabIndicatorMobile"
                   className="absolute bottom-0 left-1 right-1 h-[2px] bg-primary rounded-full"
