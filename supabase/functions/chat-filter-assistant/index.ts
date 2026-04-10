@@ -28,6 +28,12 @@ interface FilterUpdate {
   school_names?: string[]; // Names to be resolved to IDs by frontend
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const systemPrompt = `Tu es un assistant IA expert en recrutement LinkedIn et en Boolean Search avancé. Tu aides les utilisateurs à configurer les filtres de recherche LinkedIn Recruiter de manière conversationnelle.
 
 Tu maîtrises les techniques avancées de sourcing LinkedIn:
@@ -178,11 +184,9 @@ Deno.serve(async (req) => {
     }
 
     // Use Claude Sonnet 4.5 via Anthropic API
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
     try {
-      response = await fetch("https://api.anthropic.com/v1/messages", {
+      response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "x-api-key": ANTHROPIC_API_KEY,
@@ -200,10 +204,10 @@ Deno.serve(async (req) => {
           })),
           stream: true,
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+      }, 30000);
+    } catch (e) {
+      console.error("Anthropic API timeout:", e);
+      throw e;
     }
 
     if (!response.ok) {

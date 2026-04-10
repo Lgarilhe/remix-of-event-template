@@ -12,6 +12,12 @@ function sanitizeString(val: unknown, maxLen = 5000): string {
   return val.slice(0, maxLen).replace(/<script[^>]*>.*?<\/script>/gi, '');
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -79,11 +85,9 @@ Catégories d'anomalies à chercher :
 
 Réponds UNIQUEMENT avec un JSON structuré, pas de texte autour.`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
     try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -131,10 +135,10 @@ Réponds UNIQUEMENT avec un JSON structuré, pas de texte autour.`;
           ],
           tool_choice: { type: "function", function: { name: "report_anomalies" } },
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+      }, 30000);
+    } catch (e) {
+      console.error("AI gateway timeout:", e);
+      throw e;
     }
 
     if (!response.ok) {

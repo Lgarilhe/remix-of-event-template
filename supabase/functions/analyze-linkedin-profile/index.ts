@@ -17,6 +17,12 @@ function sanitizeArray(val: unknown, maxItems = 30, maxLen = 100): string[] {
   return val.slice(0, maxItems).map(v => sanitize(v, maxLen)).filter(Boolean);
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -85,11 +91,9 @@ Règles:
 - fit_score: score de 0-100 basé sur l'attractivité du profil pour un recruteur tech
 - Sois factuel, pas de flatterie. Base-toi uniquement sur les données fournies.`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
     try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -104,10 +108,10 @@ Règles:
           max_tokens: 400,
           temperature: 0.3,
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+      }, 30000);
+    } catch (e) {
+      console.error("AI gateway timeout:", e);
+      throw e;
     }
 
     if (!response.ok) {

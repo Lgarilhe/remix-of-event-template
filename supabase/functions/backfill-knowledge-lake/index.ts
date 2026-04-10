@@ -16,6 +16,12 @@ const corsHeaders = {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 async function sha256Hex(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
@@ -24,7 +30,7 @@ async function sha256Hex(text: string): Promise<string> {
 
 async function callOpenAIEmbeddings(apiKey: string, inputs: string[]): Promise<number[][]> {
   const truncated = inputs.map(t => t.substring(0, 8000));
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "text-embedding-3-small", input: truncated }),

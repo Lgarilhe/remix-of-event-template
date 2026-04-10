@@ -76,6 +76,12 @@ interface JobMatch {
   summary: string;
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 interface AnalysisResult {
   intent: 'interested' | 'not_interested' | 'needs_info' | 'wants_call' | 'timing_issue' | 'already_placed' | 'neutral';
   intentConfidence: number;
@@ -378,11 +384,9 @@ Analyse cette conversation et retourne le JSON.`;
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 55000);
     let response: Response;
     try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${LOVABLE_API_KEY}`,
@@ -397,10 +401,10 @@ Analyse cette conversation et retourne le JSON.`;
             { role: "user", content: userPrompt }
           ],
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+      }, 55000);
+    } catch (e) {
+      console.error("AI gateway timeout:", e);
+      throw e;
     }
 
     if (!response.ok) {

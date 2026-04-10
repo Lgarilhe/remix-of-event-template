@@ -5,6 +5,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -157,7 +163,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (orgData?.organization_id) {
-          await fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+          await fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({

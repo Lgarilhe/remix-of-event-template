@@ -7,6 +7,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 // ── Types ──────────────────────────────────────────────────────────────
 interface TriggerPayload {
   type: "INSERT" | "UPDATE" | "DELETE";
@@ -270,7 +276,7 @@ Deno.serve(async (req) => {
     const svcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // Get a service-level token for internal call
-    const ingestRes = await fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+    const ingestRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
