@@ -36,7 +36,7 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
   return fetchWithTimeout(url, options);
 }
 
-async function resolveOrgCredentials(orgId: string): Promise<NotionCreds> {
+async function resolveOrgCredentials(orgId: string): Promise<NotionCreds | null> {
   const { data } = await supabase
     .from('organization_integrations')
     .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
@@ -44,7 +44,8 @@ async function resolveOrgCredentials(orgId: string): Promise<NotionCreds> {
     .single();
 
   if (!data?.notion_connected || !data.notion_api_key) {
-    throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
+    console.warn('[add-to-shortlist] Notion not configured for org', orgId, '— skipping');
+    return null;
   }
 
   console.log('[add-to-shortlist] Using org-specific Notion credentials');
@@ -223,6 +224,13 @@ Deno.serve(async (req) => {
 
     if (!data.organization_id) throw new Error('organization_id est requis');
     const creds = await resolveOrgCredentials(data.organization_id);
+
+    if (!creds) {
+      return new Response(
+        JSON.stringify({ success: true, skipped_notion: true, reason: 'notion_not_configured' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
 
     if (!data.name) throw new Error('Name is required');
 
