@@ -13,8 +13,9 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 }
 
 const NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID");
+const SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID");
+const notionConfigured = !!(NOTION_API_KEY && CANDIDATS_DATABASE_ID && SHORTLIST_DATABASE_ID);
 
 interface ApplicationData {
   jobId: string; // Notion page ID of the job
@@ -57,10 +58,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!NOTION_API_KEY) {
-      throw new Error('NOTION_API_KEY is not configured');
-    }
-
     const data: ApplicationData = await req.json();
 
     // ── Rate Limiting by IP + email hash ──
@@ -129,6 +126,33 @@ Deno.serve(async (req) => {
     data.message = (data.message || '').trim().slice(0, 5000);
     data.cvUrl = (data.cvUrl || '').trim().slice(0, 500);
 
+    // ── Notion Sync (optional — endpoint works without Notion configured) ──
+    if (!notionConfigured) {
+      console.warn('[submit-application] Notion not fully configured (missing NOTION_API_KEY, NOTION_CANDIDATS_DB_ID, or NOTION_SHORTLIST_DB_ID) — skipping Notion sync');
+      console.log('[submit-application] Application data received:', JSON.stringify({
+        jobId: data.jobId,
+        jobTitle: data.jobTitle,
+        clientName: data.clientName,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        linkedin: data.linkedin,
+        cvUrl: data.cvUrl,
+        messageLength: data.message?.length ?? 0,
+      }));
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Application submitted successfully',
+          skipped_notion: true,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
+    }
+
     // Step 1: Create the candidate in Candidats database (without job relation first)
     const candidatProperties: Record<string, unknown> = {
       'Nom': {
@@ -158,7 +182,7 @@ Deno.serve(async (req) => {
     }
 
     console.log('Creating candidate with properties:', JSON.stringify(candidatProperties));
-    const candidatResult = await createNotionPage(CANDIDATS_DATABASE_ID, candidatProperties);
+    const candidatResult = await createNotionPage(CANDIDATS_DATABASE_ID!, candidatProperties);
     console.log('Candidate created:', candidatResult.id);
 
     // Step 2: Create a Shortlist entry linking candidate and job
@@ -189,19 +213,19 @@ Deno.serve(async (req) => {
     }
 
     console.log('Creating shortlist with properties:', JSON.stringify(shortlistProperties));
-    const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID, shortlistProperties);
+    const shortlistResult = await createNotionPage(SHORTLIST_DATABASE_ID!, shortlistProperties);
     console.log('Shortlist created:', shortlistResult.id);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         message: 'Application submitted successfully',
         candidateId: candidatResult.id,
         shortlistId: shortlistResult.id
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+        status: 200
       }
     );
 
