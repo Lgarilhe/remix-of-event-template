@@ -290,9 +290,9 @@ async function handleProcess(supabase: any, force = false) {
 
     console.log(`[process] Smart batch: ${invisibleCount} invisible + ${visibleCount} visible actions (from ${dedupedExecutions.length} candidates)`);
 
-    // Random jitter (0-10s) only before visible actions to appear more human
+    // Random jitter (15-45s) only before visible actions to appear more human
     if (visibleCount > 0) {
-      const jitterMs = Math.floor(Math.random() * 10000);
+      const jitterMs = 15000 + Math.floor(Math.random() * 30000); // 15-45s
       if (jitterMs > 0) {
         console.log(`[process] Jitter: waiting ${Math.round(jitterMs / 1000)}s before visible actions`);
         await new Promise(r => setTimeout(r, jitterMs));
@@ -399,6 +399,26 @@ async function handleProcess(supabase: any, force = false) {
           await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
           results.skipped++;
           continue;
+        }
+
+        // Check LinkedIn account health before executing
+        if (enrollment.account_id) {
+          const { data: accountStatus } = await supabase
+            .from('member_linkedin_accounts')
+            .select('account_status')
+            .eq('account_id', enrollment.account_id)
+            .maybeSingle();
+
+          if (accountStatus && accountStatus.account_status !== 'OK') {
+            console.warn(`[process] ⛔ Account ${enrollment.account_id} status is '${accountStatus.account_status}' — skipping execution`);
+            await supabase.from('sequence_step_executions').update({
+              status: 'scheduled',
+              scheduled_at: new Date(Date.now() + 3600000).toISOString(), // retry in 1h
+              error_message: `Account status: ${accountStatus.account_status}`,
+            }).eq('id', exec.id);
+            results.skipped++;
+            continue;
+          }
         }
 
         const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value, uCreds.apiKey, uCreds.dsn);
@@ -559,9 +579,9 @@ async function handleProcess(supabase: any, force = false) {
           : (step.step_channel === 'whatsapp' || step.action_type === 'whatsapp_message') ? 'whatsapp_message'
           : step.action_type;
 
-        // Inter-visible-action spacing: 1-3s delay between visible actions to look human
+        // Inter-visible-action spacing: 5-15s delay between visible actions to look human
         if (!INVISIBLE_ACTIONS.has(effectiveActionType) && visibleActionsExecuted > 0) {
-          const spacingMs = 1000 + Math.floor(Math.random() * 2000);
+          const spacingMs = 5000 + Math.floor(Math.random() * 10000); // 5-15s
           console.log(`[process] Spacing: ${Math.round(spacingMs / 1000)}s between visible actions`);
           await new Promise(r => setTimeout(r, spacingMs));
         }
@@ -1386,11 +1406,14 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
       if (total <= 0) return { allowed: false, reason: 'Quota InMail épuisé' };
     } else if (actionType === 'connection_request') {
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-      const { data } = await supabase.from('sequence_step_executions').select('id, step:sequence_steps!inner(action_type)').eq('status', 'sent').eq('step.action_type', 'connection_request').gte('executed_at', weekAgo.toISOString());
+      const { data } = await supabase.from('sequence_step_executions').select('id, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(account_id)').eq('status', 'sent').eq('step.action_type', 'connection_request').eq('enrollment.account_id', accountId).gte('executed_at', weekAgo.toISOString());
       if ((data?.length || 0) >= WEEKLY_INVITE_LIMIT) return { allowed: false, reason: `Limite hebdo invitations (${WEEKLY_INVITE_LIMIT})` };
     }
     return { allowed: true };
-  } catch { return { allowed: true }; }
+  } catch (e) {
+    console.error('[process] Quota check failed — blocking action for safety:', e);
+    return { allowed: false, reason: 'Quota check failed (err)' };
+  }
 }
 
 // deno-lint-ignore no-explicit-any
