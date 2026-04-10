@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
 import { ATSDashboard } from '@/components/ats/ATSDashboard';
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
@@ -9,6 +10,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { getOrgTypeLabel, getOrgTypeEmoji } from '@/lib/featureGates';
 import { RefreshCw } from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
+import { Button } from '@/components/ui/button';
 
 export default function Dashboard() {
   const { candidates, loading, isFetching, isFromCache, refetch, handleStageChange, handleTagsChange } = useATSData();
@@ -16,7 +18,8 @@ export default function Dashboard() {
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const navigate = useNavigate();
+  const hasMissions = loading ? null : candidates.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -47,45 +50,26 @@ export default function Dashboard() {
           {/* Dashboard Content */}
           {loading && candidates.length === 0 ? (
             <ATSStatsSkeleton />
-          ) : candidates.length === 0 ? (
-            <div className="border border-border bg-background p-6 sm:p-8">
-              <div className="flex items-start gap-4">
-                <div className="text-4xl">👋</div>
-                <div>
-                  <h2 className="text-lg font-bold tracking-tight">Bienvenue sur Skalr</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Voici les 3 étapes pour démarrer :
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-                <a href="/missions" className="group border border-border p-5 hover:bg-accent transition-colors">
-                  <div className="text-2xl mb-2">📂</div>
-                  <div className="text-xs font-bold">1. Créer une mission</div>
-                  <p className="text-xs text-muted-foreground mt-1">Ajoutez votre premier poste à pourvoir</p>
-                </a>
-                <a href="/missions" className="group border border-border p-5 hover:bg-accent transition-colors">
-                  <div className="text-2xl mb-2">🔍</div>
-                  <div className="text-xs font-bold">2. Sourcer des candidats</div>
-                  <p className="text-xs text-muted-foreground mt-1">Lancez une recherche LinkedIn</p>
-                </a>
-                <a href="/settings?tab=connectors" className="group border border-border p-5 hover:bg-accent transition-colors">
-                  <div className="text-2xl mb-2">🔌</div>
-                  <div className="text-xs font-bold">3. Connecter vos outils</div>
-                  <p className="text-xs text-muted-foreground mt-1">Notion, Airtable, Aircall...</p>
-                </a>
-              </div>
-              <p className="text-xs text-muted-foreground mt-4 text-center">
-                Astuce : appuyez sur <kbd className="px-1.5 py-0.5 border border-border text-foreground font-mono">{isMac ? '⌘K' : 'Ctrl+K'}</kbd> à tout moment pour ouvrir le copilot IA
-              </p>
-            </div>
           ) : (
-            <ATSDashboard
-              candidates={candidates}
-              stages={ATS_STAGES}
-              onCandidateClick={(c) => setSelectedCandidate(c)}
-              onJobClick={(jobId) => setSelectedJobId(jobId)}
-            />
+            <>
+              {hasMissions === false && (
+                <div className="text-center py-12 space-y-4 mb-6">
+                  <h2 className="text-sm font-bold uppercase tracking-wider">Bienvenue sur Skalr</h2>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Commencez par créer une mission pour sourcer et contacter vos candidats.
+                  </p>
+                  <Button onClick={() => navigate('/missions')} size="sm">
+                    Créer une mission
+                  </Button>
+                </div>
+              )}
+              <ATSDashboard
+                candidates={candidates}
+                stages={ATS_STAGES}
+                onCandidateClick={(c) => setSelectedCandidate(c)}
+                onJobClick={(jobId) => setSelectedJobId(jobId)}
+              />
+            </>
           )}
         </div>
       </div>
