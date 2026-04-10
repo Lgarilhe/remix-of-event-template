@@ -6,6 +6,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -90,6 +100,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [candidateEnrollments, setCandidateEnrollments] = useState<Record<string, { id: string; status: string; sequence_name: string } | null>>({});
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'remove'; candidateId: string } | null>(null);
 
   // Fetch active sequence enrollments for candidates
   useEffect(() => {
@@ -175,6 +186,16 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       console.error('Error resuming sequence:', error);
       toast.error('Erreur lors de la reprise');
     }
+  };
+
+  const handleConfirmedAction = async () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === 'stop') {
+      await stopSequence(confirmAction.candidateId);
+    } else if (confirmAction.type === 'remove') {
+      await removeFromProject(confirmAction.candidateId);
+    }
+    setConfirmAction(null);
   };
 
   // Filter candidates
@@ -535,8 +556,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           <>
                             <DropdownMenuSeparator />
                             {candidateEnrollments[candidate.candidate_id]?.status === 'active' ? (
-                              <DropdownMenuItem 
-                                onClick={() => stopSequence(candidate.candidate_id)}
+                              <DropdownMenuItem
+                                onClick={() => setConfirmAction({ type: 'stop', candidateId: candidate.candidate_id })}
                                 className="text-warning-foreground focus:text-warning-foreground"
                               >
                                 <StopCircle className="w-4 h-4 mr-2" />
@@ -574,8 +595,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         
                         <DropdownMenuSeparator />
                         
-                        <DropdownMenuItem 
-                          onClick={() => removeFromProject(candidate.id)}
+                        <DropdownMenuItem
+                          onClick={() => setConfirmAction({ type: 'remove', candidateId: candidate.id })}
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
@@ -595,6 +616,27 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       <div className="text-xs text-muted-foreground text-center">
         {filteredCandidates.length} sur {candidates.length} candidat(s)
       </div>
+
+      <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === 'stop' ? 'Arrêter la séquence' : 'Retirer le candidat'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === 'stop'
+                ? 'Le candidat ne recevra plus de messages de cette séquence.'
+                : 'Le candidat sera retiré de ce projet.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleConfirmedAction}>
+              Confirmer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

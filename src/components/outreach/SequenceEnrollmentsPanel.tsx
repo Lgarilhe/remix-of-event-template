@@ -6,6 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -200,6 +210,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [processingSequences, setProcessingSequences] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop'; id?: string } | null>(null);
 
   const fetchEnrollments = async () => {
     try {
@@ -369,6 +380,16 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     }
   };
 
+  const handleConfirmedAction = async () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === 'stop' && confirmAction.id) {
+      await stopEnrollment(confirmAction.id);
+    } else if (confirmAction.type === 'bulkStop') {
+      await bulkStopActive();
+    }
+    setConfirmAction(null);
+  };
+
   const processSequencesNow = async () => {
     try {
       setProcessingSequences(true);
@@ -422,6 +443,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     .filter(exec => exec.status === 'scheduled' && new Date(exec.scheduled_at) < new Date());
 
   return (
+    <>
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-lg border-l border-border">
         <SheetHeader>
@@ -480,8 +502,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
           {/* Bulk actions */}
           {activeCount > 0 && (
-            <button 
-              onClick={bulkStopActive}
+            <button
+              onClick={() => setConfirmAction({ type: 'bulkStop' })}
               className="w-full relative overflow-hidden h-9 px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
             >
               <StopCircle className="w-3.5 h-3.5" />
@@ -626,8 +648,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="z-[3000] bg-background border-border rounded-lg">
                                 {enrollment.status === 'active' ? (
-                                  <DropdownMenuItem 
-                                    onClick={() => stopEnrollment(enrollment.id)}
+                                  <DropdownMenuItem
+                                    onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
                                     className="text-warning-foreground"
                                   >
                                     <StopCircle className="w-4 h-4 mr-2" />
@@ -809,5 +831,29 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         </div>
       </SheetContent>
     </Sheet>
+
+    <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {confirmAction?.type === 'bulkStop'
+              ? `Arrêter toutes les séquences actives (${activeCount})`
+              : 'Arrêter la séquence'}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirmAction?.type === 'bulkStop'
+              ? `Les ${activeCount} candidat(s) actif(s) ne recevront plus de messages de cette séquence.`
+              : 'Le candidat ne recevra plus de messages de cette séquence.'}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleConfirmedAction}>
+            Confirmer
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
