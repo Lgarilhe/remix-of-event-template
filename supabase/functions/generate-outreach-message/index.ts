@@ -230,7 +230,8 @@ async function fetchRecentPosts(
   }
 
   try {
-    const url = `https://${creds.dsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
+    const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
+    const url = `${baseDsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
     console.log('[generate-outreach-message] Fetching posts:', url);
 
     const response = await fetchWithTimeout(url, {
