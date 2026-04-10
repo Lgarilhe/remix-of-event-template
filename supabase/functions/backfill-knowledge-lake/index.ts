@@ -90,33 +90,33 @@ async function ingestBatchDirect(
     allEmbeddings.push(...embeddings);
   }
 
+  const updatedAt = new Date().toISOString();
+  const rows = toEmbed.map(({ chunk, hash }, i) => ({
+    organization_id: orgId,
+    entity_type: chunk.entity_type,
+    entity_id: chunk.entity_id,
+    chunk_type: chunk.chunk_type,
+    content: chunk.content,
+    content_hash: hash,
+    embedding: `[${allEmbeddings[i].join(",")}]`,
+    source_table: chunk.source_table ?? null,
+    source_id: chunk.source_id ?? null,
+    metadata: chunk.metadata ?? {},
+    expires_at: chunk.expires_at ?? null,
+    updated_at: updatedAt,
+  }));
+
+  const { error } = await svc
+    .from("knowledge_chunks")
+    .upsert(rows, { onConflict: "organization_id,entity_type,entity_id,chunk_type,content_hash" });
+
   let ingested = 0;
   let errors = 0;
-  for (let i = 0; i < toEmbed.length; i++) {
-    const { chunk, hash } = toEmbed[i];
-    const embeddingStr = `[${allEmbeddings[i].join(",")}]`;
-
-    const { error } = await svc.from("knowledge_chunks").upsert({
-      organization_id: orgId,
-      entity_type: chunk.entity_type,
-      entity_id: chunk.entity_id,
-      chunk_type: chunk.chunk_type,
-      content: chunk.content,
-      content_hash: hash,
-      embedding: embeddingStr,
-      source_table: chunk.source_table ?? null,
-      source_id: chunk.source_id ?? null,
-      metadata: chunk.metadata ?? {},
-      expires_at: chunk.expires_at ?? null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "organization_id,entity_type,entity_id,chunk_type,content_hash" });
-
-    if (error) {
-      if (errors < 3) console.error(`Upsert error:`, error.message);
-      errors++;
-    } else {
-      ingested++;
-    }
+  if (error) {
+    console.error(`Batch upsert error:`, error.message);
+    errors = rows.length;
+  } else {
+    ingested = rows.length;
   }
 
   return { ingested, skipped, errors };
@@ -428,33 +428,53 @@ Deno.serve(async (req) => {
         .eq("organization_id", organizationId)
         .range(startOffset, startOffset + maxRows - 1);
 
-      if (enrollments) {
+      if (enrollments && enrollments.length > 0) {
+        // Fetch all step_executions in one query instead of N per-enrollment queries
+        const enrollmentIds = enrollments.map((e: { id: string }) => e.id);
+        const { data: allExecutions } = await svc
+          .from("sequence_step_executions")
+          .select("*, step:step_id(action_type)")
+          .in("enrollment_id", enrollmentIds)
+          .in("status", ["sent", "replied"])
+          .order("step_order", { ascending: true });
+
+        // Group executions by enrollment_id in JS
+        const execsByEnrollment = new Map<string, typeof allExecutions>();
+        for (const exec of allExecutions || []) {
+          const list = execsByEnrollment.get(exec.enrollment_id) || [];
+          list.push(exec);
+          execsByEnrollment.set(exec.enrollment_id, list);
+        }
+
+        // Collect all ingest chunks across enrollments first, then batch ingest
+        const allIngestChunks: { chunks: ChunkToIngest[]; profileId: string }[] = [];
         for (const enrollment of enrollments) {
-          const { data: executions } = await svc
-            .from("sequence_step_executions")
-            .select("*, step:step_id(action_type)")
-            .eq("enrollment_id", enrollment.id)
-            .in("status", ["sent", "replied"])
-            .order("step_order", { ascending: true })
-            .limit(20);
+          const executions = execsByEnrollment.get(enrollment.id) || [];
+          if (!executions.length) continue;
 
-          if (!executions?.length) continue;
-
-          const adapterChunks = adaptSequenceHistory(executions);
+          // Respect per-enrollment limit of 20 steps (consistent with original)
+          const limitedExecutions = executions.slice(0, 20);
+          const adapterChunks = adaptSequenceHistory(limitedExecutions);
           const ingestChunks = toIngestChunks("candidate", enrollment.profile_id, adapterChunks);
 
           if (ingestChunks.length > 0) {
-            try {
-              const result = await ingestBatchDirect(svc, openaiKey, organizationId, ingestChunks);
-              execStat.ingested += result.ingested;
-              execStat.skipped += result.skipped;
-              execStat.errors += result.errors;
-            } catch (e) {
-              console.error("Batch error on sequence_step_executions:", e instanceof Error ? e.message : String(e));
-              execStat.errors += ingestChunks.length;
-            }
+            allIngestChunks.push({ chunks: ingestChunks, profileId: enrollment.profile_id });
           }
           execStat.processed++;
+        }
+
+        // Batch ingest all enrollment chunks together
+        const flatChunks = allIngestChunks.flatMap(e => e.chunks);
+        if (flatChunks.length > 0) {
+          try {
+            const result = await ingestBatchDirect(svc, openaiKey, organizationId, flatChunks);
+            execStat.ingested += result.ingested;
+            execStat.skipped += result.skipped;
+            execStat.errors += result.errors;
+          } catch (e) {
+            console.error("Batch error on sequence_step_executions:", e instanceof Error ? e.message : String(e));
+            execStat.errors += flatChunks.length;
+          }
         }
       }
       stats["sequence_step_executions"] = execStat;
