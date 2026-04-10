@@ -26,14 +26,17 @@
 
 ### Routes (src/App.tsx)
 ```
+/dashboard               → Dashboard (stats + welcome CTA if no missions)
 /missions                → Outreach page (ProjectsList)
 /missions/:id            → MissionWorkspace (8 tabs: overview/brief/process/sourcing/outreach/pipeline/insights/config)
 /mission-invite/:token   → AcceptMissionInvite
-/pipeline                → ATS page
+/pipeline                → ATS page (kanban/table/timeline/analytics)
+/candidates              → Redirects to /pipeline
+/prospection             → Vivier/CRM (agency-only, gated by featureGates)
 /inbox                   → MessagesInbox
-/dashboard               → Dashboard
-/settings                → Settings
-Legacy: /outreach → /missions, /ats → /pipeline, /prospection → /missions?tab=prospection
+/settings                → Settings (deep links: ?tab=general|team|connectors|integrations|billing|credits|agency|marketplace)
+/qualification/:id       → Qualification session (deep-linked from modals)
+Legacy: /outreach → /missions, /ats → /pipeline
 ```
 
 ### Mission Flow
@@ -155,14 +158,127 @@ activeProject exists → useLinkedInSearch creates job from brief:
 
 ---
 
+## Edge Function Conventions (MANDATORY)
+
+Every edge function MUST follow these patterns. See `.claude/skills/edge-function.md` for the full skeleton.
+
+### Auth & Multi-tenant
+```typescript
+// 1. Auth — use requireAuth from shared module
+import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
+const auth = await requireAuth(req, corsHeaders);
+
+// 2. If organization_id comes from request body, VERIFY membership
+if (organization_id && auth.userId) {
+  const isMember = await verifyOrgMembership(admin, auth.userId, organization_id);
+  if (!isMember) return json({ error: "Forbidden" }, 403);
+}
+```
+
+### Credentials — NEVER use mutable globals
+```typescript
+// ❌ WRONG — credential bleed between concurrent requests
+let UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+
+// ✅ CORRECT — immutable env fallbacks + per-request resolution
+const ENV_UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+// In handler: resolve per-org, store in local variable
+const creds = await resolveUnipileCreds(orgId, supabase);
+```
+
+### External HTTP calls — ALWAYS use fetchWithTimeout
+```typescript
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+// Use 30s for LLM calls, 15s for everything else
+```
+
+### AI calls — ALWAYS settle credits
+```typescript
+import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+// After every Anthropic API call:
+await settleCredits(adminClient, {
+  organizationId, userId, aiAction, modelId,
+  tokensInput: response.usage.input_tokens,
+  tokensOutput: response.usage.output_tokens,
+  description,
+});
+```
+
+### AI model IDs — current valid models
+- `claude-sonnet-4-6` — default for all AI calls
+- `claude-opus-4-6` — for complex reasoning (agent chat)
+- `claude-haiku-4-5-20251001` — for fast/cheap tasks
+- Resolve via `getAnthropicModelId()` from `_shared/ai-config.ts`
+- **NEVER hardcode deprecated IDs** like `claude-sonnet-4-20250514`
+
+### DSN format for Unipile
+- `resolveUnipileCredentials()` returns dsn WITH `https://` prefix
+- When constructing URLs: `const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : \`https://${creds.dsn}\``
+- NEVER do `https://${creds.dsn}` — causes double `https://`
+
+---
+
+## Frontend Conventions
+
+### Feature gating
+```typescript
+import { hasFeature } from '@/lib/featureGates';
+// Prospection is agency-only. Check featureGates.ts for the full matrix.
+```
+
+### Destructive actions — ALWAYS use AlertDialog
+```typescript
+// ❌ WRONG — breaks design language
+if (window.confirm('Supprimer ?')) { ... }
+
+// ✅ CORRECT — use shadcn AlertDialog with French text
+<AlertDialog>
+  <AlertDialogContent>
+    <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+    <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Annuler</AlertDialogCancel>
+      <AlertDialogAction className="bg-destructive">Supprimer</AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+### Promises — ALWAYS handle rejections
+```typescript
+// ❌ WRONG — user stuck on infinite spinner if reject
+accept(token).then(handleSuccess);
+
+// ✅ CORRECT
+accept(token).then(handleSuccess).catch(() => setStatus('error'));
+```
+
+### useEffect — avoid object deps
+```typescript
+// ❌ WRONG — new object ref every render = infinite re-fire
+}, [search, activeProject]);
+
+// ✅ CORRECT — use primitive values or refs
+}, [activeProject?.id, searchSource]);
+```
+
+---
+
 ## Common Pitfalls
 - **useEffect deps**: use `activeProject?.id` not `activeProject` (object ref never changes)
 - **missionSearchCache**: restores ALL state — any hook state changes can be overwritten on tab switch
 - **Edge function timeout**: 60s on Supabase — batch LLM calls must fit within this
 - **Lovable deploys from main** — must merge PR to main for changes to be visible
+- **Edge functions are NOT auto-deployed** — run `supabase functions deploy <name>` or `--all`
 - **Two filter formats coexist** — AI format vs LinkedInFiltersState, transformation in useLinkedInSearch
 - **Step reordering**: uses temp negative order values to avoid UNIQUE constraint, then reassigns positive
 - **Location deferred resolution**: if no LinkedIn account connected, location stays as keyword until account available
+- **Prospection** is agency-only (Konekt internal) — gated via `featureGates.ts`
+- **/candidates redirects to /pipeline** — one single entry point for candidates
 
 ---
 
@@ -309,8 +425,12 @@ Frontend (invokeUnipile) → unipile-search edge function → Unipile API → Li
 ### Deployment Warning
 **Edge functions are NOT auto-deployed by Lovable.** After merging changes to edge functions:
 ```bash
-supabase functions deploy database-search
-supabase functions deploy score-profile-job
-supabase functions deploy generate-search-filters
+supabase functions deploy --all
+# Or individually:
+supabase functions deploy <function-name>
 ```
-Or ask Lovable to redeploy. Without this, old code keeps running on Supabase.
+**SQL migrations** also require manual application:
+```bash
+supabase db push
+```
+Without this, old code keeps running on Supabase.
