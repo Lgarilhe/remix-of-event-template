@@ -27,7 +27,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
     listConversations().then(data => {
       setConversations(data);
       setLoading(false);
-    });
+    }).catch((e) => console.error('[AgentConversations] List failed:', e));
   }, [listConversations]);
 
   if (loading) {

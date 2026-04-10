@@ -198,7 +198,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
         }
       }, delay);
       timers.push(t);
-    });
+    }).catch((e) => { console.error('[SceneAudit] Audit failed:', e); if (!signal.aborted) setPhase('error'); });
 
     return () => {
       abortController.abort();

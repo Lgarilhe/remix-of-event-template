@@ -50,7 +50,8 @@ export const useModelPreference = (orgId?: string | null) => {
         .eq('id', orgId)
         .then(({ error }) => {
           if (error) console.error('Failed to persist ai_model_default:', error);
-        });
+        })
+        .catch((e) => console.error('[useModelPreference] Save failed:', e));
     }
   }, [orgId]);
 

@@ -52,7 +52,8 @@ const RecruiterPublicProfile: React.FC = () => {
           setProfile(data as unknown as RecruiterProfile);
         }
         setLoading(false);
-      });
+      })
+      .catch((e) => console.error('[RecruiterPublicProfile] Load error:', e));
   }, [slug]);
 
   if (loading) {

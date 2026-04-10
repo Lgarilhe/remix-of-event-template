@@ -293,7 +293,8 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
         duration_seconds: elapsed_seconds,
       })
       .eq("id", session_id)
-      .then(() => {});
+      .then(() => {})
+      .catch((e: unknown) => console.error('[live-coach] Transcript update failed:', e));
 
     return new Response(JSON.stringify(analysis), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

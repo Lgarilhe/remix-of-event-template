@@ -194,7 +194,8 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
       .from('knowledge_chunks')
       .select('id', { count: 'exact', head: true })
       .eq('entity_id', jobId)
-      .then(({ count }) => setRagCount(count ?? 0));
+      .then(({ count }) => setRagCount(count ?? 0))
+      .catch(() => {});
   }, [jobId, open, tab]);
 
   /* ─── score summary ─── */
