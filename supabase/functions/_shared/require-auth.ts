@@ -57,3 +57,22 @@ export async function requireAuth(
 
   return { userId: user.id, method: "jwt" };
 }
+
+/**
+ * Verify that a user belongs to the given organization.
+ * Returns true if membership confirmed, false otherwise.
+ * Requires a service-role Supabase client (bypasses RLS).
+ */
+export async function verifyOrgMembership(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  organizationId: string
+): Promise<boolean> {
+  const { data } = await adminClient
+    .from("organization_members")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  return !!data;
+}
