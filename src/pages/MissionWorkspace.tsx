@@ -164,7 +164,7 @@ const MissionWorkspace = () => {
           />
 
           {/* ── Tab content with animations ── */}
-          <AnimatePresence initial={false}>
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activeTab}
               variants={tabVariants}
