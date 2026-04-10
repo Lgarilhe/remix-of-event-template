@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
       console.warn("[generate-search-filters] Failed to load settle-credits, using defaults:", e);
     }
     // Resolve Anthropic model ID from user selection
-    let resolvedModel = "claude-sonnet-4-20250514";
+    let resolvedModel = "claude-sonnet-4-6";
     try {
       const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
       const candidate = getAnthropicModelId(_aiParams.modelId);

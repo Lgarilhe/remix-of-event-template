@@ -584,7 +584,7 @@ Réponds UNIQUEMENT en JSON valide:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 400,
           system: [{ type: "text", text: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown.", cache_control: { type: "ephemeral" } }],
           messages: [
@@ -665,7 +665,7 @@ Réponds UNIQUEMENT en JSON valide:
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
+            model: "claude-sonnet-4-6",
             max_tokens: 400,
             system: [{ type: "text", text: "Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
             messages: [{ role: "user", content: `Conversation:\n${conversationHistory}\n\nGénère 3 réponses.` }],

@@ -375,11 +375,11 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn("[generate-outreach-message] Failed to load settle-credits:", e);
     }
-    let _resolvedAnthropicModel = "claude-sonnet-4-20250514";
+    let _resolvedAnthropicModel = "claude-sonnet-4-6";
     try {
       const { getAnthropicModelId } = await import("../_shared/ai-config.ts");
       const resolved = getAnthropicModelId(_aiParams.modelId);
-      _resolvedAnthropicModel = resolved.startsWith("claude-") ? resolved : "claude-sonnet-4-20250514";
+      _resolvedAnthropicModel = resolved.startsWith("claude-") ? resolved : "claude-sonnet-4-6";
     } catch (e) {
       console.warn("[generate-outreach-message] Failed to load ai-config:", e);
     }

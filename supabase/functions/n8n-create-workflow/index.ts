@@ -291,7 +291,7 @@ try {
         // 3. ANTHROPIC CLAUDE — modèle de langage
         {
           parameters: {
-            model: "claude-3-7-sonnet-latest",
+            model: "claude-sonnet-4-6",
             options: {},
           },
           id: "a2000001-0001-4000-8000-000000000003",
