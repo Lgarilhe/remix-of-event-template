@@ -16,7 +16,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function resolveOrgCredentials(orgId: string): Promise<{ notionApiKey: string }> {
+async function resolveOrgCredentials(orgId: string): Promise<{ notionApiKey: string } | null> {
   const { data } = await supabase
     .from('organization_integrations')
     .select('notion_api_key, notion_connected')
@@ -24,7 +24,8 @@ async function resolveOrgCredentials(orgId: string): Promise<{ notionApiKey: str
     .single();
 
   if (!data?.notion_connected || !data.notion_api_key) {
-    throw new Error('Intégration Notion non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
+    console.warn('[update-candidate-stage] Notion not configured for org', orgId, '— skipping');
+    return null;
   }
 
   console.log('[update-candidate-stage] Using org-specific Notion credentials');
@@ -67,34 +68,51 @@ Deno.serve(async (req) => {
     if (!organization_id) {
       throw new Error('organization_id est requis');
     }
-    const { notionApiKey } = await resolveOrgCredentials(organization_id);
 
     if (!shortlistId || !newStage) {
       throw new Error('Missing shortlistId or newStage');
     }
 
-    const response = await fetchWithTimeout(`https://api.notion.com/v1/pages/${shortlistId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${notionApiKey}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        properties: {
-          'Etape': {
-            select: {
-              name: newStage,
+    const credentials = await resolveOrgCredentials(organization_id);
+
+    if (!credentials) {
+      return new Response(
+        JSON.stringify({ success: true, skipped_notion: true, reason: 'notion_not_configured' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    try {
+      const response = await fetchWithTimeout(`https://api.notion.com/v1/pages/${shortlistId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${credentials.notionApiKey}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          properties: {
+            'Etape': {
+              select: {
+                name: newStage,
+              },
             },
           },
-        },
-      }),
-    });
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Notion API error:', error);
-      throw new Error(`Failed to update Notion page: ${error}`);
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('Notion API error:', error);
+        throw new Error(`Failed to update Notion page: ${error}`);
+      }
+    } catch (notionError: unknown) {
+      const msg = notionError instanceof Error ? notionError.message : 'Unknown Notion error';
+      console.error('[update-candidate-stage] Notion sync failed:', msg);
+      return new Response(
+        JSON.stringify({ success: false, error: msg }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 502 }
+      );
     }
 
     return new Response(
