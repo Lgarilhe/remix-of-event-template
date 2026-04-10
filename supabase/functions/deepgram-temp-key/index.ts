@@ -72,12 +72,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fallback: return the API key directly (for WebSocket auth)
-    // WARNING: This exposes the master key — set DEEPGRAM_PROJECT_ID to use temp keys
-    console.warn('[deepgram-temp-key] DEEPGRAM_PROJECT_ID not set — returning master key (insecure)');
+    // DEEPGRAM_PROJECT_ID is required for secure temp key generation
+    console.error('[deepgram-temp-key] DEEPGRAM_PROJECT_ID not configured — refusing to expose master key');
     return new Response(
-      JSON.stringify({ key: DEEPGRAM_API_KEY }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "DEEPGRAM_PROJECT_ID not configured. Cannot generate temporary key." }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("deepgram-temp-key error:", error);
