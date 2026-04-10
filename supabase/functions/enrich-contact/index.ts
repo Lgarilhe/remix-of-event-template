@@ -3,7 +3,7 @@
  * Uses LinkedIn URL to find the person and returns personal emails + phone numbers.
  */
 
-import { requireAuth } from "../_shared/require-auth.ts";
+import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { resolveApolloCredentials } from "../_shared/resolve-org-credentials.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
@@ -33,11 +33,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Resolve Apollo credentials (org-level or global)
+    // Create admin client early for org membership check
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Verify org membership (skip for service_role calls)
+    if (organization_id && auth.userId) {
+      const isMember = await verifyOrgMembership(admin, auth.userId, organization_id);
+      if (!isMember) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
 
     let apolloApiKey: string | null = null;
 
