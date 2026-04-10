@@ -20,11 +20,14 @@ interface AgentContextValue {
   contextMode: AgentContextMode;
   briefContext: Record<string, unknown> | null;
   autoJob: Job | null;
+  /** sourcing_projects.id when opened from a mission */
+  projectId: string | null;
   openContextualAgent: (params: {
     mode: AgentContextMode;
     briefContext?: Record<string, unknown>;
     initialMessage?: string;
     job?: Job;
+    projectId?: string;
   }) => void;
 }
 
@@ -43,6 +46,7 @@ const AgentContext = createContext<AgentContextValue>({
   contextMode: null,
   briefContext: null,
   autoJob: null,
+  projectId: null,
   openContextualAgent: () => {},
 });
 
@@ -59,12 +63,14 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [contextMode, setContextMode] = useState<AgentContextMode>(null);
   const [briefContext, setBriefContext] = useState<Record<string, unknown> | null>(null);
   const [autoJob, setAutoJob] = useState<Job | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   const openAgent = useCallback((jobId?: string) => {
     if (jobId) setInitialJobId(jobId);
     setContextMode(null);
     setBriefContext(null);
     setAutoJob(null);
+    setProjectId(null);
     setIsOpen(true);
   }, []);
 
@@ -78,11 +84,13 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     briefContext?: Record<string, unknown>;
     initialMessage?: string;
     job?: Job;
+    projectId?: string;
   }) => {
     setContextMode(params.mode);
     setBriefContext(params.briefContext || null);
     setInitialMessage(params.initialMessage || null);
     setAutoJob(params.job || null);
+    setProjectId(params.projectId || null);
     setConversationId(null);
     setIsOpen(true);
   }, []);
@@ -94,6 +102,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setContextMode(null);
     setBriefContext(null);
     setAutoJob(null);
+    setProjectId(null);
   }, []);
 
   const toggleAgent = useCallback(() => {
@@ -104,6 +113,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setContextMode(null);
         setBriefContext(null);
         setAutoJob(null);
+        setProjectId(null);
       }
       return !prev;
     });
@@ -126,6 +136,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         contextMode,
         briefContext,
         autoJob,
+        projectId,
         openContextualAgent,
       }}
     >

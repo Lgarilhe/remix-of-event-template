@@ -446,7 +446,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id, message, job_context, context_mode, brief_context } = body;
+    const { conversation_id, message, job_context, context_mode, brief_context, project_id } = body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -684,8 +684,14 @@ Propose des exemples concrets de messages.`;
 
               // Update conversation status if action detected
               if (metadata.search_plan) {
+                // Enrich search_config with project context for scoring in run-agent-search
+                const enrichedConfig = {
+                  ...(metadata.search_plan as Record<string, unknown>),
+                  ...(project_id ? { project_id } : {}),
+                  ...(brief_context ? { job_context: brief_context } : {}),
+                };
                 await supabase.from("agent_conversations")
-                  .update({ search_config: metadata.search_plan, status: "plan_proposed" })
+                  .update({ search_config: enrichedConfig, status: "plan_proposed" })
                   .eq("id", conversation_id);
               }
             }

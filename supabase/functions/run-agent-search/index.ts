@@ -617,6 +617,77 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Fallback: load job data from sourcing_projects when no Notion job
+    const projectId = searchPlan.project_id;
+    if (!jobData && projectId) {
+      try {
+        const { data: project } = await supabase
+          .from("sourcing_projects")
+          .select("job_details, name")
+          .eq("id", projectId)
+          .maybeSingle();
+
+        if (project?.job_details) {
+          const jd = project.job_details as Record<string, any>;
+          jobData = {
+            id: `project:${projectId}`,
+            title: jd.title || project.name || "",
+            skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
+            description: jd.mission_description || "",
+            location: jd.location || "",
+            seniority: jd.seniority || "",
+            xpMin: jd.experience_min,
+            xpMax: jd.experience_max,
+            mustHave: (jd.skills_must_have || []).join(", "),
+            shouldHave: (jd.skills_should_have || []).join(", "),
+            niceToHave: (jd.skills_nice_to_have || []).join(", "),
+            bodyContent: (jd.evaluation_criteria || [])
+              .map((c: any) => `${c.label}${c.deal_breaker ? " [DEAL-BREAKER]" : ""}: ${c.description || ""}`)
+              .join("\n")
+              .slice(0, 2000),
+            transversalCriteria: {
+              must: (jd.skills_must_have || []).join(", "),
+              should: (jd.skills_should_have || []).join(", "),
+              niceToHave: (jd.skills_nice_to_have || []).join(", "),
+              context: jd.context || "",
+            },
+          };
+          console.log(`[run-agent-search] Loaded job data from sourcing_project: "${jobData.title}"`);
+        }
+      } catch (e) {
+        console.error("[run-agent-search] Failed to load sourcing project:", e);
+      }
+    }
+
+    // Final fallback: build jobData from job_context embedded in search_config
+    if (!jobData && searchPlan.job_context) {
+      const jc = searchPlan.job_context as Record<string, any>;
+      jobData = {
+        id: projectId ? `project:${projectId}` : `agent:${conversation_id}`,
+        title: jc.title || "",
+        skills: [...(jc.skills_must_have || []), ...(jc.skills_should_have || [])],
+        description: jc.mission_description || "",
+        location: jc.location || "",
+        seniority: jc.seniority || "",
+        xpMin: jc.experience_min,
+        xpMax: jc.experience_max,
+        mustHave: (jc.skills_must_have || []).join(", "),
+        shouldHave: (jc.skills_should_have || []).join(", "),
+        niceToHave: (jc.skills_nice_to_have || []).join(", "),
+        bodyContent: (jc.evaluation_criteria || [])
+          .map((c: any) => `${c.label}${c.deal_breaker ? " [DEAL-BREAKER]" : ""}: ${c.description || ""}`)
+          .join("\n")
+          .slice(0, 2000),
+        transversalCriteria: {
+          must: (jc.skills_must_have || []).join(", "),
+          should: (jc.skills_should_have || []).join(", "),
+          niceToHave: (jc.skills_nice_to_have || []).join(", "),
+          context: jc.context || "",
+        },
+      };
+      console.log(`[run-agent-search] Loaded job data from search_config.job_context: "${jobData.title}"`);
+    }
+
     // ── 7. Score profiles (concurrent with semaphore) ──
 
     const GLOBAL_TIMEOUT = 140_000; // 140s safety margin (Supabase limit ~150s)

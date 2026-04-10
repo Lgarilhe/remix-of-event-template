@@ -69,6 +69,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       briefContext: (project.job_details || {}) as Record<string, unknown>,
       initialMessage: `Aide-moi à trouver des candidats pour "${jobTitle}".\n\n=== BRIEF ===\n${briefLines}\n\n=== ACCÈS ===\n${accessLines}`,
       job: undefined,
+      projectId: project.id,
     });
   }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent]);
 

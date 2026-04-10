@@ -203,7 +203,7 @@ export const useAgentChat = (conversationId: string | null) => {
   }, []);
 
   // Send message with streaming
-  const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string, modelOverride?: string | null, contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null, briefContext?: Record<string, unknown> | null) => {
+  const sendMessage = useCallback(async (content: string, jobContext?: Job | null, overrideConversationId?: string, modelOverride?: string | null, contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null, briefContext?: Record<string, unknown> | null, projectId?: string | null) => {
     const convId = overrideConversationId || conversationId;
     if (!convId || !content.trim() || sending) return;
 
@@ -248,6 +248,7 @@ export const useAgentChat = (conversationId: string | null) => {
           _ai_action: contextMode === 'brief' ? 'agent_search_calibration' : 'agent_search_calibration',
           context_mode: contextMode || undefined,
           brief_context: briefContext || undefined,
+          project_id: projectId || undefined,
         }),
         signal: abortController.signal,
       });
