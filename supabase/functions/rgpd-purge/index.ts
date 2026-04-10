@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     try {
       // Find candidates with last activity > 24 months ago
       const { data: staleCandidates, error: staleError } = await adminClient
-        .from("candidate_job_status")
+        .from("job_candidate_status")
         .select("id, candidate_id, organization_id, candidate_name")
         .lt("updated_at", cutoff24m.toISOString())
         .is("status", null) // No active status = inactive
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
 
         // Delete the candidate records
         const { error: deleteError } = await adminClient
-          .from("candidate_job_status")
+          .from("job_candidate_status")
           .delete()
           .in("id", ids);
 
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
 
     try {
       const { data: refusedCandidates, error: refusedError } = await adminClient
-        .from("candidate_job_status")
+        .from("job_candidate_status")
         .select("id, candidate_id")
         .in("status", ["refused", "withdrawn", "rejected", "declined"])
         .lt("updated_at", cutoff12m.toISOString())
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
           .in("entity_id", refusedCandidates.map((c) => c.candidate_id).filter(Boolean));
 
         const { error: deleteError } = await adminClient
-          .from("candidate_job_status")
+          .from("job_candidate_status")
           .delete()
           .in("id", ids);
 
