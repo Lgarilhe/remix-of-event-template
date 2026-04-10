@@ -28,6 +28,12 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const APOLLO_BASE = "https://api.apollo.io/api";
 
 // ─── Map LinkedIn filters to Apollo API format ─────────────────────────────
@@ -646,7 +652,7 @@ Deno.serve(async (req) => {
       // Apollo API call with retry on 429 (rate limit)
       let response: Response | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        response = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+        response = await fetchWithTimeout(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -722,7 +728,7 @@ Deno.serve(async (req) => {
           for (let i = 0; i < personIds.length; i += BATCH_SIZE) {
             const batch = personIds.slice(i, i + BATCH_SIZE);
             try {
-              const enrichResponse = await fetch(`${APOLLO_BASE}/v1/people/bulk_match`, {
+              const enrichResponse = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/bulk_match`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -825,7 +831,7 @@ Deno.serve(async (req) => {
 
       console.log("[database-search] Insights payload:", JSON.stringify(apolloPayload));
 
-      const response = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+      const response = await fetchWithTimeout(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -903,7 +909,7 @@ Deno.serve(async (req) => {
         searchPayload.q_keywords = profileId;
       }
 
-      const response = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+      const response = await fetchWithTimeout(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
