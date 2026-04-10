@@ -463,7 +463,7 @@ Réponds en JSON strict :
         // Settle AI credits for this call
         try {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          await settleCredits(supabase, {
+          await settleCredits(supabase as any, {
             organizationId: organization_id,
             userId: user.id || '',
             aiAction: 'vivier_enrichment',

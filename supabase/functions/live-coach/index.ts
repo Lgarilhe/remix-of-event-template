@@ -287,14 +287,14 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    supabaseAdmin
+    Promise.resolve(supabaseAdmin
       .from("call_coaching_sessions")
       .update({
         transcript: full_transcript,
         criteria_detected: analysis.criteria_updates,
         duration_seconds: elapsed_seconds,
       })
-      .eq("id", session_id)
+      .eq("id", session_id))
       .then(() => {})
       .catch((e: unknown) => console.error('[live-coach] Transcript update failed:', e));
 

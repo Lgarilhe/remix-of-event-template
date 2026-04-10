@@ -190,10 +190,10 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   /* ─── load RAG count ─── */
   useEffect(() => {
     if (!jobId || !open || tab !== 'ia') return;
-    supabase
+    Promise.resolve(supabase
       .from('knowledge_chunks')
       .select('id', { count: 'exact', head: true })
-      .eq('entity_id', jobId)
+      .eq('entity_id', jobId))
       .then(({ count }) => setRagCount(count ?? 0))
       .catch(() => {});
   }, [jobId, open, tab]);

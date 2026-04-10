@@ -47,11 +47,10 @@ export const useModelPreference = (orgId?: string | null) => {
       supabase
         .from('organizations')
         .update({ ai_model_default: id } as never)
-        .eq('id', orgId)
-        .then(({ error }) => {
+        .eq('id', orgId)).then(({ error }) => {
           if (error) console.error('Failed to persist ai_model_default:', error);
         })
-        .catch((e) => console.error('[useModelPreference] Save failed:', e));
+        .catch((e: unknown) => console.error('[useModelPreference] Save failed:', e));
     }
   }, [orgId]);
 

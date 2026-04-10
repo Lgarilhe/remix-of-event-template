@@ -53,7 +53,7 @@ const RecruiterPublicProfile: React.FC = () => {
         }
         setLoading(false);
       })
-      .catch((e) => console.error('[RecruiterPublicProfile] Load error:', e));
+      .catch((e: unknown) => console.error('[RecruiterPublicProfile] Load error:', e));
   }, [slug]);
 
   if (loading) {

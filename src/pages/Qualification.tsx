@@ -123,10 +123,10 @@ export default function Qualification() {
     if (!id || !session) return;
     const timer = setTimeout(() => {
       if (notes !== session.notes) {
-        supabase
+        Promise.resolve(supabase
           .from('qualification_sessions')
           .update({ notes, status: 'in_progress' })
-          .eq('id', id)
+          .eq('id', id))
           .then(() => console.log('Auto-saved notes'))
           .catch((e) => console.error('[Qualification] Auto-save failed:', e));
       }

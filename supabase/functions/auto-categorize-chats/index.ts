@@ -54,9 +54,9 @@ async function fetchChatMessages(
   }
 }
 
-async function callAiWithRetry(prompt: string, apiKey: string) {
+async function callAiWithRetry(prompt: string, apiKey: string): Promise<Response> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    let response: Response;
+    let response: Response | undefined;
     try {
       response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -95,12 +95,17 @@ Pas de texte avant ou après.`,
           max_tokens: 4000,
         }),
       }, 30000);
+    } catch (e) {
+      if (attempt === 2) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      continue;
+    }
 
-    if (response.ok) return response;
+    if (response!.ok) return response!;
 
-    if (!RETRYABLE_STATUS.has(response.status) || attempt === 2) {
-      const errorText = await response.text();
-      throw new Error(`AI API error: ${response.status} - ${errorText}`);
+    if (!RETRYABLE_STATUS.has(response!.status) || attempt === 2) {
+      const errorText = await response!.text();
+      throw new Error(`AI API error: ${response!.status} - ${errorText}`);
     }
 
     await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
