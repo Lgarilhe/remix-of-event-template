@@ -571,31 +571,24 @@ Réponds UNIQUEMENT en JSON valide:
   ]
 }`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
-    try {
-      response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "prompt-caching-2024-07-31",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 400,
-          system: [{ type: "text", text: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown.", cache_control: { type: "ephemeral" } }],
-          messages: [
-            { role: "user", content: prompt }
-          ],
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 400,
+        system: [{ type: "text", text: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown.", cache_control: { type: "ephemeral" } }],
+        messages: [
+          { role: "user", content: prompt }
+        ],
+      }),
+    }, 30000);
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -655,9 +648,7 @@ Réponds UNIQUEMENT en JSON valide:
     } catch (parseError) {
       console.warn("JSON parse error, retrying once:", parseError);
       try {
-        const retryController = new AbortController();
-        const retryTimeout = setTimeout(() => retryController.abort(), 15000);
-        const retryRes = await fetch("https://api.anthropic.com/v1/messages", {
+        const retryRes = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "x-api-key": ANTHROPIC_API_KEY,
@@ -670,9 +661,7 @@ Réponds UNIQUEMENT en JSON valide:
             system: [{ type: "text", text: "Génère 3 réponses courtes en JSON valide. Format: {\"suggestions\": [{\"text\": \"...\", \"type\": \"quick\"}, {\"text\": \"...\", \"type\": \"standard\"}, {\"text\": \"...\", \"type\": \"detailed\"}]}. UNIQUEMENT du JSON." }],
             messages: [{ role: "user", content: `Conversation:\n${conversationHistory}\n\nGénère 3 réponses.` }],
           }),
-          signal: retryController.signal,
-        });
-        clearTimeout(retryTimeout);
+        }, 15000);
         if (retryRes.ok) {
           const retryData = await retryRes.json();
           const retryTokensIn = retryData.usage?.input_tokens || 0;

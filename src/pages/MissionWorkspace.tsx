@@ -1,8 +1,8 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SEOHead } from '@/components/SEOHead';
-import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
+import { useSourcingProject, SourcingProject } from '@/hooks/useSourcingProjects';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ArrowLeft, Play, Pause, CheckCircle, Archive, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -49,12 +49,7 @@ const MissionWorkspace = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { orgType, organizationId } = useOrganization();
 
-  const { projects, isLoading } = useSourcingProjects();
-
-  const project = useMemo(
-    () => projects.find(p => p.id === id) || null,
-    [projects, id]
-  );
+  const { data: project = null, isLoading } = useSourcingProject(id);
 
   const isOwnMission = project?.organization_id === organizationId;
   const canEditBrief = hasFeature(orgType, 'edit_brief') && isOwnMission;
