@@ -4,9 +4,10 @@ import { LayoutDashboard, Target, Kanban, MessageSquare, Settings, LogOut, Spark
 import { supabase } from '@/integrations/supabase/client';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
-import { hasFeature } from '@/lib/featureGates';
+import { hasFeature, type Feature } from '@/lib/featureGates';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useAICredits } from '@/hooks/useAICredits';
+import { useAgent } from '@/contexts/AgentContext';
 import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
 import {
   Sidebar,
@@ -24,13 +25,13 @@ import { cn } from '@/lib/utils';
 
 // ── Nav groups ──
 
-const MAIN_NAV_ITEMS = [
+const MAIN_NAV_ITEMS: { to: string; label: string; icon: React.ComponentType<any>; badgeKey?: 'unread'; feature?: Feature }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/missions', label: 'Missions', icon: Target },
-  { to: '/prospection', label: 'Prospection', icon: Building2 },
+  { to: '/prospection', label: 'Prospection', icon: Building2, feature: 'prospection' },
   { to: '/pipeline', label: 'Pipeline', icon: Kanban },
   { to: '/candidates', label: 'Candidats', icon: Users },
-  { to: '/inbox', label: 'Messages', icon: MessageSquare, badgeKey: 'unread' as const },
+  { to: '/inbox', label: 'Messages', icon: MessageSquare, badgeKey: 'unread' },
 ];
 
 export function AppSidebar() {
@@ -41,6 +42,7 @@ export function AppSidebar() {
   const unreadMsgCount = useUnreadMessageNotifications();
   const { orgType, organization } = useOrganization();
   const { creditsRemaining, isLow, isOut, isLoading: creditsLoading } = useAICredits();
+  const { toggleAgent } = useAgent();
 
   const isActive = (path: string) => {
     if (path === '/missions') return location.pathname === '/missions' || location.pathname.startsWith('/missions/');
@@ -83,22 +85,22 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className={cn("pt-0", collapsed ? "px-1" : "px-3")}>
-        {/* Search bar (cosmetic) */}
+        {/* Search bar — opens AI Agent drawer */}
         {!collapsed ? (
           <div className="mb-4 px-1">
-            <div className="flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-xs cursor-default select-none">
+            <button onClick={() => toggleAgent()} className="w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-xs cursor-pointer hover:bg-sidebar-accent/80 transition-colors">
               <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-              <span className="flex-1">Rechercher</span>
+              <span className="flex-1 text-left">Rechercher</span>
               <kbd className="text-[10px] font-mono bg-sidebar-background px-1.5 py-0.5 rounded border border-border">
                 Ctrl+K
               </kbd>
-            </div>
+            </button>
           </div>
         ) : (
           <div className="mb-3 flex justify-center">
-            <div className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground cursor-default hover:bg-sidebar-accent/50 transition-colors">
+            <button onClick={() => toggleAgent()} className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground cursor-pointer hover:bg-sidebar-accent/50 transition-colors">
               <Search className="h-4 w-4" strokeWidth={1.5} />
-            </div>
+            </button>
           </div>
         )}
 
@@ -111,7 +113,7 @@ export function AppSidebar() {
           )}
           <SidebarGroupContent>
             <SidebarMenu className={cn("gap-0.5", collapsed ? "px-0 items-center" : "px-1")}>
-              {MAIN_NAV_ITEMS.map((item) => {
+              {MAIN_NAV_ITEMS.filter(item => !item.feature || hasFeature(orgType, item.feature)).map((item) => {
                 const active = isActive(item.to);
                 return (
                   <SidebarMenuItem key={item.to}>

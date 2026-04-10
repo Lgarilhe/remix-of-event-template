@@ -20,7 +20,6 @@ import NotFound from "./pages/NotFound";
 
 // Lazy-loaded pages
 const SkalrLanding = lazy(() => import("./pages/SkalrLanding"));
-const Admin = lazy(() => import("./pages/Admin"));
 const Candidates = lazy(() => import("./pages/Candidates"));
 const Outreach = lazy(() => import("./pages/Outreach"));
 const ATS = lazy(() => import("./pages/ATS"));
@@ -144,7 +143,6 @@ const AppContent = () => {
           <Route path="/r/:slug" element={<RecruiterPublicProfile />} />
 
           {/* Authenticated routes — with sidebar layout */}
-          <Route path="/admin" element={<ProtectedRoute><AppLayout><Admin /></AppLayout></ProtectedRoute>} />
           <Route path="/candidates" element={<ProtectedRoute><OrganizationGuard><AppLayout><Candidates /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />

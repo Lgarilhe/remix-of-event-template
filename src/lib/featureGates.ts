@@ -19,7 +19,8 @@ export type Feature =
   | 'client_portal'
   | 'billing'
   | 'integrations'
-  | 'live_coaching';
+  | 'live_coaching'
+  | 'prospection';
 
 const FEATURE_MATRIX: Record<Feature, Record<OrgType, boolean>> = {
   create_missions:     { enterprise: true,  agency: true,  freelance: false },
@@ -36,6 +37,7 @@ const FEATURE_MATRIX: Record<Feature, Record<OrgType, boolean>> = {
   billing:             { enterprise: true,  agency: true,  freelance: true  },
   integrations:        { enterprise: true,  agency: true,  freelance: true  },
   live_coaching:       { enterprise: true,  agency: true,  freelance: true  },
+  prospection:         { enterprise: false, agency: true,  freelance: false },
 };
 
 /** Check if a feature is available for the given org type */
