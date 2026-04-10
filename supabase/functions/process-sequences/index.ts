@@ -8,9 +8,9 @@ const corsHeaders = {
 };
 
 // ============ ENV CONFIG ============
-const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-const UNIPILE_DSN = `https://${UNIPILE_DSN_RAW}`;
+const ENV_UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
+const ENV_UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const ENV_UNIPILE_DSN = `https://${ENV_UNIPILE_DSN_RAW}`;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
 const WEEKLY_INVITE_LIMIT = 100;
@@ -20,6 +20,23 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// Per-org Unipile credential resolution with env fallback
+async function resolveUnipileCreds(orgId: string | undefined, sb: any): Promise<{ apiKey: string; dsn: string }> {
+  const fallback = { apiKey: ENV_UNIPILE_API_KEY!, dsn: ENV_UNIPILE_DSN };
+  if (!orgId) return fallback;
+  try {
+    const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
+    const creds = await resolveUnipileCredentials(orgId, sb);
+    if (creds) {
+      const rawDsn = creds.dsn.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      return { apiKey: creds.apiKey, dsn: `https://${rawDsn}` };
+    }
+  } catch (e) {
+    console.warn('[process-sequences] Org credential resolution failed, using env:', e);
+  }
+  return fallback;
 }
 
 // Fetch RAG context for a candidate from the Knowledge Lake
@@ -65,7 +82,7 @@ async function fetchRAGContext(
 // In-memory profile cache — cleared at the start of each request to avoid cross-invocation staleness
 const profileInfoCache = new Map<string, { network_distance?: string; provider_id?: string }>();
 
-console.log('[process-sequences] Config:', { hasDSN: !!UNIPILE_DSN, hasApiKey: !!UNIPILE_API_KEY });
+console.log('[process-sequences] Config:', { hasDSN: !!ENV_UNIPILE_DSN, hasApiKey: !!ENV_UNIPILE_API_KEY });
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -362,7 +379,11 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
-        const quotaCheck = await checkQuotaForAction(supabase, step.action_type, enrollment.account_id);
+        // Resolve Unipile credentials per-org for this enrollment
+        const enrollmentOrgId = enrollment.organization_id || enrollment.sequence?.organization_id;
+        const uCreds = await resolveUnipileCreds(enrollmentOrgId, supabase);
+
+        const quotaCheck = await checkQuotaForAction(supabase, step.action_type, enrollment.account_id, uCreds.apiKey, uCreds.dsn);
         if (!quotaCheck.allowed) {
           await supabase.from('sequence_step_executions').update({ 
             status: 'quota_blocked', skip_reason: quotaCheck.reason,
@@ -380,7 +401,7 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
-        const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value);
+        const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value, uCreds.apiKey, uCreds.dsn);
         if (conditionResult === 'wait') {
           await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
           results.skipped++;
@@ -457,12 +478,14 @@ async function handleProcess(supabase: any, force = false) {
               // Use last sent date if available, otherwise fall back to 7 days ago
               const replyCheckDate = lastSentDate || new Date(Date.now() - 7 * 24 * 3600000).toISOString();
               const hasReplied = await checkForReplyAfterDate(
-                enrollment.account_id, 
-                enrollment.resolved_profile_id || enrollment.profile_id, 
-                replyCheckDate, 
-                enrollment.profile_url, 
-                enrollment.id, 
-                supabase
+                enrollment.account_id,
+                enrollment.resolved_profile_id || enrollment.profile_id,
+                replyCheckDate,
+                enrollment.profile_url,
+                enrollment.id,
+                supabase,
+                uCreds.apiKey,
+                uCreds.dsn
               );
               
               if (hasReplied) {
@@ -527,7 +550,7 @@ async function handleProcess(supabase: any, force = false) {
         // SKIP if already generated on a previous attempt (retry) — avoids double billing
         const alreadyPersonalized = !!(exec.final_message && (exec.retry_count || 0) > 0);
         if (step.use_ai_personalization && needsMessage(step.action_type) && !alreadyPersonalized) {
-          const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec);
+          const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec, uCreds.apiKey, uCreds.dsn);
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
 
@@ -544,7 +567,7 @@ async function handleProcess(supabase: any, force = false) {
         }
 
         const executeResult = await executeStepAction(effectiveActionType, enrollment, step,
-          { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase);
+          { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase, uCreds.apiKey, uCreds.dsn);
 
         if (executeResult.error === '__WAIT_EVENT__') {
           // Special case: wait_connection — transition to waiting_event
@@ -721,7 +744,8 @@ async function handleCheckReplies(supabase: any) {
     // Check for replies after the last message was sent (not after enrollment creation)
     const afterDate = lastSentExec.executed_at;
 
-    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase)) {
+    const rCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
+    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, rCreds.apiKey, rCreds.dsn)) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
       await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
@@ -862,6 +886,7 @@ async function handleCheckWaitEvents(supabase: any) {
     const step = exec.step, enrollment = exec.enrollment;
     if (!step || !enrollment) continue;
 
+    const weCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
     let eventOccurred = false;
     if (step.wait_for_event === 'connection_accepted') {
       // Use DB-stored network_distance first → avoids Unipile API call
@@ -869,7 +894,7 @@ async function handleCheckWaitEvents(supabase: any) {
         eventOccurred = true;
         console.log(`[handleCheckWaitEvents] DB hit: ${enrollment.profile_name} already FIRST_DEGREE/connected`);
       } else {
-        const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url);
+        const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url, weCreds.apiKey, weCreds.dsn);
         eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
         // Persist network_distance + provider_id to DB for future lookups
         if (profile) {
@@ -880,7 +905,7 @@ async function handleCheckWaitEvents(supabase: any) {
         }
       }
     } else if (step.wait_for_event === 'reply_received') {
-      eventOccurred = await checkHasProspectReplied(enrollment.account_id, enrollment.profile_id);
+      eventOccurred = await checkHasProspectReplied(enrollment.account_id, enrollment.profile_id, weCreds.apiKey, weCreds.dsn);
     }
 
     if (eventOccurred) {
@@ -1092,7 +1117,7 @@ function getNextBusinessHourSlot(timezone: string): Date {
   return target;
 }
 
-async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string): Promise<{ network_distance?: string; provider_id?: string } | null> {
+async function getProfileInfo(accountId: string, profileId: string, enrollmentProfileUrl?: string, apiKey?: string, dsn?: string): Promise<{ network_distance?: string; provider_id?: string } | null> {
   const cacheKey = `${accountId}::${profileId}`;
   const cached = profileInfoCache.get(cacheKey);
   if (cached) {
@@ -1100,8 +1125,11 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
     return cached;
   }
 
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+
   try {
-    const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
     if (!r.ok) {
       console.warn(`[getProfileInfo] API returned ${r.status} for profileId=${profileId}`);
       return null;
@@ -1121,13 +1149,13 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
     // Try resolving via the profile slug for a more reliable check.
     if (profileId.startsWith('AE') && rawDistance !== 'FIRST_DEGREE') {
       let slug: string | null = null;
-      
+
       // Try extracting slug from enrollment profile URL
       if (enrollmentProfileUrl) {
         const match = enrollmentProfileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
         if (match) slug = match[1];
       }
-      
+
       // Try extracting slug from the recruiter profile's public_identifier
       if (!slug) {
         slug = data.public_identifier || data.public_id || null;
@@ -1135,7 +1163,7 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
 
       if (slug) {
         console.log(`[getProfileInfo] Recruiter ID detected, re-checking via slug: ${slug}`);
-        const slugRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        const slugRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
         if (slugRes.ok) {
           const slugData = await slugRes.json();
           const slugDistance = slugData.network_distance;
@@ -1157,10 +1185,13 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
   }
 }
 
-async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any): Promise<string> {
+async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string): Promise<string> {
   // If it's a recruiter ID (AEM/AE), resolve to a slug or classic ID for chat API
   if (!profileId.startsWith('AE')) return profileId;
-  
+
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+
   try {
     // Try extracting slug from profile URL first
     let slug: string | null = null;
@@ -1168,10 +1199,10 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
       const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
       if (match && !match[1].startsWith('AE')) slug = match[1];
     }
-    
+
     // If no slug from URL, fetch profile to get public_identifier
     if (!slug) {
-      const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
       if (r.ok) {
         const data = await r.json();
         slug = data.public_identifier || data.public_id || null;
@@ -1181,10 +1212,10 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
         }
       }
     }
-    
+
     if (slug) {
       // Resolve slug to get the classic provider_id
-      const slugRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      const slugRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
       if (slugRes.ok) {
         const slugData = await slugRes.json();
         if (slugData.provider_id && !slugData.provider_id.startsWith('AE')) {
@@ -1203,30 +1234,32 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
   } catch (err) {
     console.warn(`[resolveProfileIdForChat] Error resolving ${profileId}:`, err);
   }
-  
+
   return profileId;
 }
 
-async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any): Promise<boolean> {
+async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string): Promise<boolean> {
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
     const enrollmentTime = new Date(afterDate).getTime();
-    
+
     // Resolve recruiter IDs to a format the chat API understands
-    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase);
-    
-    const chatsRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase, effectiveApiKey, effectiveDsn);
+
+    const chatsRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
     if (!chatsRes.ok) {
       // If resolved ID also fails and it was different from original, try original as fallback
       if (resolvedId !== profileId) {
-        const fallbackRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        const fallbackRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
         if (!fallbackRes.ok) return false;
         const fallbackChats = (await fallbackRes.json()).items || [];
-        return await checkMessagesForReply(fallbackChats, enrollmentTime);
+        return await checkMessagesForReply(fallbackChats, enrollmentTime, effectiveApiKey, effectiveDsn);
       }
       return false;
     }
     const chats = (await chatsRes.json()).items || [];
-    return await checkMessagesForReply(chats, enrollmentTime);
+    return await checkMessagesForReply(chats, enrollmentTime, effectiveApiKey, effectiveDsn);
   } catch { return false; }
 }
 
@@ -1236,10 +1269,12 @@ interface ChatAttendeeInfo {
   resolved: boolean;
 }
 
-async function resolveAttendeeIds(chatId: string): Promise<ChatAttendeeInfo> {
+async function resolveAttendeeIds(chatId: string, apiKey?: string, dsn?: string): Promise<ChatAttendeeInfo> {
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   const result: ChatAttendeeInfo = { ownIds: new Set(['self']), otherIds: new Set(), resolved: false };
   try {
-    const attRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const attRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': effectiveApiKey } });
     if (!attRes.ok) {
       console.warn(`[checkReplies] Attendees endpoint failed for chat ${chatId}: ${attRes.status}`);
       return result;
@@ -1284,12 +1319,14 @@ async function resolveAttendeeIds(chatId: string): Promise<ChatAttendeeInfo> {
   return result;
 }
 
-async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number): Promise<boolean> {
+async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number, apiKey?: string, dsn?: string): Promise<boolean> {
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   for (const chat of chats) {
     // Resolve attendee identities for this chat
-    const attendeeInfo = await resolveAttendeeIds(chat.id);
+    const attendeeInfo = await resolveAttendeeIds(chat.id, effectiveApiKey, effectiveDsn);
 
-    const msgRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+    const msgRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats/${chat.id}/messages?limit=10`, { headers: { 'X-API-KEY': effectiveApiKey } });
     if (!msgRes.ok) continue;
     const messages = (await msgRes.json()).items || [];
     // deno-lint-ignore no-explicit-any
@@ -1331,16 +1368,18 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
   return false;
 }
 
-async function checkHasProspectReplied(accountId: string, profileId: string): Promise<boolean> {
+async function checkHasProspectReplied(accountId: string, profileId: string, apiKey?: string, dsn?: string): Promise<boolean> {
   // 72h window instead of 24h to catch weekend replies
-  return await checkForReplyAfterDate(accountId, profileId, new Date(Date.now() - 72 * 3600000).toISOString());
+  return await checkForReplyAfterDate(accountId, profileId, new Date(Date.now() - 72 * 3600000).toISOString(), undefined, undefined, undefined, apiKey, dsn);
 }
 
 // deno-lint-ignore no-explicit-any
-async function checkQuotaForAction(supabase: any, actionType: string, accountId: string): Promise<{ allowed: boolean; reason?: string }> {
+async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string): Promise<{ allowed: boolean; reason?: string }> {
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
     if (actionType === 'inmail' || actionType === 'smart_message') {
-      const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+      const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
       if (!r.ok) return { allowed: true };
       const b = await r.json();
       const total = (b.recruiter || 0) + (b.premium || 0) + (b.sales_navigator || 0);
@@ -1355,17 +1394,17 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
 }
 
 // deno-lint-ignore no-explicit-any
-async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string, supabaseClient?: any, enrollmentId?: string, enrollment?: any, conditionValue?: string): Promise<boolean | 'wait'> {
+async function checkStepCondition(conditionType: string, accountId: string, profileId: string, waitForEvent?: string, profileUrl?: string, supabaseClient?: any, enrollmentId?: string, enrollment?: any, conditionValue?: string, apiKey?: string, dsn?: string): Promise<boolean | 'wait'> {
   const eff = waitForEvent ? 'wait_for_event' : (conditionType || 'always');
   switch (eff) {
     case 'always': return true;
-    case 'if_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE'; }
-    case 'if_not_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance !== 'FIRST_DEGREE'; }
-    case 'if_no_response': return !(await checkHasProspectReplied(accountId, profileId));
-    case 'wait_until_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
+    case 'if_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); return p?.network_distance === 'FIRST_DEGREE'; }
+    case 'if_not_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); return p?.network_distance !== 'FIRST_DEGREE'; }
+    case 'if_no_response': return !(await checkHasProspectReplied(accountId, profileId, apiKey, dsn));
+    case 'wait_until_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
     case 'wait_for_event': {
-      if (waitForEvent === 'connection_accepted') { const p = await getProfileInfo(accountId, profileId, profileUrl); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
-      if (waitForEvent === 'reply_received') return (await checkHasProspectReplied(accountId, profileId)) ? true : 'wait';
+      if (waitForEvent === 'connection_accepted') { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
+      if (waitForEvent === 'reply_received') return (await checkHasProspectReplied(accountId, profileId, apiKey, dsn)) ? true : 'wait';
       if (waitForEvent === 'email_opened' && supabaseClient && enrollmentId) {
         const { data } = await supabaseClient.from('sequence_step_executions').select('id').eq('enrollment_id', enrollmentId).in('status', ['opened', 'clicked', 'replied']).limit(1);
         return (data && data.length > 0) ? true : 'wait';
@@ -1714,7 +1753,9 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
 }
 
 // deno-lint-ignore no-explicit-any
-async function executeStepAction(actionType: string, enrollment: Record<string, unknown>, step: Record<string, unknown>, execution: Record<string, unknown>, supabase: any): Promise<{ success: boolean; error?: string; subject?: string; message?: string }> {
+async function executeStepAction(actionType: string, enrollment: Record<string, unknown>, step: Record<string, unknown>, execution: Record<string, unknown>, supabase: any, apiKey?: string, dsn?: string): Promise<{ success: boolean; error?: string; subject?: string; message?: string }> {
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
     // Use assigned_sender_id (from rotation) if available, otherwise original account_id
     const accountId = ((step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string);
@@ -1764,7 +1805,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
       }
       case 'wait_connection': return { success: false, error: '__WAIT_EVENT__' };
       case 'check_connection': {
-        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
+        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined, effectiveApiKey, effectiveDsn);
         const isConnected = p?.network_distance === 'FIRST_DEGREE';
         await supabase.from('sequence_enrollments').update({ connection_status: isConnected ? 'connected' : 'not_connected' }).eq('id', enrollment.id);
         const nextId = isConnected ? step.if_true_goto_step : step.if_false_goto_step;
@@ -1778,7 +1819,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         return { success: true };
       }
       case 'profile_visit': {
-        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+        const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
         if (r.ok) {
           await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
           return { success: true };
@@ -1787,7 +1828,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         return { success: false, error: `Profile visit ${r.status}: ${errBody || r.statusText}` };
       }
       case 'smart_message': case 'inmail': case 'message': {
-        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined);
+        const p = await getProfileInfo(accountId, profileId, enrollment.profile_url as string | undefined, effectiveApiKey, effectiveDsn);
         const isConnected = p?.network_distance === 'FIRST_DEGREE' || (enrollment as any).connection_status === 'connected';
         const needsInMail = !isConnected && (actionType === 'inmail' || actionType === 'smart_message');
 
@@ -1796,7 +1837,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         let linkedinApiMode = 'classic';
         if (needsInMail) {
           try {
-            const balRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+            const balRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
             if (balRes.ok) {
               const bal = await balRes.json();
               if ((bal.recruiter || 0) > 0) linkedinApiMode = 'recruiter';
@@ -1818,8 +1859,8 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         try {
           const resolvedId = (enrollment as any).resolved_profile_id || profileId;
           const chatsRes = await fetchWithTimeout(
-            `${UNIPILE_DSN}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`,
-            { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+            `${effectiveDsn}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`,
+            { headers: { 'X-API-KEY': effectiveApiKey } }
           );
           if (chatsRes.ok) {
             const chatsData = await chatsRes.json();
@@ -1832,8 +1873,8 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           } else if (resolvedId !== profileId) {
             // Fallback: try with original profileId
             const fallbackRes = await fetchWithTimeout(
-              `${UNIPILE_DSN}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
-              { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+              `${effectiveDsn}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`,
+              { headers: { 'X-API-KEY': effectiveApiKey } }
             );
             if (fallbackRes.ok) {
               const fallbackData = await fallbackRes.json();
@@ -1853,14 +1894,14 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           // Send to existing chat thread — NO duplicate!
           const fd = new FormData();
           fd.append('text', msg);
-          r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${existingChatId}/messages`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
+          r = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats/${existingChatId}/messages`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: fd });
           if (!r.ok) {
             // Fallback: if sending to existing chat fails (e.g. InMail thread can't receive replies), create new
             console.warn(`[executeStepAction] Send to existing chat ${existingChatId} failed (${r.status}), falling back to new chat`);
             const fd2 = new FormData();
             fd2.append('account_id', accountId); fd2.append('attendees_ids', profileId); fd2.append('text', msg);
             if (needsInMail) { fd2.append('linkedin[api]', linkedinApiMode); fd2.append('linkedin[inmail]', 'true'); if (subj) fd2.append('subject', subj); }
-            r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd2 });
+            r = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: fd2 });
           }
         } else {
           // No existing chat — create new one (first contact)
@@ -1868,7 +1909,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           const fd = new FormData();
           fd.append('account_id', accountId); fd.append('attendees_ids', profileId); fd.append('text', msg);
           if (needsInMail) { fd.append('linkedin[api]', linkedinApiMode); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
-          r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: fd });
+          r = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: fd });
         }
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Unipile ${r.status}: ${e}` }; }
         await r.json();
@@ -1902,8 +1943,8 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         let waExistingChatId: string | null = null;
         try {
           const waChatsRes = await fetchWithTimeout(
-            `${UNIPILE_DSN}/api/v1/chat_attendees/${phoneNumber}/chats?account_id=${whatsappAccountId}`,
-            { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+            `${effectiveDsn}/api/v1/chat_attendees/${phoneNumber}/chats?account_id=${whatsappAccountId}`,
+            { headers: { 'X-API-KEY': effectiveApiKey } }
           );
           if (waChatsRes.ok) {
             const waChatsData = await waChatsRes.json();
@@ -1918,13 +1959,13 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         if (waExistingChatId) {
           const waFd = new FormData();
           waFd.append('text', msg);
-          waR = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats/${waExistingChatId}/messages`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: waFd });
+          waR = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats/${waExistingChatId}/messages`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: waFd });
         } else {
           const waFd = new FormData();
           waFd.append('account_id', whatsappAccountId);
           waFd.append('attendees_ids', phoneNumber);
           waFd.append('text', msg);
-          waR = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY! }, body: waFd });
+          waR = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: waFd });
         }
         if (!waR.ok) { const e = await waR.text(); return { success: false, error: `Unipile WhatsApp ${waR.status}: ${e}` }; }
         await waR.json();
@@ -1943,7 +1984,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
             const match = profileUrl.match(/linkedin\.com\/in\/([^/?]+)/);
             if (match) {
               console.log(`[connection_request] Trying slug resolution: ${match[1]}`);
-              const pr = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(match[1])}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+              const pr = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(match[1])}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
               if (pr.ok) {
                 const pd = await pr.json();
                 if (pd.provider_id && (pd.provider_id.startsWith('ACo') || pd.provider_id.startsWith('ADo'))) {
@@ -1958,13 +1999,13 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           // Strategy 2: Fetch recruiter profile to get public_identifier, then resolve
           if (!resolved) {
             console.log(`[connection_request] Trying recruiter profile resolution...`);
-            const recruiterRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+            const recruiterRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
             if (recruiterRes.ok) {
               const recruiterProfile = await recruiterRes.json();
               const publicId = recruiterProfile.public_identifier || recruiterProfile.public_id;
               if (publicId) {
                 console.log(`[connection_request] Got public_identifier: ${publicId}, resolving classic ID...`);
-                const classicRes = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(publicId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } });
+                const classicRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(publicId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
                 if (classicRes.ok) {
                   const classicProfile = await classicRes.json();
                   if (classicProfile.provider_id && (classicProfile.provider_id.startsWith('ACo') || classicProfile.provider_id.startsWith('ADo'))) {
@@ -1998,7 +2039,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         }
         const invitePayload: Record<string, string> = { account_id: accountId, provider_id: providerId };
         if (msg && msg.trim()) invitePayload.message = msg.trim().slice(0, 300); // LinkedIn invite note max ~300 chars
-        const r = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
+        const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Invite ${r.status}: ${e}` }; }
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
         await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
@@ -2274,12 +2315,14 @@ function extractNotionJob(pageData: Record<string, unknown>): Record<string, str
 // ============ POSTS FETCHER ============
 
 async function fetchRecentPostsForSequence(
-  accountId: string, profileId: string, maxPosts = 3, maxAgeDays = 90
+  accountId: string, profileId: string, maxPosts = 3, maxAgeDays = 90, apiKey?: string, dsn?: string
 ): Promise<{ text: string; date: string; reactions?: number }[]> {
-  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return [];
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
+  if (!effectiveDsn || !effectiveApiKey) return [];
   try {
-    const url = `${UNIPILE_DSN}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=5`;
-    const response = await fetchWithTimeout(url, { headers: { 'X-API-KEY': UNIPILE_API_KEY, 'accept': 'application/json' } });
+    const url = `${effectiveDsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=5`;
+    const response = await fetchWithTimeout(url, { headers: { 'X-API-KEY': effectiveApiKey, 'accept': 'application/json' } });
     if (!response.ok) return [];
     const data = await response.json();
     const items = data?.items || data?.data || (Array.isArray(data) ? data : []);
@@ -2341,12 +2384,14 @@ function sanitizeSequenceMessage(message: string): string {
 // ============ MESSAGE GENERATION ============
 
 // deno-lint-ignore no-explicit-any
-async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>): Promise<{ message: string; subject?: string } | null> {
+async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>, apiKey?: string, dsn?: string): Promise<{ message: string; subject?: string } | null> {
   if (!ANTHROPIC_API_KEY) return null;
+  const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
+  const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
     // Fetch profile and posts in parallel
-    const profilePromise = fetchWithTimeout(`${UNIPILE_DSN}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }).then(r => r.ok ? r.json() : null).catch(() => null);
-    const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string);
+    const profilePromise = fetchWithTimeout(`${effectiveDsn}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': effectiveApiKey } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string, 3, 90, effectiveApiKey, effectiveDsn);
 
     // Fetch job context from sourcing_projects.job_details (universal, not tied to any specific ATS)
     // Falls back to Notion API if job_details is empty and NOTION_API_KEY is configured (legacy)
