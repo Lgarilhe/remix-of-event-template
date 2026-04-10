@@ -2,6 +2,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1";
 import { requireAuth } from "../_shared/require-auth.ts";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -512,7 +517,7 @@ async function fetchProfileDetails(
     // (same approach used in our unipile-search enrichment code). Using /users/{id} returns 400 for these IDs.
     const baseUrl = `https://${dsn}/api/v1`;
     const url = `${baseUrl}/chat_attendees/${encodeURIComponent(profileId)}`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'GET',
       headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
     });
@@ -561,8 +566,8 @@ async function fetchUnipileConversations(
 
     for (const folder of folders) {
       const url = `${baseUrl}/api/v1/chats?account_id=${accountId}&folder=${folder}&limit=100`;
-      
-      const response = await fetch(url, {
+
+      const response = await fetchWithTimeout(url, {
         method: 'GET',
         headers: {
           'X-API-KEY': apiKey,
@@ -784,26 +789,23 @@ async function analyzeMessageIntent(
   apiKey: string
 ): Promise<{ intent: string; confidence: number }> {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
-    try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
-          messages: [
-            {
-              role: "system",
-              content: "Tu es un expert en analyse de messages LinkedIn. Réponds uniquement en JSON."
-            },
-            {
-              role: "user",
-              content: `Analyse ce message et détermine l'intention:
+    response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: "Tu es un expert en analyse de messages LinkedIn. Réponds uniquement en JSON."
+          },
+          {
+            role: "user",
+            content: `Analyse ce message et détermine l'intention:
 "${messageText.slice(0, 500)}"
 
 Réponds en JSON:
@@ -811,16 +813,12 @@ Réponds en JSON:
   "intent": "interested|not_interested|needs_info|wants_call|timing_issue|neutral",
   "confidence": 0-100
 }`
-            }
-          ],
-          max_tokens: 100,
-          temperature: 0.1,
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+          }
+        ],
+        max_tokens: 100,
+        temperature: 0.1,
+      }),
+    }, 30000);
 
     if (!response.ok) {
       return { intent: 'neutral', confidence: 0 };
@@ -904,31 +902,24 @@ Réponds UNIQUEMENT en JSON:
 }`;
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
-    try {
-      response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "prompt-caching-2024-07-31",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 300,
-          system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.", cache_control: { type: "ephemeral" } }],
-          messages: [
-            { role: "user", content: prompt }
-          ],
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 300,
+        system: [{ type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide.", cache_control: { type: "ephemeral" } }],
+        messages: [
+          { role: "user", content: prompt }
+        ],
+      }),
+    }, 30000);
 
     if (!response.ok) {
       throw new Error("AI request failed");
