@@ -7,36 +7,51 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Per-org credentials — resolved at request time, env vars as fallback
-let UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
-let UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
+// Env fallbacks — NEVER reassigned. Per-org credentials resolved per-request.
+const ENV_UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
+const ENV_UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-let NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-let CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-let SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
+const ENV_NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
+const ENV_CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
+const ENV_SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Helper to resolve org-specific credentials at request time
-async function resolveOrgCredentials(organizationId?: string) {
-  if (!organizationId) return;
+interface OrgCreds {
+  unipileApiKey: string | undefined;
+  unipileDsn: string | undefined;
+  notionApiKey: string | undefined;
+  candidatsDbId: string;
+  shortlistDbId: string;
+}
+
+async function resolveOrgCredentials(organizationId?: string): Promise<OrgCreds> {
+  const result: OrgCreds = {
+    unipileApiKey: ENV_UNIPILE_API_KEY,
+    unipileDsn: ENV_UNIPILE_DSN,
+    notionApiKey: ENV_NOTION_API_KEY,
+    candidatsDbId: ENV_CANDIDATS_DATABASE_ID,
+    shortlistDbId: ENV_SHORTLIST_DATABASE_ID,
+  };
+  if (!organizationId) return result;
   try {
     const { resolveUnipileCredentials, resolveNotionCredentials } = await import("../_shared/resolve-org-credentials.ts");
     const uCreds = await resolveUnipileCredentials(organizationId, supabase);
     if (uCreds) {
-      UNIPILE_API_KEY = uCreds.apiKey;
-      UNIPILE_DSN = uCreds.dsn.replace(/^https?:\/\//, '');
+      result.unipileApiKey = uCreds.apiKey;
+      result.unipileDsn = uCreds.dsn.replace(/^https?:\/\//, '');
     }
     const nCreds = await resolveNotionCredentials(organizationId, supabase);
     if (nCreds) {
-      NOTION_API_KEY = nCreds.apiKey;
-      if (nCreds.candidatsDbId) CANDIDATS_DATABASE_ID = nCreds.candidatsDbId;
-      if (nCreds.shortlistDbId) SHORTLIST_DATABASE_ID = nCreds.shortlistDbId;
+      result.notionApiKey = nCreds.apiKey;
+      if (nCreds.candidatsDbId) result.candidatsDbId = nCreds.candidatsDbId;
+      if (nCreds.shortlistDbId) result.shortlistDbId = nCreds.shortlistDbId;
     }
   } catch (e) {
     console.warn('[auto-analyze] Org credential resolution failed, using env:', e);
   }
+  return result;
 }
 // ─── Intent → Notion property mapping ─────────────────────────────
 // Candidats DB uses "Etat" (select): Pré-qualif à planifier, Répondu, En attente de réponse, Message à envoyer
@@ -60,11 +75,11 @@ const INTENT_TO_SHORTLIST_ETAPE: Record<string, string> = {
 const MIN_CONFIDENCE = 60;
 
 // ─── Notion helpers ───────────────────────────────────────────────
-async function notionQuery(databaseId: string, filter: Record<string, unknown>) {
+async function notionQuery(databaseId: string, filter: Record<string, unknown>, creds: OrgCreds) {
   const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${creds.notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -74,11 +89,11 @@ async function notionQuery(databaseId: string, filter: Record<string, unknown>) 
   return response.json();
 }
 
-async function updateNotionPage(pageId: string, properties: Record<string, unknown>) {
+async function updateNotionPage(pageId: string, properties: Record<string, unknown>, creds: OrgCreds) {
   const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'PATCH',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${creds.notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -90,39 +105,39 @@ async function updateNotionPage(pageId: string, properties: Record<string, unkno
   return response.ok;
 }
 
-async function findCandidateInNotion(name: string, linkedinUrl?: string): Promise<string | null> {
+async function findCandidateInNotion(name: string, creds: OrgCreds, linkedinUrl?: string): Promise<string | null> {
   // Try LinkedIn URL first
   if (linkedinUrl) {
-    const result = await notionQuery(CANDIDATS_DATABASE_ID, {
+    const result = await notionQuery(creds.candidatsDbId, {
       property: 'URL Linkedin',
       url: { equals: linkedinUrl },
-    });
+    }, creds);
     if (result?.results?.[0]?.id) return result.results[0].id;
   }
 
   // Fallback to name
   if (name) {
-    const result = await notionQuery(CANDIDATS_DATABASE_ID, {
+    const result = await notionQuery(creds.candidatsDbId, {
       property: 'Nom',
       title: { equals: name },
-    });
+    }, creds);
     if (result?.results?.[0]?.id) return result.results[0].id;
   }
   return null;
 }
 
-async function findShortlistsForCandidate(candidateId: string): Promise<Array<{ id: string; jobTitle?: string }>> {
-  const result = await notionQuery(SHORTLIST_DATABASE_ID, {
+async function findShortlistsForCandidate(candidateId: string, creds: OrgCreds): Promise<Array<{ id: string; jobTitle?: string }>> {
+  const result = await notionQuery(creds.shortlistDbId, {
     property: 'Candidats',
     relation: { contains: candidateId },
-  });
+  }, creds);
   if (!result?.results) return [];
-  
+
   // Fetch all shortlists, not just the first one
-  const response = await fetch(`https://api.notion.com/v1/databases/${SHORTLIST_DATABASE_ID}/query`, {
+  const response = await fetch(`https://api.notion.com/v1/databases/${creds.shortlistDbId}/query`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
+      'Authorization': `Bearer ${creds.notionApiKey}`,
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json',
     },
@@ -133,31 +148,31 @@ async function findShortlistsForCandidate(candidateId: string): Promise<Array<{ 
   });
   if (!response.ok) return [];
   const data = await response.json();
-  
+
   return (data.results || []).map((r: Record<string, unknown>) => ({
     id: r.id as string,
-    jobTitle: ((r as Record<string, unknown>).properties as Record<string, unknown>)?.['Nom'] 
+    jobTitle: ((r as Record<string, unknown>).properties as Record<string, unknown>)?.['Nom']
       ? 'shortlist' : undefined,
   }));
 }
 
 // ─── Unipile helpers ──────────────────────────────────────────────
-async function fetchChatMessages(chatId: string, accountId: string): Promise<Array<{ text: string; is_sender: boolean; timestamp?: string }>> {
-  const baseUrl = `https://${UNIPILE_DSN}/api/v1`;
+async function fetchChatMessages(chatId: string, accountId: string, creds: OrgCreds): Promise<Array<{ text: string; is_sender: boolean; timestamp?: string }>> {
+  const baseUrl = `https://${creds.unipileDsn}/api/v1`;
   const url = `${baseUrl}/chats/${chatId}/messages?limit=15`;
-  
+
   const response = await fetch(url, {
-    headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Accept': 'application/json' },
+    headers: { 'X-API-KEY': creds.unipileApiKey!, 'Accept': 'application/json' },
   });
-  
+
   if (!response.ok) {
     console.error('[auto-analyze] Failed to fetch messages:', response.status);
     return [];
   }
-  
+
   const data = await response.json();
   const items = data.items || data.data || [];
-  
+
   return items.map((m: Record<string, unknown>) => ({
     text: (m.text || m.body || '') as string,
     is_sender: !!m.is_sender,
@@ -165,22 +180,22 @@ async function fetchChatMessages(chatId: string, accountId: string): Promise<Arr
   })).reverse(); // Oldest first
 }
 
-async function fetchChatDetails(chatId: string): Promise<{ attendeeName?: string; attendeeHeadline?: string; attendeeProfileUrl?: string; attendeeProviderId?: string }> {
-  const baseUrl = `https://${UNIPILE_DSN}/api/v1`;
+async function fetchChatDetails(chatId: string, creds: OrgCreds): Promise<{ attendeeName?: string; attendeeHeadline?: string; attendeeProfileUrl?: string; attendeeProviderId?: string }> {
+  const baseUrl = `https://${creds.unipileDsn}/api/v1`;
   const url = `${baseUrl}/chats/${chatId}`;
-  
+
   const response = await fetch(url, {
-    headers: { 'X-API-KEY': UNIPILE_API_KEY!, 'Accept': 'application/json' },
+    headers: { 'X-API-KEY': creds.unipileApiKey!, 'Accept': 'application/json' },
   });
-  
+
   if (!response.ok) return {};
   const data = await response.json();
-  
+
   const attendees = data.attendees || [];
   const candidate = attendees.find((a: Record<string, unknown>) => !a.is_self);
-  
+
   if (!candidate) return {};
-  
+
   return {
     attendeeName: candidate.display_name || candidate.name || 'Inconnu',
     attendeeHeadline: candidate.headline,
@@ -306,7 +321,7 @@ Deno.serve(async (req) => {
     }
 
     // Resolve org-specific credentials (Unipile + Notion)
-    await resolveOrgCredentials(organization_id);
+    const creds = await resolveOrgCredentials(organization_id);
 
     if (!chat_id || !account_id) {
       throw new Error('chat_id and account_id are required');
@@ -316,8 +331,8 @@ Deno.serve(async (req) => {
 
     // 1. Fetch chat details and messages in parallel
     const [chatDetails, messages] = await Promise.all([
-      fetchChatDetails(chat_id),
-      fetchChatMessages(chat_id, account_id),
+      fetchChatDetails(chat_id, creds),
+      fetchChatMessages(chat_id, account_id, creds),
     ]);
 
     if (messages.length === 0) {
@@ -404,25 +419,25 @@ Deno.serve(async (req) => {
     }
 
     // 5. Update Notion (Candidat "Etat" + Shortlist "Etape")
-    if (NOTION_API_KEY) {
-      const notionCandidateId = await findCandidateInNotion(candidateName, profileUrl);
-      
+    if (creds.notionApiKey) {
+      const notionCandidateId = await findCandidateInNotion(candidateName, creds, profileUrl);
+
       if (notionCandidateId) {
         // Update candidate "Etat" (select type) if mapped
         if (candidatEtat) {
           await updateNotionPage(notionCandidateId, {
             'Etat': { select: { name: candidatEtat } },
-          });
+          }, creds);
           console.log(`[auto-analyze] Updated Notion candidate Etat → "${candidatEtat}"`);
         }
 
         // Update all related shortlists "Etape" (select type) if mapped
         if (shortlistEtape) {
-          const shortlists = await findShortlistsForCandidate(notionCandidateId);
+          const shortlists = await findShortlistsForCandidate(notionCandidateId, creds);
           for (const sl of shortlists) {
             await updateNotionPage(sl.id, {
               'Etape': { select: { name: shortlistEtape } },
-            });
+            }, creds);
           }
           if (shortlists.length > 0) {
             console.log(`[auto-analyze] Updated ${shortlists.length} Notion shortlists Etape → "${shortlistEtape}"`);

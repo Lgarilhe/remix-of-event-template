@@ -6,12 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Unipile credentials resolved per-org at request time (see Deno.serve handler)
-let UNIPILE_API_KEY: string | null = Deno.env.get('UNIPILE_API_KEY') || null;
-let UNIPILE_DSN: string = '';
+// Env fallbacks — NEVER reassigned. Per-org credentials resolved per-request.
+const ENV_UNIPILE_API_KEY: string | null = Deno.env.get('UNIPILE_API_KEY') || null;
 const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
-const envDsn = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
-UNIPILE_DSN = envDsn;
+const ENV_UNIPILE_DSN: string = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -41,13 +39,15 @@ interface ProfileInfo {
 async function resolveNetworkDistance(
   profileId: string,
   accountId: string,
+  unipileApiKey: string | null,
+  unipileDsn: string,
   profileUrl?: string | null,
 ): Promise<{ networkDistance: string | null; resolvedProviderId: string | null }> {
-  const headers = { 'X-API-KEY': UNIPILE_API_KEY! };
+  const headers = { 'X-API-KEY': unipileApiKey! };
 
   // Step 1: Fetch profile info with the given ID
   const res = await fetchWithTimeout(
-    `${UNIPILE_DSN}/api/v1/users/${profileId}?account_id=${accountId}`,
+    `${unipileDsn}/api/v1/users/${profileId}?account_id=${accountId}`,
     { headers }
   );
 
@@ -83,7 +83,7 @@ async function resolveNetworkDistance(
       console.log(`[check-invitation] Recruiter ID detected, re-checking via slug: ${slug}`);
       try {
         const slugRes = await fetchWithTimeout(
-          `${UNIPILE_DSN}/api/v1/users/${slug}?account_id=${accountId}`,
+          `${unipileDsn}/api/v1/users/${slug}?account_id=${accountId}`,
           { headers }
         );
 
@@ -125,14 +125,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Resolve org-specific Unipile credentials
+    // Resolve org-specific Unipile credentials into request-scoped locals
+    let unipileApiKey = ENV_UNIPILE_API_KEY;
+    let unipileDsn = ENV_UNIPILE_DSN;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
       const orgId = await resolveOrgIdFromUser(user.id, supabase);
       const creds = await resolveUnipileCredentials(orgId, supabase);
       if (creds) {
-        UNIPILE_API_KEY = creds.apiKey;
-        UNIPILE_DSN = creds.dsn;
+        unipileApiKey = creds.apiKey;
+        unipileDsn = creds.dsn;
       }
     } catch (e) {
       console.warn('[check-invitation] Org credential resolution failed, using env:', e);
@@ -167,8 +169,8 @@ Deno.serve(async (req) => {
       let pendingInvites: PendingInvitation[] = [];
       try {
         const response = await fetchWithTimeout(
-          `${UNIPILE_DSN}/api/v1/users/invite/sent?account_id=${accountId}`,
-          { headers: { 'X-API-KEY': UNIPILE_API_KEY! } }
+          `${unipileDsn}/api/v1/users/invite/sent?account_id=${accountId}`,
+          { headers: { 'X-API-KEY': unipileApiKey! } }
         );
         if (response.ok) {
           const data = await response.json();
@@ -199,6 +201,8 @@ Deno.serve(async (req) => {
           const { networkDistance } = await resolveNetworkDistance(
             enrollment.profile_id,
             accountId,
+            unipileApiKey,
+            unipileDsn,
             enrollment.profile_url,
           );
 
