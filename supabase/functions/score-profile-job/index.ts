@@ -1562,7 +1562,7 @@ async function maybeEnrichProfile(
     const sectionsParams = ["experience", "about", "skills"]
       .map(s => `linkedin_sections=${encodeURIComponent(s)}`)
       .join("&");
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
       {
         headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" },

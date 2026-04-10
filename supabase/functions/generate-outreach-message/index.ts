@@ -1004,13 +1004,20 @@ Réponds UNIQUEMENT en JSON valide:
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const orgId = await resolveOrgIdFromUser(userId, svc);
         if (orgId) {
-          const { settleCredits } = await import("../_shared/settle-credits.ts");
-          settleCredits(svc, {
-            organizationId: orgId, userId,
-            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
-            tokensInput: _totalTokensIn, tokensOutput: _totalTokensOut,
-            description: _aiParams.description,
-          }).catch((e) => console.warn("[generate-outreach-message] settle error:", e));
+          // Verify user still belongs to the resolved org before billing credits
+          const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
+          const isMember = await verifyOrgMembership(svc, userId, orgId);
+          if (!isMember) {
+            console.warn("[generate-outreach-message] settle skipped: user is not a member of org", orgId);
+          } else {
+            const { settleCredits } = await import("../_shared/settle-credits.ts");
+            settleCredits(svc, {
+              organizationId: orgId, userId,
+              aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+              tokensInput: _totalTokensIn, tokensOutput: _totalTokensOut,
+              description: _aiParams.description,
+            }).catch((e) => console.warn("[generate-outreach-message] settle error:", e));
+          }
         }
       } catch (e) { console.warn("[generate-outreach-message] settle skipped:", e); }
     }

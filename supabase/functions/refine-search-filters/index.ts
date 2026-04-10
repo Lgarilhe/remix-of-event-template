@@ -190,13 +190,20 @@ ${JSON.stringify(currentFilters, null, 2)}`;
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const orgId = userId ? await resolveOrgIdFromUser(userId, svc as any) : null;
         if (orgId && userId) {
-          const { settleCredits } = await import("../_shared/settle-credits.ts");
-          await settleCredits(svc as any, {
-            organizationId: orgId, userId,
-            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
-            tokensInput: _tokensIn, tokensOutput: _tokensOut,
-            description: _aiParams.description,
-          }).catch((e) => console.error("[refine-search-filters] settle error:", e));
+          // Verify user still belongs to the resolved org before billing credits
+          const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
+          const isMember = await verifyOrgMembership(svc as any, userId, orgId);
+          if (!isMember) {
+            console.warn("[refine-search-filters] settle skipped: user is not a member of org", orgId);
+          } else {
+            const { settleCredits } = await import("../_shared/settle-credits.ts");
+            await settleCredits(svc as any, {
+              organizationId: orgId, userId,
+              aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+              tokensInput: _tokensIn, tokensOutput: _tokensOut,
+              description: _aiParams.description,
+            }).catch((e) => console.error("[refine-search-filters] settle error:", e));
+          }
         }
       } catch (e) { console.warn("[refine-search-filters] settle skipped:", e); }
     }

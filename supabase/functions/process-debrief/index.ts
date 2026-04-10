@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -68,12 +74,9 @@ Analyse le transcript/debrief et retourne un JSON avec :
 
 Réponds UNIQUEMENT en JSON valide.`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-
     let response: Response;
     try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -88,10 +91,10 @@ Réponds UNIQUEMENT en JSON valide.`;
           temperature: 0.3,
           max_tokens: 1500,
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+      }, 30000);
+    } catch {
+      // fetchWithTimeout handles timeout errors via AbortController
+      throw new Error("Debrief analysis timeout or network error");
     }
 
     if (!response.ok) {

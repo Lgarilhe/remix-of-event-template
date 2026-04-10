@@ -1,6 +1,12 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -611,7 +617,7 @@ Propose des exemples concrets de messages.`;
       : context_mode === 'outreach' ? outreachSystemPrompt
       : enrichedSourcingPrompt;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,

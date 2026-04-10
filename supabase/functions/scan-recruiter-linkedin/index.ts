@@ -271,7 +271,7 @@ Deno.serve(async (req) => {
     let matchedUrl = cleanUrl;
 
     for (const candidateUrl of urlCandidates) {
-      const profileRes = await fetch("https://api.apollo.io/api/v1/people/match", {
+      const profileRes = await fetchWithTimeout("https://api.apollo.io/api/v1/people/match", {
         method: "POST",
         headers: {
           "X-Api-Key": APOLLO_API_KEY,

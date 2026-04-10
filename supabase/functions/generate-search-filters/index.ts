@@ -722,17 +722,24 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     // Settle credits (fire-and-forget)
     if (_tokensIn + _tokensOut > 0) {
       try {
-        const { settleCredits } = await import("../_shared/settle-credits.ts");
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const orgId = auth.userId ? await resolveOrgIdFromUser(auth.userId, svcSettle) : null;
         if (orgId && auth.userId) {
-          await settleCredits(svcSettle, {
-            organizationId: orgId, userId: auth.userId!,
-            aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
-            tokensInput: _tokensIn, tokensOutput: _tokensOut,
-            description: _aiParams.description,
-          }).catch((e: unknown) => console.error("[generate-search-filters] settle error:", e));
+          // Verify user still belongs to the resolved org before billing credits
+          const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
+          const isMember = await verifyOrgMembership(svcSettle, auth.userId, orgId);
+          if (!isMember) {
+            console.warn("[generate-search-filters] settle skipped: user is not a member of org", orgId);
+          } else {
+            const { settleCredits } = await import("../_shared/settle-credits.ts");
+            await settleCredits(svcSettle, {
+              organizationId: orgId, userId: auth.userId!,
+              aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
+              tokensInput: _tokensIn, tokensOutput: _tokensOut,
+              description: _aiParams.description,
+            }).catch((e: unknown) => console.error("[generate-search-filters] settle error:", e));
+          }
         }
       } catch (e) { console.warn("[generate-search-filters] settle skipped:", e); }
     }

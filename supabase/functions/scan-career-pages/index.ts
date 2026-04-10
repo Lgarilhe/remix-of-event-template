@@ -1,5 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -113,12 +119,9 @@ async function scanOrganization(
   console.log(`[scan] Scanning ${org.name} — ${org.careers_url}`);
 
   // ── Call enrich-company in jobs_only mode with timeout ──
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
-
   let enrichResult: any;
   try {
-    const enrichResponse = await fetch(`${supabaseUrl}/functions/v1/enrich-company`, {
+    const enrichResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/enrich-company`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -129,11 +132,11 @@ async function scanOrganization(
         careers_url: org.careers_url,
         mode: "jobs_only",
       }),
-      signal: controller.signal,
-    });
+    }, SCAN_TIMEOUT_MS);
     enrichResult = await enrichResponse.json();
-  } finally {
-    clearTimeout(timeout);
+  } catch {
+    // fetchWithTimeout handles timeout errors via AbortController
+    enrichResult = { success: false, error: 'Enrichment timeout or network error' };
   }
 
   if (!enrichResult?.success) {

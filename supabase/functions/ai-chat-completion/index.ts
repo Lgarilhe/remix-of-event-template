@@ -8,6 +8,12 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,12 +57,9 @@ Deno.serve(async (req) => {
     }
 
     // Call AI gateway
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
-
     let response: Response;
     try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -68,10 +71,10 @@ Deno.serve(async (req) => {
           temperature: 0.7,
           max_tokens: 2000,
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+      }, 45000);
+    } catch (e) {
+      console.error("AI gateway timeout:", e);
+      throw e;
     }
 
     if (!response.ok) {
@@ -81,7 +84,7 @@ Deno.serve(async (req) => {
       // Retry once on 429/5xx
       if (response.status === 429 || response.status >= 500) {
         await new Promise(r => setTimeout(r, 2000));
-        const retryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const retryResponse = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -93,7 +96,7 @@ Deno.serve(async (req) => {
             temperature: 0.7,
             max_tokens: 2000,
           }),
-        });
+        }, 45000);
 
         if (!retryResponse.ok) {
           throw new Error(`AI gateway error after retry: ${retryResponse.status}`);

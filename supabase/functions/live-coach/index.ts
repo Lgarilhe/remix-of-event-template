@@ -2,6 +2,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth } from "../_shared/require-auth.ts";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -56,11 +62,9 @@ Retourne EXACTEMENT 3 bullet-points ultra-courts (max 8 mots chacun) :
 
 Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase complète, pas de guillemets.`;
 
-      const introController = new AbortController();
-      const introTimeout = setTimeout(() => introController.abort(), 15000);
       let introResponse: Response;
       try {
-        introResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        introResponse = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${LOVABLE_API_KEY}`,
@@ -73,10 +77,10 @@ Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase compl
               { role: "user", content: introPrompt },
             ],
           }),
-          signal: introController.signal,
         });
-      } finally {
-        clearTimeout(introTimeout);
+      } catch {
+        // fetchWithTimeout handles timeout errors via AbortController
+        throw new Error("Intro generation timeout or network error");
       }
 
       if (!introResponse.ok) {
@@ -159,11 +163,9 @@ SECTION "next_topic" — PROACTIVITÉ ULTRA-CONCISE :
 
 IMPORTANT : Sois CONCIS et RAPIDE.`;
 
-    const coachController = new AbortController();
-    const coachTimeout = setTimeout(() => coachController.abort(), 15000);
     let response: Response;
     try {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${LOVABLE_API_KEY}`,
@@ -230,10 +232,10 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
           ],
           tool_choice: { type: "function", function: { name: "coach_analysis" } },
         }),
-        signal: coachController.signal,
       });
-    } finally {
-      clearTimeout(coachTimeout);
+    } catch {
+      // fetchWithTimeout handles timeout errors via AbortController
+      throw new Error("Coach analysis timeout or network error");
     }
 
     if (!response.ok) {

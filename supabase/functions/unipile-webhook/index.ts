@@ -653,7 +653,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       const senderName = payload.sender?.attendee_name
         || (data?.message as any)?.sender?.name
         || senderId;
-      await fetch(`${supabaseUrl}/functions/v1/ingest-context`, {
+      fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

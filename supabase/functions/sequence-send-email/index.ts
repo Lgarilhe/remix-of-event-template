@@ -8,6 +8,12 @@
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -98,7 +104,7 @@ async function generateAiSnippet(
         ? 'retrieve-context'
         : 'retrieve-context';
 
-      const ragRes = await fetch(`${SUPABASE_URL}/functions/v1/${ragEndpoint}`, {
+      const ragRes = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/${ragEndpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -216,7 +222,7 @@ async function sendViaUnipile(
       tracking_options: { opens: true, links: true },
     };
 
-    const res = await fetch(`${UNIPILE_DSN}/api/v1/emails`, {
+    const res = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/emails`, {
       method: 'POST',
       headers: {
         'X-API-KEY': UNIPILE_API_KEY,
@@ -253,7 +259,7 @@ async function sendViaGraphApi(
   bcc?: string[],
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+    const res = await fetchWithTimeout('https://graph.microsoft.com/v1.0/me/sendMail', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
