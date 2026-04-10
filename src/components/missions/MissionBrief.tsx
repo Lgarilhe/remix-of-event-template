@@ -47,6 +47,8 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [showFilterReview, setShowFilterReview] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-save job_details (debounced)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,16 +57,23 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   latestJobDetailsRef.current = project.job_details || {};
 
   useEffect(() => {
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+    };
   }, []);
 
   const handleJobDetailsUpdate = useCallback((patch: Partial<JobDetails>) => {
     pendingPatchRef.current = deepMerge(pendingPatchRef.current, patch);
+    setSaveStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const merged = deepMerge(latestJobDetailsRef.current, pendingPatchRef.current);
       updateProject({ id: project.id, job_details: merged } as any);
       pendingPatchRef.current = {};
+      setSaveStatus('saved');
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+      saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
     }, 800);
   }, [project.id, updateProject]);
 
@@ -121,9 +130,15 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
 
   return (
     <div className="bg-background border border-border p-4 sm:p-6">
-      {/* Voice toggle */}
+      {/* Voice toggle + save indicator */}
       {!readOnly && (
-        <div className="flex items-center justify-end mb-4">
+        <div className="flex items-center justify-end gap-3 mb-4">
+          {saveStatus === 'saving' && (
+            <span className="text-xs text-muted-foreground animate-pulse">Enregistrement...</span>
+          )}
+          {saveStatus === 'saved' && (
+            <span className="text-xs text-muted-foreground animate-in fade-in duration-300">Enregistré</span>
+          )}
           <button
             onClick={() => setShowVoice(!showVoice)}
             className={cn(
