@@ -11,6 +11,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -107,7 +113,7 @@ Deno.serve(async (req) => {
         .single();
 
       // Create Stripe customer
-      const customerRes = await fetch("https://api.stripe.com/v1/customers", {
+      const customerRes = await fetchWithTimeout("https://api.stripe.com/v1/customers", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
@@ -160,7 +166,7 @@ Deno.serve(async (req) => {
 
       const pack = CREDIT_PACKS[pack_id];
 
-      const sessionRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      const sessionRes = await fetchWithTimeout("https://api.stripe.com/v1/checkout/sessions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
@@ -200,7 +206,7 @@ Deno.serve(async (req) => {
         return json({ error: "price_id required for subscription" }, 400);
       }
 
-      const sessionRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      const sessionRes = await fetchWithTimeout("https://api.stripe.com/v1/checkout/sessions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${STRIPE_SECRET_KEY}`,

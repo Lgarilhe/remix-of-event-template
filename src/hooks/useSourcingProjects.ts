@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -14,7 +14,8 @@ export interface SourcingProject {
   job_id: string | null;
   job_title: string | null;
   client_name: string | null;
-  filters_snapshot: Record<string, any>;
+  /** Only present when fetched individually (not in list query) */
+  filters_snapshot?: Record<string, any>;
   notes: string | null;
   status: 'active' | 'paused' | 'completed' | 'archived';
   created_by: string;
@@ -27,7 +28,8 @@ export interface SourcingProject {
   stats_dismissed: number;
   stats_shortlisted: number;
   calendly_link: string | null;
-  job_details: JobDetails;
+  /** Only present when fetched individually (not in list query) */
+  job_details?: JobDetails;
   hunt_mode: boolean;
   hunt_bounty_percent: number | null;
   hunt_max_recruiters: number | null;
@@ -71,7 +73,8 @@ export const useSourcingProjects = () => {
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
 
-  // Fetch all projects
+  // Fetch all projects — excludes heavy JSONB columns (job_details, filters_snapshot)
+  // Use useSourcingProject(id) to fetch a single project with all fields.
   const { data: projects = [], isLoading, error, refetch } = useQuery({
     queryKey: ['sourcing-projects', organizationId, user?.id],
     queryFn: async () => {
@@ -79,7 +82,7 @@ export const useSourcingProjects = () => {
 
       const { data, error } = await supabase
         .from('sourcing_projects')
-        .select('*')
+        .select('id, name, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status')
         .eq('organization_id', organizationId)
         .order('updated_at', { ascending: false });
 
@@ -136,8 +139,11 @@ export const useSourcingProjects = () => {
       if (error) throw error;
       return (data || { id, ...payload }) as SourcingProject;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+      if (data?.id) {
+        queryClient.invalidateQueries({ queryKey: ['sourcing-project', data.id] });
+      }
     },
     onError: (err: Error) => {
       toast.error(`Erreur: ${err.message}`);
@@ -208,6 +214,31 @@ export const useSourcingProjects = () => {
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
+};
+
+// Hook to get a single project with all fields (including job_details and filters_snapshot)
+export const useSourcingProject = (projectId: string | null | undefined) => {
+  const { isReady, user } = useAuthReady();
+
+  return useQuery({
+    queryKey: ['sourcing-project', projectId],
+    queryFn: async () => {
+      if (!projectId) return null;
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('sourcing_projects')
+        .select('*')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as SourcingProject | null;
+    },
+    enabled: isReady && !!user && !!projectId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
+  });
 };
 
 // Hook to get candidates for a specific project

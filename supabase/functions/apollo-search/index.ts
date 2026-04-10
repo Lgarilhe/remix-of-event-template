@@ -10,6 +10,12 @@ const APOLLO_BASE = 'https://api.apollo.io';
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -174,7 +180,7 @@ Deno.serve(async (req) => {
 
     console.log('[Apollo] Search payload:', JSON.stringify(searchPayload));
 
-    const apolloResponse = await fetch(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+    const apolloResponse = await fetchWithTimeout(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

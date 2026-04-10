@@ -15,6 +15,12 @@ const corsHeaders = {
 
 const APOLLO_BASE = "https://api.apollo.io";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -87,7 +93,7 @@ Deno.serve(async (req) => {
 
     console.log("[enrich-contact] Matching:", JSON.stringify(matchPayload));
 
-    const apolloResponse = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+    const apolloResponse = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/match`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,5 +1,11 @@
 // Deno.serve used directly
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -30,7 +36,7 @@ async function fetchChatMessages(
 ): Promise<Array<{ text: string; is_sender: boolean }>> {
   try {
     const url = `https://${dsn}/api/v1/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { 'X-API-KEY': apiKey, Accept: 'application/json' },
     });
     if (!res.ok) return [];
@@ -50,11 +56,9 @@ async function fetchChatMessages(
 
 async function callAiWithRetry(prompt: string, apiKey: string) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
     try {
-      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,11 +94,7 @@ Pas de texte avant ou après.`,
           temperature: 0.1,
           max_tokens: 4000,
         }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+      }, 30000);
 
     if (response.ok) return response;
 

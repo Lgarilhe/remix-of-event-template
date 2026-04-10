@@ -8,6 +8,12 @@ const corsHeaders = {
 
 const APOLLO_BASE = "https://api.apollo.io";
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 interface ContactToEnrich {
   airtable_id: string;
   full_name: string | null;
@@ -105,7 +111,7 @@ Deno.serve(async (req) => {
         // Direct match via linkedin_url
         matchType = "linkedin";
         try {
-          const resp = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+          const resp = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/match`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -136,7 +142,7 @@ Deno.serve(async (req) => {
             matchBody.email = contact.email;
           }
 
-          const resp = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+          const resp = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/match`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -158,7 +164,7 @@ Deno.serve(async (req) => {
       if (apolloResult && (apolloResult.employment_history || []).length <= 1 && apolloResult.id) {
         try {
           console.log(`[Apollo] Enriching incomplete profile ${apolloResult.id} for ${contact.airtable_id}`);
-          const enrichResp = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+          const enrichResp = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/match`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -187,7 +193,7 @@ Deno.serve(async (req) => {
       if (apolloResult && (apolloResult.employment_history || []).length <= 1 && apolloResult.linkedin_url && !linkedinUrl) {
         try {
           console.log(`[Apollo] Re-matching via discovered LinkedIn URL for ${contact.airtable_id}`);
-          const reResp = await fetch(`${APOLLO_BASE}/v1/people/match`, {
+          const reResp = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/match`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -415,7 +421,7 @@ Réponds en JSON strict :
 }`;
 
       try {
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+        const aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "x-api-key": ANTHROPIC_API_KEY,

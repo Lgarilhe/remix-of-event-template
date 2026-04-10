@@ -1,6 +1,12 @@
 // Deno.serve used directly
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -33,14 +39,14 @@ Deno.serve(async (req) => {
     const baseUrl = N8N_INSTANCE_URL.replace(/\/+$/, '');
 
     // Delete old Skalr workflows
-    const listRes = await fetch(`${baseUrl}/api/v1/workflows?limit=100`, {
+    const listRes = await fetchWithTimeout(`${baseUrl}/api/v1/workflows?limit=100`, {
       headers: { 'X-N8N-API-KEY': N8N_API_KEY },
     });
     if (listRes.ok) {
       const list = await listRes.json();
       for (const w of (list.data || [])) {
         if (w.name?.includes('Skalr')) {
-          await fetch(`${baseUrl}/api/v1/workflows/${w.id}`, {
+          await fetchWithTimeout(`${baseUrl}/api/v1/workflows/${w.id}`, {
             method: 'DELETE',
             headers: { 'X-N8N-API-KEY': N8N_API_KEY },
           });
@@ -406,7 +412,7 @@ try {
       },
     };
 
-    const response = await fetch(`${baseUrl}/api/v1/workflows`, {
+    const response = await fetchWithTimeout(`${baseUrl}/api/v1/workflows`, {
       method: 'POST',
       headers: {
         'X-N8N-API-KEY': N8N_API_KEY,
@@ -422,7 +428,7 @@ try {
     }
 
     // Activate
-    const actRes = await fetch(`${baseUrl}/api/v1/workflows/${data.id}/activate`, {
+    const actRes = await fetchWithTimeout(`${baseUrl}/api/v1/workflows/${data.id}/activate`, {
       method: 'POST',
       headers: { 'X-N8N-API-KEY': N8N_API_KEY },
     });
