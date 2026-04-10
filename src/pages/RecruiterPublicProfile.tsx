@@ -40,11 +40,11 @@ const RecruiterPublicProfile: React.FC = () => {
   useEffect(() => {
     if (!slug) { setNotFound(true); setLoading(false); return; }
 
-    supabase
+    Promise.resolve(supabase
       .from('profiles')
       .select('display_name, recruiter_bio, recruiter_headline, linkedin_url, linkedin_skills, years_experience, job_title, specializations, rating, placements_count, avg_time_to_fill_days, first_round_rate, mid_round_rate, intro_video_url, testimonials')
       .eq('public_slug', slug)
-      .maybeSingle()
+      .maybeSingle())
       .then(({ data, error }) => {
         if (error || !data || !data.recruiter_bio) {
           setNotFound(true);
