@@ -173,6 +173,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    // --- Rate limiting: 60 requests per minute per user (skip for service_role) ---
+    {
+      const sbService = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const { data: allowed } = await sbService.rpc('check_rate_limit', {
+        p_user_id: user.id,
+        p_action: 'unipile_search',
+        p_max_requests: 60,
+        p_window_seconds: 60,
+      });
+      if (allowed === false) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Rate limit exceeded',
+          errorType: 'RATE_LIMIT',
+          retryAfter: 60,
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const credentials = await resolveUnipileCredentials(organization_id);
     if (!credentials) {
       return new Response(
