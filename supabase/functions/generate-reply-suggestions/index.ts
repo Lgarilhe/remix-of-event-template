@@ -675,11 +675,33 @@ Réponds UNIQUEMENT en JSON valide:
         clearTimeout(retryTimeout);
         if (retryRes.ok) {
           const retryData = await retryRes.json();
-          _tokensIn += retryData.usage?.input_tokens || 0;
-          _tokensOut += retryData.usage?.output_tokens || 0;
+          const retryTokensIn = retryData.usage?.input_tokens || 0;
+          const retryTokensOut = retryData.usage?.output_tokens || 0;
+          _tokensIn += retryTokensIn;
+          _tokensOut += retryTokensOut;
           let retryContent = retryData.content?.[0]?.text || "";
           retryContent = retryContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           const retryResult = JSON.parse(retryContent);
+          // Settle credits for the retry tokens before returning
+          try {
+            const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+            const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            const retryOrgId = userId ? await resolveOrgIdFromUser(userId, adminClient) as string | null : null;
+            if (retryOrgId && (retryTokensIn + retryTokensOut) > 0) {
+              const { settleCredits } = await import("../_shared/settle-credits.ts");
+              await settleCredits(adminClient, {
+                organizationId: retryOrgId,
+                userId: userId!,
+                aiAction: _aiParams.aiAction,
+                modelId: _aiParams.modelId,
+                tokensInput: retryTokensIn,
+                tokensOutput: retryTokensOut,
+                description: _aiParams.description,
+              });
+            }
+          } catch (e) {
+            console.error('[generate-reply-suggestions] Retry credit settlement error:', e);
+          }
           return new Response(
             JSON.stringify({ success: true, suggestions: retryResult.suggestions || [] }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }

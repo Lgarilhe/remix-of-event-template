@@ -454,6 +454,22 @@ Réponds en JSON strict :
         const aiData = await aiResp.json();
         const aiContent = aiData.content?.[0]?.text || "";
 
+        // Settle AI credits for this call
+        try {
+          const { settleCredits } = await import("../_shared/settle-credits.ts");
+          await settleCredits(supabase, {
+            organizationId: organization_id,
+            userId: user.id || '',
+            aiAction: 'vivier_enrichment',
+            modelId: 'claude-sonnet-4-6',
+            tokensInput: aiData.usage?.input_tokens || 0,
+            tokensOutput: aiData.usage?.output_tokens || 0,
+            description: 'Vivier contact enrichment AI analysis',
+          });
+        } catch (settleErr) {
+          console.error('[enrich-vivier] Credit settlement error:', settleErr);
+        }
+
         // Parse JSON from AI response
         let parsed: any = {};
         try {
