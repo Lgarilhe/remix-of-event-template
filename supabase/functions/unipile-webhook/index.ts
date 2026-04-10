@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
+import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +21,35 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 // Prevents filter injection via special characters (commas, dots, parens)
 function sanitizeFilterId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_\-:]/g, '');
+}
+
+// Resolve Unipile credentials for the org that owns the given Unipile account_id.
+// Falls back to global env vars if no per-org credentials are found.
+async function resolveCredsForAccount(accountId: string, supabase: SupabaseClient): Promise<{ apiKey: string; dsn: string }> {
+  const envApiKey = Deno.env.get('UNIPILE_API_KEY') || '';
+  const rawDsn = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const envDsn = `https://${rawDsn}`;
+  const fallback = { apiKey: envApiKey, dsn: envDsn };
+
+  if (!accountId) return fallback;
+
+  try {
+    const { data: account } = await supabase
+      .from('member_linkedin_accounts')
+      .select('organization_id')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (!account?.organization_id) return fallback;
+
+    const creds = await resolveUnipileCredentials(account.organization_id, supabase);
+    if (creds) {
+      return { apiKey: creds.apiKey, dsn: creds.dsn };
+    }
+  } catch (e) {
+    console.warn('[unipile-webhook] Org credential resolution failed, using env:', e);
+  }
+  return fallback;
 }
 
 
@@ -78,17 +108,20 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Resolve per-org Unipile credentials based on the account_id in the webhook payload
+    const uCreds = await resolveCredsForAccount(payload.account_id || '', supabase);
+
     switch (payload.event) {
       case 'new_relation': {
         // A connection request was accepted
         await handleNewRelation(supabase, payload);
         break;
       }
-      
+
       case 'new_message':
       case 'message_received': {
         // A new message was received
-        await handleNewMessage(supabase, payload);
+        await handleNewMessage(supabase, payload, uCreds);
         break;
       }
       
@@ -325,7 +358,7 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   }
 }
 
-async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload) {
+async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload, uCreds: { apiKey: string; dsn: string }) {
   const { account_id, data } = payload;
   
   // Handle two payload formats:
@@ -378,9 +411,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // For ambiguous cases (is_sender undefined), resolve via chat attendees API
   if (isSenderSelf === undefined && chatId && senderAttendeeId) {
     try {
-      const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN')!;
-      const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
-      const attRes = await fetchWithTimeout(`https://${UNIPILE_DSN}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': UNIPILE_API_KEY } });
+      const attRes = await fetchWithTimeout(`${uCreds.dsn}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': uCreds.apiKey } });
       if (attRes.ok) {
         const attData = await attRes.json();
         const attendees = attData.items || attData || [];
@@ -527,12 +558,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // InMails are sent to AEM... IDs but replies come from ACo... IDs (or vice versa)
   if ((!inmailMatches || inmailMatches.length === 0) && senderId) {
     try {
-      const UNIPILE_DSN = Deno.env.get('UNIPILE_DSN')!;
-      const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY')!;
-      
       // Resolve the sender's profile to get alternative IDs
-      const userRes = await fetchWithTimeout(`https://${UNIPILE_DSN}/api/v1/users/${senderId}`, {
-        headers: { 'X-API-KEY': UNIPILE_API_KEY },
+      const userRes = await fetchWithTimeout(`${uCreds.dsn}/api/v1/users/${senderId}`, {
+        headers: { 'X-API-KEY': uCreds.apiKey },
       });
       
       if (userRes.ok) {
