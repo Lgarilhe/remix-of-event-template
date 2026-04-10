@@ -294,7 +294,8 @@ Deno.serve(async (req) => {
     // ── Auth: accept service_role key (webhook calls) OR valid JWT (user calls) ──
     const authHeader = req.headers.get('Authorization');
     const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-    
+    let userId: string | null = null;
+
     if (!isServiceRole) {
       if (!authHeader) {
         return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -306,10 +307,22 @@ Deno.serve(async (req) => {
       if (authError || !user) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+      userId = user.id;
     }
 
     const _body = await req.json();
     const { chat_id, account_id, sender_id, organization_id } = _body;
+
+    // Verify org membership (skip for service_role — used by webhooks)
+    if (organization_id && userId) {
+      const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
+      const isMember = await verifyOrgMembership(supabase, userId, organization_id);
+      if (!isMember) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "auto_analyze_message", modelId: "claude-sonnet-4-6", description: null,
     };
