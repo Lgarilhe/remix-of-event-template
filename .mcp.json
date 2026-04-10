@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "unipile-docs": {
+      "type": "url",
+      "url": "https://developer.unipile.com/mcp"
+    },
+    "apollo": {
+      "type": "url",
+      "url": "https://mcp.apollo.io/mcp"
+    },
+    "context7": {
+      "type": "url",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

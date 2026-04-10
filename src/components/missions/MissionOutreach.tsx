@@ -10,7 +10,7 @@ import { OutreachEmptyState } from './OutreachEmptyState';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Loader2 } from 'lucide-react';
 
 interface MissionOutreachProps {
   project: SourcingProject;
@@ -23,6 +23,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const { organizationId } = useOrganization();
   const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations'>('sequences');
   const [showEmptyState, setShowEmptyState] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Enrollment stats
   const [enrollmentStats, setEnrollmentStats] = useState({ active: 0, completed: 0, replied: 0, total: 0 });
@@ -31,46 +32,67 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   // Fetch enrollment stats + go count for this project's sequences
   useEffect(() => {
     if (!project.id) return;
+    let isMounted = true;
+
     const fetchStats = async () => {
-      const { data: sequences } = await (supabase
+      const { data: sequences, error: seqError } = await (supabase
         .from('outreach_sequences')
         .select('id') as any)
         .eq('project_id', project.id);
 
+      if (seqError) throw seqError;
+
       if (!sequences?.length) {
-        setShowEmptyState(true);
+        if (isMounted) setShowEmptyState(true);
         return;
       }
 
-      setShowEmptyState(false);
+      if (isMounted) setShowEmptyState(false);
 
       const seqIds = sequences.map((s: any) => s.id);
-      const { data: enrollments } = await supabase
+      const { data: enrollments, error: enrError } = await supabase
         .from('sequence_enrollments')
         .select('status')
         .in('sequence_id', seqIds);
 
+      if (enrError) throw enrError;
       if (!enrollments) return;
-      setEnrollmentStats({
-        total: enrollments.length,
-        active: enrollments.filter(e => e.status === 'active').length,
-        completed: enrollments.filter(e => e.status === 'completed').length,
-        replied: enrollments.filter(e => e.status === 'replied').length,
-      });
+
+      if (isMounted) {
+        setEnrollmentStats({
+          total: enrollments.length,
+          active: enrollments.filter(e => e.status === 'active').length,
+          completed: enrollments.filter(e => e.status === 'completed').length,
+          replied: enrollments.filter(e => e.status === 'replied').length,
+        });
+      }
     };
 
     // Count Go-scored candidates in project
     const fetchGoCount = async () => {
-      const { count } = await (supabase as any)
+      const { count, error } = await (supabase as any)
         .from('sourcing_project_candidates')
         .select('*', { count: 'exact', head: true })
         .eq('project_id', project.id)
         .eq('recommendation', 'go');
-      setGoCount(count || 0);
+      if (error) throw error;
+      if (isMounted) setGoCount(count || 0);
     };
 
-    fetchStats();
-    fetchGoCount();
+    const loadData = async () => {
+      try {
+        await Promise.all([fetchStats(), fetchGoCount()]);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error('[MissionOutreach] Load error:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadData();
+
+    return () => { isMounted = false; };
   }, [project.id]);
 
   const subTabs = [
@@ -88,6 +110,14 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
   if (accounts.length === 0) {
     return <EmptyLinkedInAccountState message="Pour gérer vos séquences d'outreach, connectez d'abord un compte LinkedIn." />;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   if (showEmptyState && enrollmentStats.total === 0) {

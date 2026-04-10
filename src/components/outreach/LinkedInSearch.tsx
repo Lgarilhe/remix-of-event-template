@@ -381,7 +381,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setShowPoolView(cached.hasSearched ? cached.showPoolView : false);
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
-  }, [missionCacheKey, search, activeProject, initialSearchSource]);
+  }, [missionCacheKey, activeProject?.id, initialSearchSource]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     if (!missionCacheKey || hydratedCacheKeyRef.current !== missionCacheKey) return;
@@ -505,42 +505,36 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   }, [subscriptions, search.filters.api]);
 
-  // Auto-select API mode based on subscriptions
+  // Consolidated: sync filters.api with searchSource + subscription (single source of truth)
   useEffect(() => {
+    if (searchSource === 'database') {
+      if (search.filters.api !== 'database') {
+        search.setFilters(f => ({ ...f, api: 'database' }));
+      }
+      return;
+    }
+
+    // LinkedIn source — pick correct API from subscriptions
     if (!subscriptions) return;
-    
+
     const hasPremiumLicense = subscriptions.recruiter || subscriptions.sales_navigator;
-    
-    if (hasPremiumLicense && search.filters.api === 'classic') {
+    const currentApi = search.filters.api;
+
+    // Coming back from database mode or classic forced when premium available
+    if (currentApi === 'database' || (hasPremiumLicense && currentApi === 'classic')) {
       if (subscriptions.recruiter) {
         search.setFilters(f => ({ ...f, api: 'recruiter' }));
       } else if (subscriptions.sales_navigator) {
         search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
       }
-    } else if (search.filters.api === 'recruiter' && !subscriptions.recruiter && subscriptions.sales_navigator) {
+    } else if (currentApi === 'recruiter' && !subscriptions.recruiter && subscriptions.sales_navigator) {
       search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
-    } else if (search.filters.api === 'sales_navigator' && !subscriptions.sales_navigator && subscriptions.recruiter) {
+    } else if (currentApi === 'sales_navigator' && !subscriptions.sales_navigator && subscriptions.recruiter) {
       search.setFilters(f => ({ ...f, api: 'recruiter' }));
-    } else if (!hasPremiumLicense && search.filters.api !== 'classic') {
+    } else if (!hasPremiumLicense && currentApi !== 'classic') {
       search.setFilters(f => ({ ...f, api: 'classic' }));
     }
-  }, [subscriptions, selectedAccount]);
-
-  // Force API type to match searchSource toggle
-  useEffect(() => {
-    if (searchSource === 'database' && search.filters.api !== 'database') {
-      search.setFilters(f => ({ ...f, api: 'database' }));
-    } else if (searchSource === 'linkedin' && search.filters.api === 'database') {
-      // When switching back to LinkedIn, restore appropriate API mode
-      if (subscriptions?.recruiter) {
-        search.setFilters(f => ({ ...f, api: 'recruiter' }));
-      } else if (subscriptions?.sales_navigator) {
-        search.setFilters(f => ({ ...f, api: 'sales_navigator' }));
-      } else {
-        search.setFilters(f => ({ ...f, api: 'classic' }));
-      }
-    }
-  }, [searchSource, search.filters.api, subscriptions]);
+  }, [searchSource, subscriptions, selectedAccount, search.filters.api]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Treated/dismissed counts
   const treatedCount = useMemo(() => {
