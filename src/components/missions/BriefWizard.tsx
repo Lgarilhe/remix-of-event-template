@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Plus, Sparkles, ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
@@ -25,37 +25,50 @@ const Field = ({
   placeholder?: string;
   className?: string;
   readOnly?: boolean;
-}) => (
-  <div className={cn('space-y-1.5', className)}>
-    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
-    {type === 'textarea' ? (
-      <textarea
-        defaultValue={value ?? ''}
-        onBlur={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        tabIndex={readOnly ? -1 : undefined}
-        className={cn(
-          'w-full min-h-[80px] px-3 py-2 text-sm border border-border bg-background text-foreground resize-y focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
-          readOnly && 'cursor-default opacity-70 focus:border-border'
-        )}
-      />
-    ) : (
-      <input
-        type={type}
-        defaultValue={value ?? ''}
-        onBlur={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        tabIndex={readOnly ? -1 : undefined}
-        className={cn(
-          'w-full h-[38px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
-          readOnly && 'cursor-default opacity-70 focus:border-border'
-        )}
-      />
-    )}
-  </div>
-);
+}) => {
+  const [localValue, setLocalValue] = useState<string>(
+    value != null ? String(value) : ''
+  );
+
+  // Sync with external changes (voice dictation, AI auto-fill, real-time sync)
+  useEffect(() => {
+    setLocalValue(value != null ? String(value) : '');
+  }, [value]);
+
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</label>
+      {type === 'textarea' ? (
+        <textarea
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={() => onChange(localValue)}
+          placeholder={placeholder}
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+          className={cn(
+            'w-full min-h-[80px] px-3 py-2 text-sm border border-border bg-background text-foreground resize-y focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
+            readOnly && 'cursor-default opacity-70 focus:border-border'
+          )}
+        />
+      ) : (
+        <input
+          type={type}
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={() => onChange(localValue)}
+          placeholder={placeholder}
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+          className={cn(
+            'w-full h-[38px] px-3 text-sm border border-border bg-background text-foreground focus:border-border focus:outline-none transition-colors placeholder:text-muted-foreground/40',
+            readOnly && 'cursor-default opacity-70 focus:border-border'
+          )}
+        />
+      )}
+    </div>
+  );
+};
 
 const SelectField = ({
   label,
