@@ -103,6 +103,10 @@ const Settings = () => {
     if (tab === 'billing' && isAdmin) return 'billing';
     if (tab === 'integrations' && isAdmin) return 'integrations';
     if (tab === 'account') return 'account';
+    if (tab === 'connectors' && !isCollaborator) return 'connectors';
+    if (tab === 'team' && !isCollaborator) return 'team';
+    if (tab === 'agency' && isAgency) return 'agency';
+    if (tab === 'marketplace') return 'marketplace';
     return 'general';
   });
 

@@ -64,7 +64,7 @@ export default function Dashboard() {
                   <div className="text-xs font-bold">1. Créer une mission</div>
                   <p className="text-xs text-muted-foreground mt-1">Ajoutez votre premier poste à pourvoir</p>
                 </a>
-                <a href="/missions?tab=search" className="group border border-border p-5 hover:bg-accent transition-colors">
+                <a href="/missions" className="group border border-border p-5 hover:bg-accent transition-colors">
                   <div className="text-2xl mb-2">🔍</div>
                   <div className="text-xs font-bold">2. Sourcer des candidats</div>
                   <p className="text-xs text-muted-foreground mt-1">Lancez une recherche LinkedIn</p>
