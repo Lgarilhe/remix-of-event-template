@@ -8,6 +8,17 @@ const corsHeaders = {
 
 const PDL_BASE = 'https://api.peopledatalabs.com/v5';
 
+// Sanitize user input for PDL SQL queries: escape single quotes and strip dangerous chars
+function sanitizePdl(value: string): string {
+  return value.replace(/'/g, "''").replace(/[;\\]/g, '').slice(0, 200);
+}
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 
 Deno.serve(async (req) => {
@@ -44,54 +55,54 @@ Deno.serve(async (req) => {
     // ── Person / Job Title ──
     if (body.job_title) {
       const titles = body.job_title.split(',').map((t: string) => t.trim()).filter(Boolean);
-      if (titles.length === 1) conditions.push(`job_title LIKE '%${titles[0]}%'`);
-      else conditions.push(`(${titles.map((t: string) => `job_title LIKE '%${t}%'`).join(' OR ')})`);
+      if (titles.length === 1) conditions.push(`job_title LIKE '%${sanitizePdl(titles[0])}%'`);
+      else conditions.push(`(${titles.map((t: string) => `job_title LIKE '%${sanitizePdl(t)}%'`).join(' OR ')})`);
     }
-    if (body.job_title_role) conditions.push(`job_title_role='${body.job_title_role}'`);
-    if (body.job_title_sub_role) conditions.push(`job_title_sub_role='${body.job_title_sub_role}'`);
-    if (body.job_title_class) conditions.push(`job_title_class='${body.job_title_class}'`);
+    if (body.job_title_role) conditions.push(`job_title_role='${sanitizePdl(body.job_title_role)}'`);
+    if (body.job_title_sub_role) conditions.push(`job_title_sub_role='${sanitizePdl(body.job_title_sub_role)}'`);
+    if (body.job_title_class) conditions.push(`job_title_class='${sanitizePdl(body.job_title_class)}'`);
     if (body.job_title_levels?.length > 0) {
-      if (body.job_title_levels.length === 1) conditions.push(`job_title_levels='${body.job_title_levels[0]}'`);
-      else conditions.push(`(${body.job_title_levels.map((l: string) => `job_title_levels='${l}'`).join(' OR ')})`);
+      if (body.job_title_levels.length === 1) conditions.push(`job_title_levels='${sanitizePdl(body.job_title_levels[0])}'`);
+      else conditions.push(`(${body.job_title_levels.map((l: string) => `job_title_levels='${sanitizePdl(l)}'`).join(' OR ')})`);
     }
 
     // ── Company ──
-    if (body.job_company_name) conditions.push(`job_company_name LIKE '%${body.job_company_name}%'`);
-    if (body.job_company_industry) conditions.push(`job_company_industry='${body.job_company_industry}'`);
-    if (body.job_company_size && body.job_company_size !== 'all') conditions.push(`job_company_size='${body.job_company_size}'`);
-    if (body.job_company_type) conditions.push(`job_company_type='${body.job_company_type}'`);
-    if (body.job_company_ticker) conditions.push(`job_company_ticker='${body.job_company_ticker.toLowerCase()}'`);
+    if (body.job_company_name) conditions.push(`job_company_name LIKE '%${sanitizePdl(body.job_company_name)}%'`);
+    if (body.job_company_industry) conditions.push(`job_company_industry='${sanitizePdl(body.job_company_industry)}'`);
+    if (body.job_company_size && body.job_company_size !== 'all') conditions.push(`job_company_size='${sanitizePdl(body.job_company_size)}'`);
+    if (body.job_company_type) conditions.push(`job_company_type='${sanitizePdl(body.job_company_type)}'`);
+    if (body.job_company_ticker) conditions.push(`job_company_ticker='${sanitizePdl(body.job_company_ticker.toLowerCase())}'`);
     if (body.job_company_founded) {
-      const v = body.job_company_founded.trim();
-      if (v.startsWith('>')) conditions.push(`job_company_founded>=${v.slice(1).trim()}`);
-      else if (v.startsWith('<')) conditions.push(`job_company_founded<=${v.slice(1).trim()}`);
-      else conditions.push(`job_company_founded=${v}`);
+      const v = sanitizePdl(body.job_company_founded.trim());
+      if (v.startsWith('>')) conditions.push(`job_company_founded>=${sanitizePdl(v.slice(1).trim())}`);
+      else if (v.startsWith('<')) conditions.push(`job_company_founded<=${sanitizePdl(v.slice(1).trim())}`);
+      else conditions.push(`job_company_founded=${sanitizePdl(v)}`);
     }
-    if (body.job_company_inferred_revenue) conditions.push(`job_company_inferred_revenue='${body.job_company_inferred_revenue}'`);
-    if (body.job_company_total_funding_raised_min) conditions.push(`job_company_total_funding_raised>=${body.job_company_total_funding_raised_min}`);
-    if (body.job_company_total_funding_raised_max) conditions.push(`job_company_total_funding_raised<=${body.job_company_total_funding_raised_max}`);
+    if (body.job_company_inferred_revenue) conditions.push(`job_company_inferred_revenue='${sanitizePdl(body.job_company_inferred_revenue)}'`);
+    if (body.job_company_total_funding_raised_min) conditions.push(`job_company_total_funding_raised>=${sanitizePdl(String(body.job_company_total_funding_raised_min))}`);
+    if (body.job_company_total_funding_raised_max) conditions.push(`job_company_total_funding_raised<=${sanitizePdl(String(body.job_company_total_funding_raised_max))}`);
     if (body.job_company_12mo_employee_growth_rate) {
-      const v = body.job_company_12mo_employee_growth_rate.trim();
-      if (v.startsWith('>')) conditions.push(`job_company_12mo_employee_growth_rate>=${v.slice(1).trim()}`);
-      else if (v.startsWith('<')) conditions.push(`job_company_12mo_employee_growth_rate<=${v.slice(1).trim()}`);
-      else conditions.push(`job_company_12mo_employee_growth_rate>=${v}`);
+      const v = sanitizePdl(body.job_company_12mo_employee_growth_rate.trim());
+      if (v.startsWith('>')) conditions.push(`job_company_12mo_employee_growth_rate>=${sanitizePdl(v.slice(1).trim())}`);
+      else if (v.startsWith('<')) conditions.push(`job_company_12mo_employee_growth_rate<=${sanitizePdl(v.slice(1).trim())}`);
+      else conditions.push(`job_company_12mo_employee_growth_rate>=${sanitizePdl(v)}`);
     }
 
     // ── Company HQ Location ──
-    if (body.job_company_location_country) conditions.push(`job_company_location_country='${body.job_company_location_country}'`);
-    if (body.job_company_location_region) conditions.push(`job_company_location_region LIKE '%${body.job_company_location_region}%'`);
-    if (body.job_company_location_locality) conditions.push(`job_company_location_locality LIKE '%${body.job_company_location_locality}%'`);
+    if (body.job_company_location_country) conditions.push(`job_company_location_country='${sanitizePdl(body.job_company_location_country)}'`);
+    if (body.job_company_location_region) conditions.push(`job_company_location_region LIKE '%${sanitizePdl(body.job_company_location_region)}%'`);
+    if (body.job_company_location_locality) conditions.push(`job_company_location_locality LIKE '%${sanitizePdl(body.job_company_location_locality)}%'`);
 
     // ── Person Location ──
-    if (body.location_country) conditions.push(`location_country='${body.location_country}'`);
-    if (body.location_continent) conditions.push(`location_continent='${body.location_continent}'`);
-    if (body.location_region) conditions.push(`location_region LIKE '%${body.location_region}%'`);
-    if (body.location_metro) conditions.push(`location_metro LIKE '%${body.location_metro}%'`);
-    if (body.location_locality) conditions.push(`location_locality LIKE '%${body.location_locality}%'`);
+    if (body.location_country) conditions.push(`location_country='${sanitizePdl(body.location_country)}'`);
+    if (body.location_continent) conditions.push(`location_continent='${sanitizePdl(body.location_continent)}'`);
+    if (body.location_region) conditions.push(`location_region LIKE '%${sanitizePdl(body.location_region)}%'`);
+    if (body.location_metro) conditions.push(`location_metro LIKE '%${sanitizePdl(body.location_metro)}%'`);
+    if (body.location_locality) conditions.push(`location_locality LIKE '%${sanitizePdl(body.location_locality)}%'`);
 
     // ── Skills ──
     if (body.skills?.length > 0) {
-      conditions.push(`(${body.skills.map((s: string) => `skills LIKE '%${s}%'`).join(' OR ')})`);
+      conditions.push(`(${body.skills.map((s: string) => `skills LIKE '%${sanitizePdl(s)}%'`).join(' OR ')})`);
     }
 
     // ── Experience ──
@@ -104,31 +115,31 @@ Deno.serve(async (req) => {
         if (!isNaN(max)) conditions.push(`inferred_years_experience<=${max}`);
       }
     }
-    if (body.inferred_salary) conditions.push(`inferred_salary='${body.inferred_salary}'`);
-    if (body.industry) conditions.push(`industry='${body.industry}'`);
+    if (body.inferred_salary) conditions.push(`inferred_salary='${sanitizePdl(body.inferred_salary)}'`);
+    if (body.industry) conditions.push(`industry='${sanitizePdl(body.industry)}'`);
 
     // ── Education ──
-    if (body.education_school) conditions.push(`education.school.name LIKE '%${body.education_school}%'`);
-    if (body.education_degree) conditions.push(`education.degrees='${body.education_degree}'`);
-    if (body.education_major) conditions.push(`education.majors LIKE '%${body.education_major}%'`);
+    if (body.education_school) conditions.push(`education.school.name LIKE '%${sanitizePdl(body.education_school)}%'`);
+    if (body.education_degree) conditions.push(`education.degrees='${sanitizePdl(body.education_degree)}'`);
+    if (body.education_major) conditions.push(`education.majors LIKE '%${sanitizePdl(body.education_major)}%'`);
 
     // ── Languages ──
     if (body.languages) {
       const langs = body.languages.split(',').map((l: string) => l.trim().toLowerCase()).filter(Boolean);
-      if (langs.length > 0) conditions.push(`(${langs.map((l: string) => `languages.name='${l}'`).join(' OR ')})`);
+      if (langs.length > 0) conditions.push(`(${langs.map((l: string) => `languages.name='${sanitizePdl(l)}'`).join(' OR ')})`);
     }
 
     // ── Certifications ──
-    if (body.certifications) conditions.push(`certifications.name LIKE '%${body.certifications}%'`);
+    if (body.certifications) conditions.push(`certifications.name LIKE '%${sanitizePdl(body.certifications)}%'`);
 
     // ── Interests ──
     if (body.interests) {
       const ints = body.interests.split(',').map((i: string) => i.trim().toLowerCase()).filter(Boolean);
-      if (ints.length > 0) conditions.push(`(${ints.map((i: string) => `interests='${i}'`).join(' OR ')})`);
+      if (ints.length > 0) conditions.push(`(${ints.map((i: string) => `interests='${sanitizePdl(i)}'`).join(' OR ')})`);
     }
 
     // ── Summary / Bio ──
-    if (body.summary) conditions.push(`summary LIKE '%${body.summary}%'`);
+    if (body.summary) conditions.push(`summary LIKE '%${sanitizePdl(body.summary)}%'`);
 
     // ── Intent signals ──
     if (body.intent_job_change) {
@@ -153,7 +164,7 @@ Deno.serve(async (req) => {
 
     const searchBody = { sql: sqlQuery, size: Math.min(body.size || 50, 100), dataset: 'all' };
 
-    const pdlResponse = await fetch(`${PDL_BASE}/person/search`, {
+    const pdlResponse = await fetchWithTimeout(`${PDL_BASE}/person/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': PDL_API_KEY },
       body: JSON.stringify(searchBody),
