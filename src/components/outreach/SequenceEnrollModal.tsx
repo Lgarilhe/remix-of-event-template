@@ -98,99 +98,110 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       const userId = user?.id || '00000000-0000-0000-0000-000000000000';
 
       const firstStep = sequence.steps.find((s: any) => s.step_order === 0) || sequence.steps[0];
-      
-      for (const profile of profiles) {
-        try {
-          const { data: existing } = await supabase
-            .from('sequence_enrollments')
-            .select('id, status')
-            .eq('sequence_id', sequence.id)
-            .eq('profile_id', profile.id)
-            .in('status', ['active', 'completed', 'replied'])
-            .maybeSingle();
 
-          if (existing) {
-            enrollmentResults.skipped++;
-            continue;
-          }
+      // 1. Batch check existing enrollments for all profiles in one query
+      const profileIds = profiles.map(p => p.id);
+      const { data: existingEnrollments } = await supabase
+        .from('sequence_enrollments')
+        .select('profile_id')
+        .eq('sequence_id', sequence.id)
+        .in('profile_id', profileIds)
+        .in('status', ['active', 'completed', 'replied']);
 
-          const networkDist = profile.network_distance;
-          const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
-            ? 'FIRST_DEGREE'
-            : networkDist === 2 || networkDist === '2' || networkDist === 'DISTANCE_2'
-            ? 'SECOND_DEGREE'
-            : networkDist === 3 || networkDist === '3' || networkDist === 'DISTANCE_3'
-            ? 'THIRD_DEGREE'
-            : typeof networkDist === 'string' ? networkDist : null;
+      const existingIds = new Set((existingEnrollments || []).map(e => e.profile_id));
+      const newProfiles = profiles.filter(p => !existingIds.has(p.id));
+      enrollmentResults.skipped = profiles.length - newProfiles.length;
 
-          const { data: enrollment, error: enrollError } = await supabase
-            .from('sequence_enrollments')
-            .insert({
-              sequence_id: sequence.id,
-              account_id: accountId,
-              profile_id: profile.id,
-              profile_name: profile.name,
-              profile_headline: profile.headline,
-              profile_url: profile.profile_url || profile.public_profile_url,
-              job_id: job?.id,
-              job_title: job?.title,
-              created_by: userId,
-              user_timezone: userTimezone,
-              current_step_order: 0,
-              status: 'active',
-              network_distance: normalizedDistance,
-            })
-            .select()
-            .single();
+      if (newProfiles.length === 0) {
+        setResults(enrollmentResults);
+        if (enrollmentResults.skipped > 0) {
+          toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        }
+        return;
+      }
 
-          if (enrollError) throw enrollError;
-          if (!enrollment) throw new Error('Enrollment non créé');
+      // 2. Batch insert all new enrollments
+      const enrollmentRows = newProfiles.map(profile => {
+        const networkDist = profile.network_distance;
+        const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
+          ? 'FIRST_DEGREE'
+          : networkDist === 2 || networkDist === '2' || networkDist === 'DISTANCE_2'
+          ? 'SECOND_DEGREE'
+          : networkDist === 3 || networkDist === '3' || networkDist === 'DISTANCE_3'
+          ? 'THIRD_DEGREE'
+          : typeof networkDist === 'string' ? networkDist : null;
 
-          if (firstStep) {
-            const scheduledAt = calculateScheduledTime(
-              new Date(),
-              firstStep.delay_days || 0,
-              firstStep.delay_hours || 0,
-              firstStep.delay_minutes || 0,
-              firstStep.preferred_hour_start ?? 9,
-              firstStep.preferred_hour_end ?? 18,
-              userTimezone
-            );
+        return {
+          sequence_id: sequence.id,
+          account_id: accountId,
+          profile_id: profile.id,
+          profile_name: profile.name,
+          profile_headline: profile.headline,
+          profile_url: profile.profile_url || profile.public_profile_url,
+          job_id: job?.id,
+          job_title: job?.title,
+          created_by: userId,
+          user_timezone: userTimezone,
+          current_step_order: 0,
+          status: 'active',
+          network_distance: normalizedDistance,
+        };
+      });
 
-            await supabase
-              .from('sequence_step_executions')
-              .insert({
-                enrollment_id: enrollment.id,
-                step_id: firstStep.id,
-                step_order: firstStep.step_order,
-                scheduled_at: scheduledAt.toISOString(),
-                status: 'scheduled',
-              });
-          }
+      const { data: insertedEnrollments, error: enrollError } = await supabase
+        .from('sequence_enrollments')
+        .insert(enrollmentRows)
+        .select('id, profile_id');
 
-          enrollmentResults.success++;
+      if (enrollError) throw enrollError;
+      if (!insertedEnrollments?.length) throw new Error('Enrollments non créés');
 
-          if (job?.id) {
-            await supabase
-              .from('job_candidate_status')
-              .upsert({
-                job_id: job.id,
-                candidate_id: profile.id,
-                candidate_name: profile.name || null,
-                candidate_headline: profile.headline || null,
-                linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-                status: 'messaged',
-                created_by: userId,
-              }, {
-                onConflict: 'job_id,candidate_id,created_by'
-              });
-          }
-        } catch (err: any) {
-          const msg = err?.message || err?.details || err?.hint || JSON.stringify(err);
-          console.error('Enrollment error for', profile.name, err);
-          enrollmentResults.errors.push(
-            `${profile.name}: ${msg}`
+      enrollmentResults.success = insertedEnrollments.length;
+
+      // 3. Batch insert step executions for all new enrollments
+      if (firstStep && insertedEnrollments.length > 0) {
+        const now = new Date();
+        const execRows = insertedEnrollments.map(enrollment => {
+          const scheduledAt = calculateScheduledTime(
+            now,
+            firstStep.delay_days || 0,
+            firstStep.delay_hours || 0,
+            firstStep.delay_minutes || 0,
+            firstStep.preferred_hour_start ?? 9,
+            firstStep.preferred_hour_end ?? 18,
+            userTimezone
           );
+          return {
+            enrollment_id: enrollment.id,
+            step_id: firstStep.id,
+            step_order: firstStep.step_order,
+            scheduled_at: scheduledAt.toISOString(),
+            status: 'scheduled',
+          };
+        });
+
+        await supabase.from('sequence_step_executions').insert(execRows);
+      }
+
+      // 4. Batch upsert job_candidate_status if a job is linked
+      if (job?.id && insertedEnrollments.length > 0) {
+        const enrolledProfileIds = new Set(insertedEnrollments.map(e => e.profile_id));
+        const statusRows = newProfiles
+          .filter(p => enrolledProfileIds.has(p.id))
+          .map(profile => ({
+            job_id: job.id,
+            candidate_id: profile.id,
+            candidate_name: profile.name || null,
+            candidate_headline: profile.headline || null,
+            linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
+            status: 'messaged',
+            created_by: userId,
+          }));
+
+        if (statusRows.length > 0) {
+          await supabase
+            .from('job_candidate_status')
+            .upsert(statusRows, { onConflict: 'job_id,candidate_id,created_by' });
         }
       }
 
@@ -202,8 +213,10 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       if (enrollmentResults.skipped > 0) {
         toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Enrollment error:', err);
+      enrollmentResults.errors.push(err?.message || err?.details || err?.hint || JSON.stringify(err));
+      setResults(enrollmentResults);
       toast.error('Erreur lors de l\'inscription');
     } finally {
       setIsEnrolling(false);
