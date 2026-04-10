@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +26,7 @@ export const EmailSignatures: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<EmailSignature | null>(null);
   const [form, setForm] = useState({ name: '', content: '', is_default: false });
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const openCreate = () => {
     setEditing(null);
@@ -39,9 +50,8 @@ export const EmailSignatures: React.FC = () => {
     setDialogOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer cette signature ?')) return;
-    await deleteSignature.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setDeleteTargetId(id);
   };
 
   return (
@@ -108,6 +118,29 @@ export const EmailSignatures: React.FC = () => {
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={!!deleteTargetId} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette signature ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={async () => {
+                if (deleteTargetId) await deleteSignature.mutateAsync(deleteTargetId);
+                setDeleteTargetId(null);
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">

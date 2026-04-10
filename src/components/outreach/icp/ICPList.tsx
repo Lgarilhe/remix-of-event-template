@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Target, Pencil, Trash2, Building2, Users, Zap, MapPin, Briefcase, Code, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { useICPs, ICP, ICPCriteria } from '@/hooks/useICPs';
@@ -127,6 +137,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
   const { icps, isLoading, createICP, updateICP, deleteICP } = useICPs();
   const [formOpen, setFormOpen] = useState(false);
   const [editingICP, setEditingICP] = useState<ICP | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ICP | null>(null);
 
   const handleSave = (data: { name: string; description: string; target_type: 'client' | 'candidate' | 'both'; criteria: any }) => {
     if (editingICP) {
@@ -146,9 +157,7 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
   };
 
   const handleDelete = (icp: ICP) => {
-    if (window.confirm(`Supprimer l'ICP "${icp.name}" ?`)) {
-      deleteICP.mutate(icp.id);
-    }
+    setDeleteTarget(icp);
   };
 
   return (
@@ -203,6 +212,29 @@ export function ICPList({ onSearchFromICP }: { onSearchFromICP?: (icp: ICP) => v
         initialData={editingICP}
         saving={createICP.isPending || updateICP.isPending}
       />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cet ICP ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && `Supprimer l'ICP "${deleteTarget.name}" ? Cette action est irréversible.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTarget) deleteICP.mutate(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

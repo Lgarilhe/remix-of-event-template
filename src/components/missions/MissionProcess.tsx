@@ -1,4 +1,14 @@
 import React, { useState } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { MissionContextBanner } from './MissionContextBanner';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionProcess, ProcessStep } from '@/hooks/useMissionProcess';
@@ -273,6 +283,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   const [inviteEmail, setInviteEmail] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('sourcer');
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
 
   const assignedIds = new Set(team.map((m: any) => m.user_id));
   const availableMembers = orgMembers.filter(m => !assignedIds.has(m.user_id));
@@ -368,11 +379,7 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
               </span>
               {!readOnly && (
                 <button
-                  onClick={() => {
-                    if (confirm(`Retirer ${getMemberName(member.user_id)} de cette mission ?`)) {
-                      onRemove(member.id);
-                    }
-                  }}
+                  onClick={() => setRemoveTarget({ id: member.id, name: getMemberName(member.user_id) })}
                   className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -489,6 +496,29 @@ const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           )}
         </div>
       )}
+
+      <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retirer ce membre ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeTarget && `Retirer ${removeTarget.name} de cette mission ?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                if (removeTarget) onRemove(removeTarget.id);
+                setRemoveTarget(null);
+              }}
+            >
+              Retirer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

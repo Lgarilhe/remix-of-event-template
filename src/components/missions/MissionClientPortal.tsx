@@ -1,4 +1,14 @@
 import React, { useState } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useClientPortalTokens } from '@/hooks/useClientPortalTokens';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -21,6 +31,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
   const [clientEmail, setClientEmail] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Filter tokens that include this project
   const projectTokens = tokens.filter(t =>
@@ -69,13 +80,8 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
     }
   };
 
-  const handleDelete = async (tokenId: string, clientName: string) => {
-    if (!confirm(`Révoquer l'accès pour "${clientName}" ? Cette action est irréversible.`)) return;
-    try {
-      await deleteToken(tokenId);
-    } catch {
-      // Error already toasted by hook
-    }
+  const handleDelete = (tokenId: string, clientName: string) => {
+    setRevokeTarget({ id: tokenId, name: clientName });
   };
 
   return (
@@ -190,6 +196,34 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
           ))}
         </div>
       )}
+      <AlertDialog open={!!revokeTarget} onOpenChange={(open) => !open && setRevokeTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Révoquer l'accès ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {revokeTarget && `Révoquer l'accès pour "${revokeTarget.name}" ? Cette action est irréversible.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={async () => {
+                if (revokeTarget) {
+                  try {
+                    await deleteToken(revokeTarget.id);
+                  } catch {
+                    // Error already toasted by hook
+                  }
+                }
+                setRevokeTarget(null);
+              }}
+            >
+              Révoquer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

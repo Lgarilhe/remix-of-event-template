@@ -44,6 +44,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { CreateProjectModal } from './CreateProjectModal';
 
 import { useOrganization } from '@/hooks/useOrganization';
@@ -134,6 +144,8 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UnifiedProject | null>(null);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   useEffect(() => {
     const createMode = searchParams.get('create');
@@ -234,11 +246,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     }
   };
 
-  const handleDelete = async (project: UnifiedProject) => {
+  const handleDelete = (project: UnifiedProject) => {
     if (!project.sourcingProject) return;
-    if (window.confirm('Supprimer ce projet ? L\'historique des candidats sera conservé.')) {
-      await deleteProject(project.sourcingProject.id);
-    }
+    setDeleteTarget(project);
   };
 
   const toggleSelect = useCallback((key: string) => {
@@ -258,13 +268,18 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     }
   }, [sortedProjects, selectedKeys.size]);
 
-  const handleBulkDelete = useCallback(async () => {
+  const handleBulkDelete = useCallback(() => {
     const toDelete = sortedProjects.filter(
       p => selectedKeys.has(p.key) && p.sourcingProject
     );
     if (toDelete.length === 0) return;
-    const msg = `Supprimer ${toDelete.length} mission${toDelete.length > 1 ? 's' : ''} ? L'historique des candidats sera conservé.`;
-    if (!window.confirm(msg)) return;
+    setShowBulkDeleteDialog(true);
+  }, [sortedProjects, selectedKeys]);
+
+  const confirmBulkDelete = useCallback(async () => {
+    const toDelete = sortedProjects.filter(
+      p => selectedKeys.has(p.key) && p.sourcingProject
+    );
     setBulkDeleting(true);
     try {
       await Promise.all(toDelete.map(p => deleteProject(p.sourcingProject!.id)));
@@ -652,6 +667,58 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
         onOpenChange={setShowCreateModal}
         initialTab={createInitialTab}
       />
+
+      {/* Delete single project dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce projet ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              L'historique des candidats sera conservé. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={async () => {
+                if (deleteTarget?.sourcingProject) {
+                  await deleteProject(deleteTarget.sourcingProject.id);
+                }
+                setDeleteTarget(null);
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk delete dialog */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={(open) => !open && setShowBulkDeleteDialog(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Supprimer {selectedKeys.size} mission{selectedKeys.size > 1 ? 's' : ''} ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              L'historique des candidats sera conservé. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={async () => {
+                setShowBulkDeleteDialog(false);
+                await confirmBulkDelete();
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
