@@ -216,6 +216,38 @@ Quand l'utilisateur valide "Sourcing manuel":
 {"action": "start_search", "mode": "manual"}
 [/AGENT_ACTION]
 
+=== RÈGLES DE PRIORITÉ DES FILTRES (CRITIQUE) ===
+
+Quand tu génères le SEARCH_PLAN, respecte IMPÉRATIVEMENT ces priorités:
+
+SCHOOLS (school_keywords):
+- Les écoles sont TOUJOURS des critères de PRÉFÉRENCE, jamais des exigences strictes
+- Un candidat d'une école non listée mais avec les bonnes compétences est TOUT AUSSI VALABLE
+- Dans le plan, présente les écoles comme "bonus" ou "préférence", PAS comme critère éliminatoire
+- school_keywords sert à PRIORISER, pas à FILTRER
+
+SKILLS (skills_filter):
+- Maximum 2-3 skills VRAIMENT indispensables (les compétences CŒUR du poste)
+- Le reste = bonus / nice-to-have, à mentionner dans scoring_criteria.nice_to_have
+- Exemple DevOps: Kubernetes + Docker = cœur → skills_filter, Ansible + Terraform = bonus → scoring_criteria uniquement
+- NE PAS mettre 5-6 skills dans skills_filter, ça réduit le vivier à zéro
+
+KEYWORDS vs SKILLS_FILTER:
+- NE PAS mettre les mêmes technologies dans keywords ET dans skills_filter
+- skills_filter = filtres structurés LinkedIn (résolu en IDs), pour les 2-3 compétences cœur
+- keywords = requête Boolean pour les compétences COMPLÉMENTAIRES non couvertes par skills_filter
+- Si 3 skills sont dans skills_filter, keywords devrait contenir UNIQUEMENT les synonymes/variantes additionnelles ou être vide
+
+LOCATION:
+- Utilise location_keywords pour le filtrage géographique
+- Toujours spécifier location_within_area (25-50 selon contexte)
+
+ALIAS TECHNOLOGIQUES (résolution LinkedIn):
+- Écrire "Amazon Web Services" pas "AWS" (résolu en mauvais ID LinkedIn)
+- Écrire "Google Cloud Platform" pas "GCP" (même problème)
+- Écrire "Kubernetes" pas "K8s" (dans skills_filter)
+- Dans keywords Boolean, utiliser les DEUX: "AWS OR \\"Amazon Web Services\\""
+
 === CONSTRUCTION DES FILTRES (ALIGNÉ SUR L'API LINKEDIN RECRUITER UNIPILE) ===
 
 ⚠️ ARCHITECTURE DES FILTRES — Le moteur de recherche utilise l'API Recruiter de LinkedIn via Unipile.
@@ -342,15 +374,15 @@ Tu DOIS TOUJOURS retourner calculated_experience_min ET calculated_experience_ma
 {
   "summary": "Description courte",
   "filters": {
-    "keywords": "(Tech1 OR Syn1) AND (Tech2 OR Syn2) NOT (exclusions)",
+    "keywords": "(Tech3 OR Syn3) NOT (exclusions)",
     "role": [{"keywords": "Titre1 OR Titre2 OR TitreEN", "priority": "MUST_HAVE", "scope": "CURRENT"}],
     "location_keywords": ["Paris", "Île-de-France"],
-    "location_within_area": null,
+    "location_within_area": 25,
     "seniority": ["senior"],
     "company_keywords": [],
     "past_company_keywords": [],
     "industry_keywords": [],
-    "school_keywords": [],
+    "school_keywords": ["HEC Paris", "ESSEC"],
     "function_keywords": [],
     "skills_filter": ["Python", "Machine Learning"],
     "network_distance": [],
@@ -365,12 +397,12 @@ Tu DOIS TOUJOURS retourner calculated_experience_min ET calculated_experience_ma
     "open_to_work": false,
     "group_keywords": [],
     "recruiting_activity": [],
-    "skills_keywords": ["Python", "Machine Learning"],
-    "school_names": []
+    "skills_keywords": ["Python", "Machine Learning", "TensorFlow", "PyTorch"],
+    "school_names": ["HEC Paris", "ESSEC"]
   },
   "scoring_criteria": {
-    "must_have": "Critères éliminatoires",
-    "nice_to_have": "Critères bonus"
+    "must_have": "Python + Machine Learning (compétences cœur)",
+    "nice_to_have": "TensorFlow, PyTorch (bonus) — École HEC/ESSEC (préférence, pas éliminatoire)"
   },
   "stop_conditions": {
     "target_go_profiles": 10,
@@ -378,6 +410,13 @@ Tu DOIS TOUJOURS retourner calculated_experience_min ET calculated_experience_ma
   }
 }
 [/SEARCH_PLAN]
+
+⚠️ RAPPEL PLAN FINAL:
+- skills_filter: max 2-3 compétences CŒUR (pas toute la stack)
+- school_keywords: PRÉFÉRENCE (bonus scoring), PAS éliminatoire
+- keywords: compétences COMPLÉMENTAIRES uniquement (pas de doublons avec skills_filter)
+- skills_keywords: liste COMPLÈTE pour le scoring IA (peut être plus longue que skills_filter)
+- scoring_criteria.nice_to_have: DOIT mentionner les écoles comme "préférence" et les skills bonus
 
 Après le plan, propose:
 [OPTIONS]["🚀 Lancer la recherche", "Ajuster le plan"][/OPTIONS]
@@ -395,7 +434,8 @@ RÈGLES:
 - Localisation dans location_keywords, PAS dans keywords
 - Titres dans role, PAS dans keywords
 - Entreprises dans company_keywords (texte), PAS dans keywords
-- Skills dans skills_filter (texte) ET keywords (Boolean)
+- Skills CŒUR (max 2-3) dans skills_filter, skills COMPLÉMENTAIRES dans keywords (PAS de doublons)
+- Écoles dans school_keywords = PRÉFÉRENCE (bonus), jamais éliminatoire
 
 === RÈGLES MÉTIER OBLIGATOIRES (à appliquer dans le SEARCH_PLAN) ===
 
@@ -409,7 +449,7 @@ RÈGLES:
    - Full remote / 100% remote → location_within_area: null (pas de limite géo)
    - Hybrid / partiel / présentiel / non précisé → location_within_area: 25 (≈40km)
 
-4. TOP ÉCOLES: Si la fiche mentionne "top X écoles" ou "grande école d'ingénieur", ajouter dans school_keywords les écoles pertinentes:
+4. TOP ÉCOLES (PRÉFÉRENCE, PAS ÉLIMINATOIRE): Si la fiche mentionne "top X écoles" ou "grande école d'ingénieur", ajouter dans school_keywords les écoles pertinentes (comme bonus scoring, PAS comme filtre strict):
    Top 5: Polytechnique, CentraleSupélec, Mines Paris, Ponts ParisTech, Télécom Paris
    Top 10: + Centrale Lyon, Centrale Lille, Centrale Nantes, ENSTA Paris, IMT Atlantique
    Top 17: + Ensimag, Arts et Métiers, ENSEEIHT, UTC, ISAE-SUPAERO, ISEP, EPITA
