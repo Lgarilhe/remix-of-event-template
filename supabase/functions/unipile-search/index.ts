@@ -98,6 +98,16 @@ interface SearchParams {
   // Saved/Recent searches (Sales Navigator)
   saved_search_id?: string;
   recent_search_id?: string;
+
+  // Advanced Recruiter filters (pass-through to Unipile)
+  spoken_languages?: Array<{ language: string; priority?: string; scope?: string }>;
+  employment_type?: string[];
+  graduation_year?: { min?: number; max?: number };
+  hide_previously_viewed?: boolean;
+  recently_joined?: Array<{ min?: number; max?: number }>;
+  // Direct pass-through variants (frontend may send these directly)
+  tenure_in_company?: { min?: number; max?: number };
+  tenure_in_position?: { min?: number; max?: number };
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
@@ -315,6 +325,13 @@ async function handleSearch(
     advanced_keywords,
     saved_search_id,
     recent_search_id,
+    spoken_languages,
+    employment_type,
+    graduation_year,
+    hide_previously_viewed,
+    recently_joined,
+    tenure_in_company: directTenureInCompany,
+    tenure_in_position: directTenureInPosition,
   } = params;
 
   // Build request body based on API type
@@ -774,6 +791,50 @@ async function handleSearch(
         }
         return item;
       });
+    }
+
+    // --- Advanced Recruiter filters (pass-through to Unipile) ---
+
+    // Spoken languages with proficiency level
+    if (spoken_languages?.length) {
+      searchBody.spoken_languages = spoken_languages;
+      console.log('[Search] Applied spoken_languages:', JSON.stringify(spoken_languages));
+    }
+
+    // Employment type (FULL_TIME, CONTRACT, etc.)
+    if (employment_type?.length) {
+      searchBody.employment_type = employment_type;
+      console.log('[Search] Applied employment_type:', employment_type);
+    }
+
+    // Graduation year range
+    if (graduation_year && (graduation_year.min !== undefined || graduation_year.max !== undefined)) {
+      searchBody.graduation_year = graduation_year;
+      console.log('[Search] Applied graduation_year:', JSON.stringify(graduation_year));
+    }
+
+    // Hide previously viewed profiles
+    if (hide_previously_viewed === true) {
+      searchBody.hide_previously_viewed = true;
+      console.log('[Search] Applied hide_previously_viewed: true');
+    }
+
+    // Recently joined LinkedIn
+    if (recently_joined?.length) {
+      searchBody.recently_joined = recently_joined;
+      console.log('[Search] Applied recently_joined:', JSON.stringify(recently_joined));
+    }
+
+    // Direct tenure_in_company pass-through (when frontend sends it directly, not via tenure_at_company)
+    if (directTenureInCompany && !searchBody.tenure_in_company && (directTenureInCompany.min !== undefined || directTenureInCompany.max !== undefined)) {
+      searchBody.tenure_in_company = directTenureInCompany;
+      console.log('[Search] Applied direct tenure_in_company:', JSON.stringify(directTenureInCompany));
+    }
+
+    // Direct tenure_in_position pass-through (when frontend sends it directly, not via tenure_at_role)
+    if (directTenureInPosition && !searchBody.tenure_in_position && (directTenureInPosition.min !== undefined || directTenureInPosition.max !== undefined)) {
+      searchBody.tenure_in_position = directTenureInPosition;
+      console.log('[Search] Applied direct tenure_in_position:', JSON.stringify(directTenureInPosition));
     }
   }
 
