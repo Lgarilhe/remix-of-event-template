@@ -319,59 +319,38 @@ Deno.serve(async (req) => {
       return ids;
     }
 
-    // Resolve all ID-based filters in parallel
+    // === SEARCH STRATEGY: BROAD LINKEDIN + TIGHT SCORING ===
+    // LinkedIn filters are intentionally MINIMAL to maximize results:
+    // - role (job title) = primary discriminator
+    // - location = geographic constraint
+    // - seniority = nice-to-have ranking
+    // - school = CAN_HAVE bonus
+    //
+    // All other criteria (skills, company type, industry, experience, ESN exclusion)
+    // are evaluated by the AI scoring engine (score-profile-job) AFTER the search.
+    // This avoids LinkedIn's AND logic reducing results to 0.
+    //
+    // The scoring engine uses searchPlan.scoring_criteria + job_context to evaluate
+    // each profile against the full brief requirements.
+
     await postStatus(`📍 Résolution des filtres...`);
 
+    // Only resolve IDs for filters we actually send to LinkedIn
     const locationKeywords = filters.location_keywords || [];
-    const industryKeywords = filters.industry_keywords || [];
     const schoolKeywords = filters.school_keywords || [];
-    const functionKeywords = filters.function_keywords || [];
-    const groupKeywords = filters.group_keywords || [];
-    // Extract company/past_company/skills names for ID resolution
-    const companyEntries: Array<{ name: string; priority: string; scope: string }> = 
-      (filters.company_keywords || []).map((c: any) => {
-        if (typeof c === "string") return { name: c, priority: "MUST_HAVE", scope: "CURRENT" };
-        return { 
-          name: c.keywords || c.name || String(c), 
-          priority: c.priority || "MUST_HAVE", 
-          scope: c.scope || "CURRENT" 
-        };
-      });
-    const companyNames = companyEntries.map(c => c.name);
-    const pastCompanyEntries: Array<{ name: string; priority: string }> = 
-      (filters.past_company_keywords || []).map((c: any) => {
-        if (typeof c === "string") return { name: c, priority: "MUST_HAVE" };
-        return { name: c.keywords || c.name || String(c), priority: c.priority || "MUST_HAVE" };
-      });
-    const pastCompanyNames = pastCompanyEntries.map(c => c.name);
-    const skillNames: string[] = (filters.skills_filter || []).map((s: any) => typeof s === "string" ? s : (s.keywords || s));
 
-    const [locationIds, industryIds, schoolIds, functionIds, groupIds, companyIds, pastCompanyIds, skillIds] = await Promise.all([
+    const [locationIds, schoolIds] = await Promise.all([
       locationKeywords.length > 0 ? resolveIds("LOCATION", locationKeywords) : Promise.resolve([]),
-      industryKeywords.length > 0 ? resolveIds("INDUSTRY", industryKeywords) : Promise.resolve([]),
       schoolKeywords.length > 0 ? resolveIds("SCHOOL", schoolKeywords) : Promise.resolve([]),
-      functionKeywords.length > 0 ? resolveIds("JOB_FUNCTION", functionKeywords) : Promise.resolve([]),
-      groupKeywords.length > 0 ? resolveIds("GROUPS", groupKeywords) : Promise.resolve([]),
-      companyNames.length > 0 ? resolveIds("COMPANY", companyNames) : Promise.resolve([]),
-      pastCompanyNames.length > 0 ? resolveIds("COMPANY", pastCompanyNames) : Promise.resolve([]),
-      skillNames.length > 0 ? resolveIds("SKILL", skillNames) : Promise.resolve([]),
     ]);
 
-    // Build location with priority/scope structure
     const resolvedLocationIds = locationIds.map(id => ({
       id,
       priority: "MUST_HAVE",
       scope: "CURRENT_OR_OPEN_TO_RELOCATE",
     }));
-    const resolvedIndustryIds = industryIds;
-    const resolvedSchoolIds = schoolIds;
-    const resolvedFunctionIds = functionIds;
-    const resolvedGroupIds = groupIds;
-    const resolvedCompanyIds = companyIds;
-    const resolvedPastCompanyIds = pastCompanyIds;
-    const resolvedSkillIds = skillIds;
 
-    const resolvedCount = resolvedLocationIds.length + resolvedIndustryIds.length + resolvedSchoolIds.length + resolvedFunctionIds.length + resolvedGroupIds.length + resolvedCompanyIds.length + resolvedPastCompanyIds.length + resolvedSkillIds.length;
+    const resolvedCount = resolvedLocationIds.length + schoolIds.length;
 
     // ── 4. Search LinkedIn (sequential with delays) ──
 
@@ -386,20 +365,11 @@ Deno.serve(async (req) => {
     while (allProfiles.length < maxProfiles && round < maxRounds) {
       round++;
       try {
-        // Keywords = technologies/skills ONLY (no location, no titles)
-        const searchKeywords = filters.keywords || undefined;
+        console.log(`[run-agent-search] Round ${round} — BROAD search (role + location + seniority only)`);
 
-        // When skills or roles are resolved as structured filters, don't duplicate them in keywords
-        // LinkedIn ANDs keywords with structured filters, causing double filtering and empty results
-        let effectiveKeywords = searchKeywords;
-        if (resolvedSkillIds.length > 0 || (filters.role && Array.isArray(filters.role) && filters.role.length > 0)) {
-          effectiveKeywords = undefined;
-          console.log(`[run-agent-search] Structured filters resolved (${resolvedSkillIds.length} skills, ${filters.role?.length || 0} roles) — clearing keywords to avoid double filter`);
-        }
-
-        console.log(`[run-agent-search] Round ${round} keywords: ${effectiveKeywords?.slice(0, 200) ?? "(cleared — using structured filters)"}`);
-
-        // Build search body with ALL structured filters
+        // === BROAD LINKEDIN SEARCH ===
+        // Only 3 hard filters: role + location + seniority
+        // Everything else (skills, company type, industry, ESN exclusion) is handled by scoring
         const searchBody: any = {
           action: "search",
           account_id: accountId,
@@ -409,20 +379,7 @@ Deno.serve(async (req) => {
           limit: 25,
         };
 
-        // Only include keywords when not handled by structured filters
-        if (effectiveKeywords) {
-          searchBody.keywords = effectiveKeywords;
-        }
-
-        // Location (resolved IDs)
-        if (resolvedLocationIds.length > 0) {
-          searchBody.location = resolvedLocationIds;
-          if (filters.location_within_area) {
-            searchBody.location_within_area = filters.location_within_area;
-          }
-        }
-
-        // Role / Job titles (keywords-based, Recruiter API supports this natively)
+        // 1. Role / Job titles — primary discriminator
         if (filters.role && Array.isArray(filters.role) && filters.role.length > 0) {
           searchBody.role = filters.role.map((r: any) => ({
             keywords: r.keywords,
@@ -431,158 +388,55 @@ Deno.serve(async (req) => {
           }));
         }
 
-        // Seniority
+        // 2. Location — geographic constraint
+        if (resolvedLocationIds.length > 0) {
+          searchBody.location = resolvedLocationIds;
+          if (filters.location_within_area) {
+            searchBody.location_within_area = filters.location_within_area;
+          }
+        }
+
+        // 3. Seniority — nice-to-have ranking
         if (filters.seniority && Array.isArray(filters.seniority) && filters.seniority.length > 0) {
           searchBody.seniority = filters.seniority;
         }
 
-        // Company (resolved IDs from company_keywords)
-        if (resolvedCompanyIds.length > 0) {
-          searchBody.company = resolvedCompanyIds.map((id: string, i: number) => ({
-            id,
-            priority: companyEntries[i]?.priority || "MUST_HAVE",
-            scope: companyEntries[i]?.scope || "CURRENT",
-          }));
-        }
-
-        // Past company (resolved IDs from past_company_keywords)
-        if (resolvedPastCompanyIds.length > 0) {
-          searchBody.past_company = resolvedPastCompanyIds.map((id: string, i: number) => ({
-            id,
-            priority: pastCompanyEntries[i]?.priority || "MUST_HAVE",
-          }));
-        }
-
-        // Industry (resolve IDs like location)
-        if (resolvedIndustryIds.length > 0) {
-          searchBody.industry = { include: resolvedIndustryIds };
-        }
-
-        // School (resolved IDs — always CAN_HAVE, schools are a bonus not a hard requirement)
-        if (resolvedSchoolIds.length > 0) {
-          searchBody.school = resolvedSchoolIds.map((id: string) => ({
+        // 4. School — CAN_HAVE bonus (doesn't restrict results)
+        if (schoolIds.length > 0) {
+          searchBody.school = schoolIds.map((id: string) => ({
             id,
             priority: "CAN_HAVE",
           }));
         }
 
-        // Skills (resolved IDs from skills_filter — max 2 MUST_HAVE, rest CAN_HAVE to avoid over-filtering)
-        if (resolvedSkillIds.length > 0) {
-          searchBody.skills = resolvedSkillIds.map((id: string, index: number) => ({
-            id,
-            priority: index < 2 ? "MUST_HAVE" : "CAN_HAVE",
-          }));
-        }
-
-        // Function/Department (resolve IDs)
-        if (resolvedFunctionIds.length > 0) {
-          searchBody.function = resolvedFunctionIds;
-        }
-
-        // Network distance (1st, 2nd, 3rd+ degree)
-        if (filters.network_distance && Array.isArray(filters.network_distance) && filters.network_distance.length > 0) {
-          searchBody.network_distance = filters.network_distance;
-        }
-
-        // Profile language (ISO 639-1 codes)
+        // 5. Profile language — lightweight, doesn't restrict much
         if (filters.profile_language && Array.isArray(filters.profile_language) && filters.profile_language.length > 0) {
           searchBody.profile_language = filters.profile_language;
         }
 
-        // Tenure / Years of experience (Recruiter: { min, max })
-        if (filters.tenure_min != null || filters.tenure_max != null) {
-          const tenureObj: any = {};
-          if (filters.tenure_min != null) tenureObj.min = filters.tenure_min;
-          if (filters.tenure_max != null) tenureObj.max = filters.tenure_max;
-          searchBody.years_of_experience = tenureObj;
-        }
-
-        // Degree filter ({ include: [...], exclude: [...] })
-        if (filters.degree) {
-          searchBody.degree = filters.degree;
-        }
-
-        // Company headcount (array of { min, max })
-        if (filters.company_headcount && Array.isArray(filters.company_headcount) && filters.company_headcount.length > 0) {
-          searchBody.company_headcount = filters.company_headcount;
-        }
-
-        // Spotlights (OPEN_TO_WORK, ACTIVE_TALENT, etc.)
+        // 6. Spotlights — useful signal, doesn't restrict much
         if (filters.spotlights && Array.isArray(filters.spotlights) && filters.spotlights.length > 0) {
           searchBody.spotlights = filters.spotlights;
         }
-
-        // Open to work (spotlight shorthand)
         if (filters.open_to_work === true) {
           searchBody.open_to_work = true;
         }
 
-        // Groups (LinkedIn group IDs - resolved)
-        if (resolvedGroupIds.length > 0) {
-          searchBody.groups = resolvedGroupIds;
-        }
-
-        // Recruiting activity
-        if (filters.recruiting_activity && Array.isArray(filters.recruiting_activity) && filters.recruiting_activity.length > 0) {
-          searchBody.recruiting_activity = filters.recruiting_activity;
-        }
-
-        // Tenure — years of total experience (object with min/max)
-        if (filters.tenure && typeof filters.tenure === 'object') {
-          searchBody.tenure = filters.tenure;
-        }
-
-        // Tenure in current company
-        if (filters.tenure_in_company && typeof filters.tenure_in_company === 'object') {
-          searchBody.tenure_in_company = filters.tenure_in_company;
-        }
-
-        // Tenure in current position
-        if (filters.tenure_in_position && typeof filters.tenure_in_position === 'object') {
-          searchBody.tenure_in_position = filters.tenure_in_position;
-        }
-
-        // Spoken languages
-        if (filters.spoken_languages && Array.isArray(filters.spoken_languages) && filters.spoken_languages.length > 0) {
-          searchBody.spoken_languages = filters.spoken_languages;
-        }
-
-        // Employment type (FULL_TIME, CONTRACT, etc.)
-        if (filters.employment_type && Array.isArray(filters.employment_type) && filters.employment_type.length > 0) {
-          searchBody.employment_type = filters.employment_type;
-        }
-
-        // Graduation year range
-        if (filters.graduation_year && typeof filters.graduation_year === 'object') {
-          searchBody.graduation_year = filters.graduation_year;
-        }
-
-        // Hide previously viewed profiles
+        // 7. Hide previously viewed — avoid showing same profiles
         if (filters.hide_previously_viewed === true) {
           searchBody.hide_previously_viewed = true;
         }
 
-        // Recently joined LinkedIn
-        if (filters.recently_joined && Array.isArray(filters.recently_joined) && filters.recently_joined.length > 0) {
-          searchBody.recently_joined = filters.recently_joined;
-        }
+        // NOT sent to LinkedIn (handled by scoring AI instead):
+        // - skills_filter → scoring evaluates tech stack match
+        // - keywords → redundant with role
+        // - company_headcount → scoring evaluates company type (ESN vs scale-up)
+        // - industry_keywords → contradictory with ESN exclusion
+        // - function_keywords → redundant with role
+        // - company_keywords → scoring evaluates company match
+        // - tenure / experience → scoring evaluates XP match
 
-        // Log advanced filters summary
-        const advancedFilters = [
-          filters.company_headcount && 'company_headcount',
-          filters.tenure && 'tenure',
-          filters.tenure_in_company && 'tenure_in_company',
-          filters.tenure_in_position && 'tenure_in_position',
-          filters.spotlights && 'spotlights',
-          filters.spoken_languages && 'languages',
-          filters.employment_type && 'employment_type',
-          filters.graduation_year && 'graduation_year',
-          filters.hide_previously_viewed && 'hide_previously_viewed',
-          filters.recently_joined && 'recently_joined',
-        ].filter(Boolean);
-        if (advancedFilters.length > 0) {
-          console.log(`[run-agent-search] Advanced filters: ${advancedFilters.join(', ')}`);
-        }
+        console.log(`[run-agent-search] Search body:`, JSON.stringify(searchBody).slice(0, 500));
 
         if (cursor) searchBody.cursor = cursor;
 
@@ -851,6 +705,12 @@ Deno.serve(async (req) => {
               profile: profileData,
               job: jobData,
               organization_id: orgId,
+              customScoringInstructions: [
+                searchPlan.scoring_criteria?.must_have ? `MUST-HAVE: ${searchPlan.scoring_criteria.must_have}` : '',
+                searchPlan.scoring_criteria?.nice_to_have ? `NICE-TO-HAVE / EXCLUSIONS: ${searchPlan.scoring_criteria.nice_to_have}` : '',
+                filters.skills_keywords?.length ? `Skills à évaluer: ${filters.skills_keywords.join(', ')}` : '',
+                filters.calculated_experience_min != null ? `Expérience cible: ${filters.calculated_experience_min}-${filters.calculated_experience_max || '?'} ans` : '',
+              ].filter(Boolean).join('\n'),
             }),
           }, { timeoutMs: 55000, maxRetries: 3 });
 
