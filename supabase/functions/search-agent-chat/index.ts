@@ -477,21 +477,23 @@ function extractRefinements(messages: Message[]): Record<string, any> {
 
   for (const m of messages) {
     const content = (m.content || '').toLowerCase();
-    // Detect ESN/consulting exclusions
-    if (content.includes('esn') || content.includes('cabinet') || content.includes('conseil') || content.includes('consulting')) {
-      if (content.includes('exclu') || content.includes('non') || content.includes('❌') || content.includes('pas')) {
-        refinements.excludeCompanyTypes.push('ESN', 'consulting', 'conseil');
-      }
+    // Detect ESN/consulting exclusions — require keyword near rejection context
+    if (/\b(esn|ssii)\b/i.test(content) && /exclu|évit|pas d'|non|❌/i.test(content)) {
+      refinements.excludeCompanyTypes.push('ESN', 'consulting');
     }
-    // Detect company type preferences (scale-up, startup, tech)
-    if (content.includes('scale-up') || content.includes('scaleup') || content.includes('startup') || content.includes('tech')) {
-      if (content.includes('cibl') || content.includes('cherch') || content.includes('oui') || content.includes('✅')) {
-        refinements.targetCompanyTypes.push('startup', 'scaleup');
-      }
+    if (/\bcabinet\s+(de\s+)?conseil\b/i.test(content) && /exclu|évit|pas|non|❌/i.test(content)) {
+      refinements.excludeCompanyTypes.push('consulting');
+    }
+    if (/\bconsulting\b/i.test(content) && /exclu|évit|pas d'|non|❌/i.test(content)) {
+      refinements.excludeCompanyTypes.push('consulting', 'conseil');
+    }
+    // Detect company type preferences — require explicit positive signal
+    if (/\b(scale-?up|startup|boîte\s+tech|pure\s+player)\b/i.test(content) && /cibl|cherch|oui|✅|préfér/i.test(content)) {
+      refinements.targetCompanyTypes.push('startup', 'scaleup');
     }
     // Detect grand groupe exclusion
     if (content.includes('grand groupe') || content.includes('grands groupes') || content.includes('traditionnel')) {
-      if (content.includes('exclu') || content.includes('évit') || content.includes('❌') || content.includes('non')) {
+      if (content.includes('exclu') || content.includes('évit') || content.includes('❌')) {
         refinements.excludeCompanyTypes.push('grand groupe');
       }
     }
@@ -722,6 +724,11 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -771,7 +778,13 @@ Deno.serve(async (req) => {
       .eq("id", conversation_id)
       .single();
 
-    if (conv?.organization_id) {
+    if (!conv) {
+      return new Response(JSON.stringify({ error: "Conversation not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
         .select("id")
@@ -793,7 +806,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Save user message
+    // Save user message (after auth validation)
     await supabase.from("agent_messages").insert({
       conversation_id,
       role: "user",
@@ -904,7 +917,7 @@ Deno.serve(async (req) => {
 
       if (shouldRefetch && !isInPhase3) {
           const sampleProfiles = await fetchSampleProfiles(
-            supabaseUrl, authHeader!, anonKey,
+            supabaseUrl, authHeader, anonKey,
             accountId, orgId, brief_context as Record<string, any>, 5,
             hasRefinements ? refinements : undefined,
             previousProfileIds.length > 0 ? previousProfileIds : undefined,
@@ -987,7 +1000,7 @@ Pour chaque profil que tu présentes, utilise le tag [PROFILE] avec les VRAIES d
           if (calibrationProfiles.length > 0) {
             // Score the calibration profiles using the real scoring engine
             const scoreMap = await scoreProfiles(
-              supabaseUrl, authHeader!, anonKey,
+              supabaseUrl, authHeader, anonKey,
               calibrationProfiles, brief_context as Record<string, any>, orgId
             );
 
@@ -1103,7 +1116,7 @@ Propose des exemples concrets de messages.`;
         messages,
         stream: true,
       }),
-    });
+    }, 90000);
 
     if (!response.ok) {
       const errorText = await response.text();
