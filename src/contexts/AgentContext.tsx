@@ -22,12 +22,15 @@ interface AgentContextValue {
   autoJob: Job | null;
   /** sourcing_projects.id when opened from a mission */
   projectId: string | null;
+  /** LinkedIn account_id for real profile fetching */
+  accountId: string | null;
   openContextualAgent: (params: {
     mode: AgentContextMode;
     briefContext?: Record<string, unknown>;
     initialMessage?: string;
     job?: Job;
     projectId?: string;
+    accountId?: string;
   }) => void;
 }
 
@@ -47,6 +50,7 @@ const AgentContext = createContext<AgentContextValue>({
   briefContext: null,
   autoJob: null,
   projectId: null,
+  accountId: null,
   openContextualAgent: () => {},
 });
 
@@ -64,6 +68,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [briefContext, setBriefContext] = useState<Record<string, unknown> | null>(null);
   const [autoJob, setAutoJob] = useState<Job | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
 
   const openAgent = useCallback((jobId?: string) => {
     if (jobId) setInitialJobId(jobId);
@@ -71,6 +76,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setBriefContext(null);
     setAutoJob(null);
     setProjectId(null);
+    setAccountId(null);
     setIsOpen(true);
   }, []);
 
@@ -85,12 +91,14 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     initialMessage?: string;
     job?: Job;
     projectId?: string;
+    accountId?: string;
   }) => {
     setContextMode(params.mode);
     setBriefContext(params.briefContext || null);
     setInitialMessage(params.initialMessage || null);
     setAutoJob(params.job || null);
     setProjectId(params.projectId || null);
+    setAccountId(params.accountId || null);
     setConversationId(null);
     setIsOpen(true);
   }, []);
@@ -137,6 +145,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         briefContext,
         autoJob,
         projectId,
+        accountId,
         openContextualAgent,
       }}
     >

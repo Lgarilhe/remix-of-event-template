@@ -54,6 +54,8 @@ interface AgentChatPanelProps {
   autoJob?: Job | null;
   /** sourcing_projects.id when opened from a mission context */
   projectId?: string | null;
+  /** LinkedIn account_id for real profile fetching */
+  accountId?: string | null;
 }
 
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
@@ -63,6 +65,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   initialMessage,
   autoJob,
   projectId,
+  accountId,
 }) => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [showList, setShowList] = useState(true);
@@ -106,13 +109,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           setShowList(false);
           setJobSentForConv(null);
           setTimeout(() => {
-            sendMessage(initialMessage, job, id, selectedModel, contextMode, briefContext, projectId);
+            sendMessage(initialMessage, job, id, selectedModel, contextMode, briefContext, projectId, accountId);
           }, 200);
         }
       };
       initContextAgent();
     }
-  }, [contextMode, initialMessage, autoJob, createConversation, sendMessage, selectedModel, briefContext, projectId]);
+  }, [contextMode, initialMessage, autoJob, createConversation, sendMessage, selectedModel, briefContext, projectId, accountId]);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
     const id = await createConversation(job);
@@ -147,8 +150,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     setInput('');
     const jobCtx = conversationId !== jobSentForConv ? (autoJob || selectedJob) : null;
     if (jobCtx) setJobSentForConv(conversationId);
-    await sendMessage(msg, jobCtx, undefined, selectedModel, contextMode, briefContext, projectId);
-  }, [input, sending, sendMessage, selectedJob, autoJob, conversationId, jobSentForConv, selectedModel, contextMode, briefContext, projectId]);
+    await sendMessage(msg, jobCtx, undefined, selectedModel, contextMode, briefContext, projectId, accountId);
+  }, [input, sending, sendMessage, selectedJob, autoJob, conversationId, jobSentForConv, selectedModel, contextMode, briefContext, projectId, accountId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }

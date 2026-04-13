@@ -59,7 +59,7 @@ const AgentFAB: React.FC = () => {
 };
 
 export const AgentDrawer: React.FC = () => {
-  const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob, projectId } = useAgent();
+  const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob, projectId, accountId } = useAgent();
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -92,6 +92,7 @@ export const AgentDrawer: React.FC = () => {
             initialMessage={initialMessage}
             autoJob={autoJob}
             projectId={projectId}
+            accountId={accountId}
           />
         </SheetContent>
       </Sheet>

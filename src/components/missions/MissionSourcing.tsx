@@ -70,6 +70,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       initialMessage: `Aide-moi à trouver des candidats pour "${jobTitle}".\n\n=== BRIEF ===\n${briefLines}\n\n=== ACCÈS ===\n${accessLines}`,
       job: undefined,
       projectId: project.id,
+      accountId: selectedAccount || undefined,
     });
   }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent]);
 
