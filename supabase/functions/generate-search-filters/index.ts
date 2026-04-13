@@ -547,7 +547,10 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
         );
       }
       console.error("[generate-search-filters] AI call failed:", errorMessage);
-      throw new Error(`AI gateway error: ${errorMessage}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur IA : ${errorMessage}`, fallback: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const aiResult = await response.json();
