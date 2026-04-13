@@ -97,6 +97,8 @@ RÈGLES CALIBRATION:
 ⚠️ IMPORTANT: Si des VRAIS PROFILS LINKEDIN sont fournis dans le contexte (section "=== VRAIS PROFILS LINKEDIN ==="), utilise-les EXCLUSIVEMENT. Ne génère JAMAIS de profils fictifs quand des vrais sont disponibles. Présente les vrais noms, vrais titres, vraies entreprises.
 Si AUCUN vrai profil n'est disponible (recherche échouée ou pas de compte LinkedIn), alors génère des profils crédibles en le signalant au recruteur.
 
+⚠️ APRÈS REJET DE PROFILS: Si le recruteur rejette des profils (ESN, mauvais type d'entreprise, localisation...), NE PROPOSE JAMAIS de "générer des profils crédibles". De nouveaux VRAIS profils seront automatiquement fournis au prochain message, filtrés selon les retours. Dis simplement "Compris, je relance la recherche avec ces critères ajustés." puis présente les nouveaux vrais profils quand ils arrivent dans le contexte.
+
 --- PHASE 3: TEST SCORING & RÉGLAGES ---
 Après calibration réussie (2/3+ approuvés), AVANT de proposer le lancement:
 
@@ -464,6 +466,44 @@ RÈGLES:
    Junior → 0-3 | Confirmé → 3-7 | Senior/Lead → 5-12 | Staff/Architecte → 8-15`;
 
 
+// Extract search refinements from conversation history (rejection reasons)
+function extractRefinements(messages: Message[]): Record<string, any> {
+  const refinements: Record<string, any> = {
+    excludeCompanyTypes: [] as string[],
+    targetCompanyTypes: [] as string[],
+    excludeLocations: [] as string[],
+    excludeCompanyNames: [] as string[],
+  };
+
+  for (const m of messages) {
+    const content = (m.content || '').toLowerCase();
+    // Detect ESN/consulting exclusions
+    if (content.includes('esn') || content.includes('cabinet') || content.includes('conseil') || content.includes('consulting')) {
+      if (content.includes('exclu') || content.includes('non') || content.includes('❌') || content.includes('pas')) {
+        refinements.excludeCompanyTypes.push('ESN', 'consulting', 'conseil');
+      }
+    }
+    // Detect company type preferences (scale-up, startup, tech)
+    if (content.includes('scale-up') || content.includes('scaleup') || content.includes('startup') || content.includes('tech')) {
+      if (content.includes('cibl') || content.includes('cherch') || content.includes('oui') || content.includes('✅')) {
+        refinements.targetCompanyTypes.push('startup', 'scaleup');
+      }
+    }
+    // Detect grand groupe exclusion
+    if (content.includes('grand groupe') || content.includes('grands groupes') || content.includes('traditionnel')) {
+      if (content.includes('exclu') || content.includes('évit') || content.includes('❌') || content.includes('non')) {
+        refinements.excludeCompanyTypes.push('grand groupe');
+      }
+    }
+    // Detect location rejections
+    if (content.includes('mauvaise localisation') || content.includes('province')) {
+      refinements.excludeLocations.push('remote province');
+    }
+  }
+
+  return refinements;
+}
+
 async function fetchSampleProfiles(
   supabaseUrl: string,
   authHeader: string,
@@ -472,9 +512,11 @@ async function fetchSampleProfiles(
   orgId: string,
   briefContext: Record<string, any>,
   limit: number = 5,
+  refinements?: Record<string, any>,
+  previousProfileIds?: string[],
 ): Promise<any[]> {
   try {
-    // Build basic search filters from brief
+    // Build search filters from brief + refinements
     const jd = briefContext;
     const titles = [jd.title].filter(Boolean);
     const roleKeywords = titles.join(' OR ');
@@ -485,7 +527,7 @@ async function fetchSampleProfiles(
       organization_id: orgId,
       api: 'recruiter',
       category: 'people',
-      limit,
+      limit: limit + (previousProfileIds?.length || 0) + 5, // fetch extra to compensate for filtering
     };
 
     // Role filter from job title
@@ -507,6 +549,15 @@ async function fetchSampleProfiles(
     const coreSkills = [...(jd.skills_must_have || [])].slice(0, 2);
     if (coreSkills.length > 0) {
       searchBody.keywords = coreSkills.join(' OR ');
+    }
+
+    // Apply refinements from conversation feedback
+    if (refinements) {
+      // Target scale-ups/startups via company headcount
+      if (refinements.targetCompanyTypes?.length > 0) {
+        searchBody.company_headcount = [{ min: 11, max: 500 }]; // startups + scale-ups
+        console.log('[search-agent-chat] Refinement: targeting startups/scale-ups (11-500 employees)');
+      }
     }
 
     console.log('[search-agent-chat] Fetching sample profiles for calibration:', JSON.stringify(searchBody).slice(0, 300));
@@ -763,20 +814,56 @@ Deno.serve(async (req) => {
 
       const orgId = conv?.organization_id || '';
 
-      if (!existingProfileData && !isInPhase3 && accountId) {
+      // Extract refinements from conversation feedback (ESN excluded, scale-up preferred, etc.)
+      const refinements = extractRefinements(messages);
+      const hasRefinements = refinements.excludeCompanyTypes.length > 0 || refinements.targetCompanyTypes.length > 0;
 
-        if (!existingProfileData) {
+      // Extract previously shown profile IDs to avoid duplicates
+      const previousProfileIds: string[] = [];
+      for (const m of messages) {
+        const matches = [...(m.content?.matchAll(/LinkedIn ID: ([^\n]+)/g) || [])];
+        matches.forEach(match => { if (match[1]?.trim()) previousProfileIds.push(match[1].trim()); });
+      }
+
+      // Fetch new profiles if: no profiles yet, OR profiles were rejected and we have refinements
+      const shouldRefetch = !existingProfileData || (hasRefinements && hasProfileTags);
+
+      if (shouldRefetch && !isInPhase3 && accountId) {
           const sampleProfiles = await fetchSampleProfiles(
             supabaseUrl, authHeader!, anonKey,
-            accountId, orgId, brief_context as Record<string, any>, 5
+            accountId, orgId, brief_context as Record<string, any>, 5,
+            hasRefinements ? refinements : undefined,
+            previousProfileIds.length > 0 ? previousProfileIds : undefined,
           );
 
-          if (sampleProfiles.length > 0) {
-            realProfilesContext = `\n\n=== VRAIS PROFILS LINKEDIN (À UTILISER POUR LA CALIBRATION) ===
-Tu as accès à ${sampleProfiles.length} VRAIS profils LinkedIn. Utilise-les pour la Phase 2 au lieu d'inventer des profils.
-Présente 3 de ces profils au recruteur. Utilise les VRAIES données (nom, titre, entreprise, parcours).
+          // Filter out previously shown profiles
+          let filteredProfiles = sampleProfiles.filter((p: any) => {
+            const pid = p.id || p.provider_id || '';
+            return !previousProfileIds.includes(pid);
+          });
 
-${sampleProfiles.map((p: any, i: number) => {
+          // Post-filter: exclude ESN/consulting if refinements say so
+          if (refinements.excludeCompanyTypes.length > 0) {
+            const esnKeywords = ['consulting', 'conseil', 'capgemini', 'accenture', 'atos', 'sopra', 'alten', 'altran', 'gfi', 'avanade', 'cognizant', 'infosys', 'tcs', 'wipro', 'cgi', 'devoteam', 'henix', 'positive thinking'];
+            filteredProfiles = filteredProfiles.filter((p: any) => {
+              const company = (p.current_company_name || p.company || p.headline || '').toLowerCase();
+              return !esnKeywords.some(kw => company.includes(kw));
+            });
+            console.log(`[search-agent-chat] Post-filter: ${sampleProfiles.length} → ${filteredProfiles.length} after ESN exclusion`);
+          }
+
+          const profilesToShow = filteredProfiles.slice(0, 5);
+
+          if (profilesToShow.length > 0) {
+            const refinementNote = hasRefinements
+              ? `\n⚠️ Ces profils ont été filtrés selon tes retours précédents (${refinements.excludeCompanyTypes.length > 0 ? 'ESN/conseil exclus' : ''}${refinements.targetCompanyTypes.length > 0 ? ', ciblage scale-ups/startups' : ''}).`
+              : '';
+
+            realProfilesContext = `\n\n=== VRAIS PROFILS LINKEDIN (À UTILISER POUR LA CALIBRATION) ===
+Tu as accès à ${profilesToShow.length} VRAIS profils LinkedIn. Utilise-les pour la Phase 2 au lieu d'inventer des profils.
+Présente 3 de ces profils au recruteur. Utilise les VRAIES données (nom, titre, entreprise, parcours).${refinementNote}
+
+${profilesToShow.map((p: any, i: number) => {
   const name = p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
   const headline = p.headline || p.title || '';
   const company = p.current_company_name || p.company || '';
