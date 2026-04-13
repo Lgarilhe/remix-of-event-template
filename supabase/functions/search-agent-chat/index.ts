@@ -736,13 +736,11 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     if (brief_context && (!context_mode || context_mode === 'sourcing')) {
-      // Detect Phase 2 transition
-      const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
-      const isEnteringPhase2 = lastAssistantMsg?.content?.includes('calibration') ||
-                                lastAssistantMsg?.content?.includes('profils représentatifs') ||
-                                lastAssistantMsg?.content?.includes('passe à la calibration');
+      // Always try to fetch real profiles when brief is available
+      // They are injected into the system prompt — the AI uses them when it enters Phase 2
       const hasProfileTags = messages.some(m => m.content?.includes('[PROFILE]'));
       const isInPhase3 = messages.some(m => m.content?.includes('[SCORING_TEST]'));
+      const existingProfileData = messages.some(m => m.content?.includes('=== VRAIS PROFILS LINKEDIN'));
 
       // Resolve account_id: try body first, then fetch from DB
       let accountId = body.account_id || body.selectedAccount || '';
@@ -755,15 +753,17 @@ Deno.serve(async (req) => {
             .eq('account_status', 'OK')
             .limit(1);
           accountId = linkedinAccounts?.[0]?.account_id || '';
+          if (accountId) console.log(`[search-agent-chat] Resolved account_id from DB: ${accountId}`);
         } catch (e) {
           console.warn('[search-agent-chat] Failed to fetch LinkedIn account:', e);
         }
       }
+      if (accountId) console.log(`[search-agent-chat] Using account_id: ${accountId}`);
+      else console.warn('[search-agent-chat] No account_id available — will use fallback profiles');
 
       const orgId = conv?.organization_id || '';
 
-      if ((isEnteringPhase2 || hasProfileTags) && !isInPhase3 && accountId) {
-        const existingProfileData = messages.some(m => m.content?.includes('=== VRAIS PROFILS LINKEDIN'));
+      if (!existingProfileData && !isInPhase3 && accountId) {
 
         if (!existingProfileData) {
           const sampleProfiles = await fetchSampleProfiles(
