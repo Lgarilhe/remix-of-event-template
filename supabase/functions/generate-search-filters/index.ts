@@ -524,7 +524,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
 
     let response: Response;
     try {
-      response = await callAIWithRetry(3);
+      response = await callAIWithRetry(2);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       
