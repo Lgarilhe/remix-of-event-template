@@ -990,7 +990,6 @@ INSTRUCTIONS: Utilise UNIQUEMENT ces vrais profils pour ta calibration Phase 2. 
 Pour chaque profil que tu présentes, utilise le tag [PROFILE] avec les VRAIES données du profil ci-dessus.`;
           }
         }
-      }
 
       // Phase 3: fetch real scores for profiles that were presented during calibration
       if (isInPhase3 && accountId) {
