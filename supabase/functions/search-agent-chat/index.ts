@@ -558,6 +558,33 @@ async function fetchSampleProfiles(
         searchBody.company_headcount = [{ min: 11, max: 500 }]; // startups + scale-ups
         console.log('[search-agent-chat] Refinement: targeting startups/scale-ups (11-500 employees)');
       }
+      // Exclude ESN/consulting via industry filter
+      if (refinements.excludeCompanyTypes?.length > 0) {
+        // Resolve "IT Services and IT Consulting" industry ID
+        try {
+          const indRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'get_parameters',
+              account_id: accountId,
+              organization_id: orgId,
+              type: 'INDUSTRY',
+              keywords: 'IT Services',
+              service: 'RECRUITER',
+              limit: 3,
+            }),
+          }, 10000);
+          const indData = await indRes.json();
+          if (indData?.success && indData.items?.length > 0) {
+            const itServicesId = indData.items[0].id;
+            searchBody.industry = { exclude: [itServicesId] };
+            console.log(`[search-agent-chat] Refinement: excluding industry "${indData.items[0].title}" (ID ${itServicesId})`);
+          }
+        } catch (e) {
+          console.warn('[search-agent-chat] Industry ID resolution failed:', e);
+        }
+      }
     }
 
     console.log('[search-agent-chat] Fetching sample profiles for calibration:', JSON.stringify(searchBody).slice(0, 300));
