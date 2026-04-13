@@ -312,11 +312,31 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   if (revMin !== undefined) payload['revenue_range[min]'] = revMin;
   if (revMax !== undefined) payload['revenue_range[max]'] = revMax;
 
-  // Funding stage
+  // Funding stage — map human-readable labels to Apollo stage codes
   const dbFundingStage = params.db_funding_stage as string | string[] | undefined;
   if (dbFundingStage) {
     const stages = Array.isArray(dbFundingStage) ? dbFundingStage : [dbFundingStage];
-    if (stages.length) payload.organization_latest_funding_stage_cd = stages;
+    const fundingStageMap: Record<string, string> = {
+      "seed": "seed",
+      "pre-seed": "pre_seed",
+      "angel": "angel",
+      "series a": "a",
+      "series b": "b",
+      "series c": "c",
+      "series d": "d",
+      "series e": "e",
+      "series f": "f",
+      "ipo": "ipo",
+      "private_equity": "private_equity",
+      "debt_financing": "debt_financing",
+      "grant": "grant",
+      "other": "other",
+    };
+    const mapped = stages.map(s => {
+      const lower = s.toLowerCase().trim();
+      return fundingStageMap[lower] || s;
+    }).filter(Boolean);
+    if (mapped.length) payload.organization_latest_funding_stage_cd = mapped;
   }
 
   // Company domain
@@ -337,6 +357,62 @@ function mapFiltersToApollo(params: Record<string, unknown>): Record<string, unk
   const dbTechnologies = params.db_technologies as string[] | undefined;
   if (dbTechnologies?.length) {
     payload.currently_using_any_of_technology_uids = dbTechnologies;
+  }
+
+  // Company size (human-readable labels) → organization_num_employees_ranges
+  // Only applies if company_headcount (LinkedIn codes) wasn't already set
+  const dbCompanySize = params.db_company_size as string[] | undefined;
+  if (dbCompanySize?.length && !payload.organization_num_employees_ranges) {
+    const sizeMap: Record<string, string[]> = {
+      startup: ["1,10", "11,50"],
+      scaleup: ["51,200", "201,500"],
+      mid: ["501,1000", "1001,5000"],
+      enterprise: ["5001,10000", "10001,"],
+    };
+    const ranges: string[] = [];
+    for (const size of dbCompanySize) {
+      const mapped = sizeMap[size.toLowerCase().trim()];
+      if (mapped) {
+        ranges.push(...mapped);
+      }
+    }
+    if (ranges.length) payload.organization_num_employees_ranges = ranges;
+  }
+
+  // Raw company size ranges (pass-through, e.g. ["51,200", "201,500"])
+  const dbCompanySizeRanges = params.db_company_size_ranges as string[] | undefined;
+  if (dbCompanySizeRanges?.length) {
+    const existing = (payload.organization_num_employees_ranges as string[]) || [];
+    payload.organization_num_employees_ranges = [...existing, ...dbCompanySizeRanges];
+  }
+
+  // Industry tags → q_organization_keyword_tags (direct pass-through)
+  const dbIndustryTags = params.db_industry_tags as string[] | undefined;
+  if (dbIndustryTags?.length) {
+    const existing = (payload.q_organization_keyword_tags as string[]) || [];
+    payload.q_organization_keyword_tags = [...existing, ...dbIndustryTags].slice(0, 10);
+  }
+
+  // Company actively hiring → organization_num_jobs_range
+  const dbCompanyHiring = params.db_company_hiring as boolean | number | undefined;
+  if (dbCompanyHiring !== undefined && dbCompanyHiring !== false) {
+    // If true, require at least 1 open job; if a number, use it as minimum
+    const minJobs = typeof dbCompanyHiring === "number" ? dbCompanyHiring : 1;
+    if (!payload['organization_num_jobs_range[min]']) {
+      payload['organization_num_jobs_range[min]'] = minJobs;
+    }
+  }
+
+  // Company hired recently → organization_job_posted_at_range
+  const dbCompanyHiringRecent = params.db_company_hiring_recent as number | undefined;
+  if (dbCompanyHiringRecent && dbCompanyHiringRecent > 0) {
+    const now = new Date();
+    const minDate = new Date(now);
+    minDate.setDate(minDate.getDate() - dbCompanyHiringRecent);
+    // Format as YYYY-MM-DD
+    const formatDate = (d: Date) => d.toISOString().split("T")[0];
+    payload['organization_job_posted_at_range[min]'] = formatDate(minDate);
+    payload['organization_job_posted_at_range[max]'] = formatDate(now);
   }
 
   // Organization job titles (open positions at employer)
