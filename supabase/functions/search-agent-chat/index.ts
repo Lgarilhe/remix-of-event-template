@@ -110,6 +110,7 @@ RÈGLES CALIBRATION:
 - Les critères identifiés via les rejets sont CUMULATIFS (pas de reset)
 - Après chaque rejet, RÉSUME ce que tu as appris: "Critères ajustés: ❌ ESN exclu, 📍 Paris strict, etc."
 - Quand tu n'as plus de vrais profils à montrer, dis-le: "J'ai montré tous les profils disponibles. Je lance la recherche complète avec les critères calibrés."
+- ⚠️ LIMITE DE REJETS: Après 8 rejets TOTAL (pas consécutifs), arrête la calibration et passe directement au plan de recherche. Dis: "On a testé suffisamment de profils. Je lance la recherche avec les critères affinés." puis génère le SEARCH_PLAN. Cela évite une boucle infinie qui coûte cher en tokens.
 
 ⚠️ APRÈS REJET DE PROFILS: De nouveaux VRAIS profils seront automatiquement fournis au prochain message, filtrés selon les retours. Dis simplement "Compris, je relance la recherche avec ces critères ajustés." puis présente les nouveaux vrais profils quand ils arrivent dans le contexte.
 
@@ -767,13 +768,13 @@ Deno.serve(async (req) => {
       content: message,
     });
 
-    // Fetch conversation history
+    // Fetch conversation history (limit to 24 messages to control token costs)
     const { data: history } = await supabase
       .from("agent_messages")
       .select("role, content, metadata")
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: true })
-      .limit(50);
+      .limit(24);
 
     // Build messages for AI
     const messages: Message[] = [];
