@@ -451,7 +451,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     console.log("[generate-search-filters] Calling AI with job:", job.title);
 
     // Helper function to call AI with retry logic for 529 errors
-    const callAIWithRetry = async (maxRetries = 3): Promise<Response> => {
+    const callAIWithRetry = async (maxRetries = 2): Promise<Response> => {
       let lastError: Error | null = null;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -472,7 +472,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
                 { role: "user", content: jobContext },
               ],
             }),
-          });
+          }, 45000);
 
           if (response.ok) {
             return response;
@@ -524,7 +524,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
 
     let response: Response;
     try {
-      response = await callAIWithRetry(3);
+      response = await callAIWithRetry(2);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       
@@ -547,7 +547,10 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
         );
       }
       console.error("[generate-search-filters] AI call failed:", errorMessage);
-      throw new Error(`AI gateway error: ${errorMessage}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur IA : ${errorMessage}`, fallback: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const aiResult = await response.json();
