@@ -543,7 +543,7 @@ async function fetchSampleProfiles(
         };
         // Apollo-specific refinements
         if (refinements?.targetCompanyTypes?.length > 0) {
-          apolloBody.filters.db_company_size = ['scaleup'];
+          apolloBody.filters.db_company_size_ranges = ['11,50', '51,200', '201,500'];
         }
         if (refinements?.excludeCompanyTypes?.length > 0) {
           apolloBody.filters.db_industry_tags = ['SaaS', 'Technology'];
@@ -647,7 +647,7 @@ async function fetchSampleProfiles(
     }
 
     console.log(`[search-agent-chat] Found ${data.results.length} sample profiles for calibration`);
-    return data.results.slice(0, limit);
+    return data.results.slice(0, fetchLimit);
   } catch (e) {
     console.error('[search-agent-chat] Sample profile fetch error:', e);
     return [];
@@ -912,8 +912,15 @@ Deno.serve(async (req) => {
         matches.forEach(match => { if (match[1]?.trim()) previousProfileIds.push(match[1].trim()); });
       }
 
-      // Fetch new profiles if: no profiles yet, OR profiles were rejected and we have refinements
-      const shouldRefetch = !existingProfileData || (hasRefinements && hasProfileTags);
+      // Only refetch when NEW rejections appear (not every message after Phase 2 starts)
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+      const lastMsgHasRejection = lastUserMsg && (
+        lastUserMsg.content?.includes('❌') ||
+        lastUserMsg.content?.includes('Pas ce profil') ||
+        /\bpas du tout\b/i.test(lastUserMsg.content || '') ||
+        /\bNon\b/.test(lastUserMsg.content || '')
+      );
+      const shouldRefetch = !existingProfileData || (hasRefinements && lastMsgHasRejection);
 
       if (shouldRefetch && !isInPhase3) {
           const sampleProfiles = await fetchSampleProfiles(
@@ -934,10 +941,14 @@ Deno.serve(async (req) => {
           if (refinements.excludeCompanyTypes.length > 0) {
             const esnKeywords = ['consulting', 'conseil', 'capgemini', 'accenture', 'atos', 'sopra', 'alten', 'altran', 'gfi', 'avanade', 'cognizant', 'infosys', 'tcs', 'wipro', 'cgi', 'devoteam', 'henix', 'positive thinking'];
             filteredProfiles = filteredProfiles.filter((p: any) => {
-              const company = (p.current_company_name || p.company || p.headline || '').toLowerCase();
+              const company = (p.current_company_name || p.company || '').toLowerCase();
               return !esnKeywords.some(kw => company.includes(kw));
             });
             console.log(`[search-agent-chat] Post-filter: ${sampleProfiles.length} → ${filteredProfiles.length} after ESN exclusion`);
+            if (filteredProfiles.length === 0 && sampleProfiles.length > 0) {
+              console.warn('[search-agent-chat] ESN filter removed all profiles — keeping originals with warning');
+              filteredProfiles = sampleProfiles;
+            }
           }
 
           const profilesToShow = filteredProfiles.slice(0, 5);
@@ -1181,7 +1192,7 @@ Propose des exemples concrets de messages.`;
               try {
                 const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
                 const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-                const orgId = await resolveOrgIdFromUser(user.id, adminClient as any);
+                const orgId = conv?.organization_id || await resolveOrgIdFromUser(user.id, adminClient as any);
                 if (orgId) {
                   const { settleCredits } = await import("../_shared/settle-credits.ts");
                   await settleCredits(adminClient as any, {
