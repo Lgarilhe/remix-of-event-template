@@ -527,6 +527,63 @@ Deno.serve(async (req) => {
           searchBody.recruiting_activity = filters.recruiting_activity;
         }
 
+        // Tenure — years of total experience (object with min/max)
+        if (filters.tenure && typeof filters.tenure === 'object') {
+          searchBody.tenure = filters.tenure;
+        }
+
+        // Tenure in current company
+        if (filters.tenure_in_company && typeof filters.tenure_in_company === 'object') {
+          searchBody.tenure_in_company = filters.tenure_in_company;
+        }
+
+        // Tenure in current position
+        if (filters.tenure_in_position && typeof filters.tenure_in_position === 'object') {
+          searchBody.tenure_in_position = filters.tenure_in_position;
+        }
+
+        // Spoken languages
+        if (filters.spoken_languages && Array.isArray(filters.spoken_languages) && filters.spoken_languages.length > 0) {
+          searchBody.spoken_languages = filters.spoken_languages;
+        }
+
+        // Employment type (FULL_TIME, CONTRACT, etc.)
+        if (filters.employment_type && Array.isArray(filters.employment_type) && filters.employment_type.length > 0) {
+          searchBody.employment_type = filters.employment_type;
+        }
+
+        // Graduation year range
+        if (filters.graduation_year && typeof filters.graduation_year === 'object') {
+          searchBody.graduation_year = filters.graduation_year;
+        }
+
+        // Hide previously viewed profiles
+        if (filters.hide_previously_viewed === true) {
+          searchBody.hide_previously_viewed = true;
+        }
+
+        // Recently joined LinkedIn
+        if (filters.recently_joined && Array.isArray(filters.recently_joined) && filters.recently_joined.length > 0) {
+          searchBody.recently_joined = filters.recently_joined;
+        }
+
+        // Log advanced filters summary
+        const advancedFilters = [
+          filters.company_headcount && 'company_headcount',
+          filters.tenure && 'tenure',
+          filters.tenure_in_company && 'tenure_in_company',
+          filters.tenure_in_position && 'tenure_in_position',
+          filters.spotlights && 'spotlights',
+          filters.spoken_languages && 'languages',
+          filters.employment_type && 'employment_type',
+          filters.graduation_year && 'graduation_year',
+          filters.hide_previously_viewed && 'hide_previously_viewed',
+          filters.recently_joined && 'recently_joined',
+        ].filter(Boolean);
+        if (advancedFilters.length > 0) {
+          console.log(`[run-agent-search] Advanced filters: ${advancedFilters.join(', ')}`);
+        }
+
         if (cursor) searchBody.cursor = cursor;
 
         const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/unipile-search`, {
