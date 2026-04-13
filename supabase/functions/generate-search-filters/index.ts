@@ -451,7 +451,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     console.log("[generate-search-filters] Calling AI with job:", job.title);
 
     // Helper function to call AI with retry logic for 529 errors
-    const callAIWithRetry = async (maxRetries = 3): Promise<Response> => {
+    const callAIWithRetry = async (maxRetries = 2): Promise<Response> => {
       let lastError: Error | null = null;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
