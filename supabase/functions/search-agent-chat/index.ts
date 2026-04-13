@@ -94,7 +94,8 @@ RÈGLES CALIBRATION:
 - Si 2/3 ou 3/3 approuvés → passe à Phase 3
 - Si majorité rejetée → propose 3 nouveaux profils ajustés
 
-⚠️ IMPORTANT: Les profils doivent être RÉALISTES et basés sur le brief. Invente des profils crédibles avec des vrais noms d'entreprises du secteur.
+⚠️ IMPORTANT: Si des VRAIS PROFILS LINKEDIN sont fournis dans le contexte (section "=== VRAIS PROFILS LINKEDIN ==="), utilise-les EXCLUSIVEMENT. Ne génère JAMAIS de profils fictifs quand des vrais sont disponibles. Présente les vrais noms, vrais titres, vraies entreprises.
+Si AUCUN vrai profil n'est disponible (recherche échouée ou pas de compte LinkedIn), alors génère des profils crédibles en le signalant au recruteur.
 
 --- PHASE 3: TEST SCORING & RÉGLAGES ---
 Après calibration réussie (2/3+ approuvés), AVANT de proposer le lancement:
@@ -463,6 +464,145 @@ RÈGLES:
    Junior → 0-3 | Confirmé → 3-7 | Senior/Lead → 5-12 | Staff/Architecte → 8-15`;
 
 
+async function fetchSampleProfiles(
+  supabaseUrl: string,
+  authHeader: string,
+  anonKey: string,
+  accountId: string,
+  orgId: string,
+  briefContext: Record<string, any>,
+  limit: number = 5,
+): Promise<any[]> {
+  try {
+    // Build basic search filters from brief
+    const jd = briefContext;
+    const titles = [jd.title].filter(Boolean);
+    const roleKeywords = titles.join(' OR ');
+
+    const searchBody: any = {
+      action: 'search',
+      account_id: accountId,
+      organization_id: orgId,
+      api: 'recruiter',
+      category: 'people',
+      limit,
+    };
+
+    // Role filter from job title
+    if (roleKeywords) {
+      searchBody.role = [{ keywords: roleKeywords, priority: 'MUST_HAVE', scope: 'CURRENT' }];
+    }
+
+    // Location from brief
+    if (jd.location) {
+      searchBody.location_keywords = [jd.location];
+    }
+
+    // Seniority
+    if (jd.seniority) {
+      searchBody.seniority = [jd.seniority.toLowerCase()];
+    }
+
+    // Basic skills in keywords (not too restrictive)
+    const coreSkills = [...(jd.skills_must_have || [])].slice(0, 2);
+    if (coreSkills.length > 0) {
+      searchBody.keywords = coreSkills.join(' OR ');
+    }
+
+    console.log('[search-agent-chat] Fetching sample profiles for calibration:', JSON.stringify(searchBody).slice(0, 300));
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'apikey': anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(searchBody),
+    }, 20000);
+
+    if (!res.ok) {
+      console.warn('[search-agent-chat] Sample search failed:', res.status);
+      return [];
+    }
+
+    const data = await res.json();
+    if (!data.success || !data.results?.length) {
+      console.warn('[search-agent-chat] No sample profiles found');
+      return [];
+    }
+
+    console.log(`[search-agent-chat] Found ${data.results.length} sample profiles for calibration`);
+    return data.results.slice(0, limit);
+  } catch (e) {
+    console.error('[search-agent-chat] Sample profile fetch error:', e);
+    return [];
+  }
+}
+
+async function scoreProfiles(
+  supabaseUrl: string,
+  authHeader: string,
+  anonKey: string,
+  profiles: any[],
+  briefContext: Record<string, any>,
+  orgId: string,
+): Promise<Record<string, any>> {
+  try {
+    // Build job data from brief for scoring
+    const job = {
+      title: briefContext.title || '',
+      skills: [...(briefContext.skills_must_have || []), ...(briefContext.skills_should_have || [])],
+      description: briefContext.mission_description || '',
+      location: briefContext.location || '',
+      seniority: briefContext.seniority || '',
+      mustHave: (briefContext.skills_must_have || []).join(', '),
+      shouldHave: (briefContext.skills_should_have || []).join(', '),
+      niceToHave: (briefContext.skills_nice_to_have || []).join(', '),
+    };
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/score-profile-job`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'apikey': anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        profiles: profiles.map(p => ({
+          id: p.id || p.provider_id,
+          name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+          headline: p.headline || p.title || '',
+          work_experience: p.work_experience || p.experiences || [],
+          skills: p.skills || [],
+          education: p.education || [],
+          summary: p.summary || p.about || '',
+        })),
+        job,
+        organization_id: orgId,
+      }),
+    }, 30000);
+
+    if (!res.ok) {
+      console.warn('[search-agent-chat] Scoring failed:', res.status);
+      return {};
+    }
+
+    const data = await res.json();
+    // Return a map of profile_id -> score data
+    const scoreMap: Record<string, any> = {};
+    if (data.scores && Array.isArray(data.scores)) {
+      for (const s of data.scores) {
+        scoreMap[s.profileId || s.id] = s;
+      }
+    }
+    return scoreMap;
+  } catch (e) {
+    console.error('[search-agent-chat] Scoring error:', e);
+    return {};
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -591,6 +731,131 @@ Deno.serve(async (req) => {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
+    // --- Fetch real LinkedIn profiles for Phase 2 calibration & Phase 3 scoring ---
+    let realProfilesContext = '';
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    if (brief_context && (!context_mode || context_mode === 'sourcing')) {
+      // Detect Phase 2 transition
+      const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
+      const isEnteringPhase2 = lastAssistantMsg?.content?.includes('calibration') ||
+                                lastAssistantMsg?.content?.includes('profils représentatifs') ||
+                                lastAssistantMsg?.content?.includes('passe à la calibration');
+      const hasProfileTags = messages.some(m => m.content?.includes('[PROFILE]'));
+      const isInPhase3 = messages.some(m => m.content?.includes('[SCORING_TEST]'));
+
+      // Resolve account_id: try body first, then fetch from DB
+      let accountId = body.account_id || body.selectedAccount || '';
+      if (!accountId && conv?.organization_id) {
+        try {
+          const { data: linkedinAccounts } = await supabase
+            .from('member_linkedin_accounts')
+            .select('account_id')
+            .eq('organization_id', conv.organization_id)
+            .eq('account_status', 'OK')
+            .limit(1);
+          accountId = linkedinAccounts?.[0]?.account_id || '';
+        } catch (e) {
+          console.warn('[search-agent-chat] Failed to fetch LinkedIn account:', e);
+        }
+      }
+
+      const orgId = conv?.organization_id || '';
+
+      if ((isEnteringPhase2 || hasProfileTags) && !isInPhase3 && accountId) {
+        const existingProfileData = messages.some(m => m.content?.includes('=== VRAIS PROFILS LINKEDIN'));
+
+        if (!existingProfileData) {
+          const sampleProfiles = await fetchSampleProfiles(
+            supabaseUrl, authHeader!, anonKey,
+            accountId, orgId, brief_context as Record<string, any>, 5
+          );
+
+          if (sampleProfiles.length > 0) {
+            realProfilesContext = `\n\n=== VRAIS PROFILS LINKEDIN (À UTILISER POUR LA CALIBRATION) ===
+Tu as accès à ${sampleProfiles.length} VRAIS profils LinkedIn. Utilise-les pour la Phase 2 au lieu d'inventer des profils.
+Présente 3 de ces profils au recruteur. Utilise les VRAIES données (nom, titre, entreprise, parcours).
+
+${sampleProfiles.map((p: any, i: number) => {
+  const name = p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
+  const headline = p.headline || p.title || '';
+  const company = p.current_company_name || p.company || '';
+  const location = p.location || '';
+  const experiences = (p.work_experience || p.experiences || []).slice(0, 3);
+  const skills = (p.skills || []).slice(0, 10);
+  const education = (p.education || []).slice(0, 2);
+  const summary = (p.summary || p.about || '').slice(0, 200);
+
+  return `PROFIL ${i + 1}:
+Nom: ${name}
+Titre: ${headline}
+Entreprise actuelle: ${company}
+Localisation: ${location}
+Résumé: ${summary}
+Expériences: ${experiences.map((e: any) => `${e.title || e.role || ''} @ ${e.company_name || e.company || ''} (${e.start_date || '?'} - ${e.end_date || 'présent'})`).join(' → ')}
+Compétences: ${skills.map((s: any) => typeof s === 'string' ? s : s.name).join(', ')}
+Formation: ${education.map((e: any) => `${e.school_name || e.school || ''} ${e.degree_name || e.degree || ''}`).join(', ')}
+LinkedIn ID: ${p.id || p.provider_id || ''}`;
+}).join('\n\n')}
+
+=== FIN VRAIS PROFILS ===
+
+INSTRUCTIONS: Utilise UNIQUEMENT ces vrais profils pour ta calibration Phase 2. NE génère PAS de profils fictifs.
+Pour chaque profil que tu présentes, utilise le tag [PROFILE] avec les VRAIES données du profil ci-dessus.`;
+          }
+        }
+      }
+
+      // Phase 3: fetch real scores for profiles that were presented during calibration
+      if (isInPhase3 && accountId) {
+        const existingScoreData = messages.some(m => m.content?.includes('=== VRAIS SCORES'));
+
+        if (!existingScoreData) {
+          // Extract profiles from [PROFILE] tags in conversation history
+          const calibrationProfiles: any[] = [];
+          for (const m of messages) {
+            const profileMatches = [...(m.content?.matchAll(/\[PROFILE\]([\s\S]*?)\[\/PROFILE\]/g) || [])];
+            for (const match of profileMatches) {
+              try {
+                calibrationProfiles.push(JSON.parse(match[1]));
+              } catch { /* skip malformed */ }
+            }
+          }
+
+          if (calibrationProfiles.length > 0) {
+            // Score the calibration profiles using the real scoring engine
+            const scoreMap = await scoreProfiles(
+              supabaseUrl, authHeader!, anonKey,
+              calibrationProfiles, brief_context as Record<string, any>, orgId
+            );
+
+            if (Object.keys(scoreMap).length > 0) {
+              realProfilesContext += `\n\n=== VRAIS SCORES (À UTILISER POUR LE SCORING TEST) ===
+Voici les scores RÉELS calculés par le moteur de scoring pour les profils de calibration.
+Utilise ces scores dans le [SCORING_TEST] au lieu d'inventer des scores.
+
+${Object.entries(scoreMap).map(([id, score]: [string, any]) => {
+  return `Profil ${score.name || id}:
+Score: ${score.score ?? score.overall_score ?? 'N/A'}/100
+Recommandation: ${score.recommendation || (score.score >= 80 ? 'go' : score.score >= 60 ? 'maybe' : 'skip')}
+Critères: ${JSON.stringify(score.criteria || score.details || [], null, 2).slice(0, 500)}`;
+}).join('\n\n')}
+
+=== FIN VRAIS SCORES ===
+
+INSTRUCTIONS: Utilise ces VRAIS scores dans ton [SCORING_TEST]. Ne génère PAS de scores inventés.`;
+            } else {
+              // Fallback: instruct AI to score based on real profile data
+              realProfilesContext += `\n\n=== INSTRUCTIONS SCORING PHASE 3 ===
+Le moteur de scoring n'a pas pu scorer ces profils. Base tes scores dans [SCORING_TEST] sur ton analyse RÉELLE des profils LinkedIn présentés en Phase 2, pas sur des chiffres inventés.
+Évalue chaque profil selon les critères du brief : stack technique, séniorité, localisation, formation.
+=== FIN INSTRUCTIONS SCORING ===`;
+            }
+          }
+        }
+      }
+    }
+
     // Select system prompt based on context_mode
     const briefSystemPrompt = `Tu es un assistant recrutement expert. Tu aides à structurer un brief de poste.
 
@@ -647,10 +912,10 @@ Aide l'utilisateur à:
 
 Propose des exemples concrets de messages.`;
 
-    // Inject brief context into sourcing prompt if available
+    // Inject brief context and real profiles into sourcing prompt if available
     const enrichedSourcingPrompt = brief_context
-      ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}`
-      : sourcingSystemPrompt;
+      ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}` + realProfilesContext
+      : sourcingSystemPrompt + realProfilesContext;
 
     const activeSystemPrompt = context_mode === 'brief' ? briefSystemPrompt
       : context_mode === 'process' ? processSystemPrompt
