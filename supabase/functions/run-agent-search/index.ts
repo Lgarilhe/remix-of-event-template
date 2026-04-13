@@ -267,10 +267,26 @@ Deno.serve(async (req) => {
     const maxProfiles = Math.min(stopConditions.max_profiles_to_scan || 200, 200);
     const targetGo = stopConditions.target_go_profiles || 10;
 
+    // Common skill aliases that resolve to wrong IDs via autocomplete
+    const SKILL_ALIASES: Record<string, string> = {
+      'AWS': 'Amazon Web Services',
+      'GCP': 'Google Cloud Platform',
+      'K8s': 'Kubernetes',
+      'JS': 'JavaScript',
+      'TS': 'TypeScript',
+      'ML': 'Machine Learning',
+      'AI': 'Artificial Intelligence',
+      'DL': 'Deep Learning',
+      'NLP': 'Natural Language Processing',
+      'CV': 'Computer Vision',
+    };
+
     // Helper: resolve keyword → LinkedIn ID via get_parameters
     async function resolveIds(type: string, keywords: string[]): Promise<string[]> {
       const ids: string[] = [];
       for (const kw of keywords) {
+        // Apply alias for common abbreviations that resolve to wrong IDs
+        const resolveKw = type === 'SKILL' ? (SKILL_ALIASES[kw] || kw) : kw;
         try {
           const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
             method: "POST",
@@ -284,7 +300,7 @@ Deno.serve(async (req) => {
               account_id: accountId,
               organization_id: orgId,
               type,
-              keywords: kw,
+              keywords: resolveKw,
               service: "RECRUITER",
               limit: 3,
             }),
@@ -292,9 +308,9 @@ Deno.serve(async (req) => {
           const data = await res.json();
           if (data?.success && data.items?.length > 0) {
             ids.push(data.items[0].id);
-            console.log(`[run-agent-search] ${type} "${kw}" → ID ${data.items[0].id} (${data.items[0].title})`);
+            console.log(`[run-agent-search] ${type} "${kw}"${resolveKw !== kw ? ` (alias: "${resolveKw}")` : ''} → ID ${data.items[0].id} (${data.items[0].title})`);
           } else {
-            console.warn(`[run-agent-search] No ${type} ID found for "${kw}"`);
+            console.warn(`[run-agent-search] No ${type} ID found for "${kw}"${resolveKw !== kw ? ` (tried alias: "${resolveKw}")` : ''}`);
           }
         } catch (e) {
           console.error(`[run-agent-search] Failed to resolve ${type} "${kw}":`, e);
@@ -372,9 +388,17 @@ Deno.serve(async (req) => {
       try {
         // Keywords = technologies/skills ONLY (no location, no titles)
         const searchKeywords = filters.keywords || undefined;
-        
-        console.log(`[run-agent-search] Round ${round} keywords: ${searchKeywords?.slice(0, 200)}`);
-        
+
+        // When skills or roles are resolved as structured filters, don't duplicate them in keywords
+        // LinkedIn ANDs keywords with structured filters, causing double filtering and empty results
+        let effectiveKeywords = searchKeywords;
+        if (resolvedSkillIds.length > 0 || (filters.role && Array.isArray(filters.role) && filters.role.length > 0)) {
+          effectiveKeywords = undefined;
+          console.log(`[run-agent-search] Structured filters resolved (${resolvedSkillIds.length} skills, ${filters.role?.length || 0} roles) — clearing keywords to avoid double filter`);
+        }
+
+        console.log(`[run-agent-search] Round ${round} keywords: ${effectiveKeywords?.slice(0, 200) ?? "(cleared — using structured filters)"}`);
+
         // Build search body with ALL structured filters
         const searchBody: any = {
           action: "search",
@@ -383,8 +407,12 @@ Deno.serve(async (req) => {
           api: "recruiter",
           category: "people",
           limit: 25,
-          keywords: searchKeywords,
         };
+
+        // Only include keywords when not handled by structured filters
+        if (effectiveKeywords) {
+          searchBody.keywords = effectiveKeywords;
+        }
 
         // Location (resolved IDs)
         if (resolvedLocationIds.length > 0) {
@@ -430,19 +458,19 @@ Deno.serve(async (req) => {
           searchBody.industry = { include: resolvedIndustryIds };
         }
 
-        // School (resolve IDs like location)
+        // School (resolved IDs — always CAN_HAVE, schools are a bonus not a hard requirement)
         if (resolvedSchoolIds.length > 0) {
           searchBody.school = resolvedSchoolIds.map((id: string) => ({
             id,
-            priority: "MUST_HAVE",
+            priority: "CAN_HAVE",
           }));
         }
 
-        // Skills (resolved IDs from skills_filter)
+        // Skills (resolved IDs from skills_filter — max 2 MUST_HAVE, rest CAN_HAVE to avoid over-filtering)
         if (resolvedSkillIds.length > 0) {
-          searchBody.skills = resolvedSkillIds.map((id: string) => ({
+          searchBody.skills = resolvedSkillIds.map((id: string, index: number) => ({
             id,
-            priority: "MUST_HAVE",
+            priority: index < 2 ? "MUST_HAVE" : "CAN_HAVE",
           }));
         }
 
