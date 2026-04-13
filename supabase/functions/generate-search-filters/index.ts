@@ -472,7 +472,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
                 { role: "user", content: jobContext },
               ],
             }),
-          });
+          }, 45000);
 
           if (response.ok) {
             return response;
