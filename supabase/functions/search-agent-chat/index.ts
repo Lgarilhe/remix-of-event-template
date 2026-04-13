@@ -514,77 +514,111 @@ async function fetchSampleProfiles(
   limit: number = 5,
   refinements?: Record<string, any>,
   previousProfileIds?: string[],
+  licenseType?: 'recruiter' | 'classic' | 'none',
 ): Promise<any[]> {
   try {
-    // Build search filters from brief + refinements
     const jd = briefContext;
     const titles = [jd.title].filter(Boolean);
     const roleKeywords = titles.join(' OR ');
+    const coreSkills = [...(jd.skills_must_have || [])].slice(0, 2);
+    const fetchLimit = limit + (previousProfileIds?.length || 0) + 5;
+
+    // === CASE 3: No LinkedIn account → use Apollo (database-search) ===
+    if (licenseType === 'none' || !accountId) {
+      console.log('[search-agent-chat] No LinkedIn account — using Apollo database search');
+      try {
+        const apolloBody: any = {
+          search_source: 'database',
+          organization_id: orgId,
+          filters: {
+            api: 'database',
+            role: titles.length > 0 ? [{ keywords: roleKeywords }] : [],
+            location: jd.location ? [{ name: jd.location }] : [],
+            seniority: jd.seniority ? [jd.seniority.toLowerCase()] : [],
+            keywords: coreSkills.join(' '),
+          },
+          limit: fetchLimit,
+        };
+        // Apollo-specific refinements
+        if (refinements?.targetCompanyTypes?.length > 0) {
+          apolloBody.filters.db_company_size = ['scaleup'];
+        }
+        if (refinements?.excludeCompanyTypes?.length > 0) {
+          apolloBody.filters.db_industry_tags = ['SaaS', 'Technology'];
+        }
+        const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
+          method: 'POST',
+          headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(apolloBody),
+        }, 20000);
+        if (res.ok) {
+          const data = await res.json();
+          const results = data.results || data.profiles || [];
+          console.log(`[search-agent-chat] Apollo returned ${results.length} profiles`);
+          return results.slice(0, fetchLimit);
+        }
+      } catch (e) {
+        console.warn('[search-agent-chat] Apollo search failed:', e);
+      }
+      return [];
+    }
+
+    // === CASE 1 & 2: LinkedIn account exists ===
+    const isRecruiter = licenseType === 'recruiter';
+    const apiMode = isRecruiter ? 'recruiter' : 'classic';
 
     const searchBody: any = {
       action: 'search',
       account_id: accountId,
       organization_id: orgId,
-      api: 'recruiter',
+      api: apiMode,
       category: 'people',
-      limit: limit + (previousProfileIds?.length || 0) + 5, // fetch extra to compensate for filtering
+      limit: fetchLimit,
     };
 
-    // Role filter from job title
-    if (roleKeywords) {
-      searchBody.role = [{ keywords: roleKeywords, priority: 'MUST_HAVE', scope: 'CURRENT' }];
-    }
-
-    // Location from brief
-    if (jd.location) {
-      searchBody.location_keywords = [jd.location];
-    }
-
-    // Seniority
-    if (jd.seniority) {
-      searchBody.seniority = [jd.seniority.toLowerCase()];
-    }
-
-    // Basic skills in keywords (not too restrictive)
-    const coreSkills = [...(jd.skills_must_have || [])].slice(0, 2);
-    if (coreSkills.length > 0) {
-      searchBody.keywords = coreSkills.join(' OR ');
-    }
-
-    // Apply refinements from conversation feedback
-    if (refinements) {
-      // Target scale-ups/startups via company headcount
-      if (refinements.targetCompanyTypes?.length > 0) {
-        searchBody.company_headcount = [{ min: 11, max: 500 }]; // startups + scale-ups
-        console.log('[search-agent-chat] Refinement: targeting startups/scale-ups (11-500 employees)');
+    if (isRecruiter) {
+      // RECRUITER: full structured filters
+      if (roleKeywords) {
+        searchBody.role = [{ keywords: roleKeywords, priority: 'MUST_HAVE', scope: 'CURRENT' }];
       }
-      // Exclude ESN/consulting via industry filter
-      if (refinements.excludeCompanyTypes?.length > 0) {
-        // Resolve "IT Services and IT Consulting" industry ID
-        try {
-          const indRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
-            method: 'POST',
-            headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'get_parameters',
-              account_id: accountId,
-              organization_id: orgId,
-              type: 'INDUSTRY',
-              keywords: 'IT Services',
-              service: 'RECRUITER',
-              limit: 3,
-            }),
-          }, 10000);
-          const indData = await indRes.json();
-          if (indData?.success && indData.items?.length > 0) {
-            const itServicesId = indData.items[0].id;
-            searchBody.industry = { exclude: [itServicesId] };
-            console.log(`[search-agent-chat] Refinement: excluding industry "${indData.items[0].title}" (ID ${itServicesId})`);
+      if (jd.location) searchBody.location_keywords = [jd.location];
+      if (jd.seniority) searchBody.seniority = [jd.seniority.toLowerCase()];
+      if (coreSkills.length > 0) searchBody.keywords = coreSkills.join(' OR ');
+
+      // Recruiter-only refinements
+      if (refinements) {
+        if (refinements.targetCompanyTypes?.length > 0) {
+          searchBody.company_headcount = [{ min: 11, max: 500 }];
+          console.log('[search-agent-chat] Refinement: targeting startups/scale-ups (11-500 employees)');
+        }
+        if (refinements.excludeCompanyTypes?.length > 0) {
+          try {
+            const indRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+              method: 'POST',
+              headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'get_parameters', account_id: accountId, organization_id: orgId,
+                type: 'INDUSTRY', keywords: 'IT Services', service: 'RECRUITER', limit: 3,
+              }),
+            }, 10000);
+            const indData = await indRes.json();
+            if (indData?.success && indData.items?.length > 0) {
+              searchBody.industry = { exclude: [indData.items[0].id] };
+              console.log(`[search-agent-chat] Refinement: excluding industry "${indData.items[0].title}"`);
+            }
+          } catch (e) {
+            console.warn('[search-agent-chat] Industry ID resolution failed:', e);
           }
-        } catch (e) {
-          console.warn('[search-agent-chat] Industry ID resolution failed:', e);
         }
       }
+    } else {
+      // CLASSIC: only keywords + location (structured filters not supported)
+      const allTerms = [...titles, ...coreSkills].filter(Boolean);
+      if (allTerms.length > 0) {
+        searchBody.keywords = allTerms.join(' ');
+      }
+      if (jd.location) searchBody.location = [jd.location]; // Classic uses simple location strings
+      console.log('[search-agent-chat] Classic license — using simplified filters (keywords + location only)');
     }
 
     console.log('[search-agent-chat] Fetching sample profiles for calibration:', JSON.stringify(searchBody).slice(0, 300));
@@ -836,8 +870,21 @@ Deno.serve(async (req) => {
           console.warn('[search-agent-chat] Failed to fetch LinkedIn account:', e);
         }
       }
-      if (accountId) console.log(`[search-agent-chat] Using account_id: ${accountId}`);
-      else console.warn('[search-agent-chat] No account_id available — will use fallback profiles');
+      // Detect LinkedIn license type from conversation (first user message contains "=== ACCÈS ===")
+      let licenseType: 'recruiter' | 'classic' | 'none' = 'none';
+      if (accountId) {
+        const firstUserMsg = messages.find(m => m.role === 'user')?.content || '';
+        if (firstUserMsg.includes('Licence Recruiter') || firstUserMsg.includes('recruiter')) {
+          licenseType = 'recruiter';
+        } else if (firstUserMsg.includes('Licence Sales Navigator') || firstUserMsg.includes('sales_navigator')) {
+          licenseType = 'recruiter'; // Sales Nav supports similar structured filters
+        } else if (firstUserMsg.includes('Licence Classic') || firstUserMsg.includes('classic')) {
+          licenseType = 'classic';
+        } else {
+          licenseType = 'classic'; // default to classic if we have an account but unknown type
+        }
+      }
+      console.log(`[search-agent-chat] License: ${licenseType}, accountId: ${accountId ? 'yes' : 'no'}`);
 
       const orgId = conv?.organization_id || '';
 
@@ -855,12 +902,13 @@ Deno.serve(async (req) => {
       // Fetch new profiles if: no profiles yet, OR profiles were rejected and we have refinements
       const shouldRefetch = !existingProfileData || (hasRefinements && hasProfileTags);
 
-      if (shouldRefetch && !isInPhase3 && accountId) {
+      if (shouldRefetch && !isInPhase3) {
           const sampleProfiles = await fetchSampleProfiles(
             supabaseUrl, authHeader!, anonKey,
             accountId, orgId, brief_context as Record<string, any>, 5,
             hasRefinements ? refinements : undefined,
             previousProfileIds.length > 0 ? previousProfileIds : undefined,
+            licenseType,
           );
 
           // Filter out previously shown profiles
