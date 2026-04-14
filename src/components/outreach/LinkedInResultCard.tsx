@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  MapPin, Building2, TrendingUp, X,
+  MapPin, Building2, TrendingUp, X, Linkedin,
 } from 'lucide-react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
