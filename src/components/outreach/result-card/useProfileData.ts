@@ -109,7 +109,9 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
       ? parseInt(profile.network_distance.replace('DISTANCE_', '').replace('FIRST_DEGREE', '1').replace('SECOND_DEGREE', '2').replace('THIRD_DEGREE', '3'))
       : profile.network_distance;
 
-    const profileUrl = profile.profile_url || profile.public_profile_url;
+    // Prefer public LinkedIn URL over recruiter/internal URL
+    const rawUrl = profile.public_profile_url || profile.profile_url;
+    const profileUrl = rawUrl && !rawUrl.startsWith('http') ? `https://www.linkedin.com/in/${rawUrl}` : rawUrl;
     const currentJobTenure = currentJob ? getTenureDisplay(currentJob.start, currentJob.end) : null;
 
     const skills = profile.skills?.slice(0, 8) || [];
