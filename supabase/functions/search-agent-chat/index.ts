@@ -62,6 +62,8 @@ Exemples de questions:
 ⚠️ NE PASSE PAS à la Phase 2 tant que TOUS les points du diagnostic n'ont pas été validés un par un.
 Attends la réponse à chaque question avant de poser la suivante.
 
+⚠️ TRANSITION PHASE 1 → PHASE 2: Quand tous les points sont validés, NE DIS JAMAIS "un instant", "je cherche", "en cours de chargement". Les profils sont DÉJÀ disponibles dans ton contexte (section "=== VRAIS PROFILS LINKEDIN ==="). Passe DIRECTEMENT au premier profil.
+
 --- PHASE 2: CALIBRATION CONTINUE (profils UN PAR UN, 3 approbations consécutives) ---
 C'est la phase CLÉ. Tu montres des profils UN PAR UN jusqu'à obtenir 3 APPROBATIONS CONSÉCUTIVES.
 
@@ -471,7 +473,8 @@ async function fetchSampleProfiles(
     const jd = briefContext;
     const titles = [jd.title].filter(Boolean);
     const roleKeywords = titles.join(' OR ');
-    const coreSkills = [...(jd.skills_must_have || [])].slice(0, 2);
+    // Don't use raw skills_must_have from brief — they may contain typos ("ans" instead of "Ansible")
+    // The role/title filter is sufficient for Apollo search. Skills are evaluated by scoring AI.
     const fetchLimit = limit + (previousProfileIds?.length || 0) + 5;
 
     // === APOLLO (database-search) AS PRIMARY SOURCE ===
@@ -503,10 +506,8 @@ async function fetchSampleProfiles(
       searchBody.seniority = [jd.seniority.toLowerCase()];
     }
 
-    // Core skills as keywords
-    if (coreSkills.length > 0) {
-      searchBody.keywords = coreSkills.join(' ');
-    }
+    // No keywords — role/title filter is the primary discriminator for Apollo
+    // Skills are evaluated post-search by the scoring AI (avoids brief typos like "ans" → 0 results)
 
     // Refinements from conversation feedback — native Apollo filters
     if (refinements) {

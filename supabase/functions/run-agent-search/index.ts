@@ -375,11 +375,9 @@ Deno.serve(async (req) => {
           searchBody.seniority = filters.seniority;
         }
 
-        // Core skills as keywords (simple text, not IDs)
-        const skillNames: string[] = (filters.skills_filter || []).map((s: any) => typeof s === "string" ? s : (s.keywords || s));
-        if (skillNames.length > 0) {
-          searchBody.keywords = skillNames.slice(0, 3).join(' ');
-        }
+        // No keywords — role/title filter is the primary discriminator
+        // Skills are evaluated post-search by scoring AI via customScoringInstructions
+        // This avoids over-filtering (Apollo ANDs keywords with person_titles → 0 results)
 
         // Company size filter (native Apollo)
         if (filters.company_headcount && Array.isArray(filters.company_headcount) && filters.company_headcount.length > 0) {
