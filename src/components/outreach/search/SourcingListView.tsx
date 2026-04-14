@@ -40,6 +40,35 @@ function getCurrentExperience(profile: LinkedInProfile) {
   return current || exps[0] || null;
 }
 
+/** Compute years of experience from work history */
+function computeYearsExp(profile: LinkedInProfile): number | null {
+  const exps = profile.work_experience || [];
+  if (!exps.length) return null;
+  let earliest = 9999;
+  for (const exp of exps) {
+    const start = exp.start;
+    if (start) {
+      let year: number;
+      if (typeof start === 'object' && start?.year) year = start.year;
+      else if (typeof start === 'string') year = parseInt(start.split('-')[0]);
+      else year = 9999;
+      if (year < earliest) earliest = year;
+    }
+  }
+  return earliest < 9999 ? new Date().getFullYear() - earliest : null;
+}
+
+/** Get network distance as a number */
+function getNetworkDist(profile: LinkedInProfile): number | null {
+  const d = profile.network_distance;
+  if (typeof d === 'number') return d;
+  if (typeof d === 'string') {
+    const n = parseInt(d);
+    return isNaN(n) ? null : n;
+  }
+  return null;
+}
+
 /** Normalize recommendation to display */
 function recLabel(rec?: string): { label: string; color: string } {
   switch (rec) {
