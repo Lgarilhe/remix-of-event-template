@@ -752,9 +752,57 @@ Deno.serve(async (req) => {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
-    // --- Fetch real LinkedIn profiles for Phase 2 calibration & Phase 3 scoring ---
-    let realProfilesContext = '';
+    // --- Enrich client company context (agency: per-mission, enterprise: from org) ---
+    let companyContext = '';
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    if (brief_context && (!context_mode || context_mode === 'sourcing')) {
+      const clientName = (brief_context as any)?.client?.name;
+      if (clientName) {
+        try {
+          // Try to find the company domain via Apollo people search (free)
+          const companySearchRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'search',
+              organization_id: conv?.organization_id || '',
+              q_keywords: clientName,
+              limit: 1,
+            }),
+          }, 10000);
+
+          if (companySearchRes.ok) {
+            const companyData = await companySearchRes.json();
+            const firstPerson = (companyData.items || companyData.results || [])[0];
+            const org = firstPerson?.organization || firstPerson?.company_details;
+            if (org) {
+              const orgInfo = [
+                org.name && `Entreprise: ${org.name}`,
+                org.industry && `Secteur: ${org.industry}`,
+                org.estimated_num_employees && `Taille: ~${org.estimated_num_employees} employés`,
+                org.founded_year && `Fondée en: ${org.founded_year}`,
+                org.short_description && `Description: ${org.short_description}`,
+                org.technologies?.length && `Technologies: ${org.technologies.slice(0, 10).join(', ')}`,
+                org.latest_funding_stage && `Dernier funding: ${org.latest_funding_stage}`,
+                org.total_funding && `Funding total: ${org.total_funding}`,
+                org.city && `Siège: ${org.city}${org.country ? `, ${org.country}` : ''}`,
+              ].filter(Boolean).join('\n');
+
+              if (orgInfo) {
+                companyContext = `\n\n=== CONTEXTE ENTREPRISE CLIENT ===\n${orgInfo}\n\nUtilise ces informations pour mieux cibler les profils. Un candidat dans une boîte similaire (même taille, même secteur, même stack) aura plus de chances de matcher.\n=== FIN CONTEXTE ENTREPRISE ===`;
+                console.log(`[search-agent-chat] Enriched client company: ${org.name} (${org.estimated_num_employees || '?'} employees, ${org.industry || '?'})`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[search-agent-chat] Client company enrichment failed (non-blocking):', e);
+        }
+      }
+    }
+
+    // --- Fetch real profiles for Phase 2 calibration ---
+    let realProfilesContext = '';
 
     if (brief_context && (!context_mode || context_mode === 'sourcing')) {
       // Always try to fetch real profiles when brief is available
@@ -995,8 +1043,8 @@ Propose des exemples concrets de messages.`;
 
     // Inject brief context and real profiles into sourcing prompt if available
     const enrichedSourcingPrompt = brief_context
-      ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}` + realProfilesContext
-      : sourcingSystemPrompt + realProfilesContext;
+      ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}` + companyContext + realProfilesContext
+      : sourcingSystemPrompt + companyContext + realProfilesContext;
 
     const activeSystemPrompt = context_mode === 'brief' ? briefSystemPrompt
       : context_mode === 'process' ? processSystemPrompt
