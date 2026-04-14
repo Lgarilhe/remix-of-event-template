@@ -188,46 +188,42 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            {/* Name + status badges */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap min-w-0 max-w-full">
-                  {/* Avatar inline on mobile */}
-                  <div className="relative shrink-0 sm:hidden">
-                    <Avatar className="w-7 h-7 border border-border">
-                      <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                      <AvatarFallback className="bg-muted text-muted-foreground text-[10px] font-medium">
-                        {initials || '?'}
-                      </AvatarFallback>
-                    </Avatar>
-                    {networkDistance && networkDistance <= 3 && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-background border border-border rounded-full flex items-center justify-center text-[7px] font-bold text-muted-foreground">
-                        {networkDistance}°
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="font-semibold text-foreground text-sm leading-tight truncate">
-                    {fullName || 'Profil LinkedIn'}
-                  </h3>
-                  <CardStatusBadges
-                    candidateStatus={candidateStatus}
-                    jobScore={jobScore}
-                    profile={profile}
-                    isLikelyToRespond={false}
-                    airtableMatch={airtableMatch}
-                    notionMatch={notionMatch}
-                  />
+            {/* Row 1: Name + actions */}
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                {/* Avatar inline on mobile */}
+                <div className="relative shrink-0 sm:hidden">
+                  <Avatar className="w-7 h-7 border border-border">
+                    <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
+                    <AvatarFallback className="bg-muted text-muted-foreground text-[10px] font-medium">
+                      {initials || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  {networkDistance && networkDistance <= 3 && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-background border border-border rounded-full flex items-center justify-center text-[7px] font-bold text-muted-foreground">
+                      {networkDistance}°
+                    </span>
+                  )}
                 </div>
+                <h3 className="font-semibold text-foreground text-sm leading-tight truncate">
+                  {fullName || 'Profil LinkedIn'}
+                </h3>
+                <CardStatusBadges
+                  candidateStatus={candidateStatus}
+                  jobScore={jobScore}
+                  profile={profile}
+                  isLikelyToRespond={false}
+                  airtableMatch={airtableMatch}
+                  notionMatch={notionMatch}
+                />
               </div>
-
-              {/* Actions + LinkedIn */}
               <div className="flex items-center shrink-0" data-no-detail>
                 {profileUrl && (
                   <a
                     href={profileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center w-7 h-7 opacity-40 hover:opacity-100 transition-opacity"
+                    className="flex items-center justify-center w-6 h-6 opacity-40 hover:opacity-100 transition-opacity"
                     title="Voir sur LinkedIn"
                   >
                     <svg viewBox="0 0 24 24" fill="#0A66C2" className="w-3.5 h-3.5">
@@ -256,26 +252,26 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             </div>
 
-            {/* Headline */}
-            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5 leading-snug">
-              {profile.headline || currentRole || 'Profil LinkedIn'}
-            </p>
-
-            {/* Company + Location + Experience */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
+            {/* Row 2: Current role + company */}
+            <div className="flex items-center gap-1.5 mt-1 text-xs min-w-0">
+              {profileData.currentJob?.logo ? (
+                <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
+              ) : currentCompany ? (
+                <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              ) : null}
+              <span className="text-foreground/90 font-medium truncate">
+                {currentRole || profile.headline || 'Profil LinkedIn'}
+              </span>
               {currentCompany && (
-                <span className="flex items-center gap-1 font-medium text-foreground/80 min-w-0">
-                  {profileData.currentJob?.logo ? (
-                    <img src={profileData.currentJob.logo} alt={currentCompany} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
-                  ) : (
-                    <Building2 className="w-3 h-3 text-muted-foreground shrink-0" />
-                  )}
-                  <span className="truncate">{currentCompany}</span>
-                  {currentJobTenure && (
-                    <span className="text-muted-foreground/40 font-normal shrink-0">· {currentJobTenure}</span>
-                  )}
+                <span className="text-muted-foreground truncate shrink-0">
+                  · {currentCompany}
+                  {currentJobTenure && <span className="text-muted-foreground/40"> · {currentJobTenure}</span>}
                 </span>
               )}
+            </div>
+
+            {/* Row 3: Location + Experience */}
+            <div className="flex items-center gap-x-3 mt-0.5 text-[11px] text-muted-foreground">
               {profile.location && (
                 <span className="flex items-center gap-1 min-w-0">
                   <MapPin className="w-3 h-3 shrink-0" />
@@ -283,14 +279,14 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 </span>
               )}
               {totalExperience && (
-                <span className="flex items-center gap-1 text-success font-medium">
+                <span className="flex items-center gap-1 text-success font-medium shrink-0">
                   <TrendingUp className="w-3 h-3" />
                   {totalExperience}
                 </span>
               )}
             </div>
 
-            {/* Pre-score + Job Score */}
+            {/* Row 4: Score */}
             {(profile as any)._preScore && (
               <div className="mt-1.5">
                 <PreScoreBar
@@ -305,24 +301,41 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             )}
 
-            {/* Experience preview — max 2 lines */}
-            {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
-              <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-0.5">
-                {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
-                  <div key={index} className="flex items-center gap-1.5 text-xs min-w-0">
-                    {pos.logo ? (
-                      <img src={pos.logo} alt={pos.company || ''} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
-                    ) : (
-                      <div className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
-                    )}
-                    <span className="text-muted-foreground truncate">
-                      {pos.role || pos.position} <span className="text-muted-foreground/40">·</span> {pos.company}
+            {/* Row 5: Education + Past experience (compact) */}
+            {(profileData.educationPreview.length > 0 || pastJobs.length > 0) && (
+              <div className="mt-1.5 pt-1.5 border-t border-border/30 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                {profileData.educationPreview.length > 0 && (() => {
+                  const edu = profileData.educationPreview[0];
+                  const eduName = edu.school || edu.institution || edu.name;
+                  const eduLogo = edu.logo || edu.school_logo;
+                  const eduDegree = edu.degree || edu.field_of_study;
+                  return eduName ? (
+                    <span className="flex items-center gap-1 min-w-0">
+                      {eduLogo ? (
+                        <img src={eduLogo} alt={eduName} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
+                      ) : (
+                        <span className="text-[10px] shrink-0">🎓</span>
+                      )}
+                      <span className="truncate">{eduDegree ? `${eduDegree} · ` : ''}{eduName}</span>
                     </span>
-                  </div>
-                ))}
-                {(otherCurrentJobs.length + pastJobs.length) > 2 && (
-                  <span className="text-[10px] text-muted-foreground/60">
-                    +{otherCurrentJobs.length + pastJobs.length - 2} autres
+                  ) : null;
+                })()}
+                {pastJobs.length > 0 && (() => {
+                  const past = pastJobs[0];
+                  return (
+                    <span className="flex items-center gap-1 min-w-0">
+                      {past.logo ? (
+                        <img src={past.logo} alt={past.company || ''} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
+                      ) : (
+                        <div className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
+                      )}
+                      <span className="truncate">{past.role || past.position} · {past.company}</span>
+                    </span>
+                  );
+                })()}
+                {(otherCurrentJobs.length + pastJobs.length) > 1 && (
+                  <span className="text-muted-foreground/50">
+                    +{otherCurrentJobs.length + pastJobs.length - 1}
                   </span>
                 )}
               </div>
