@@ -109,6 +109,7 @@ export function createSkalrChatAdapter(
 
       const decoder = new TextDecoder();
       let fullText = "";
+      let fullThinking = "";
       let buffer = "";
 
       while (true) {
@@ -130,15 +131,31 @@ export function createSkalrChatAdapter(
             // Server-side done confirmation event
             if (event.done === true) continue;
 
+            // Handle thinking/reasoning deltas
+            const thinkingText = event.choices?.[0]?.delta?.thinking;
+            if (thinkingText) {
+              fullThinking += thinkingText;
+              const parts: Array<{ type: "reasoning"; text: string } | { type: "text"; text: string }> = [
+                { type: "reasoning" as const, text: fullThinking },
+              ];
+              if (fullText) {
+                parts.push({ type: "text" as const, text: stripOptionsTags(fullText) });
+              }
+              yield { content: parts };
+            }
+
             // Handle text content
             const contentText = event.choices?.[0]?.delta?.content;
             if (contentText) {
               fullText += contentText;
               // Strip [OPTIONS] blocks before yielding to the UI
               const cleanText = stripOptionsTags(fullText);
-              yield {
-                content: [{ type: "text" as const, text: cleanText }],
-              };
+              const parts: Array<{ type: "reasoning"; text: string } | { type: "text"; text: string }> = [];
+              if (fullThinking) {
+                parts.push({ type: "reasoning" as const, text: fullThinking });
+              }
+              parts.push({ type: "text" as const, text: cleanText });
+              yield { content: parts };
             }
           } catch {
             // skip malformed JSON lines
