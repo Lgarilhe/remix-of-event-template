@@ -802,55 +802,66 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               )}
             </AnimatePresence>
 
-            {/* Profile cards */}
-            {displayResults.map((profile, index) => (
-              <motion.div
-                key={profile.id || `profile-${index}`}
-                initial={{ opacity: 0, y: 12, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{
-                  delay: Math.min(index * 0.05, 1.2),
-                  duration: 0.35,
-                  ease: [0.25, 0.46, 0.45, 0.94],
-                }}
-                whileHover={{ y: -2, transition: { duration: 0.15 } }}
-                className="transition-shadow duration-200 hover:shadow-md"
-              >
-                <LinkedInResultCard
-                  profile={profile}
-                  selectedJob={selectedJob}
-                  isSelected={selectedProfiles.has(profile.id)}
-                  isBatchScoring={scoringInProgress}
-                  onToggleSelect={() => onToggleProfileSelection(profile.id)}
-                  jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
-                    profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
-                    match_score: treatedCandidates.get(profile.id)!.score!,
-                    matching_skills: [],
-                    missing_skills: [],
-                    experience_match: 'incertain' as const,
-                    location_match: false,
-                    summary: '',
-                    recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
-                  } : undefined)}
-                  onScoreProfile={() => onScoreProfile(profile)}
-                  accountId={selectedAccount || undefined}
-                  onMessageSent={onMessageSent}
-                  activeProject={activeProject}
-                  onProfileTreated={() => onProfileTreated(profile.id)}
-                  onArchive={selectedJob ? () => onArchive(profile) : undefined}
-                  candidateStatus={treatedCandidates.get(profile.id) ? {
-                    status: treatedCandidates.get(profile.id)!.status,
-                    score: treatedCandidates.get(profile.id)!.score,
-                    recommendation: treatedCandidates.get(profile.id)!.recommendation,
-                    updated_at: treatedCandidates.get(profile.id)!.updated_at,
-                  } : null}
-                  airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
-                  notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
-                  onOpenDetail={() => openProfileDetail(profile)}
-                  onFindSimilar={onFindSimilar}
-                />
-              </motion.div>
-            ))}
+            {/* Profile cards or list view */}
+            {viewMode === 'list' ? (
+              <SourcingListView
+                profiles={displayResults}
+                jobScores={jobScores}
+                selectedProfiles={selectedProfiles}
+                onToggleSelect={onToggleProfileSelection}
+                onOpenDetail={openProfileDetail}
+                jobDetails={activeProject?.job_details as JobDetails | undefined}
+              />
+            ) : (
+              displayResults.map((profile, index) => (
+                <motion.div
+                  key={profile.id || `profile-${index}`}
+                  initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{
+                    delay: Math.min(index * 0.05, 1.2),
+                    duration: 0.35,
+                    ease: [0.25, 0.46, 0.45, 0.94],
+                  }}
+                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                  className="transition-shadow duration-200 hover:shadow-md"
+                >
+                  <LinkedInResultCard
+                    profile={profile}
+                    selectedJob={selectedJob}
+                    isSelected={selectedProfiles.has(profile.id)}
+                    isBatchScoring={scoringInProgress}
+                    onToggleSelect={() => onToggleProfileSelection(profile.id)}
+                    jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
+                      profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
+                      match_score: treatedCandidates.get(profile.id)!.score!,
+                      matching_skills: [],
+                      missing_skills: [],
+                      experience_match: 'incertain' as const,
+                      location_match: false,
+                      summary: '',
+                      recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
+                    } : undefined)}
+                    onScoreProfile={() => onScoreProfile(profile)}
+                    accountId={selectedAccount || undefined}
+                    onMessageSent={onMessageSent}
+                    activeProject={activeProject}
+                    onProfileTreated={() => onProfileTreated(profile.id)}
+                    onArchive={selectedJob ? () => onArchive(profile) : undefined}
+                    candidateStatus={treatedCandidates.get(profile.id) ? {
+                      status: treatedCandidates.get(profile.id)!.status,
+                      score: treatedCandidates.get(profile.id)!.score,
+                      recommendation: treatedCandidates.get(profile.id)!.recommendation,
+                      updated_at: treatedCandidates.get(profile.id)!.updated_at,
+                    } : null}
+                    airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
+                    notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
+                    onOpenDetail={() => openProfileDetail(profile)}
+                    onFindSimilar={onFindSimilar}
+                  />
+                </motion.div>
+              ))
+            )}
 
             {/* Next batch / Load more */}
             <div ref={loadMoreTriggerRef} className="py-4">
