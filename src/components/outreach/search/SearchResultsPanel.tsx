@@ -440,13 +440,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Status filter pills */}
           <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
             {([
-              { value: 'all' as const, emoji: '👥', count: mergedResults.length },
-              { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
-              { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
-              { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
-              { value: 'known' as const, emoji: '📋', count: statusCounts.known },
-              { value: 'dismissed' as const, emoji: '📦', count: statusCounts.dismissed },
-            ]).map(({ value, emoji, count }) => {
+              { value: 'all' as const, label: 'Tous', count: mergedResults.length },
+              { value: 'untreated' as const, label: 'Nouveaux', count: statusCounts.untreated },
+              { value: 'scored' as const, label: 'Scorés', count: statusCounts.scored },
+              { value: 'messaged' as const, label: 'Contactés', count: statusCounts.messaged },
+              { value: 'dismissed' as const, label: 'Archivés', count: statusCounts.dismissed },
+            ]).map(({ value, label, count }) => {
               const isActive = statusFilter === value || 
                 (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
               return (
@@ -459,8 +458,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                   }`}
                 >
-                  <span className="text-xs">{emoji}</span>
-                  {count > 0 && <span className="font-medium">{count}</span>}
+                  <span className="font-medium">{label}</span>
+                  {count > 0 && <span className="opacity-60">{count}</span>}
                 </button>
               );
             })}
