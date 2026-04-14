@@ -115,13 +115,12 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
       <DropdownMenu onOpenChange={(open) => open && fetchSequences()}>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground hover:bg-muted h-8 w-8 p-0"
+            title="Ajouter à une séquence"
           >
-            <GitBranch className="w-3 h-3 shrink-0" />
-            Séq.
-            <ChevronDown className="w-2.5 h-2.5 shrink-0" />
+            <GitBranch className="w-4 h-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="bg-card w-64 z-[9999]">
