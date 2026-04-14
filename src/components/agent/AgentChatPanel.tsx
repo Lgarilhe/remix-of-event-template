@@ -91,9 +91,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         briefContext,
         projectId,
         accountId,
-        organizationId: undefined, // will set below
+        organizationId: organizationId || undefined,
       }),
-    [selectedModel, contextMode, briefContext, projectId, accountId],
+    [selectedModel, contextMode, briefContext, projectId, accountId, organizationId],
   );
 
   const runtime = useLocalRuntime(adapter);
