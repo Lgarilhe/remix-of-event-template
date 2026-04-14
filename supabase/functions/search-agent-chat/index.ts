@@ -579,11 +579,48 @@ Aide l'utilisateur a:
 Propose des exemples concrets de messages.`;
 
     // ── Resolve @mentions into rich context ──
+    const effectiveMentions = Array.isArray(mentions) ? [...mentions] : [];
+    if (effectiveMentions.length === 0 && typeof message === "string" && message.includes("@")) {
+      const rawMentionMatches = Array.from(message.matchAll(/@([^\n@]+)/g))
+        .map((match) => match[1]?.trim())
+        .filter(Boolean) as string[];
+
+      for (const rawLabel of rawMentionMatches) {
+        const { data: byTitle } = await supabase
+          .from("sourcing_projects")
+          .select("id, name, job_title")
+          .eq("organization_id", orgId)
+          .ilike("job_title", `%${rawLabel}%`)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const fallbackProject = byTitle ?? (await supabase
+          .from("sourcing_projects")
+          .select("id, name, job_title")
+          .eq("organization_id", orgId)
+          .ilike("name", `%${rawLabel}%`)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()).data;
+
+        if (fallbackProject) {
+          effectiveMentions.push({
+            id: fallbackProject.id,
+            type: "mission",
+            label: fallbackProject.job_title || fallbackProject.name,
+          });
+        }
+      }
+    }
+
     let mentionsContext = "";
-    if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+    if (effectiveMentions.length > 0) {
       const contextParts: string[] = [];
 
-      for (const mention of mentions) {
+      console.log(`[search-agent-chat] resolving mentions: explicit=${Array.isArray(mentions) ? mentions.length : 0}, effective=${effectiveMentions.length}`);
+
+      for (const mention of effectiveMentions) {
         try {
           if (mention.type === "mission" && mention.id) {
             const { data: project } = await supabase
