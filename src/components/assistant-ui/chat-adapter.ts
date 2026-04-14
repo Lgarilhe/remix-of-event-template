@@ -1,5 +1,6 @@
 import type { ChatModelAdapter } from "@assistant-ui/react";
 import { supabase } from "@/integrations/supabase/client";
+import { getActiveMentions, clearActiveMentions } from "@/components/agent/MentionComposer";
 
 export interface SkalrChatAdapterOptions {
   supabaseUrl: string;
@@ -65,6 +66,15 @@ export function createSkalrChatAdapter(
         throw new Error("No access token");
       }
 
+      // Capture active @mentions before clearing
+      const mentions = getActiveMentions().map((m) => ({
+        id: m.id,
+        type: m.type,
+        label: m.label,
+      }));
+      // Clear after reading so they don't carry to next message
+      requestAnimationFrame(() => clearActiveMentions());
+
       const response = await fetch(
         `${options.supabaseUrl}/functions/v1/search-agent-chat`,
         {
@@ -83,6 +93,7 @@ export function createSkalrChatAdapter(
             brief_context: options.briefContext || undefined,
             project_id: options.projectId || undefined,
             account_id: options.accountId || undefined,
+            mentions: mentions.length > 0 ? mentions : undefined,
           }),
           signal: abortSignal,
         },
