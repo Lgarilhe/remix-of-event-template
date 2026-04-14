@@ -183,7 +183,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
         </p>
         <button
           onClick={handleOpenSearchAgent}
-          className="relative shrink-0 flex items-center gap-2 h-8 px-3.5 text-xs font-semibold border border-violet-400/40 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 hover:border-violet-400/60 transition-all rounded-md shadow-[0_0_24px_-4px_rgba(139,92,246,0.5)] hover:shadow-[0_0_32px_-4px_rgba(139,92,246,0.7)]"
+          className="relative shrink-0 flex items-center gap-2 h-8 px-3.5 text-xs font-semibold border border-violet-500 bg-violet-600 text-white hover:bg-violet-700 transition-all rounded-md shadow-[0_0_24px_-4px_rgba(139,92,246,0.5)] hover:shadow-[0_0_32px_-4px_rgba(139,92,246,0.7)]"
         >
           <MessageSquare className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Recherche IA</span>
