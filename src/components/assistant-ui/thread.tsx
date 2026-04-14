@@ -126,8 +126,9 @@ function MarkdownText() {
             <MarkdownTextPrimitive
               remarkPlugins={[remarkGfm]}
               className={cn(
-                "prose prose-sm dark:prose-invert max-w-none",
-                "prose-p:my-2 prose-p:leading-relaxed",
+                "prose prose-sm dark:prose-invert max-w-none dark:text-gray-200 text-foreground",
+                "prose-p:my-2 prose-p:leading-relaxed prose-p:text-foreground/90 dark:prose-p:text-gray-200",
+                "prose-li:text-foreground/90 dark:prose-li:text-gray-200",
                 "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
                 "prose-headings:mb-2 prose-headings:mt-4 prose-headings:font-semibold",
                 "prose-h1:text-base prose-h2:text-sm prose-h3:text-sm",
