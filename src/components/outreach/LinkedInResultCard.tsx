@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  MapPin, Building2, TrendingUp, X,
+  MapPin, Building2, TrendingUp, X, Linkedin,
 } from 'lucide-react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
@@ -89,6 +89,20 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
         onOpenDetail?.();
       }}
     >
+      {/* LinkedIn public link — top right */}
+      {profileUrl && (
+        <a
+          href={profileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="absolute top-2 right-2 z-10 text-muted-foreground/50 hover:text-[#0A66C2] transition-colors"
+          title="Voir sur LinkedIn"
+          data-no-detail
+        >
+          <Linkedin className="w-4 h-4" />
+        </a>
+      )}
+
       {/* High score indicator — left accent bar */}
       {hasHighScore && (
         <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />

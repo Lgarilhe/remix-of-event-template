@@ -4,7 +4,7 @@ import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
-import { Target, Loader2, ExternalLink } from 'lucide-react';
+import { Target, Loader2 } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 
 interface CardActionsProps {
@@ -29,7 +29,6 @@ interface CardActionsProps {
 
 export const CardActions: React.FC<CardActionsProps> = ({
   profile,
-  profileUrl,
   selectedJob,
   jobScore,
   accountId,
@@ -73,21 +72,6 @@ export const CardActions: React.FC<CardActionsProps> = ({
             onProfileTreated?.();
           }}
         />
-      )}
-
-      {/* Profile link */}
-      {profileUrl && (
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className={`text-muted-foreground hover:text-foreground hover:bg-muted ${buttonSize}`}
-          title="Voir le profil"
-        >
-          <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className={iconSize} />
-          </a>
-        </Button>
       )}
     </div>
   );
