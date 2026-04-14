@@ -171,16 +171,19 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       )}
 
       {/* AI Search Agent button */}
-      <div className="relative border border-violet-500/25 rounded-lg mx-2 sm:mx-3 mt-2 px-3 sm:px-4 py-3 flex items-center justify-between overflow-hidden bg-violet-500/[0.06]">
-        <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-violet-400 via-purple-500 to-blue-500" />
-        <div className="absolute -left-4 top-1/2 -translate-y-1/2 w-24 h-24 bg-violet-500/20 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute -right-4 top-1/2 -translate-y-1/2 w-16 h-16 bg-blue-500/15 rounded-full blur-2xl pointer-events-none" />
-        <p className="relative text-xs text-muted-foreground pl-2">
+      <div className="relative border border-violet-500/25 rounded-lg mx-2 sm:mx-3 mt-2 px-3 sm:px-4 py-3 flex items-center justify-between overflow-hidden bg-violet-500/[0.04]">
+        {/* Animated gradient border left */}
+        <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-violet-400 via-fuchsia-500 to-cyan-400 animate-pulse" />
+        {/* Rotating blur orbs */}
+        <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-32 h-32 rounded-full blur-3xl pointer-events-none animate-[spin_8s_linear_infinite] bg-gradient-to-tr from-violet-500/30 via-fuchsia-500/20 to-transparent" />
+        <div className="absolute -right-6 top-1/2 -translate-y-1/2 w-28 h-28 rounded-full blur-3xl pointer-events-none animate-[spin_12s_linear_infinite_reverse] bg-gradient-to-bl from-cyan-400/25 via-blue-500/20 to-transparent" />
+        <div className="absolute left-1/2 -translate-x-1/2 top-0 w-20 h-20 rounded-full blur-3xl pointer-events-none animate-[spin_10s_linear_infinite] bg-gradient-to-r from-purple-500/15 via-pink-500/15 to-transparent" />
+        <p className="relative text-xs text-muted-foreground pl-2.5">
           Recherche par filtres ou via l'assistant IA conversationnel.
         </p>
         <button
           onClick={handleOpenSearchAgent}
-          className="relative shrink-0 flex items-center gap-2 h-8 px-3.5 text-xs font-semibold border border-violet-400/40 bg-violet-500/15 text-violet-300 hover:bg-violet-500/25 hover:border-violet-400/60 transition-all rounded-md shadow-[0_0_20px_-4px_rgba(139,92,246,0.45)]"
+          className="relative shrink-0 flex items-center gap-2 h-8 px-3.5 text-xs font-semibold border border-violet-400/40 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 hover:border-violet-400/60 transition-all rounded-md shadow-[0_0_24px_-4px_rgba(139,92,246,0.5)] hover:shadow-[0_0_32px_-4px_rgba(139,92,246,0.7)]"
         >
           <MessageSquare className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Recherche IA</span>
