@@ -319,42 +319,17 @@ Deno.serve(async (req) => {
       return ids;
     }
 
-    // === SEARCH STRATEGY: BROAD LINKEDIN + TIGHT SCORING ===
-    // LinkedIn filters are intentionally MINIMAL to maximize results:
-    // - role (job title) = primary discriminator
-    // - location = geographic constraint
-    // - seniority = nice-to-have ranking
-    // - school = CAN_HAVE bonus
+    // === SEARCH STRATEGY: APOLLO (BROAD) + AI SCORING (TIGHT) ===
+    // Apollo is the primary search source (265M+ contacts, native company filters).
+    // database-search accepts LinkedIn-style filters and maps them to Apollo format.
+    // No LinkedIn ID resolution needed — Apollo uses text names.
     //
-    // All other criteria (skills, company type, industry, experience, ESN exclusion)
+    // All soft criteria (skills, company type, industry, ESN exclusion, experience)
     // are evaluated by the AI scoring engine (score-profile-job) AFTER the search.
-    // This avoids LinkedIn's AND logic reducing results to 0.
-    //
-    // The scoring engine uses searchPlan.scoring_criteria + job_context to evaluate
-    // each profile against the full brief requirements.
 
-    await postStatus(`📍 Résolution des filtres...`);
+    // ── 4. Search via Apollo (sequential with delays) ──
 
-    // Only resolve IDs for filters we actually send to LinkedIn
-    const locationKeywords = filters.location_keywords || [];
-    const schoolKeywords = filters.school_keywords || [];
-
-    const [locationIds, schoolIds] = await Promise.all([
-      locationKeywords.length > 0 ? resolveIds("LOCATION", locationKeywords) : Promise.resolve([]),
-      schoolKeywords.length > 0 ? resolveIds("SCHOOL", schoolKeywords) : Promise.resolve([]),
-    ]);
-
-    const resolvedLocationIds = locationIds.map(id => ({
-      id,
-      priority: "MUST_HAVE",
-      scope: "CURRENT_OR_OPEN_TO_RELOCATE",
-    }));
-
-    const resolvedCount = resolvedLocationIds.length + schoolIds.length;
-
-    // ── 4. Search LinkedIn (sequential with delays) ──
-
-    await postStatus(`🔍 Recherche lancée — je scanne les profils LinkedIn...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}${resolvedCount > 0 ? `\n📍 ${resolvedCount} filtre(s) résolu(s).` : ""}`);
+    await postStatus(`🔍 Recherche lancée — je scanne la base de données...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}`);
 
     let allProfiles: any[] = [];
     let cursor: string | null = null;
@@ -379,68 +354,48 @@ Deno.serve(async (req) => {
           limit: 25,
         };
 
-        // 1. Role / Job titles — primary discriminator
+        // === APOLLO AS PRIMARY SOURCE ===
+        // Apollo has 265M+ contacts with native company filters.
+        // database-search accepts LinkedIn-style filters and maps them to Apollo format.
+        // All soft criteria (skills, company type, ESN exclusion) handled by scoring AI.
+
+        // Role / job titles
         if (filters.role && Array.isArray(filters.role) && filters.role.length > 0) {
-          searchBody.role = filters.role.map((r: any) => ({
-            keywords: r.keywords,
-            priority: r.priority || "MUST_HAVE",
-            scope: r.scope || "CURRENT",
-          }));
+          searchBody.role = filters.role.map((r: any) => ({ keywords: r.keywords }));
         }
 
-        // 2. Location — geographic constraint
-        if (resolvedLocationIds.length > 0) {
-          searchBody.location = resolvedLocationIds;
-          if (filters.location_within_area) {
-            searchBody.location_within_area = filters.location_within_area;
-          }
+        // Location (use text names for Apollo, not LinkedIn IDs)
+        const locationNames = filters.location_keywords || [];
+        if (locationNames.length > 0) {
+          searchBody.location = locationNames.map((name: string) => ({ name }));
         }
 
-        // 3. Seniority — nice-to-have ranking
+        // Seniority
         if (filters.seniority && Array.isArray(filters.seniority) && filters.seniority.length > 0) {
           searchBody.seniority = filters.seniority;
         }
 
-        // 4. School — CAN_HAVE bonus (doesn't restrict results)
-        if (schoolIds.length > 0) {
-          searchBody.school = schoolIds.map((id: string) => ({
-            id,
-            priority: "CAN_HAVE",
-          }));
+        // Core skills as keywords (simple text, not IDs)
+        const skillNames: string[] = (filters.skills_filter || []).map((s: any) => typeof s === "string" ? s : (s.keywords || s));
+        if (skillNames.length > 0) {
+          searchBody.keywords = skillNames.slice(0, 3).join(' ');
         }
 
-        // 5. Profile language — lightweight, doesn't restrict much
-        if (filters.profile_language && Array.isArray(filters.profile_language) && filters.profile_language.length > 0) {
-          searchBody.profile_language = filters.profile_language;
+        // Company size filter (native Apollo)
+        if (filters.company_headcount && Array.isArray(filters.company_headcount) && filters.company_headcount.length > 0) {
+          searchBody.db_company_size_ranges = filters.company_headcount.map((h: any) => `${h.min},${h.max}`);
         }
 
-        // 6. Spotlights — useful signal, doesn't restrict much
-        if (filters.spotlights && Array.isArray(filters.spotlights) && filters.spotlights.length > 0) {
-          searchBody.spotlights = filters.spotlights;
-        }
-        if (filters.open_to_work === true) {
-          searchBody.open_to_work = true;
+        // Industry tags (native Apollo)
+        if (filters.industry_keywords && Array.isArray(filters.industry_keywords) && filters.industry_keywords.length > 0) {
+          searchBody.db_industry_tags = filters.industry_keywords;
         }
 
-        // 7. Hide previously viewed — avoid showing same profiles
-        if (filters.hide_previously_viewed === true) {
-          searchBody.hide_previously_viewed = true;
-        }
-
-        // NOT sent to LinkedIn (handled by scoring AI instead):
-        // - skills_filter → scoring evaluates tech stack match
-        // - keywords → redundant with role
-        // - company_headcount → scoring evaluates company type (ESN vs scale-up)
-        // - industry_keywords → contradictory with ESN exclusion
-        // - function_keywords → redundant with role
-        // - company_keywords → scoring evaluates company match
-        // - tenure / experience → scoring evaluates XP match
-
-        console.log(`[run-agent-search] Search body:`, JSON.stringify(searchBody).slice(0, 500));
+        console.log(`[run-agent-search] Apollo search body:`, JSON.stringify(searchBody).slice(0, 500));
 
         if (cursor) searchBody.cursor = cursor;
 
-        const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/unipile-search`, {
+        const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/database-search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

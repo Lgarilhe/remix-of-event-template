@@ -484,129 +484,74 @@ async function fetchSampleProfiles(
     const coreSkills = [...(jd.skills_must_have || [])].slice(0, 2);
     const fetchLimit = limit + (previousProfileIds?.length || 0) + 5;
 
-    // === CASE 3: No LinkedIn account → use Apollo (database-search) ===
-    if (licenseType === 'none' || !accountId) {
-      console.log('[search-agent-chat] No LinkedIn account — using Apollo database search');
-      try {
-        const apolloBody: any = {
-          search_source: 'database',
-          organization_id: orgId,
-          filters: {
-            api: 'database',
-            role: titles.length > 0 ? [{ keywords: roleKeywords }] : [],
-            location: jd.location ? [{ name: jd.location }] : [],
-            seniority: jd.seniority ? [jd.seniority.toLowerCase()] : [],
-            keywords: coreSkills.join(' '),
-          },
-          limit: fetchLimit,
-        };
-        // Apollo-specific refinements
-        if (refinements?.targetCompanyTypes?.length > 0) {
-          apolloBody.filters.db_company_size_ranges = ['11,50', '51,200', '201,500'];
-        }
-        if (refinements?.excludeCompanyTypes?.length > 0) {
-          apolloBody.filters.db_industry_tags = ['SaaS', 'Technology'];
-        }
-        const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
-          method: 'POST',
-          headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify(apolloBody),
-        }, 20000);
-        if (res.ok) {
-          const data = await res.json();
-          const results = data.results || data.profiles || [];
-          console.log(`[search-agent-chat] Apollo returned ${results.length} profiles`);
-          return results.slice(0, fetchLimit);
-        }
-      } catch (e) {
-        console.warn('[search-agent-chat] Apollo search failed:', e);
-      }
-      return [];
-    }
+    // === APOLLO (database-search) AS PRIMARY SOURCE ===
+    // Apollo has 265M+ contacts with native company filters (size, industry, funding).
+    // Works with or without LinkedIn account. No license dependency.
+    // Results come back in LinkedInProfile format (same as unipile-search).
+    // Unipile is used later for enrichment + messaging on qualified profiles only.
 
-    // === CASE 1 & 2: LinkedIn account exists ===
-    const isRecruiter = licenseType === 'recruiter';
-    const apiMode = isRecruiter ? 'recruiter' : 'classic';
+    console.log('[search-agent-chat] Using Apollo (database-search) as primary source');
 
     const searchBody: any = {
       action: 'search',
-      account_id: accountId,
       organization_id: orgId,
-      api: apiMode,
-      category: 'people',
       limit: fetchLimit,
     };
 
-    if (isRecruiter) {
-      // RECRUITER: full structured filters
-      if (roleKeywords) {
-        searchBody.role = [{ keywords: roleKeywords, priority: 'MUST_HAVE', scope: 'CURRENT' }];
-      }
-      if (jd.location) searchBody.location_keywords = [jd.location];
-      if (jd.seniority) searchBody.seniority = [jd.seniority.toLowerCase()];
-      if (coreSkills.length > 0) searchBody.keywords = coreSkills.join(' OR ');
-
-      // Recruiter-only refinements
-      if (refinements) {
-        if (refinements.targetCompanyTypes?.length > 0) {
-          searchBody.company_headcount = [{ min: 11, max: 500 }];
-          console.log('[search-agent-chat] Refinement: targeting startups/scale-ups (11-500 employees)');
-        }
-        if (refinements.excludeCompanyTypes?.length > 0) {
-          try {
-            const indRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
-              method: 'POST',
-              headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'get_parameters', account_id: accountId, organization_id: orgId,
-                type: 'INDUSTRY', keywords: 'IT Services', service: 'RECRUITER', limit: 3,
-              }),
-            }, 10000);
-            const indData = await indRes.json();
-            if (indData?.success && indData.items?.length > 0) {
-              searchBody.industry = { exclude: [indData.items[0].id] };
-              console.log(`[search-agent-chat] Refinement: excluding industry "${indData.items[0].title}"`);
-            }
-          } catch (e) {
-            console.warn('[search-agent-chat] Industry ID resolution failed:', e);
-          }
-        }
-      }
-    } else {
-      // CLASSIC: only keywords + location (structured filters not supported)
-      const allTerms = [...titles, ...coreSkills].filter(Boolean);
-      if (allTerms.length > 0) {
-        searchBody.keywords = allTerms.join(' ');
-      }
-      if (jd.location) searchBody.location = [jd.location]; // Classic uses simple location strings
-      console.log('[search-agent-chat] Classic license — using simplified filters (keywords + location only)');
+    // Role / job titles
+    if (roleKeywords) {
+      searchBody.role = [{ keywords: roleKeywords }];
     }
 
-    console.log('[search-agent-chat] Fetching sample profiles for calibration:', JSON.stringify(searchBody).slice(0, 300));
+    // Location
+    if (jd.location) {
+      searchBody.location = [{ name: jd.location }];
+    }
 
-    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+    // Seniority
+    if (jd.seniority) {
+      searchBody.seniority = [jd.seniority.toLowerCase()];
+    }
+
+    // Core skills as keywords
+    if (coreSkills.length > 0) {
+      searchBody.keywords = coreSkills.join(' ');
+    }
+
+    // Refinements from conversation feedback — native Apollo filters
+    if (refinements) {
+      if (refinements.targetCompanyTypes?.length > 0) {
+        searchBody.db_company_size_ranges = ['11,50', '51,200', '201,500'];
+        console.log('[search-agent-chat] Refinement: targeting startups/scale-ups (11-500)');
+      }
+      if (refinements.excludeCompanyTypes?.length > 0) {
+        searchBody.db_industry_tags = ['SaaS', 'Technology', 'Internet', 'Computer Software'];
+        console.log('[search-agent-chat] Refinement: targeting tech industries');
+      }
+    }
+
+    console.log('[search-agent-chat] Apollo search body:', JSON.stringify(searchBody).slice(0, 400));
+
+    const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
       method: 'POST',
-      headers: {
-        'Authorization': authHeader,
-        'apikey': anonKey,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': authHeader, 'apikey': anonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify(searchBody),
-    }, 20000);
+    }, 25000);
 
     if (!res.ok) {
-      console.warn('[search-agent-chat] Sample search failed:', res.status);
+      console.warn('[search-agent-chat] Apollo search failed:', res.status);
       return [];
     }
 
     const data = await res.json();
-    if (!data.success || !data.results?.length) {
-      console.warn('[search-agent-chat] No sample profiles found');
+    if (!data.success || !(data.results?.length || data.profiles?.length)) {
+      console.warn('[search-agent-chat] No profiles found via Apollo');
       return [];
     }
 
-    console.log(`[search-agent-chat] Found ${data.results.length} sample profiles for calibration`);
-    return data.results.slice(0, fetchLimit);
+    const results = data.results || data.profiles || [];
+    console.log(`[search-agent-chat] Apollo returned ${results.length} profiles for calibration`);
+    return results.slice(0, fetchLimit);
   } catch (e) {
     console.error('[search-agent-chat] Sample profile fetch error:', e);
     return [];
