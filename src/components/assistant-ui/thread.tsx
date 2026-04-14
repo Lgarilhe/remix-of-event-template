@@ -252,7 +252,7 @@ interface SkalrThreadProps {
 
 export function SkalrThread({ contextMode }: SkalrThreadProps) {
   return (
-    <ThreadPrimitive.Root className="flex flex-col h-full bg-background relative">
+    <ThreadPrimitive.Root className="flex flex-col h-full min-h-0 overflow-hidden bg-background relative">
       {/* Scrollable viewport */}
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-6">
