@@ -200,6 +200,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const [detailOpen, setDetailOpen] = useState(false);
 
   const [enriching, setEnriching] = useState(false);
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
   // Contextual hints (dismissible, persisted in localStorage)
   const [hintSearchDismissed, setHintSearchDismissed] = useState(() =>
