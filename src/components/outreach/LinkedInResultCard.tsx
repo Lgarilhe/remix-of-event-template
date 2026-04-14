@@ -252,7 +252,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             </div>
 
-            {/* Row 2: Location + Experience years */}
+            {/* Row 2: Headline fallback (when no work_experience) OR Location + Experience */}
+            {profile.headline && !profileData.currentJob && pastJobs.length === 0 && (
+              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                {profile.headline}
+              </p>
+            )}
             <div className="flex items-center gap-x-3 mt-0.5 text-[11px] text-muted-foreground">
               {profile.location && (
                 <span className="flex items-center gap-1 min-w-0">
