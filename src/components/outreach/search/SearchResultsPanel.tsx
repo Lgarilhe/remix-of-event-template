@@ -3,7 +3,7 @@ import { SourcingListView } from './SourcingListView';
 import { JobDetails } from '@/types/jobDetails';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion, AnimatePresence } from 'framer-motion';
-import { NumberTicker } from '@/components/magicui/number-ticker';
+
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
