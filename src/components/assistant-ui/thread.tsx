@@ -163,13 +163,11 @@ function MarkdownText() {
                 seg.type === "profile" ? (
                   <ProfileCard key={i} data={seg.data} />
                 ) : (
-                  <ReactMarkdown
-                    key={i}
-                    remarkPlugins={[remarkGfm]}
-                    className={markdownClasses}
-                  >
-                    {seg.value}
-                  </ReactMarkdown>
+                  <div key={i} className={markdownClasses}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {seg.value}
+                    </ReactMarkdown>
+                  </div>
                 ),
               )}
               {isRunning && <StreamingCursor />}
