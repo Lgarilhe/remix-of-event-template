@@ -9,6 +9,7 @@ import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useAgent } from '@/contexts/AgentContext';
 import { cn } from '@/lib/utils';
+import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocalRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
 import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
@@ -49,6 +50,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const { data: jobs } = useNotionJobs();
+  const { organizationId } = useOrganization();
   const {
     conversation,
     sendMessage, createConversation, listConversations,
@@ -65,21 +67,33 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     return () => subscription.unsubscribe();
   }, []);
 
-  // Build chat adapter for assistant-ui
+  // Build chat adapter for assistant-ui — use getter refs so the adapter
+  // always reads the latest values without needing to be recreated.
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
+
   const adapter = useMemo(
     () =>
       createSkalrChatAdapter({
         supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-        accessToken: accessToken || '',
+        getConversationId: () => conversationIdRef.current || '',
+        setConversationId: (id: string) => {
+          conversationIdRef.current = id;
+          setConversationId(id);
+          setShowList(false);
+        },
+        getAccessToken: () => accessTokenRef.current || '',
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        conversationId: conversationId || '',
         modelOverride: selectedModel,
         contextMode,
         briefContext,
         projectId,
         accountId,
+        organizationId: organizationId || undefined,
       }),
-    [conversationId, accessToken, selectedModel, contextMode, briefContext, projectId, accountId],
+    [selectedModel, contextMode, briefContext, projectId, accountId, organizationId],
   );
 
   const runtime = useLocalRuntime(adapter);
