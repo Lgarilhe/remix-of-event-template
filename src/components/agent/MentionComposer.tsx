@@ -125,11 +125,8 @@ export function MentionComposer() {
     if (!trimmed) return;
 
     // Use thread runtime's composer to send
-    const composer = threadRuntime.getState().composer;
-    if (composer) {
-      threadRuntime.composer.setText(trimmed);
-      threadRuntime.composer.send();
-    }
+    threadRuntime.composer.setText(trimmed);
+    threadRuntime.composer.send();
     setText('');
     setMentions([]);
     requestAnimationFrame(() => {
