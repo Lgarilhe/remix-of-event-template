@@ -578,21 +578,173 @@ Aide l'utilisateur a:
 
 Propose des exemples concrets de messages.`;
 
+    // ── Resolve @mentions into rich context ──
+    let mentionsContext = "";
+    if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+      const contextParts: string[] = [];
+
+      for (const mention of mentions) {
+        try {
+          if (mention.type === "mission" && mention.id) {
+            const { data: project } = await supabase
+              .from("sourcing_projects")
+              .select("id, name, job_title, client_name, status, job_details, filters_snapshot, notes, description, stats_total_found, stats_scored, stats_shortlisted, stats_messaged")
+              .eq("id", mention.id)
+              .single();
+
+            if (project) {
+              const jd = project.job_details as Record<string, any> | null;
+              contextParts.push(`=== MISSION MENTIONNÉE: ${project.name} ===
+Titre du poste: ${project.job_title || jd?.title || 'N/A'}
+Client: ${project.client_name || jd?.client_name || 'N/A'}
+Statut: ${project.status}
+${jd ? `Type de contrat: ${jd.contract_type || 'N/A'}
+Localisation: ${jd.location || 'N/A'}
+Remote: ${jd.remote_policy || 'N/A'}
+Séniorité: ${jd.seniority || 'N/A'}
+Expérience: ${jd.experience_min || '?'}-${jd.experience_max || '?'} ans
+Salaire: ${jd.salary_min || '?'}-${jd.salary_max || '?'}K
+Description mission: ${(jd.mission_description || jd.description || '').slice(0, 1500)}
+Contexte: ${(jd.context || '').slice(0, 800)}
+Must-have: ${(jd.skills_must_have || []).join(', ') || 'N/A'}
+Should-have: ${(jd.skills_should_have || []).join(', ') || 'N/A'}
+Nice-to-have: ${(jd.skills_nice_to_have || []).join(', ') || 'N/A'}
+Critères d'évaluation: ${(jd.evaluation_criteria || []).map((c: any) => typeof c === 'string' ? c : c.label || c.name).join(', ') || 'N/A'}
+Langues: ${(jd.languages || []).join(', ') || 'N/A'}` : 'Pas de brief détaillé disponible.'}
+Stats: ${project.stats_total_found || 0} trouvés, ${project.stats_scored || 0} scorés, ${project.stats_shortlisted || 0} shortlistés, ${project.stats_messaged || 0} contactés
+${project.notes ? `Notes: ${String(project.notes).slice(0, 500)}` : ''}
+${project.filters_snapshot ? `Filtres de recherche actuels: ${JSON.stringify(project.filters_snapshot).slice(0, 1000)}` : ''}`);
+            }
+          } else if (mention.type === "candidat" && mention.id) {
+            // Fetch candidate profile
+            const { data: profile } = await supabase
+              .from("candidate_profiles")
+              .select("candidate_id, name, headline, summary, skills")
+              .eq("candidate_id", mention.id)
+              .maybeSingle();
+
+            // Fetch evaluations
+            const { data: evals } = await supabase
+              .from("candidate_evaluations")
+              .select("job_title, overall_score, recommendation, summary, criteria, ratings, interview_stage, created_at")
+              .eq("candidate_id", mention.id)
+              .order("created_at", { ascending: false })
+              .limit(3);
+
+            // Fetch notes
+            const { data: notes } = await supabase
+              .from("candidate_notes")
+              .select("content, created_at")
+              .eq("candidate_id", mention.id)
+              .order("created_at", { ascending: false })
+              .limit(5);
+
+            // Fetch comments
+            const { data: comments } = await supabase
+              .from("candidate_comments")
+              .select("content, created_at")
+              .eq("candidate_id", mention.id)
+              .order("created_at", { ascending: false })
+              .limit(5);
+
+            // Fetch job statuses (pipeline positions)
+            const { data: statuses } = await supabase
+              .from("job_candidate_status")
+              .select("job_title, status, score, created_at")
+              .eq("candidate_id", mention.id)
+              .order("created_at", { ascending: false })
+              .limit(5);
+
+            let candidateContext = `=== CANDIDAT MENTIONNÉ: ${profile?.name || mention.label} ===
+Headline: ${profile?.headline || 'N/A'}
+Résumé: ${(profile?.summary || '').slice(0, 1000) || 'N/A'}
+Compétences: ${(profile?.skills || []).join(', ') || 'N/A'}`;
+
+            if (statuses?.length) {
+              candidateContext += `\n\nPositions pipeline:`;
+              for (const s of statuses) {
+                candidateContext += `\n- ${s.job_title || 'Mission'}: ${s.status} (score: ${s.score ?? 'N/A'})`;
+              }
+            }
+
+            if (evals?.length) {
+              candidateContext += `\n\nÉvaluations:`;
+              for (const ev of evals) {
+                candidateContext += `\n- ${ev.job_title || 'Poste'} (${ev.interview_stage || 'N/A'}): Score ${ev.overall_score ?? 'N/A'}/5, Reco: ${ev.recommendation || 'N/A'}. ${(ev.summary || '').slice(0, 300)}`;
+              }
+            }
+
+            if (notes?.length) {
+              candidateContext += `\n\nNotes récentes:`;
+              for (const n of notes) {
+                candidateContext += `\n- ${n.content.slice(0, 200)}`;
+              }
+            }
+
+            if (comments?.length) {
+              candidateContext += `\n\nCommentaires:`;
+              for (const c of comments) {
+                candidateContext += `\n- ${c.content.slice(0, 200)}`;
+              }
+            }
+
+            contextParts.push(candidateContext);
+          } else if (mention.type === "shortlist" && mention.id) {
+            // Fetch mission info
+            const { data: project } = await supabase
+              .from("sourcing_projects")
+              .select("id, name, job_title, client_name, job_details")
+              .eq("id", mention.id)
+              .single();
+
+            // Fetch shortlisted candidates for this mission
+            const { data: shortlisted } = await supabase
+              .from("job_candidate_status")
+              .select("candidate_id, candidate_name, status, score, created_at")
+              .eq("job_id", `project:${mention.id}`)
+              .eq("status", "shortlisted")
+              .order("score", { ascending: false })
+              .limit(30);
+
+            let shortlistContext = `=== SHORTLIST MENTIONNÉE: ${project?.name || mention.label} ===
+Mission: ${project?.job_title || project?.name || 'N/A'}
+Client: ${project?.client_name || 'N/A'}
+Candidats shortlistés: ${shortlisted?.length || 0}`;
+
+            if (shortlisted?.length) {
+              shortlistContext += `\n\nListe:`;
+              for (const c of shortlisted) {
+                shortlistContext += `\n- ${c.candidate_name || 'Anonyme'}: score ${c.score ?? 'N/A'}, statut: ${c.status}`;
+              }
+            }
+
+            contextParts.push(shortlistContext);
+          }
+        } catch (e) {
+          console.error(`[search-agent-chat] Failed to resolve mention ${mention.type}:${mention.id}:`, e);
+        }
+      }
+
+      if (contextParts.length > 0) {
+        mentionsContext = "\n\n" + contextParts.join("\n\n");
+      }
+    }
+
     // Build the active system prompt
     const isSourcingMode = !context_mode || context_mode === 'sourcing';
 
     let activeSystemPrompt: string;
     if (context_mode === 'brief') {
-      activeSystemPrompt = briefSystemPrompt;
+      activeSystemPrompt = briefSystemPrompt + mentionsContext;
     } else if (context_mode === 'process') {
-      activeSystemPrompt = processSystemPrompt;
+      activeSystemPrompt = processSystemPrompt + mentionsContext;
     } else if (context_mode === 'outreach') {
-      activeSystemPrompt = outreachSystemPrompt;
+      activeSystemPrompt = outreachSystemPrompt + mentionsContext;
     } else {
-      // Sourcing mode — inject brief context into system prompt
+      // Sourcing mode — inject brief context + mentions into system prompt
       activeSystemPrompt = brief_context
-        ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}`
-        : sourcingSystemPrompt;
+        ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}` + mentionsContext
+        : sourcingSystemPrompt + mentionsContext;
     }
 
     // --- Sourcing mode: tool-calling loop (non-streaming), then stream final response ---
