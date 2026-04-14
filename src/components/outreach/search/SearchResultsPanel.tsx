@@ -412,6 +412,26 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {showPoolView ? 'Pool' : 'Résultats'}
           </Button>
         )}
+
+        {/* View mode toggle */}
+        {hasSearched && displayResults.length > 0 && (
+          <div className="flex items-center border border-border shrink-0">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-1.5 transition-colors ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+              title="Vue cartes"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+              title="Vue liste"
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* TOOLBAR: Status filters + actions — single compact row */}
