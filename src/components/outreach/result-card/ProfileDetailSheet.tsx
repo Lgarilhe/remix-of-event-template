@@ -94,7 +94,7 @@ const mergeProfileData = (
   merged._source = (incoming as any)?._source || (base as any)._source;
   merged.source = (incoming as any)?.source || (base as any).source;
 
-  return merged as LinkedInProfile;
+  return merged as unknown as LinkedInProfile;
 };
 
 const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
