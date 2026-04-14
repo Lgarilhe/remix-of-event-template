@@ -110,7 +110,7 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             className={cn(
               'flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-semibold transition-all',
               filtersReady
-                ? 'border-accent bg-accent text-accent-foreground shadow-md hover:bg-accent/90'
+                ? 'border-primary bg-primary text-primary-foreground shadow-md hover:bg-primary/90'
                 : 'cursor-not-allowed border-border bg-muted/30 text-muted-foreground',
             )}
           >
