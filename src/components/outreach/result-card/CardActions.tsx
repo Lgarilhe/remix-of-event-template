@@ -6,7 +6,6 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { Target, Loader2, ExternalLink } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
-import { ShimmerButton } from '@/components/magicui/shimmer-button';
 
 interface CardActionsProps {
   profile: LinkedInProfile;
@@ -31,11 +30,9 @@ interface CardActionsProps {
 export const CardActions: React.FC<CardActionsProps> = ({
   profile,
   profileUrl,
-  fullName,
   selectedJob,
   jobScore,
   accountId,
-  activeProject,
   isScoring,
   onScoreProfile,
   onSequenceEnroll,
@@ -46,24 +43,23 @@ export const CardActions: React.FC<CardActionsProps> = ({
   const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
   return (
-    <div className={`flex items-center gap-0.5 ${compact ? '' : 'gap-1'}`}>
+    <div className={`flex items-center ${compact ? 'gap-0' : 'gap-0.5'}`}>
       {/* Score */}
       {selectedJob && onScoreProfile && !jobScore && (
-        <ShimmerButton
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onScoreProfile}
           disabled={isScoring}
-          className={compact ? 'h-7 px-2 text-xs' : 'h-8 px-3 text-xs'}
+          className={`text-muted-foreground hover:text-foreground hover:bg-muted ${buttonSize}`}
           title={`Scorer pour ${selectedJob.title}`}
         >
           {isScoring ? (
             <Loader2 className={`${iconSize} animate-spin`} />
           ) : (
-            <>
-              <Target className={iconSize} />
-              {!compact && <span className="hidden sm:inline">Score</span>}
-            </>
+            <Target className={iconSize} />
           )}
-        </ShimmerButton>
+        </Button>
       )}
 
       {/* Sequence enroll */}
