@@ -89,10 +89,48 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [showFilters, setShowFilters] = useState(true);
+  
+  // Text filters
   const [nameFilter, setNameFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
-  const [recFilter, setRecFilter] = useState<'all' | 'go' | 'maybe' | 'skip'>('all');
   const [locationFilter, setLocationFilter] = useState('');
+  const [headlineFilter, setHeadlineFilter] = useState('');
+  const [skillFilter, setSkillFilter] = useState('');
+  const [industryFilter, setIndustryFilter] = useState('');
+  
+  // Select filters
+  const [recFilter, setRecFilter] = useState<'all' | 'go' | 'maybe' | 'skip'>('all');
+  const [expMatchFilter, setExpMatchFilter] = useState<ExperienceMatchFilter>('all');
+  const [scoreRangeFilter, setScoreRangeFilter] = useState<ScoreRangeFilter>('all');
+  const [openToWorkFilter, setOpenToWorkFilter] = useState<OpenToWorkFilter>('all');
+  const [networkFilter, setNetworkFilter] = useState<NetworkFilter>('all');
+  const [hasEmailFilter, setHasEmailFilter] = useState<HasEmailFilter>('all');
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (nameFilter) count++;
+    if (companyFilter) count++;
+    if (locationFilter) count++;
+    if (headlineFilter) count++;
+    if (skillFilter) count++;
+    if (industryFilter) count++;
+    if (recFilter !== 'all') count++;
+    if (expMatchFilter !== 'all') count++;
+    if (scoreRangeFilter !== 'all') count++;
+    if (openToWorkFilter !== 'all') count++;
+    if (networkFilter !== 'all') count++;
+    if (hasEmailFilter !== 'all') count++;
+    return count;
+  }, [nameFilter, companyFilter, locationFilter, headlineFilter, skillFilter, industryFilter, recFilter, expMatchFilter, scoreRangeFilter, openToWorkFilter, networkFilter, hasEmailFilter]);
+
+  const clearAllFilters = useCallback(() => {
+    setNameFilter(''); setCompanyFilter(''); setLocationFilter('');
+    setHeadlineFilter(''); setSkillFilter(''); setIndustryFilter('');
+    setRecFilter('all'); setExpMatchFilter('all'); setScoreRangeFilter('all');
+    setOpenToWorkFilter('all'); setNetworkFilter('all'); setHasEmailFilter('all');
+  }, []);
 
   // Build criteria columns from brief
   const criteriaColumns = useMemo(() => {
@@ -115,7 +153,8 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
   const enriched = useMemo(() => profiles.map(p => {
     const exp = getCurrentExperience(p);
     const score = jobScores[p.id] || jobScores[p.public_identifier || ''] || jobScores[p.provider_id || ''];
-    return { profile: p, exp, score };
+    const yearsExp = computeYearsExp(p);
+    return { profile: p, exp, score, yearsExp };
   }), [profiles, jobScores]);
 
   const filtered = useMemo(() => {
@@ -134,11 +173,67 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
       const q = locationFilter.toLowerCase();
       list = list.filter(({ profile: p }) => p.location?.toLowerCase().includes(q));
     }
+    if (headlineFilter) {
+      const q = headlineFilter.toLowerCase();
+      list = list.filter(({ profile: p }) => p.headline?.toLowerCase().includes(q));
+    }
+    if (skillFilter) {
+      const q = skillFilter.toLowerCase();
+      list = list.filter(({ profile: p, score }) => {
+        const profileSkills = p.skills?.some(s => s.name.toLowerCase().includes(q));
+        const matchingSkills = score?.matching_skills?.some(s => s.toLowerCase().includes(q));
+        return profileSkills || matchingSkills;
+      });
+    }
+    if (industryFilter) {
+      const q = industryFilter.toLowerCase();
+      list = list.filter(({ profile: p, exp }) => {
+        const pIndustry = p.industry?.toLowerCase().includes(q);
+        const expIndustry = Array.isArray(exp?.industry)
+          ? exp.industry.some((i: string) => i.toLowerCase().includes(q))
+          : (typeof exp?.industry === 'string' && exp.industry.toLowerCase().includes(q));
+        return pIndustry || expIndustry;
+      });
+    }
     if (recFilter !== 'all') {
       list = list.filter(({ score }) => score?.recommendation === recFilter);
     }
+    if (expMatchFilter !== 'all') {
+      list = list.filter(({ score }) => score?.experience_match === expMatchFilter);
+    }
+    if (scoreRangeFilter !== 'all') {
+      list = list.filter(({ score }) => {
+        if (!score) return false;
+        const s = score.match_score;
+        if (scoreRangeFilter === '75+') return s >= 75;
+        if (scoreRangeFilter === '50-74') return s >= 50 && s < 75;
+        if (scoreRangeFilter === '0-49') return s < 50;
+        return true;
+      });
+    }
+    if (openToWorkFilter !== 'all') {
+      list = list.filter(({ profile: p }) => {
+        const otw = p.open_to_work || p.is_open_to_work;
+        return openToWorkFilter === 'yes' ? !!otw : !otw;
+      });
+    }
+    if (networkFilter !== 'all') {
+      list = list.filter(({ profile: p }) => {
+        const dist = getNetworkDist(p);
+        if (networkFilter === '1st') return dist === 1;
+        if (networkFilter === '2nd') return dist === 2;
+        if (networkFilter === '3rd') return dist === 3;
+        return true;
+      });
+    }
+    if (hasEmailFilter !== 'all') {
+      list = list.filter(({ profile: p }) => {
+        const hasEmail = !!(p.contact_info?.emails?.length);
+        return hasEmailFilter === 'yes' ? hasEmail : !hasEmail;
+      });
+    }
     return list;
-  }, [enriched, nameFilter, companyFilter, locationFilter, recFilter]);
+  }, [enriched, nameFilter, companyFilter, locationFilter, headlineFilter, skillFilter, industryFilter, recFilter, expMatchFilter, scoreRangeFilter, openToWorkFilter, networkFilter, hasEmailFilter]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -165,6 +260,14 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
         case 'location':
           av = (a.profile.location || 'zzz').toLowerCase();
           bv = (b.profile.location || 'zzz').toLowerCase();
+          break;
+        case 'experience':
+          return sortDir === 'desc'
+            ? (b.yearsExp ?? -1) - (a.yearsExp ?? -1)
+            : (a.yearsExp ?? -1) - (b.yearsExp ?? -1);
+        case 'headline':
+          av = (a.profile.headline || 'zzz').toLowerCase();
+          bv = (b.profile.headline || 'zzz').toLowerCase();
           break;
       }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
