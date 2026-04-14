@@ -158,66 +158,69 @@ const MissionWorkspace = () => {
             readiness={readiness}
           />
 
-          {/* ── Tab content with animations ── */}
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={activeTab}
-              variants={tabVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="mt-4 min-w-0"
-            >
-              {activeTab === 'overview' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans le Dashboard">
-                  <MissionBentoDashboard project={project} onTabChange={handleTabChange} readiness={readiness} />
-                </SectionErrorBoundary>
-              )}
+          {/* ── Sourcing tab: always mounted, hidden when inactive ── */}
+          <div className={activeTab === 'sourcing' ? 'mt-4 min-w-0' : 'hidden'}>
+            <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
+              <MissionSourcing project={project} />
+            </SectionErrorBoundary>
+          </div>
 
-              {activeTab === 'brief' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
-                  <MissionBrief project={project} readOnly={!canEditBrief} />
-                </SectionErrorBoundary>
-              )}
+          {/* ── Other tabs with animations ── */}
+          {activeTab !== 'sourcing' && (
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeTab}
+                variants={tabVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="mt-4 min-w-0"
+              >
+                {activeTab === 'overview' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans le Dashboard">
+                    <MissionBentoDashboard project={project} onTabChange={handleTabChange} readiness={readiness} />
+                  </SectionErrorBoundary>
+                )}
 
-              {activeTab === 'process' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
-                  <MissionProcess project={project} readOnly={!canEditProcess} />
-                </SectionErrorBoundary>
-              )}
+                {activeTab === 'brief' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
+                    <MissionBrief project={project} readOnly={!canEditBrief} />
+                  </SectionErrorBoundary>
+                )}
 
-              {activeTab === 'sourcing' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
-                  <MissionSourcing project={project} />
-                </SectionErrorBoundary>
-              )}
+                {activeTab === 'process' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
+                    <MissionProcess project={project} readOnly={!canEditProcess} />
+                  </SectionErrorBoundary>
+                )}
 
-              {activeTab === 'pipeline' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans le Pipeline">
-                  <MissionPipeline project={project} />
-                </SectionErrorBoundary>
-              )}
+                {activeTab === 'pipeline' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans le Pipeline">
+                    <MissionPipeline project={project} />
+                  </SectionErrorBoundary>
+                )}
 
-              {activeTab === 'outreach' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans l'Outreach">
-                  <MissionOutreach project={project} />
-                </SectionErrorBoundary>
-              )}
+                {activeTab === 'outreach' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans l'Outreach">
+                    <MissionOutreach project={project} />
+                  </SectionErrorBoundary>
+                )}
 
-              {activeTab === 'insights' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans les Insights">
-                  <MissionInsights project={project} />
-                </SectionErrorBoundary>
-              )}
+                {activeTab === 'insights' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans les Insights">
+                    <MissionInsights project={project} />
+                  </SectionErrorBoundary>
+                )}
 
-              {activeTab === 'config' && (
-                <SectionErrorBoundary fallbackTitle="Erreur dans la Config">
-                  <MissionConfig project={project} readOnly={!canEditBrief} />
-                </SectionErrorBoundary>
-              )}
-            </motion.div>
-          </AnimatePresence>
+                {activeTab === 'config' && (
+                  <SectionErrorBoundary fallbackTitle="Erreur dans la Config">
+                    <MissionConfig project={project} readOnly={!canEditBrief} />
+                  </SectionErrorBoundary>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </div>
       </div>
 
