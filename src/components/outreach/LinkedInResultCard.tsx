@@ -17,7 +17,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
 import { CardActions } from './result-card/CardActions';
-import { useProfileData } from './result-card/useProfileData';
+import { useProfileData, getTenureDisplay } from './result-card/useProfileData';
 import { LinkedInResultCardProps } from './result-card/types';
 
 interface ExtendedResultCardProps extends LinkedInResultCardProps {
