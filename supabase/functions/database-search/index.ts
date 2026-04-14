@@ -851,15 +851,13 @@ Deno.serve(async (req) => {
       console.log(`[database-search] Converted ${allProfiles.length} profiles`);
 
       const profiles = allProfiles.filter((p: Record<string, unknown>) => {
+        const firstName = String(p.first_name || '').trim();
         const lastName = String(p.last_name || '').trim();
         const headline = String(p.headline || '').trim();
         const name = String(p.name || '').trim();
 
-        // Must have a real name (not just a first name initial)
-        if (!lastName || lastName.length < 2) {
-          // Allow if full name has at least 2 words
-          if (!name || name.split(' ').length < 2) return false;
-        }
+        // Must have at least a first name (Apollo api_search often omits last_name)
+        if (!firstName && !name) return false;
         // Must have a headline or title
         if (!headline) return false;
 
