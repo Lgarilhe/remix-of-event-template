@@ -162,10 +162,10 @@ function SkalrAssistantMessage() {
               }}
             />
 
-            {/* In-progress typing indicator */}
-            <MessagePrimitive.If running>
+            {/* In-progress typing indicator — shown via Empty part when streaming */}
+            <AuiIf condition={(s) => s.message.isLast && s.thread.isRunning}>
               <TypingDots />
-            </MessagePrimitive.If>
+            </AuiIf>
           </div>
 
           {/* Action bar — copy, reload, branch picker */}
@@ -208,7 +208,7 @@ function SkalrAssistantMessage() {
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
               </BranchPickerPrimitive.Previous>
-              <BranchPickerPrimitive.Count className="text-[10px] text-muted-foreground tabular-nums" />
+              <BranchPickerPrimitive.Count />
               <BranchPickerPrimitive.Next asChild>
                 <button className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30">
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -270,27 +270,8 @@ export function SkalrThread({ contextMode }: SkalrThreadProps) {
           />
         </div>
 
-        {/* Follow-up suggestions after last message */}
-        <div className="max-w-2xl mx-auto px-4 pb-2">
-          <ThreadPrimitive.Suggestions
-            components={{
-              Suggestion: ({ suggestion }) => (
-                <ThreadPrimitive.Suggestion
-                  prompt={suggestion.prompt}
-                  method="replace"
-                  autoSend
-                >
-                  <button className="text-xs px-3 py-1.5 border border-border/50 rounded-full text-muted-foreground hover:text-foreground hover:border-primary/20 hover:bg-muted/30 transition-all duration-150">
-                    {suggestion.prompt.length > 60
-                      ? suggestion.prompt.slice(0, 57) + "…"
-                      : suggestion.prompt}
-                  </button>
-                </ThreadPrimitive.Suggestion>
-              ),
-            }}
-            className="flex flex-wrap gap-2"
-          />
-        </div>
+        {/* Spacer at bottom for scroll comfort */}
+        <div className="h-4" />
       </ThreadPrimitive.Viewport>
 
       {/* Scroll-to-bottom floating button */}
