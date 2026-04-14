@@ -3,7 +3,7 @@ import { SourcingListView } from './SourcingListView';
 import { JobDetails } from '@/types/jobDetails';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion, AnimatePresence } from 'framer-motion';
-import { NumberTicker } from '@/components/magicui/number-ticker';
+
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
@@ -440,13 +440,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Status filter pills */}
           <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
             {([
-              { value: 'all' as const, emoji: '👥', count: mergedResults.length },
-              { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
-              { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
-              { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
-              { value: 'known' as const, emoji: '📋', count: statusCounts.known },
-              { value: 'dismissed' as const, emoji: '📦', count: statusCounts.dismissed },
-            ]).map(({ value, emoji, count }) => {
+              { value: 'all' as const, label: 'Tous', count: mergedResults.length },
+              { value: 'untreated' as const, label: 'Nouveaux', count: statusCounts.untreated },
+              { value: 'scored' as const, label: 'Scorés', count: statusCounts.scored },
+              { value: 'messaged' as const, label: 'Contactés', count: statusCounts.messaged },
+              { value: 'dismissed' as const, label: 'Archivés', count: statusCounts.dismissed },
+            ]).map(({ value, label, count }) => {
               const isActive = statusFilter === value || 
                 (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
               return (
@@ -459,8 +458,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                   }`}
                 >
-                  <span className="text-xs">{emoji}</span>
-                  {count > 0 && <span className="font-medium">{count}</span>}
+                  <span className="font-medium">{label}</span>
+                  {count > 0 && <span className="opacity-60">{count}</span>}
                 </button>
               );
             })}
@@ -557,9 +556,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="flex items-center gap-px bg-muted/30 p-px border border-border shrink-0">
             {([
               { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
-              { value: 'scored_go' as const, label: '✅ Go', count: statusCounts.scored_go },
-              { value: 'scored_maybe' as const, label: '🤔 Maybe', count: statusCounts.scored_maybe },
-              { value: 'scored_not_contacted' as const, label: '🆕 New', count: statusCounts.scored_not_contacted },
+              { value: 'scored_go' as const, label: 'Go', count: statusCounts.scored_go },
+              { value: 'scored_maybe' as const, label: 'Maybe', count: statusCounts.scored_maybe },
+              { value: 'scored_not_contacted' as const, label: 'Non contactés', count: statusCounts.scored_not_contacted },
             ]).map(({ value, label, count }) => (
               <button
                 key={value}
@@ -584,11 +583,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <SelectItem value="score_asc" className="text-xs"><span className="flex items-center gap-1"><ArrowUp className="w-3 h-3" /> Score ↑</span></SelectItem>
               <SelectItem value="recent" className="text-xs"><span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Récents</span></SelectItem>
               <SelectItem value="name" className="text-xs"><span className="flex items-center gap-1"><SortAsc className="w-3 h-3" /> A→Z</span></SelectItem>
-              <SelectItem value="tech_desc" className="text-xs"><span className="flex items-center gap-1">🔧 Tech ↓</span></SelectItem>
-              <SelectItem value="xp_desc" className="text-xs"><span className="flex items-center gap-1">📊 Expérience ↓</span></SelectItem>
-              <SelectItem value="domain_desc" className="text-xs"><span className="flex items-center gap-1">🏢 Domaine ↓</span></SelectItem>
-              <SelectItem value="fit_desc" className="text-xs"><span className="flex items-center gap-1">🤝 Culture fit ↓</span></SelectItem>
-              <SelectItem value="soft_desc" className="text-xs"><span className="flex items-center gap-1">💬 Soft skills ↓</span></SelectItem>
+              <SelectItem value="tech_desc" className="text-xs">Tech ↓</SelectItem>
+              <SelectItem value="xp_desc" className="text-xs">Expérience ↓</SelectItem>
+              <SelectItem value="domain_desc" className="text-xs">Domaine ↓</SelectItem>
+              <SelectItem value="fit_desc" className="text-xs">Culture fit ↓</SelectItem>
+              <SelectItem value="soft_desc" className="text-xs">Soft skills ↓</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -639,86 +638,42 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         ) : (
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
-            {/* Batch workflow banner */}
-            {hasSearched && total !== null && total > 0 && (
-              <div className="border border-border bg-accent/15 mb-3 overflow-hidden">
-                <div className="h-0.5 bg-accent" />
-                <div className="p-3 sm:p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    {/* Left: bold typographic count */}
-                    <div className="flex items-baseline gap-2 min-w-0">
-                      <NumberTicker
-                        value={total}
-                        className="text-3xl sm:text-4xl font-black text-foreground tabular-nums tracking-tighter leading-none"
-                      />
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          profils trouvés
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground/70">
-                            {displayResults.length} affichés sur {total}
-                          </span>
-                          {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-500">
-                              <CheckCircle2 className="w-3 h-3" />
-                              traité
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: refine actions */}
-                    <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onRefineSearch('expand')}
-                        disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                      >
-                        {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
-                        Élargir
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onRefineSearch('narrow')}
-                        disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                      >
-                        {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
-                        Affiner
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Subtle segmented progress — only when more to load */}
-                  {total > results.length && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <div className="flex-1 flex gap-px h-1">
-                        {Array.from({ length: Math.min(20, Math.ceil(total / Math.max(results.length, 1))) }).map((_, i) => (
-                          <div
-                            key={i}
-                            className={`flex-1 transition-colors duration-300 ${
-                              i < Math.ceil((results.length / total) * Math.min(20, Math.ceil(total / Math.max(results.length, 1))))
-                                ? 'bg-foreground'
-                                : 'bg-foreground/10'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-xs text-muted-foreground/60 tabular-nums whitespace-nowrap">
-                        {Math.round((results.length / total) * 100)}%
-                      </span>
-                    </div>
-                  )}
+            {/* Compact progress bar — only when more to load */}
+            {hasSearched && total !== null && total > 0 && total > results.length && (
+              <div className="flex items-center gap-2 px-1">
+                <div className="flex-1 h-1 bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-foreground/40 transition-all duration-500"
+                    style={{ width: `${Math.round((results.length / total) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                  {results.length}/{total}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRefineSearch('expand')}
+                    disabled={refineLoading}
+                    className="h-6 px-2 text-[10px] gap-1 text-muted-foreground"
+                  >
+                    {refineLoading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Maximize2 className="w-2.5 h-2.5" />}
+                    Élargir
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRefineSearch('narrow')}
+                    disabled={refineLoading}
+                    className="h-6 px-2 text-[10px] gap-1 text-muted-foreground"
+                  >
+                    {refineLoading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Minimize2 className="w-2.5 h-2.5" />}
+                    Affiner
+                  </Button>
                 </div>
               </div>
             )}
-
-            {/* Batch summary removed — report below is sufficient */}
 
             {/* Batch scoring report */}
             {batchReport && batchReport.length > 0 && (
@@ -730,24 +685,17 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               />
             )}
 
-            {/* Transition CTA: Go candidates ready for outreach */}
+            {/* Go candidates CTA — compact */}
             {(() => {
               const goProfiles = Object.values(jobScores).filter(s => s.recommendation === 'go');
               const goCount = goProfiles.length;
               if (goCount > 0 && activeProject && !scoringInProgress) {
                 return (
-                  <div className="border border-success/30 bg-success/5 p-4 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-4 h-4 text-success" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground">
-                        {goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} Go
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Inscrivez-les dans une séquence d'outreach pour les contacter automatiquement.
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-2 px-3 py-2 border border-success/20 bg-success/5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                    <span className="text-xs text-foreground flex-1 min-w-0">
+                      <strong>{goCount} Go</strong> — prêts pour l'outreach
+                    </span>
                     <SequenceEnrollButton
                       selectedProfiles={filteredResults.filter(p => jobScores[p.public_identifier || p.provider_id || '']?.recommendation === 'go')}
                       accountId={selectedAccount}
@@ -759,48 +707,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               }
               return null;
             })()}
-
-            {/* Contextual hint: after first search */}
-            <AnimatePresence>
-              {hasSearched && !hintSearchDismissed && !hasScoredProfiles && displayResults.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
-                >
-                  <span className="text-sm shrink-0">🎯</span>
-                  <p className="text-xs text-foreground/80 leading-relaxed flex-1">
-                    Sélectionnez les profils intéressants et cliquez <strong className="text-foreground">Score</strong> pour que l'IA les évalue selon votre brief.
-                  </p>
-                  <button
-                    onClick={() => dismissHint('hint:after-first-search', setHintSearchDismissed)}
-                    className="text-muted-foreground hover:text-foreground text-xs shrink-0"
-                  >✕</button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Contextual hint: after first scoring batch */}
-            <AnimatePresence>
-              {hasScoredProfiles && !hintScoringDismissed && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
-                >
-                  <span className="text-sm shrink-0">🟢</span>
-                  <p className="text-xs text-foreground/80 leading-relaxed flex-1">
-                    Les profils sont scorés ! Les <strong className="text-accent">Go</strong> sont les meilleurs matchs. Envoyez-leur un message ou ajoutez-les au pipeline.
-                  </p>
-                  <button
-                    onClick={() => dismissHint('hint:after-first-scoring', setHintScoringDismissed)}
-                    className="text-muted-foreground hover:text-foreground text-xs shrink-0"
-                  >✕</button>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             {/* Profile cards or list view */}
             {viewMode === 'list' ? (
