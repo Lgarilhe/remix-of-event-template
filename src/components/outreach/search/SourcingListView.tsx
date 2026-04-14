@@ -330,37 +330,37 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
       {showFilters && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 px-2">
           <Input
-            placeholder="🔍 Nom…"
+            placeholder="Nom…"
             value={nameFilter}
             onChange={e => setNameFilter(e.target.value)}
             className="h-7 text-xs"
           />
           <Input
-            placeholder="🏢 Société…"
+            placeholder="Société…"
             value={companyFilter}
             onChange={e => setCompanyFilter(e.target.value)}
             className="h-7 text-xs"
           />
           <Input
-            placeholder="📍 Lieu…"
+            placeholder="Lieu…"
             value={locationFilter}
             onChange={e => setLocationFilter(e.target.value)}
             className="h-7 text-xs"
           />
           <Input
-            placeholder="💼 Titre / headline…"
+            placeholder="Titre…"
             value={headlineFilter}
             onChange={e => setHeadlineFilter(e.target.value)}
             className="h-7 text-xs"
           />
           <Input
-            placeholder="🛠 Compétence…"
+            placeholder="Compétence…"
             value={skillFilter}
             onChange={e => setSkillFilter(e.target.value)}
             className="h-7 text-xs"
           />
           <Input
-            placeholder="🏭 Industrie…"
+            placeholder="Industrie…"
             value={industryFilter}
             onChange={e => setIndustryFilter(e.target.value)}
             className="h-7 text-xs"
@@ -371,9 +371,9 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">Reco : Tous</SelectItem>
-              <SelectItem value="go" className="text-xs">✅ Go</SelectItem>
-              <SelectItem value="maybe" className="text-xs">🤔 Maybe</SelectItem>
-              <SelectItem value="skip" className="text-xs">❌ Skip</SelectItem>
+              <SelectItem value="go" className="text-xs">Go</SelectItem>
+              <SelectItem value="maybe" className="text-xs">Maybe</SelectItem>
+              <SelectItem value="skip" className="text-xs">Skip</SelectItem>
             </SelectContent>
           </Select>
           <Select value={scoreRangeFilter} onValueChange={v => setScoreRangeFilter(v as ScoreRangeFilter)}>
@@ -382,9 +382,9 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">Score : Tous</SelectItem>
-              <SelectItem value="75+" className="text-xs">⭐ 75+</SelectItem>
-              <SelectItem value="50-74" className="text-xs">🔶 50–74</SelectItem>
-              <SelectItem value="0-49" className="text-xs">🔻 0–49</SelectItem>
+              <SelectItem value="75+" className="text-xs">75+</SelectItem>
+              <SelectItem value="50-74" className="text-xs">50–74</SelectItem>
+              <SelectItem value="0-49" className="text-xs">0–49</SelectItem>
             </SelectContent>
           </Select>
           <Select value={expMatchFilter} onValueChange={v => setExpMatchFilter(v as ExperienceMatchFilter)}>
@@ -393,10 +393,10 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">Exp : Tous</SelectItem>
-              <SelectItem value="compatible" className="text-xs">✅ Compatible</SelectItem>
-              <SelectItem value="trop_junior" className="text-xs">⬇️ Trop junior</SelectItem>
-              <SelectItem value="trop_senior" className="text-xs">⬆️ Trop senior</SelectItem>
-              <SelectItem value="incertain" className="text-xs">❓ Incertain</SelectItem>
+              <SelectItem value="compatible" className="text-xs">Compatible</SelectItem>
+              <SelectItem value="trop_junior" className="text-xs">Trop junior</SelectItem>
+              <SelectItem value="trop_senior" className="text-xs">Trop senior</SelectItem>
+              <SelectItem value="incertain" className="text-xs">Incertain</SelectItem>
             </SelectContent>
           </Select>
           <Select value={openToWorkFilter} onValueChange={v => setOpenToWorkFilter(v as OpenToWorkFilter)}>
@@ -405,8 +405,8 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">OTW : Tous</SelectItem>
-              <SelectItem value="yes" className="text-xs">🟢 Open to work</SelectItem>
-              <SelectItem value="no" className="text-xs">⚪ Non OTW</SelectItem>
+              <SelectItem value="yes" className="text-xs">Open to work</SelectItem>
+              <SelectItem value="no" className="text-xs">Non OTW</SelectItem>
             </SelectContent>
           </Select>
           <Select value={networkFilter} onValueChange={v => setNetworkFilter(v as NetworkFilter)}>
@@ -426,8 +426,8 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">Email : Tous</SelectItem>
-              <SelectItem value="yes" className="text-xs">📧 Avec email</SelectItem>
-              <SelectItem value="no" className="text-xs">❌ Sans email</SelectItem>
+              <SelectItem value="yes" className="text-xs">Avec email</SelectItem>
+              <SelectItem value="no" className="text-xs">Sans email</SelectItem>
             </SelectContent>
           </Select>
         </div>
