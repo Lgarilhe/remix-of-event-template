@@ -177,16 +177,15 @@ function SkalrAssistantMessage() {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="text-sm text-foreground leading-relaxed">
-            <MessagePrimitive.Parts
-              components={{
-                Empty: WaitingIndicator,
-              }}
-            >
+            {/* Waiting indicator before first token */}
+            <AuiIf condition={(s) => s.message.isLast && s.thread.isRunning && s.message.content.length === 0}>
+              <WaitingIndicator />
+            </AuiIf>
+
+            <MessagePrimitive.Parts>
               {({ part }) => {
                 if (part.type === "text") return <MarkdownText />;
                 if (part.type === "tool-call") {
-                  // Tool calls are rendered via makeAssistantToolUI (registered globally)
-                  // Fallback for unregistered tools:
                   return part.toolUI ?? <ToolCallFallback name={part.toolName} status={part.status} />;
                 }
                 if (part.type === "reasoning") {
