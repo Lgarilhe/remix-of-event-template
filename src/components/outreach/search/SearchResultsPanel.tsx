@@ -556,9 +556,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="flex items-center gap-px bg-muted/30 p-px border border-border shrink-0">
             {([
               { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
-              { value: 'scored_go' as const, label: '✅ Go', count: statusCounts.scored_go },
-              { value: 'scored_maybe' as const, label: '🤔 Maybe', count: statusCounts.scored_maybe },
-              { value: 'scored_not_contacted' as const, label: '🆕 New', count: statusCounts.scored_not_contacted },
+              { value: 'scored_go' as const, label: 'Go', count: statusCounts.scored_go },
+              { value: 'scored_maybe' as const, label: 'Maybe', count: statusCounts.scored_maybe },
+              { value: 'scored_not_contacted' as const, label: 'Non contactés', count: statusCounts.scored_not_contacted },
             ]).map(({ value, label, count }) => (
               <button
                 key={value}
