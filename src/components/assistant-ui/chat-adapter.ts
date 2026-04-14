@@ -16,7 +16,7 @@ export interface SkalrChatAdapterOptions {
   organizationId?: string | null;
 }
 
-/** Strip [OPTIONS] [...] [/OPTIONS] blocks from streamed text */
+/** Strip [OPTIONS] [...] [/OPTIONS] blocks from streamed text (profile blocks are kept for UI rendering) */
 function stripOptionsTags(text: string): string {
   return text.replace(/\[OPTIONS\][\s\S]*?\[\/OPTIONS\]/g, "").trim();
 }
