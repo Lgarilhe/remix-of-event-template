@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
+import { MentionComposer } from "@/components/agent/MentionComposer";
 
 // ── Streaming cursor (blinking dot while text is being generated) ──
 function StreamingCursor() {
@@ -438,28 +439,7 @@ function ToolCallFallback({ name, status }: { name: string; status: { type: stri
   );
 }
 
-// ── Composer ──
-function SkalrComposer() {
-  return (
-    <ComposerPrimitive.Root className="relative flex items-end gap-2 border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/10 transition-all duration-200 px-4 py-3 bg-muted/5 rounded-2xl">
-      <ComposerPrimitive.Input
-        placeholder="Posez une question…"
-        className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none min-h-[24px] max-h-[160px] leading-relaxed"
-        autoFocus
-      />
-      <ComposerPrimitive.Send asChild>
-        <button className="h-8 w-8 flex items-center justify-center bg-foreground text-background hover:bg-foreground/90 shrink-0 transition-all duration-150 active:scale-90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl">
-          <Send className="h-3.5 w-3.5" />
-        </button>
-      </ComposerPrimitive.Send>
-      <ComposerPrimitive.Cancel asChild>
-        <button className="h-8 w-8 flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 shrink-0 transition-all duration-150 rounded-xl">
-          <Square className="h-3 w-3 fill-current" />
-        </button>
-      </ComposerPrimitive.Cancel>
-    </ComposerPrimitive.Root>
-  );
-}
+// ── Composer (now uses MentionComposer for @ mentions) ──
 
 // ── Main Thread ──
 interface SkalrThreadProps {
@@ -507,7 +487,7 @@ export function SkalrThread({ contextMode }: SkalrThreadProps) {
       {/* Composer area */}
       <div className="border-t border-border/30 px-4 py-3 shrink-0 bg-background">
         <div className="max-w-2xl mx-auto">
-          <SkalrComposer />
+          <MentionComposer />
           <p className="text-[10px] text-muted-foreground/30 text-center mt-2 select-none">
             L'IA peut faire des erreurs — vérifiez les informations.
           </p>
