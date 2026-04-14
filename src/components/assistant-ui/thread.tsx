@@ -112,7 +112,7 @@ function SkalrAssistantMessage() {
                       prose-a:text-primary prose-a:no-underline hover:prose-a:underline
                       prose-strong:font-semibold
                       prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-3 prose-blockquote:italic"
-                    text={text}
+                    preprocess={() => text}
                   />
                 ),
               }}
