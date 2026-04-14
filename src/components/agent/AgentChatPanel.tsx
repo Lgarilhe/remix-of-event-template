@@ -246,12 +246,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       </div>
 
       {/* Thread — assistant-ui handles everything */}
-      <AssistantRuntimeProvider runtime={runtime}>
-        <SkalrThread contextMode={contextMode} />
-        <SearchCandidatesToolUI />
-        <EnrichCompanyToolUI />
-        <WebSearchToolUI />
-      </AssistantRuntimeProvider>
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <AssistantRuntimeProvider runtime={runtime}>
+          <SkalrThread contextMode={contextMode} />
+          <SearchCandidatesToolUI />
+          <EnrichCompanyToolUI />
+          <WebSearchToolUI />
+        </AssistantRuntimeProvider>
+      </div>
     </div>
   );
 };
