@@ -609,23 +609,8 @@ Deno.serve(async (req) => {
       console.log(`[run-agent-search] Loaded job data from search_config.job_context: "${jobData.title}"`);
     }
 
-    // Priority 3 (legacy): Notion — only if nothing else worked and jobId exists
-    if (!jobData && jobId) {
-      try {
-        const jobRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/fetch-notion-jobs`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": authHeader!, "apikey": anonKey },
-          body: JSON.stringify({ organization_id: orgId }),
-        }, 8000); // 8s max — fast fail
-        const jobsData = await jobRes.json();
-        if (jobsData?.success) {
-          jobData = (jobsData.jobs || []).find((j: any) => j.id === jobId);
-          if (jobData) console.log(`[run-agent-search] Loaded job data from Notion: "${jobData.title}"`);
-        }
-      } catch (e) {
-        console.warn("[run-agent-search] Notion job load failed (non-blocking):", e);
-      }
-    }
+    // Notion job loading removed — Notion is optional and not part of the SaaS product
+    // Job data comes from sourcing_projects (project_id) or search_config (job_context)
 
     if (!jobData) {
       console.error("[run-agent-search] ⚠️ No job data available for scoring — profiles will be unscored");
