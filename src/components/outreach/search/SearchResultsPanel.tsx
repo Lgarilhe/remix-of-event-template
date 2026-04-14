@@ -3,6 +3,7 @@ import { SourcingListView } from './SourcingListView';
 import { JobDetails } from '@/types/jobDetails';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion, AnimatePresence } from 'framer-motion';
+import { NumberTicker } from '@/components/magicui/number-ticker';
 
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
@@ -639,18 +640,29 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         ) : (
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
             {/* Compact progress bar — only when more to load */}
-            {hasSearched && total !== null && total > 0 && total > results.length && (
+            {hasSearched && total !== null && total > 0 && (
               <div className="flex items-center gap-2 px-1">
-                <div className="flex-1 h-1 bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-foreground/40 transition-all duration-500"
-                    style={{ width: `${Math.round((results.length / total) * 100)}%` }}
-                  />
-                </div>
-                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                  {results.length}/{total}
+                <NumberTicker
+                  value={total}
+                  className="text-lg font-black text-foreground tabular-nums tracking-tighter leading-none"
+                />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  profils
                 </span>
-                <div className="flex items-center gap-1 shrink-0">
+                {total > results.length && (
+                  <>
+                    <div className="flex-1 h-1 bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-foreground/40 transition-all duration-500"
+                        style={{ width: `${Math.round((results.length / total) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                      {Math.round((results.length / total) * 100)}%
+                    </span>
+                  </>
+                )}
+                <div className="flex items-center gap-1 shrink-0 ml-auto">
                   <Button
                     variant="ghost"
                     size="sm"
