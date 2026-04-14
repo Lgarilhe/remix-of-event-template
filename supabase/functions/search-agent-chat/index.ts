@@ -408,7 +408,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id, message, job_context, context_mode, brief_context, project_id } = body;
+    const { conversation_id, message, job_context, context_mode, brief_context, project_id, mentions } = body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
     };
