@@ -397,24 +397,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </span>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Pool toggle */}
-        {poolCount > 0 && onSetShowPoolView && (
-          <Button
-            variant={showPoolView ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => onSetShowPoolView(!showPoolView)}
-            className="h-7 px-2 text-xs gap-1 shrink-0"
-          >
-            <Database className="w-3 h-3" />
-            {showPoolView ? 'Pool' : 'Résultats'}
-          </Button>
-        )}
-
-        {/* View mode toggle */}
-        {hasSearched && displayResults.length > 0 && (
+        {/* View mode toggle — always visible after search */}
+        {hasSearched && (
           <div className="flex items-center border border-border shrink-0">
             <button
               onClick={() => setViewMode('cards')}
@@ -431,6 +415,22 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <List className="w-3.5 h-3.5" />
             </button>
           </div>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Pool toggle */}
+        {poolCount > 0 && onSetShowPoolView && (
+          <Button
+            variant={showPoolView ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => onSetShowPoolView(!showPoolView)}
+            className="h-7 px-2 text-xs gap-1 shrink-0"
+          >
+            <Database className="w-3 h-3" />
+            {showPoolView ? 'Pool' : 'Résultats'}
+          </Button>
         )}
       </div>
 
