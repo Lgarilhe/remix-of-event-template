@@ -258,45 +258,21 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
 
       {/* Notion-style filter bar */}
       {showFilters && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 px-2">
+        <div className="flex items-center gap-1.5 px-2 flex-wrap">
           <Input
             placeholder="Nom…"
             value={nameFilter}
             onChange={e => setNameFilter(e.target.value)}
-            className="h-7 text-xs"
+            className="h-7 w-32 text-xs"
           />
           <Input
             placeholder="Société…"
             value={companyFilter}
             onChange={e => setCompanyFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Lieu…"
-            value={locationFilter}
-            onChange={e => setLocationFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Titre…"
-            value={headlineFilter}
-            onChange={e => setHeadlineFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Compétence…"
-            value={skillFilter}
-            onChange={e => setSkillFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Industrie…"
-            value={industryFilter}
-            onChange={e => setIndustryFilter(e.target.value)}
-            className="h-7 text-xs"
+            className="h-7 w-32 text-xs"
           />
           <Select value={recFilter} onValueChange={v => setRecFilter(v as typeof recFilter)}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-7 w-24 text-xs">
               <SelectValue placeholder="Reco" />
             </SelectTrigger>
             <SelectContent>
@@ -307,7 +283,7 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectContent>
           </Select>
           <Select value={scoreRangeFilter} onValueChange={v => setScoreRangeFilter(v as ScoreRangeFilter)}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-7 w-24 text-xs">
               <SelectValue placeholder="Score" />
             </SelectTrigger>
             <SelectContent>
@@ -318,7 +294,7 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectContent>
           </Select>
           <Select value={expMatchFilter} onValueChange={v => setExpMatchFilter(v as ExperienceMatchFilter)}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-7 w-28 text-xs">
               <SelectValue placeholder="Exp. match" />
             </SelectTrigger>
             <SelectContent>
@@ -327,37 +303,6 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
               <SelectItem value="trop_junior" className="text-xs">Trop junior</SelectItem>
               <SelectItem value="trop_senior" className="text-xs">Trop senior</SelectItem>
               <SelectItem value="incertain" className="text-xs">Incertain</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={openToWorkFilter} onValueChange={v => setOpenToWorkFilter(v as OpenToWorkFilter)}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Open to work" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">OTW : Tous</SelectItem>
-              <SelectItem value="yes" className="text-xs">Open to work</SelectItem>
-              <SelectItem value="no" className="text-xs">Non OTW</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={networkFilter} onValueChange={v => setNetworkFilter(v as NetworkFilter)}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Réseau" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">Réseau : Tous</SelectItem>
-              <SelectItem value="1st" className="text-xs">1er degré</SelectItem>
-              <SelectItem value="2nd" className="text-xs">2e degré</SelectItem>
-              <SelectItem value="3rd" className="text-xs">3e degré</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={hasEmailFilter} onValueChange={v => setHasEmailFilter(v as HasEmailFilter)}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Email" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">Email : Tous</SelectItem>
-              <SelectItem value="yes" className="text-xs">Avec email</SelectItem>
-              <SelectItem value="no" className="text-xs">Sans email</SelectItem>
             </SelectContent>
           </Select>
         </div>
