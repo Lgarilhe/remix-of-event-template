@@ -29,9 +29,6 @@ type SortKey = 'name' | 'company' | 'score' | 'recommendation' | 'location' | 'e
 type SortDir = 'asc' | 'desc';
 type ExperienceMatchFilter = 'all' | 'compatible' | 'trop_junior' | 'trop_senior' | 'incertain';
 type ScoreRangeFilter = 'all' | '75+' | '50-74' | '0-49';
-type OpenToWorkFilter = 'all' | 'yes' | 'no';
-type NetworkFilter = 'all' | '1st' | '2nd' | '3rd';
-type HasEmailFilter = 'all' | 'yes' | 'no';
 
 /** Get current (or most recent) work experience */
 function getCurrentExperience(profile: LinkedInProfile) {
