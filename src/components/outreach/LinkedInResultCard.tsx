@@ -233,7 +233,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
 
               {/* Desktop actions */}
-              <div className="hidden sm:flex shrink-0" data-no-detail>
+              <div className="flex shrink-0" data-no-detail>
                 <CardActions
                   profile={profile}
                   profileUrl={profileUrl}
@@ -327,28 +327,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             )}
 
-            {/* Mobile actions */}
-            <div className="flex sm:hidden items-center gap-0.5 mt-1.5" data-no-detail>
-              <CardActions
-                profile={profile}
-                profileUrl={profileUrl}
-                fullName={fullName}
-                selectedJob={selectedJob}
-                jobScore={jobScore}
-                accountId={accountId}
-                activeProject={activeProject}
-                isScoring={isScoring}
-                isAnalyzing={isAnalyzing}
-                onScoreProfile={onScoreProfile}
-                onOpenMessage={() => onOpenDetail?.()}
-                onAiAnalysis={() => onOpenDetail?.()}
-                onArchive={onArchive}
-                onSequenceEnroll={onSequenceEnroll}
-                onProfileTreated={onProfileTreated}
-                onFindSimilar={onFindSimilar ? () => onFindSimilar(profile) : undefined}
-                compact
-              />
-            </div>
           </div>
         </div>
       </div>
