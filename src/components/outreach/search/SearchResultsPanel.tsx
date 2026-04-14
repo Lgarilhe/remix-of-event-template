@@ -380,8 +380,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         <Button
           onClick={onSearch}
           disabled={loading || !selectedJob}
+          variant="primary"
           size="sm"
-          className="bg-primary hover:bg-primary/90 shrink-0"
+          className="shrink-0"
         >
           {loading ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
