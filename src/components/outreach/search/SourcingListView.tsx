@@ -88,45 +88,25 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showFilters, setShowFilters] = useState(true);
   
-  // Text filters
   const [nameFilter, setNameFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
-  const [locationFilter, setLocationFilter] = useState('');
-  const [headlineFilter, setHeadlineFilter] = useState('');
-  const [skillFilter, setSkillFilter] = useState('');
-  const [industryFilter, setIndustryFilter] = useState('');
-  
-  // Select filters
   const [recFilter, setRecFilter] = useState<'all' | 'go' | 'maybe' | 'skip'>('all');
   const [expMatchFilter, setExpMatchFilter] = useState<ExperienceMatchFilter>('all');
   const [scoreRangeFilter, setScoreRangeFilter] = useState<ScoreRangeFilter>('all');
-  const [openToWorkFilter, setOpenToWorkFilter] = useState<OpenToWorkFilter>('all');
-  const [networkFilter, setNetworkFilter] = useState<NetworkFilter>('all');
-  const [hasEmailFilter, setHasEmailFilter] = useState<HasEmailFilter>('all');
 
-  // Count active filters
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (nameFilter) count++;
     if (companyFilter) count++;
-    if (locationFilter) count++;
-    if (headlineFilter) count++;
-    if (skillFilter) count++;
-    if (industryFilter) count++;
     if (recFilter !== 'all') count++;
     if (expMatchFilter !== 'all') count++;
     if (scoreRangeFilter !== 'all') count++;
-    if (openToWorkFilter !== 'all') count++;
-    if (networkFilter !== 'all') count++;
-    if (hasEmailFilter !== 'all') count++;
     return count;
-  }, [nameFilter, companyFilter, locationFilter, headlineFilter, skillFilter, industryFilter, recFilter, expMatchFilter, scoreRangeFilter, openToWorkFilter, networkFilter, hasEmailFilter]);
+  }, [nameFilter, companyFilter, recFilter, expMatchFilter, scoreRangeFilter]);
 
   const clearAllFilters = useCallback(() => {
-    setNameFilter(''); setCompanyFilter(''); setLocationFilter('');
-    setHeadlineFilter(''); setSkillFilter(''); setIndustryFilter('');
+    setNameFilter(''); setCompanyFilter('');
     setRecFilter('all'); setExpMatchFilter('all'); setScoreRangeFilter('all');
-    setOpenToWorkFilter('all'); setNetworkFilter('all'); setHasEmailFilter('all');
   }, []);
 
   // Build criteria columns from brief
