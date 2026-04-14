@@ -9,7 +9,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Check, X, HelpCircle, ArrowUpDown, MapPin, ExternalLink } from 'lucide-react';
+import { Check, X, HelpCircle, ArrowUpDown, MapPin, ExternalLink, Filter, ChevronDown, ChevronUp, Briefcase, Signal, Mail, Phone, Star } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { Input } from '@/components/ui/input';
 import {
