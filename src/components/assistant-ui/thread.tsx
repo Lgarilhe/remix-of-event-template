@@ -5,6 +5,7 @@ import {
   MessagePrimitive,
   BranchPickerPrimitive,
   ActionBarPrimitive,
+  MessagePartPrimitive,
   AuiIf,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
@@ -21,6 +22,37 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
+
+// ── Streaming cursor (blinking dot while text is being generated) ──
+function StreamingCursor() {
+  return (
+    <span className="inline-flex items-center ml-0.5 align-baseline">
+      <span className="w-2 h-4 bg-primary/80 rounded-[1px] animate-pulse" />
+    </span>
+  );
+}
+
+// ── Pulsing dots while waiting for first token ──
+function WaitingIndicator() {
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="flex items-center gap-1">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="w-1.5 h-1.5 rounded-full bg-primary/60"
+            style={{
+              animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+      <span className="text-xs text-muted-foreground/60 animate-fade-in">
+        Réflexion en cours…
+      </span>
+    </div>
+  );
+}
 
 // ── Welcome screen ──
 interface ThreadWelcomeProps {
@@ -83,17 +115,34 @@ export const ThreadWelcome: FC<ThreadWelcomeProps> = ({ contextMode, suggestions
   );
 };
 
-// ── Typing indicator dots ──
-function TypingDots() {
+// ── Markdown text part with streaming cursor ──
+function MarkdownText() {
   return (
-    <div className="flex items-center gap-1 px-1 py-2">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse"
-          style={{ animationDelay: `${i * 200}ms` }}
-        />
-      ))}
+    <div className="relative">
+      <MessagePartPrimitive.Text
+        component={({ text, isRunning }) => (
+          <span>
+            <MarkdownTextPrimitive
+              remarkPlugins={[remarkGfm]}
+              className={cn(
+                "prose prose-sm dark:prose-invert max-w-none",
+                "prose-p:my-2 prose-p:leading-relaxed",
+                "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
+                "prose-headings:mb-2 prose-headings:mt-4 prose-headings:font-semibold",
+                "prose-h1:text-base prose-h2:text-sm prose-h3:text-sm",
+                "prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:my-3",
+                "prose-code:text-xs prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono",
+                "prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-a:font-medium",
+                "prose-strong:font-semibold prose-strong:text-foreground",
+                "prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground",
+                "prose-table:text-xs prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-th:bg-muted/50",
+                "prose-hr:border-border",
+              )}
+            />
+            {isRunning && <StreamingCursor />}
+          </span>
+        )}
+      />
     </div>
   );
 }
@@ -101,7 +150,7 @@ function TypingDots() {
 // ── User message ──
 function SkalrUserMessage() {
   return (
-    <MessagePrimitive.Root className="flex justify-end mb-4">
+    <MessagePrimitive.Root className="flex justify-end mb-4 animate-fade-in">
       <div className="max-w-[80%]">
         <div className="px-4 py-3 bg-foreground text-background text-sm leading-relaxed rounded-2xl rounded-br-md">
           <MessagePrimitive.Content
@@ -118,7 +167,7 @@ function SkalrUserMessage() {
 // ── Assistant message ──
 function SkalrAssistantMessage() {
   return (
-    <MessagePrimitive.Root className="flex justify-start mb-4 group">
+    <MessagePrimitive.Root className="flex justify-start mb-4 group animate-fade-in">
       <div className="flex gap-3 max-w-[90%]">
         {/* Avatar */}
         <div className="shrink-0 mt-0.5">
@@ -128,44 +177,23 @@ function SkalrAssistantMessage() {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="text-sm text-foreground leading-relaxed">
-            <MessagePrimitive.Content
-              components={{
-                Text: ({ text }) => (
-                  <MarkdownTextPrimitive
-                    remarkPlugins={[remarkGfm]}
-                    className={cn(
-                      "prose prose-sm dark:prose-invert max-w-none",
-                      // Paragraphs
-                      "prose-p:my-2 prose-p:leading-relaxed",
-                      // Lists
-                      "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
-                      // Headings
-                      "prose-headings:mb-2 prose-headings:mt-4 prose-headings:font-semibold",
-                      "prose-h1:text-base prose-h2:text-sm prose-h3:text-sm",
-                      // Code
-                      "prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:my-3",
-                      "prose-code:text-xs prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono",
-                      // Links
-                      "prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-a:font-medium",
-                      // Strong/emphasis
-                      "prose-strong:font-semibold prose-strong:text-foreground",
-                      // Blockquotes
-                      "prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground",
-                      // Tables
-                      "prose-table:text-xs prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-th:bg-muted/50",
-                      // HR
-                      "prose-hr:border-border",
-                    )}
-                    preprocess={() => text}
-                  />
-                ),
-              }}
-            />
-
-            {/* In-progress typing indicator — shown via Empty part when streaming */}
-            <AuiIf condition={(s) => s.message.isLast && s.thread.isRunning}>
-              <TypingDots />
+            {/* Waiting indicator before first token */}
+            <AuiIf condition={(s) => s.message.isLast && s.thread.isRunning && s.message.content.length === 0}>
+              <WaitingIndicator />
             </AuiIf>
+
+            <MessagePrimitive.Parts>
+              {({ part }) => {
+                if (part.type === "text") return <MarkdownText />;
+                if (part.type === "tool-call") {
+                  return part.toolUI ?? <ToolCallFallback name={part.toolName} status={part.status} />;
+                }
+                if (part.type === "reasoning") {
+                  return <ReasoningBlock text={part.text} />;
+                }
+                return null;
+              }}
+            </MessagePrimitive.Parts>
           </div>
 
           {/* Action bar — copy, reload, branch picker */}
@@ -219,6 +247,69 @@ function SkalrAssistantMessage() {
         </div>
       </div>
     </MessagePrimitive.Root>
+  );
+}
+
+// ── Reasoning block (collapsible thinking display) ──
+function ReasoningBlock({ text }: { text: string }) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  return (
+    <div className="my-2 animate-fade-in">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors group/reason"
+      >
+        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+          <span className="h-2.5 w-2.5 rounded-full bg-primary/30 group-hover/reason:bg-primary/50 transition-colors" />
+        </span>
+        <span className="font-medium">
+          {expanded ? "Masquer la réflexion" : "Voir la réflexion"}
+        </span>
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 transition-transform duration-200",
+            expanded && "rotate-90"
+          )}
+        />
+      </button>
+      {expanded && (
+        <div className="mt-2 ml-5 pl-3 border-l-2 border-primary/15 text-xs text-muted-foreground/80 leading-relaxed whitespace-pre-wrap animate-fade-in">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tool call fallback (for unregistered tools) ──
+function ToolCallFallback({ name, status }: { name: string; status: { type: string } }) {
+  const isRunning = status.type === "running" || status.type === "requires-action";
+
+  return (
+    <div className={cn(
+      "flex items-center gap-2.5 px-3.5 py-2.5 my-2 rounded-xl border transition-all duration-300 animate-fade-in",
+      isRunning
+        ? "border-primary/20 bg-primary/5"
+        : "border-border/40 bg-muted/30"
+    )}>
+      {isRunning ? (
+        <div className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+          <span className="absolute h-4 w-4 rounded-full border-2 border-primary/20" />
+          <span className="absolute h-4 w-4 rounded-full border-2 border-transparent border-t-primary animate-spin" />
+        </div>
+      ) : (
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+          <Check className="h-3 w-3 text-primary/60" />
+        </span>
+      )}
+      <span className={cn(
+        "text-xs font-medium",
+        isRunning ? "text-foreground" : "text-muted-foreground"
+      )}>
+        {isRunning ? `${name}…` : name}
+      </span>
+    </div>
   );
 }
 
