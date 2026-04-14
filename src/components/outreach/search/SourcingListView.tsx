@@ -29,9 +29,6 @@ type SortKey = 'name' | 'company' | 'score' | 'recommendation' | 'location' | 'e
 type SortDir = 'asc' | 'desc';
 type ExperienceMatchFilter = 'all' | 'compatible' | 'trop_junior' | 'trop_senior' | 'incertain';
 type ScoreRangeFilter = 'all' | '75+' | '50-74' | '0-49';
-type OpenToWorkFilter = 'all' | 'yes' | 'no';
-type NetworkFilter = 'all' | '1st' | '2nd' | '3rd';
-type HasEmailFilter = 'all' | 'yes' | 'no';
 
 /** Get current (or most recent) work experience */
 function getCurrentExperience(profile: LinkedInProfile) {
@@ -91,45 +88,25 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showFilters, setShowFilters] = useState(true);
   
-  // Text filters
   const [nameFilter, setNameFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
-  const [locationFilter, setLocationFilter] = useState('');
-  const [headlineFilter, setHeadlineFilter] = useState('');
-  const [skillFilter, setSkillFilter] = useState('');
-  const [industryFilter, setIndustryFilter] = useState('');
-  
-  // Select filters
   const [recFilter, setRecFilter] = useState<'all' | 'go' | 'maybe' | 'skip'>('all');
   const [expMatchFilter, setExpMatchFilter] = useState<ExperienceMatchFilter>('all');
   const [scoreRangeFilter, setScoreRangeFilter] = useState<ScoreRangeFilter>('all');
-  const [openToWorkFilter, setOpenToWorkFilter] = useState<OpenToWorkFilter>('all');
-  const [networkFilter, setNetworkFilter] = useState<NetworkFilter>('all');
-  const [hasEmailFilter, setHasEmailFilter] = useState<HasEmailFilter>('all');
 
-  // Count active filters
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (nameFilter) count++;
     if (companyFilter) count++;
-    if (locationFilter) count++;
-    if (headlineFilter) count++;
-    if (skillFilter) count++;
-    if (industryFilter) count++;
     if (recFilter !== 'all') count++;
     if (expMatchFilter !== 'all') count++;
     if (scoreRangeFilter !== 'all') count++;
-    if (openToWorkFilter !== 'all') count++;
-    if (networkFilter !== 'all') count++;
-    if (hasEmailFilter !== 'all') count++;
     return count;
-  }, [nameFilter, companyFilter, locationFilter, headlineFilter, skillFilter, industryFilter, recFilter, expMatchFilter, scoreRangeFilter, openToWorkFilter, networkFilter, hasEmailFilter]);
+  }, [nameFilter, companyFilter, recFilter, expMatchFilter, scoreRangeFilter]);
 
   const clearAllFilters = useCallback(() => {
-    setNameFilter(''); setCompanyFilter(''); setLocationFilter('');
-    setHeadlineFilter(''); setSkillFilter(''); setIndustryFilter('');
+    setNameFilter(''); setCompanyFilter('');
     setRecFilter('all'); setExpMatchFilter('all'); setScoreRangeFilter('all');
-    setOpenToWorkFilter('all'); setNetworkFilter('all'); setHasEmailFilter('all');
   }, []);
 
   // Build criteria columns from brief
@@ -169,32 +146,6 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
       const q = companyFilter.toLowerCase();
       list = list.filter(({ exp }) => exp?.company?.toLowerCase().includes(q));
     }
-    if (locationFilter) {
-      const q = locationFilter.toLowerCase();
-      list = list.filter(({ profile: p }) => p.location?.toLowerCase().includes(q));
-    }
-    if (headlineFilter) {
-      const q = headlineFilter.toLowerCase();
-      list = list.filter(({ profile: p }) => p.headline?.toLowerCase().includes(q));
-    }
-    if (skillFilter) {
-      const q = skillFilter.toLowerCase();
-      list = list.filter(({ profile: p, score }) => {
-        const profileSkills = p.skills?.some(s => s.name.toLowerCase().includes(q));
-        const matchingSkills = score?.matching_skills?.some(s => s.toLowerCase().includes(q));
-        return profileSkills || matchingSkills;
-      });
-    }
-    if (industryFilter) {
-      const q = industryFilter.toLowerCase();
-      list = list.filter(({ profile: p, exp }) => {
-        const pIndustry = p.industry?.toLowerCase().includes(q);
-        const expIndustry = Array.isArray(exp?.industry)
-          ? exp.industry.some((i: string) => i.toLowerCase().includes(q))
-          : (typeof exp?.industry === 'string' && exp.industry.toLowerCase().includes(q));
-        return pIndustry || expIndustry;
-      });
-    }
     if (recFilter !== 'all') {
       list = list.filter(({ score }) => score?.recommendation === recFilter);
     }
@@ -211,29 +162,8 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
         return true;
       });
     }
-    if (openToWorkFilter !== 'all') {
-      list = list.filter(({ profile: p }) => {
-        const otw = p.open_to_work || p.is_open_to_work;
-        return openToWorkFilter === 'yes' ? !!otw : !otw;
-      });
-    }
-    if (networkFilter !== 'all') {
-      list = list.filter(({ profile: p }) => {
-        const dist = getNetworkDist(p);
-        if (networkFilter === '1st') return dist === 1;
-        if (networkFilter === '2nd') return dist === 2;
-        if (networkFilter === '3rd') return dist === 3;
-        return true;
-      });
-    }
-    if (hasEmailFilter !== 'all') {
-      list = list.filter(({ profile: p }) => {
-        const hasEmail = !!(p.contact_info?.emails?.length);
-        return hasEmailFilter === 'yes' ? hasEmail : !hasEmail;
-      });
-    }
     return list;
-  }, [enriched, nameFilter, companyFilter, locationFilter, headlineFilter, skillFilter, industryFilter, recFilter, expMatchFilter, scoreRangeFilter, openToWorkFilter, networkFilter, hasEmailFilter]);
+  }, [enriched, nameFilter, companyFilter, recFilter, expMatchFilter, scoreRangeFilter]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -328,45 +258,21 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
 
       {/* Notion-style filter bar */}
       {showFilters && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 px-2">
+        <div className="flex items-center gap-1.5 px-2 flex-wrap">
           <Input
             placeholder="Nom…"
             value={nameFilter}
             onChange={e => setNameFilter(e.target.value)}
-            className="h-7 text-xs"
+            className="h-7 w-32 text-xs"
           />
           <Input
             placeholder="Société…"
             value={companyFilter}
             onChange={e => setCompanyFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Lieu…"
-            value={locationFilter}
-            onChange={e => setLocationFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Titre…"
-            value={headlineFilter}
-            onChange={e => setHeadlineFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Compétence…"
-            value={skillFilter}
-            onChange={e => setSkillFilter(e.target.value)}
-            className="h-7 text-xs"
-          />
-          <Input
-            placeholder="Industrie…"
-            value={industryFilter}
-            onChange={e => setIndustryFilter(e.target.value)}
-            className="h-7 text-xs"
+            className="h-7 w-32 text-xs"
           />
           <Select value={recFilter} onValueChange={v => setRecFilter(v as typeof recFilter)}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-7 w-24 text-xs">
               <SelectValue placeholder="Reco" />
             </SelectTrigger>
             <SelectContent>
@@ -377,7 +283,7 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectContent>
           </Select>
           <Select value={scoreRangeFilter} onValueChange={v => setScoreRangeFilter(v as ScoreRangeFilter)}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-7 w-24 text-xs">
               <SelectValue placeholder="Score" />
             </SelectTrigger>
             <SelectContent>
@@ -388,7 +294,7 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </SelectContent>
           </Select>
           <Select value={expMatchFilter} onValueChange={v => setExpMatchFilter(v as ExperienceMatchFilter)}>
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-7 w-28 text-xs">
               <SelectValue placeholder="Exp. match" />
             </SelectTrigger>
             <SelectContent>
@@ -397,37 +303,6 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
               <SelectItem value="trop_junior" className="text-xs">Trop junior</SelectItem>
               <SelectItem value="trop_senior" className="text-xs">Trop senior</SelectItem>
               <SelectItem value="incertain" className="text-xs">Incertain</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={openToWorkFilter} onValueChange={v => setOpenToWorkFilter(v as OpenToWorkFilter)}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Open to work" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">OTW : Tous</SelectItem>
-              <SelectItem value="yes" className="text-xs">Open to work</SelectItem>
-              <SelectItem value="no" className="text-xs">Non OTW</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={networkFilter} onValueChange={v => setNetworkFilter(v as NetworkFilter)}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Réseau" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">Réseau : Tous</SelectItem>
-              <SelectItem value="1st" className="text-xs">1er degré</SelectItem>
-              <SelectItem value="2nd" className="text-xs">2e degré</SelectItem>
-              <SelectItem value="3rd" className="text-xs">3e degré</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={hasEmailFilter} onValueChange={v => setHasEmailFilter(v as HasEmailFilter)}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Email" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">Email : Tous</SelectItem>
-              <SelectItem value="yes" className="text-xs">Avec email</SelectItem>
-              <SelectItem value="no" className="text-xs">Sans email</SelectItem>
             </SelectContent>
           </Select>
         </div>
