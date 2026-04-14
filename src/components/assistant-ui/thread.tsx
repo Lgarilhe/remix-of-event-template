@@ -183,13 +183,13 @@ function SkalrAssistantMessage() {
             </AuiIf>
 
             <MessagePrimitive.Parts>
-              {({ part }) => {
+              {({ part, isLast }) => {
                 if (part.type === "text") return <MarkdownText />;
                 if (part.type === "tool-call") {
                   return part.toolUI ?? <ToolCallFallback name={part.toolName} status={part.status} />;
                 }
                 if (part.type === "reasoning") {
-                  return <ReasoningBlock text={part.text} />;
+                  return <ReasoningBlock text={part.text} isStreaming={isLast ? undefined : false} />;
                 }
                 return null;
               }}
