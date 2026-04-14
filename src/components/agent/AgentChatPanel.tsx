@@ -50,6 +50,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const { data: jobs } = useNotionJobs();
+  const { organizationId } = useOrganization();
   const {
     conversation,
     sendMessage, createConversation, listConversations,
