@@ -3,7 +3,6 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
-  useComposerSend,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
