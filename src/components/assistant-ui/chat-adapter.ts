@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface SkalrChatAdapterOptions {
   supabaseUrl: string;
-  /** Mutable ref-like: conversationId can be empty initially and set later */
   getConversationId: () => string;
   setConversationId: (id: string) => void;
   getAccessToken: () => string;
@@ -14,6 +13,11 @@ export interface SkalrChatAdapterOptions {
   projectId?: string | null;
   accountId?: string | null;
   organizationId?: string | null;
+}
+
+/** Strip [OPTIONS] [...] [/OPTIONS] blocks from streamed text */
+function stripOptionsTags(text: string): string {
+  return text.replace(/\[OPTIONS\][\s\S]*?\[\/OPTIONS\]/g, "").trim();
 }
 
 export function createSkalrChatAdapter(
@@ -119,8 +123,10 @@ export function createSkalrChatAdapter(
             const contentText = event.choices?.[0]?.delta?.content;
             if (contentText) {
               fullText += contentText;
+              // Strip [OPTIONS] blocks before yielding to the UI
+              const cleanText = stripOptionsTags(fullText);
               yield {
-                content: [{ type: "text" as const, text: fullText }],
+                content: [{ type: "text" as const, text: cleanText }],
               };
             }
           } catch {
