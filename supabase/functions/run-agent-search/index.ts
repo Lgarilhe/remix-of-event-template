@@ -486,6 +486,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log(`[run-agent-search] LinkedIn search complete: ${allProfiles.length} profiles found (${skippedDedup} dedup skipped, ${round} rounds)`);
+
     if (allProfiles.length === 0) {
       const msg = skippedDedup > 0
         ? `😕 Aucun nouveau profil trouvé (${skippedDedup} déjà traités). Essayez d'élargir la recherche.`
@@ -532,31 +534,11 @@ Deno.serve(async (req) => {
     }
 
     // ── 6. Load job data for scoring ──
+    // Priority: 1) sourcing_projects (normal case), 2) job_context from search_config, 3) Notion (legacy)
 
     let jobData: any = null;
-    if (jobId) {
-      try {
-        const jobRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/fetch-notion-jobs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": authHeader!,
-            "apikey": anonKey,
-          },
-          body: JSON.stringify({ organization_id: orgId }),
-        }, 20000);
-        const jobsData = await jobRes.json();
-        if (jobsData?.success) {
-          jobData = (jobsData.jobs || []).find((j: any) => j.id === jobId);
-        } else {
-          console.error("[run-agent-search] Failed to load job data:", jobsData);
-        }
-      } catch (e) {
-        console.error("[run-agent-search] Failed to load job:", e);
-      }
-    }
 
-    // Fallback: load job data from sourcing_projects when no Notion job
+    // Priority 1: Load from sourcing_projects (fastest, most common case)
     const projectId = searchPlan.project_id;
     if (!jobData && projectId) {
       try {
@@ -625,6 +607,28 @@ Deno.serve(async (req) => {
         },
       };
       console.log(`[run-agent-search] Loaded job data from search_config.job_context: "${jobData.title}"`);
+    }
+
+    // Priority 3 (legacy): Notion — only if nothing else worked and jobId exists
+    if (!jobData && jobId) {
+      try {
+        const jobRes = await fetchWithTimeout(`${supabaseUrl}/functions/v1/fetch-notion-jobs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader!, "apikey": anonKey },
+          body: JSON.stringify({ organization_id: orgId }),
+        }, 8000); // 8s max — fast fail
+        const jobsData = await jobRes.json();
+        if (jobsData?.success) {
+          jobData = (jobsData.jobs || []).find((j: any) => j.id === jobId);
+          if (jobData) console.log(`[run-agent-search] Loaded job data from Notion: "${jobData.title}"`);
+        }
+      } catch (e) {
+        console.warn("[run-agent-search] Notion job load failed (non-blocking):", e);
+      }
+    }
+
+    if (!jobData) {
+      console.error("[run-agent-search] ⚠️ No job data available for scoring — profiles will be unscored");
     }
 
     // ── 7. Score profiles (concurrent with semaphore) ──
@@ -712,7 +716,7 @@ Deno.serve(async (req) => {
                 filters.calculated_experience_min != null ? `Expérience cible: ${filters.calculated_experience_min}-${filters.calculated_experience_max || '?'} ans` : '',
               ].filter(Boolean).join('\n'),
             }),
-          }, { timeoutMs: 55000, maxRetries: 3 });
+          }, { timeoutMs: 30000, maxRetries: 2 });
 
           const scoreData = await scoreRes.json();
           return { profile, score: scoreData };
