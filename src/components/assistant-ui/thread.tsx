@@ -127,11 +127,11 @@ function MarkdownText() {
               remarkPlugins={[remarkGfm]}
               className={cn(
                 "prose prose-sm dark:prose-invert max-w-none text-foreground",
-                "prose-p:my-2 prose-p:leading-relaxed prose-p:text-foreground",
-                "prose-li:text-foreground",
-                "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
-                "prose-headings:mb-2 prose-headings:mt-4 prose-headings:font-semibold",
-                "prose-h1:text-base prose-h2:text-sm prose-h3:text-sm",
+                "prose-p:my-3 prose-p:leading-relaxed prose-p:text-foreground",
+                "prose-li:text-foreground prose-li:leading-relaxed",
+                "prose-ul:my-3 prose-ol:my-3 prose-li:my-1",
+                "prose-headings:mb-3 prose-headings:mt-5 prose-headings:font-semibold prose-headings:text-foreground",
+                "prose-h1:text-base prose-h2:text-[13px] prose-h3:text-[13px]",
                 "prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:my-3",
                 "prose-code:text-xs prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono",
                 "prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-a:font-medium",
@@ -139,6 +139,7 @@ function MarkdownText() {
                 "prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground",
                 "prose-table:text-xs prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-th:bg-muted/50",
                 "prose-hr:border-border",
+                "[&_br]:content-[''] [&_br]:block [&_br]:my-2",
               )}
             />
             {isRunning && <StreamingCursor />}
