@@ -455,6 +455,7 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
               <SortableHead label="Candidat" sortKeyVal="name" className="min-w-[200px]" />
               <SortableHead label="Société" sortKeyVal="company" className="min-w-[160px]" />
               <SortableHead label="Lieu" sortKeyVal="location" className="min-w-[120px]" />
+              <SortableHead label="Exp." sortKeyVal="experience" className="w-14" />
               <SortableHead label="Score" sortKeyVal="score" className="w-16" />
               <SortableHead label="Reco" sortKeyVal="recommendation" className="w-20" />
               {criteriaColumns.map(c => (
