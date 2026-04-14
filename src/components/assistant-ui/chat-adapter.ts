@@ -1,15 +1,19 @@
 import type { ChatModelAdapter } from "@assistant-ui/react";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface SkalrChatAdapterOptions {
   supabaseUrl: string;
-  accessToken: string;
+  /** Mutable ref-like: conversationId can be empty initially and set later */
+  getConversationId: () => string;
+  setConversationId: (id: string) => void;
+  getAccessToken: () => string;
   apiKey: string;
-  conversationId: string;
   modelOverride?: string | null;
   contextMode?: string | null;
   briefContext?: Record<string, unknown> | null;
   projectId?: string | null;
   accountId?: string | null;
+  organizationId?: string | null;
 }
 
 export function createSkalrChatAdapter(
@@ -26,17 +30,48 @@ export function createSkalrChatAdapter(
           .map((p) => p.text)
           .join("") || "";
 
+      // Auto-create conversation if none exists
+      let conversationId = options.getConversationId();
+      if (!conversationId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || !options.organizationId) {
+          throw new Error("Not authenticated");
+        }
+
+        const { data, error } = await supabase
+          .from("agent_conversations")
+          .insert({
+            organization_id: options.organizationId,
+            created_by: user.id,
+            status: "calibrating",
+          })
+          .select("id")
+          .single();
+
+        if (error || !data) {
+          throw new Error("Failed to create conversation");
+        }
+
+        conversationId = data.id;
+        options.setConversationId(conversationId);
+      }
+
+      const accessToken = options.getAccessToken();
+      if (!accessToken) {
+        throw new Error("No access token");
+      }
+
       const response = await fetch(
         `${options.supabaseUrl}/functions/v1/search-agent-chat`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${options.accessToken}`,
+            Authorization: `Bearer ${accessToken}`,
             apikey: options.apiKey,
           },
           body: JSON.stringify({
-            conversation_id: options.conversationId,
+            conversation_id: conversationId,
             message: text,
             _ai_model: options.modelOverride || undefined,
             _ai_action: "agent_search_calibration",
@@ -50,7 +85,8 @@ export function createSkalrChatAdapter(
       );
 
       if (!response.ok) {
-        throw new Error(`search-agent-chat failed: ${response.status}`);
+        const errText = await response.text().catch(() => "");
+        throw new Error(`search-agent-chat failed: ${response.status} ${errText}`);
       }
 
       const reader = response.body?.getReader();
@@ -79,7 +115,7 @@ export function createSkalrChatAdapter(
             // Server-side done confirmation event
             if (event.done === true) continue;
 
-            // Handle text content (skip thinking for now)
+            // Handle text content
             const contentText = event.choices?.[0]?.delta?.content;
             if (contentText) {
               fullText += contentText;
