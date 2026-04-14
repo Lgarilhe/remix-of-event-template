@@ -437,7 +437,7 @@ Deno.serve(async (req) => {
     // Verify user belongs to the conversation's organization
     const { data: conv } = await supabase
       .from("agent_conversations")
-      .select("organization_id")
+      .select("organization_id, project_id, job_title")
       .eq("id", conversation_id)
       .single();
 
@@ -614,7 +614,24 @@ Propose des exemples concrets de messages.`;
       }
     }
 
+    const requestedProjectId = typeof project_id === "string" && project_id.trim().length > 0
+      ? project_id.trim()
+      : null;
+    const stickyProjectId = requestedProjectId || conv?.project_id || null;
+
+    if (stickyProjectId && !effectiveMentions.some((mention) => mention?.type === "mission")) {
+      effectiveMentions.unshift({
+        id: stickyProjectId,
+        type: "mission",
+        label: conv?.job_title || "Mission active",
+      });
+    }
+
     let mentionsContext = "";
+    let resolvedConversationProjectId: string | null = requestedProjectId || conv?.project_id || null;
+    let resolvedConversationJobTitle: string | null = conv?.job_title || null;
+    let resolvedMissionBriefContext: Record<string, any> | null = null;
+
     if (effectiveMentions.length > 0) {
       const contextParts: string[] = [];
 
@@ -631,6 +648,12 @@ Propose des exemples concrets de messages.`;
 
             if (project) {
               const jd = project.job_details as Record<string, any> | null;
+              resolvedConversationProjectId = project.id;
+              resolvedConversationJobTitle = project.job_title || project.name || resolvedConversationJobTitle;
+              if (!resolvedMissionBriefContext && jd && typeof jd === "object") {
+                resolvedMissionBriefContext = jd;
+              }
+
               contextParts.push(`=== MISSION MENTIONNÉE: ${project.name} ===
 Titre du poste: ${project.job_title || jd?.title || 'N/A'}
 Client: ${project.client_name || jd?.client_name || 'N/A'}
@@ -767,6 +790,29 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
       }
     }
 
+    const effectiveBriefContext = brief_context && typeof brief_context === "object"
+      ? brief_context as Record<string, unknown>
+      : resolvedMissionBriefContext;
+
+    if (
+      resolvedConversationProjectId &&
+      (conv?.project_id !== resolvedConversationProjectId ||
+        (resolvedConversationJobTitle && conv?.job_title !== resolvedConversationJobTitle))
+    ) {
+      const conversationUpdate: Record<string, unknown> = {
+        project_id: resolvedConversationProjectId,
+      };
+
+      if (resolvedConversationJobTitle) {
+        conversationUpdate.job_title = resolvedConversationJobTitle;
+      }
+
+      await supabase
+        .from("agent_conversations")
+        .update(conversationUpdate)
+        .eq("id", conversation_id);
+    }
+
     // Build the active system prompt
     const isSourcingMode = !context_mode || context_mode === 'sourcing';
 
@@ -779,8 +825,8 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
       activeSystemPrompt = outreachSystemPrompt + mentionsContext;
     } else {
       // Sourcing mode — inject brief context + mentions into system prompt
-      activeSystemPrompt = brief_context
-        ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}` + mentionsContext
+      activeSystemPrompt = effectiveBriefContext
+        ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(effectiveBriefContext, null, 2).slice(0, 3000)}` + mentionsContext
         : sourcingSystemPrompt + mentionsContext;
     }
 
@@ -901,8 +947,8 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
               if (metadata.search_plan) {
                 const enrichedConfig = {
                   ...(metadata.search_plan as Record<string, unknown>),
-                  ...(project_id ? { project_id } : {}),
-                  ...(brief_context ? { job_context: brief_context } : {}),
+                  ...(resolvedConversationProjectId ? { project_id: resolvedConversationProjectId } : {}),
+                  ...(effectiveBriefContext ? { job_context: effectiveBriefContext } : {}),
                 };
                 await supabase.from("agent_conversations")
                   .update({ search_config: enrichedConfig, status: "plan_proposed" })
@@ -1019,8 +1065,8 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
               if (metadata.search_plan) {
                 const enrichedConfig = {
                   ...(metadata.search_plan as Record<string, unknown>),
-                  ...(project_id ? { project_id } : {}),
-                  ...(brief_context ? { job_context: brief_context } : {}),
+                  ...(resolvedConversationProjectId ? { project_id: resolvedConversationProjectId } : {}),
+                  ...(effectiveBriefContext ? { job_context: effectiveBriefContext } : {}),
                 };
                 await supabase.from("agent_conversations")
                   .update({ search_config: enrichedConfig, status: "plan_proposed" })
