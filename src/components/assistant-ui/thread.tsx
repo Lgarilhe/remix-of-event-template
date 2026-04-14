@@ -9,6 +9,7 @@ import {
   AuiIf,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowDown,
@@ -140,33 +141,37 @@ function MarkdownText() {
     <div className="relative">
       <MessagePartPrimitive.Text
         component={({ text, isRunning }) => {
-          // Check for [PROFILE] blocks
-          if (text.includes("[PROFILE]")) {
-            const segments = parseProfileBlocks(text);
+          const safeText = typeof text === "string" ? text : "";
+
+          if (!safeText.includes("[PROFILE]")) {
             return (
               <span>
-                {segments.map((seg, i) =>
-                  seg.type === "profile" ? (
-                    <ProfileCard key={i} data={seg.data} />
-                  ) : (
-                    <MarkdownTextPrimitive
-                      key={i}
-                      remarkPlugins={[remarkGfm]}
-                      className={markdownClasses}
-                    />
-                  )
-                )}
+                <MarkdownTextPrimitive
+                  remarkPlugins={[remarkGfm]}
+                  className={markdownClasses}
+                />
                 {isRunning && <StreamingCursor />}
               </span>
             );
           }
 
+          const segments = parseProfileBlocks(safeText);
+
           return (
             <span>
-              <MarkdownTextPrimitive
-                remarkPlugins={[remarkGfm]}
-                className={markdownClasses}
-              />
+              {segments.map((seg, i) =>
+                seg.type === "profile" ? (
+                  <ProfileCard key={i} data={seg.data} />
+                ) : (
+                  <ReactMarkdown
+                    key={i}
+                    remarkPlugins={[remarkGfm]}
+                    className={markdownClasses}
+                  >
+                    {seg.value}
+                  </ReactMarkdown>
+                ),
+              )}
               {isRunning && <StreamingCursor />}
             </span>
           );
