@@ -17,6 +17,9 @@ export interface MentionRef {
 
 /** Shared state: active mentions for the current message */
 let activeMentions: MentionRef[] = [];
+function setActiveMentions(next: MentionRef[]) {
+  activeMentions = next;
+}
 export function getActiveMentions(): MentionRef[] {
   return activeMentions;
 }
@@ -38,11 +41,6 @@ export function MentionComposer() {
   const mentionStartRef = useRef<number>(-1);
 
   const { results, loading, search, clear } = useMentionSearch();
-
-  // Sync mentions to module-level state for adapter access
-  useEffect(() => {
-    activeMentions = mentions;
-  }, [mentions]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -81,10 +79,14 @@ export function MentionComposer() {
       const newText = before + mentionText + ' ' + after;
 
       setText(newText);
-      setMentions((prev) => [
-        ...prev,
-        { id: entity.id, type: entity.type, label: entity.label },
-      ]);
+      setMentions((prev) => {
+        const next = [
+          ...prev,
+          { id: entity.id, type: entity.type, label: entity.label },
+        ];
+        setActiveMentions(next);
+        return next;
+      });
       closeMentionMenu();
 
       requestAnimationFrame(() => {
@@ -124,15 +126,15 @@ export function MentionComposer() {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    // Snapshot mentions before clearing UI state so the adapter can read them
+    setActiveMentions([...mentions]);
+
     // Use thread runtime's composer to send
     threadRuntime.composer.setText(trimmed);
     threadRuntime.composer.send();
     setText('');
     setMentions([]);
-    requestAnimationFrame(() => {
-      clearActiveMentions();
-    });
-  }, [text, threadRuntime]);
+  }, [mentions, text, threadRuntime]);
 
   const handleCancel = useCallback(() => {
     threadRuntime.cancelRun();
@@ -191,7 +193,13 @@ export function MentionComposer() {
               {m.label}
               <button
                 type="button"
-                onClick={() => setMentions((prev) => prev.filter((_, j) => j !== i))}
+                onClick={() =>
+                  setMentions((prev) => {
+                    const next = prev.filter((_, j) => j !== i);
+                    setActiveMentions(next);
+                    return next;
+                  })
+                }
                 className="ml-0.5 text-primary/50 hover:text-primary"
               >
                 ×
