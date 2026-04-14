@@ -17,7 +17,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
 import { CardActions } from './result-card/CardActions';
-import { useProfileData } from './result-card/useProfileData';
+import { useProfileData, getTenureDisplay } from './result-card/useProfileData';
 import { LinkedInResultCardProps } from './result-card/types';
 
 interface ExtendedResultCardProps extends LinkedInResultCardProps {
@@ -252,25 +252,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             </div>
 
-            {/* Row 2: Current role + company */}
-            <div className="flex items-center gap-1.5 mt-1 text-xs min-w-0">
-              {profileData.currentJob?.logo ? (
-                <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
-              ) : currentCompany ? (
-                <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              ) : null}
-              <span className="text-foreground/90 font-medium truncate">
-                {currentRole || profile.headline || 'Profil LinkedIn'}
-              </span>
-              {currentCompany && (
-                <span className="text-muted-foreground truncate shrink-0">
-                  · {currentCompany}
-                  {currentJobTenure && <span className="text-muted-foreground/40"> · {currentJobTenure}</span>}
-                </span>
-              )}
-            </div>
-
-            {/* Row 3: Location + Experience */}
+            {/* Row 2: Location + Experience years */}
             <div className="flex items-center gap-x-3 mt-0.5 text-[11px] text-muted-foreground">
               {profile.location && (
                 <span className="flex items-center gap-1 min-w-0">
@@ -286,7 +268,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               )}
             </div>
 
-            {/* Row 4: Score */}
+            {/* Row 3: Score */}
             {(profile as any)._preScore && (
               <div className="mt-1.5">
                 <PreScoreBar
@@ -301,45 +283,66 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </div>
             )}
 
-            {/* Row 5: Education + Past experience (compact) */}
-            {(profileData.educationPreview.length > 0 || pastJobs.length > 0) && (
-              <div className="mt-1.5 pt-1.5 border-t border-border/30 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                {profileData.educationPreview.length > 0 && (() => {
-                  const edu = profileData.educationPreview[0];
-                  const eduName = edu.school || edu.institution || edu.name;
-                  const eduLogo = edu.logo || edu.school_logo;
-                  const eduDegree = edu.degree || edu.field_of_study;
-                  return eduName ? (
-                    <span className="flex items-center gap-1 min-w-0">
-                      {eduLogo ? (
-                        <img src={eduLogo} alt={eduName} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
-                      ) : (
-                        <span className="text-[10px] shrink-0">🎓</span>
-                      )}
-                      <span className="truncate">{eduDegree ? `${eduDegree} · ` : ''}{eduName}</span>
+            {/* Row 4: Last 3 experiences with duration */}
+            {(() => {
+              const allJobs = [
+                ...(profileData.currentJob ? [profileData.currentJob] : []),
+                ...otherCurrentJobs,
+                ...pastJobs,
+              ].slice(0, 3);
+              if (allJobs.length === 0) return null;
+              return (
+                <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-0.5">
+                  {allJobs.map((pos: any, i: number) => {
+                    const tenure = getTenureDisplay(pos.start, pos.end);
+                    const isCurrent = !pos.end && pos.current !== false;
+                    return (
+                      <div key={i} className="flex items-center gap-1.5 text-[11px] min-w-0">
+                        {pos.logo ? (
+                          <img src={pos.logo} alt={pos.company || ''} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded bg-muted flex items-center justify-center shrink-0">
+                            <Building2 className="w-2.5 h-2.5 text-muted-foreground/50" />
+                          </div>
+                        )}
+                        <span className={`truncate ${isCurrent ? 'text-foreground/80 font-medium' : 'text-muted-foreground'}`}>
+                          {pos.role || pos.position}
+                        </span>
+                        <span className="text-muted-foreground/40 shrink-0">·</span>
+                        <span className="text-muted-foreground truncate shrink-0">{pos.company}</span>
+                        {tenure && (
+                          <span className="text-muted-foreground/40 text-[10px] shrink-0">{tenure}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {(otherCurrentJobs.length + pastJobs.length + (profileData.currentJob ? 1 : 0)) > 3 && (
+                    <span className="text-[10px] text-muted-foreground/50">
+                      +{otherCurrentJobs.length + pastJobs.length + (profileData.currentJob ? 1 : 0) - 3} autres
                     </span>
-                  ) : null;
-                })()}
-                {pastJobs.length > 0 && (() => {
-                  const past = pastJobs[0];
-                  return (
-                    <span className="flex items-center gap-1 min-w-0">
-                      {past.logo ? (
-                        <img src={past.logo} alt={past.company || ''} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
-                      ) : (
-                        <div className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0" />
-                      )}
-                      <span className="truncate">{past.role || past.position} · {past.company}</span>
-                    </span>
-                  );
-                })()}
-                {(otherCurrentJobs.length + pastJobs.length) > 1 && (
-                  <span className="text-muted-foreground/50">
-                    +{otherCurrentJobs.length + pastJobs.length - 1}
-                  </span>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Row 5: Education */}
+            {profileData.educationPreview.length > 0 && (() => {
+              const edu = profileData.educationPreview[0];
+              const eduName = edu.school || edu.institution || edu.name;
+              const eduLogo = edu.logo || edu.school_logo;
+              const eduDegree = edu.degree || edu.field_of_study;
+              if (!eduName) return null;
+              return (
+                <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground min-w-0">
+                  {eduLogo ? (
+                    <img src={eduLogo} alt={eduName} className="w-3.5 h-3.5 rounded object-contain bg-card border border-border/30 shrink-0" />
+                  ) : (
+                    <span className="text-[10px] shrink-0">🎓</span>
+                  )}
+                  <span className="truncate">{eduDegree ? `${eduDegree} · ` : ''}{eduName}</span>
+                </div>
+              );
+            })()}
 
           </div>
         </div>
