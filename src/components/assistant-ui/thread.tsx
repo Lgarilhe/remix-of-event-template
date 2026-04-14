@@ -1,4 +1,4 @@
-import React, { type FC } from "react";
+import React, { type FC, useState, useEffect, useRef, useCallback } from "react";
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -250,34 +250,159 @@ function SkalrAssistantMessage() {
   );
 }
 
-// ── Reasoning block (collapsible thinking display) ──
-function ReasoningBlock({ text }: { text: string }) {
-  const [expanded, setExpanded] = React.useState(false);
+// ── Reasoning block (collapsible thinking display — Claude/ChatGPT style) ──
+
+function useElapsedTime(isRunning: boolean) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (!isRunning) return;
+    startRef.current = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
+  if (elapsed < 1) return "";
+  if (elapsed < 60) return `${elapsed}s`;
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  return `${m}m${s > 0 ? ` ${s}s` : ""}`;
+}
+
+function parseReasoningSteps(text: string): string[] {
+  if (!text) return [];
+  // Split on double newlines or numbered patterns to extract "steps"
+  const lines = text.split(/\n{2,}/).filter(l => l.trim().length > 0);
+  return lines;
+}
+
+function ReasoningBlock({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
+  const [expanded, setExpanded] = useState(true);
+  const wasStreamingRef = useRef(isStreaming);
+  const elapsedLabel = useElapsedTime(!!isStreaming);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Auto-collapse 1.5s after streaming ends
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      const timer = setTimeout(() => setExpanded(false), 1500);
+      return () => clearTimeout(timer);
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  // Auto-scroll inside content while streaming
+  useEffect(() => {
+    if (isStreaming && expanded && contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    }
+  }, [text, isStreaming, expanded]);
+
+  const steps = parseReasoningSteps(text);
+  const hasMultipleSteps = steps.length > 1;
 
   return (
-    <div className="my-2 animate-fade-in">
+    <div className="my-3 animate-fade-in">
+      {/* Trigger bar */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors group/reason"
+        className={cn(
+          "w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all duration-300 text-left group/reason",
+          isStreaming
+            ? "border-primary/25 bg-primary/[0.04] shadow-sm"
+            : "border-border/40 bg-muted/20 hover:bg-muted/40 hover:border-border/60"
+        )}
       >
-        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-          <span className="h-2.5 w-2.5 rounded-full bg-primary/30 group-hover/reason:bg-primary/50 transition-colors" />
+        {/* Spinner / check icon */}
+        {isStreaming ? (
+          <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+            <span className="absolute h-4 w-4 rounded-full border-[1.5px] border-primary/15" />
+            <span className="absolute h-4 w-4 rounded-full border-[1.5px] border-transparent border-t-primary animate-spin" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/40" />
+          </span>
+        ) : (
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "hsl(142 71% 45% / 0.7)" }} />
+          </span>
+        )}
+
+        {/* Label */}
+        <span className={cn(
+          "flex-1 text-xs font-medium truncate",
+          isStreaming ? "text-foreground" : "text-muted-foreground"
+        )}>
+          {isStreaming ? "Réflexion en cours…" : "Réflexion terminée"}
         </span>
-        <span className="font-medium">
-          {expanded ? "Masquer la réflexion" : "Voir la réflexion"}
-        </span>
+
+        {/* Elapsed time */}
+        {elapsedLabel && (
+          <span className="text-[10px] text-muted-foreground/40 tabular-nums font-mono shrink-0">
+            {elapsedLabel}
+          </span>
+        )}
+
+        {/* Step count badge */}
+        {hasMultipleSteps && !isStreaming && (
+          <span className="text-[10px] text-muted-foreground/40 shrink-0">
+            {steps.length} étapes
+          </span>
+        )}
+
+        {/* Chevron */}
         <ChevronRight
           className={cn(
-            "h-3 w-3 transition-transform duration-200",
+            "h-3 w-3 text-muted-foreground/40 transition-transform duration-300 shrink-0",
             expanded && "rotate-90"
           )}
         />
       </button>
-      {expanded && (
-        <div className="mt-2 ml-5 pl-3 border-l-2 border-primary/15 text-xs text-muted-foreground/80 leading-relaxed whitespace-pre-wrap animate-fade-in">
-          {text}
+
+      {/* Shimmer progress bar while streaming */}
+      {isStreaming && (
+        <div className="h-[2px] mx-3 mt-0 rounded-full bg-muted overflow-hidden">
+          <div className="h-full w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
         </div>
       )}
+
+      {/* Expanded content */}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-300 ease-out",
+          expanded ? "max-h-[400px] opacity-100 mt-1" : "max-h-0 opacity-0"
+        )}
+      >
+        <div
+          ref={contentRef}
+          className="max-h-[380px] overflow-y-auto ml-2 pl-4 border-l-2 border-primary/10 py-2 scrollbar-thin"
+        >
+          {hasMultipleSteps ? (
+            <div className="space-y-2">
+              {steps.map((step, i) => (
+                <div key={i} className="flex gap-2 animate-fade-in" style={{ animationDelay: `${i * 40}ms` }}>
+                  <span className="shrink-0 mt-1 flex h-3.5 w-3.5 items-center justify-center">
+                    {isStreaming && i === steps.length - 1 ? (
+                      <span className="h-2 w-2 rounded-full bg-primary/50 animate-pulse" />
+                    ) : (
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/20" />
+                    )}
+                  </span>
+                  <p className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap flex-1">
+                    {step}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+              {text}
+              {isStreaming && <span className="inline-block w-1.5 h-3 bg-primary/40 rounded-sm ml-0.5 animate-pulse" />}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
