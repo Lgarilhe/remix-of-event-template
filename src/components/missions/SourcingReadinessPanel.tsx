@@ -108,10 +108,10 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
             onClick={onSearch}
             disabled={!filtersReady}
             className={cn(
-              'flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-semibold transition-all',
+              'flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-semibold transition-all disabled:opacity-100',
               filtersReady
                 ? 'border-primary bg-primary text-primary-foreground shadow-md hover:bg-primary/90'
-                : 'cursor-not-allowed border-border bg-muted/30 text-muted-foreground',
+                : 'cursor-not-allowed border-border bg-secondary text-foreground/60',
             )}
           >
             <Search className="h-4 w-4" />
