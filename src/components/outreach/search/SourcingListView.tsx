@@ -479,7 +479,7 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.map(({ profile, exp, score }) => {
+            {sorted.map(({ profile, exp, score, yearsExp }) => {
               const rec = recLabel(score?.recommendation);
               const companyLogo = exp?.company_picture_url || exp?.logo;
               return (
@@ -556,6 +556,15 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
                         <MapPin className="w-3 h-3 shrink-0" />
                         <span className="truncate max-w-[100px]">{profile.location}</span>
                       </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  {/* Experience */}
+                  <TableCell className="py-2 text-center">
+                    {yearsExp != null ? (
+                      <span className="text-xs font-medium text-muted-foreground">{yearsExp} ans</span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
