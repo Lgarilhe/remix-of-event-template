@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { SourcingListView } from './SourcingListView';
+import { JobDetails } from '@/types/jobDetails';
 import { SourcingReadinessPanel } from '@/components/missions/SourcingReadinessPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
@@ -25,7 +27,8 @@ import { Progress } from '@/components/ui/progress';
 import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
-  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock, SortAsc
+  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock, SortAsc,
+  LayoutGrid, List
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
