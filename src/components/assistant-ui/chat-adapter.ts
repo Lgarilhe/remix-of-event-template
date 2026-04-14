@@ -35,6 +35,15 @@ export function createSkalrChatAdapter(
           .map((p) => p.text)
           .join("") || "";
 
+      // Capture active @mentions immediately, before any async work
+      const mentions = getActiveMentions().map((m) => ({
+        id: m.id,
+        type: m.type,
+        label: m.label,
+      }));
+      // Clear after snapshotting so they don't carry to next message
+      requestAnimationFrame(() => clearActiveMentions());
+
       // Auto-create conversation if none exists
       let conversationId = options.getConversationId();
       if (!conversationId) {
@@ -65,15 +74,6 @@ export function createSkalrChatAdapter(
       if (!accessToken) {
         throw new Error("No access token");
       }
-
-      // Capture active @mentions before clearing
-      const mentions = getActiveMentions().map((m) => ({
-        id: m.id,
-        type: m.type,
-        label: m.label,
-      }));
-      // Clear after reading so they don't carry to next message
-      requestAnimationFrame(() => clearActiveMentions());
 
       const response = await fetch(
         `${options.supabaseUrl}/functions/v1/search-agent-chat`,

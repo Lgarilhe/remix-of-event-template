@@ -47,25 +47,38 @@ export function useMentionSearch() {
 
         // ── Missions ──
         if (!type || type === 'mission') {
-          const { data } = await supabase
-            .from('sourcing_projects')
-            .select('id, name, job_title, client_name, status')
-            .eq('organization_id', organizationId)
-            .ilike('name', `%${query}%`)
-            .in('status', ['active', 'paused'])
-            .order('updated_at', { ascending: false })
-            .limit(6);
+          const [byName, byTitle] = await Promise.all([
+            supabase
+              .from('sourcing_projects')
+              .select('id, name, job_title, client_name, status')
+              .eq('organization_id', organizationId)
+              .ilike('name', `%${query}%`)
+              .in('status', ['active', 'paused'])
+              .order('updated_at', { ascending: false })
+              .limit(6),
+            supabase
+              .from('sourcing_projects')
+              .select('id, name, job_title, client_name, status')
+              .eq('organization_id', organizationId)
+              .ilike('job_title', `%${query}%`)
+              .in('status', ['active', 'paused'])
+              .order('updated_at', { ascending: false })
+              .limit(6),
+          ]);
 
-          if (data) {
-            entities.push(
-              ...data.map((p) => ({
-                id: p.id,
-                type: 'mission' as MentionType,
-                label: p.name,
-                subtitle: [p.client_name, p.job_title].filter(Boolean).join(' · '),
-              })),
-            );
+          const missionMap = new Map<string, { id: string; name: string | null; job_title: string | null; client_name: string | null; status: string | null }>();
+          for (const project of [...(byName.data || []), ...(byTitle.data || [])]) {
+            missionMap.set(project.id, project);
           }
+
+          entities.push(
+            ...Array.from(missionMap.values()).slice(0, 6).map((p) => ({
+              id: p.id,
+              type: 'mission' as MentionType,
+              label: p.job_title || p.name || 'Mission sans titre',
+              subtitle: [p.client_name, p.name && p.job_title && p.name !== p.job_title ? p.name : null].filter(Boolean).join(' · '),
+            })),
+          );
         }
 
         // ── Candidates ──
