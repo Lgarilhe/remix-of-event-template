@@ -9,6 +9,7 @@ import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useAgent } from '@/contexts/AgentContext';
 import { cn } from '@/lib/utils';
+import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocalRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
 import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
