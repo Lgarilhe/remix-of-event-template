@@ -329,7 +329,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
             {profileData.educationPreview.length > 0 && (() => {
               const edu = profileData.educationPreview[0];
               const eduName = edu.school || edu.institution || edu.name;
-              const eduLogo = edu.logo || edu.school_logo;
+              const eduLogo = edu.school_picture_url || edu.logo || edu.school_logo || edu.school_details?.logo;
               const eduDegree = edu.degree || edu.field_of_study;
               if (!eduName) return null;
               return (
