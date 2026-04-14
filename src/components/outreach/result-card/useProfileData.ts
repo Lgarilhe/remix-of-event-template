@@ -124,9 +124,13 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
     const isActiveTalent = interests.includes('ACTIVE_TALENT');
 
     const experienceFromDiploma = calculateExperienceFromDiploma(education, workExperience);
+    // Fallback to Apollo's _years_of_experience when we can't calculate from diploma/work
+    const apolloYears = (profile as any)._years_of_experience as number | null | undefined;
     const totalExperience = experienceFromDiploma
       ? `${experienceFromDiploma.years} an${experienceFromDiploma.years > 1 ? 's' : ''} d'exp.`
-      : null;
+      : apolloYears && apolloYears > 0
+        ? `${apolloYears} an${apolloYears > 1 ? 's' : ''} d'exp.`
+        : null;
 
     return {
       firstName, lastName, initials, fullName,
