@@ -171,13 +171,14 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       )}
 
       {/* AI Search Agent button */}
-      <div className="border-b border-border px-3 sm:px-4 py-2.5 flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
+      <div className="relative border-b border-violet-500/20 px-3 sm:px-4 py-3 flex items-center justify-between overflow-hidden bg-gradient-to-r from-violet-500/[0.08] via-transparent to-blue-500/[0.06]">
+        <div className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-violet-400 to-blue-500 rounded-r-full" />
+        <p className="text-xs text-muted-foreground pl-2">
           Recherche par filtres ou via l'assistant IA conversationnel.
         </p>
         <button
           onClick={handleOpenSearchAgent}
-          className="shrink-0 flex items-center gap-2 h-8 px-3 text-xs font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors rounded-md"
+          className="shrink-0 flex items-center gap-2 h-8 px-3.5 text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:border-violet-400/50 transition-all rounded-md shadow-[0_0_12px_-3px_rgba(139,92,246,0.3)]"
         >
           <MessageSquare className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Recherche IA</span>
