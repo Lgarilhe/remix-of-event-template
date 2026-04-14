@@ -303,41 +303,135 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
 
   return (
     <div className="space-y-2">
-      {/* Notion-style filter bar */}
-      <div className="flex items-center gap-2 px-2 flex-wrap">
-        <Input
-          placeholder="Filtrer par nom…"
-          value={nameFilter}
-          onChange={e => setNameFilter(e.target.value)}
-          className="h-7 w-36 text-xs"
-        />
-        <Input
-          placeholder="Société…"
-          value={companyFilter}
-          onChange={e => setCompanyFilter(e.target.value)}
-          className="h-7 w-32 text-xs"
-        />
-        <Input
-          placeholder="Localisation…"
-          value={locationFilter}
-          onChange={e => setLocationFilter(e.target.value)}
-          className="h-7 w-32 text-xs"
-        />
-        <Select value={recFilter} onValueChange={v => setRecFilter(v as typeof recFilter)}>
-          <SelectTrigger className="h-7 w-28 text-xs">
-            <SelectValue placeholder="Reco" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">Tous</SelectItem>
-            <SelectItem value="go" className="text-xs">✅ Go</SelectItem>
-            <SelectItem value="maybe" className="text-xs">🤔 Maybe</SelectItem>
-            <SelectItem value="skip" className="text-xs">❌ Skip</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Filter header */}
+      <div className="flex items-center gap-2 px-2">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Filter className="w-3.5 h-3.5" />
+          Filtres
+          {activeFilterCount > 0 && (
+            <span className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 font-bold">{activeFilterCount}</span>
+          )}
+          {showFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
+        {activeFilterCount > 0 && (
+          <button onClick={clearAllFilters} className="text-[10px] text-muted-foreground hover:text-foreground underline">
+            Tout effacer
+          </button>
+        )}
         <span className="text-xs text-muted-foreground ml-auto">
           {sorted.length} / {profiles.length} profils
         </span>
       </div>
+
+      {/* Notion-style filter bar */}
+      {showFilters && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 px-2">
+          <Input
+            placeholder="🔍 Nom…"
+            value={nameFilter}
+            onChange={e => setNameFilter(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="🏢 Société…"
+            value={companyFilter}
+            onChange={e => setCompanyFilter(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="📍 Lieu…"
+            value={locationFilter}
+            onChange={e => setLocationFilter(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="💼 Titre / headline…"
+            value={headlineFilter}
+            onChange={e => setHeadlineFilter(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="🛠 Compétence…"
+            value={skillFilter}
+            onChange={e => setSkillFilter(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="🏭 Industrie…"
+            value={industryFilter}
+            onChange={e => setIndustryFilter(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Select value={recFilter} onValueChange={v => setRecFilter(v as typeof recFilter)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Reco" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Reco : Tous</SelectItem>
+              <SelectItem value="go" className="text-xs">✅ Go</SelectItem>
+              <SelectItem value="maybe" className="text-xs">🤔 Maybe</SelectItem>
+              <SelectItem value="skip" className="text-xs">❌ Skip</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={scoreRangeFilter} onValueChange={v => setScoreRangeFilter(v as ScoreRangeFilter)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Score" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Score : Tous</SelectItem>
+              <SelectItem value="75+" className="text-xs">⭐ 75+</SelectItem>
+              <SelectItem value="50-74" className="text-xs">🔶 50–74</SelectItem>
+              <SelectItem value="0-49" className="text-xs">🔻 0–49</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={expMatchFilter} onValueChange={v => setExpMatchFilter(v as ExperienceMatchFilter)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Exp. match" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Exp : Tous</SelectItem>
+              <SelectItem value="compatible" className="text-xs">✅ Compatible</SelectItem>
+              <SelectItem value="trop_junior" className="text-xs">⬇️ Trop junior</SelectItem>
+              <SelectItem value="trop_senior" className="text-xs">⬆️ Trop senior</SelectItem>
+              <SelectItem value="incertain" className="text-xs">❓ Incertain</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={openToWorkFilter} onValueChange={v => setOpenToWorkFilter(v as OpenToWorkFilter)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Open to work" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">OTW : Tous</SelectItem>
+              <SelectItem value="yes" className="text-xs">🟢 Open to work</SelectItem>
+              <SelectItem value="no" className="text-xs">⚪ Non OTW</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={networkFilter} onValueChange={v => setNetworkFilter(v as NetworkFilter)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Réseau" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Réseau : Tous</SelectItem>
+              <SelectItem value="1st" className="text-xs">1er degré</SelectItem>
+              <SelectItem value="2nd" className="text-xs">2e degré</SelectItem>
+              <SelectItem value="3rd" className="text-xs">3e degré</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={hasEmailFilter} onValueChange={v => setHasEmailFilter(v as HasEmailFilter)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Email" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">Email : Tous</SelectItem>
+              <SelectItem value="yes" className="text-xs">📧 Avec email</SelectItem>
+              <SelectItem value="no" className="text-xs">❌ Sans email</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Table */}
       <div className="border border-border bg-background overflow-x-auto">
