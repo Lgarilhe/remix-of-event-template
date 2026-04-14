@@ -3,7 +3,7 @@ import { LinkedInProfile } from '../types';
 import { ProfileData } from './types';
 import { parseDate, getYear } from '../dateUtils';
 
-const getTenureDisplay = (start?: any, end?: any) => {
+export const getTenureDisplay = (start?: any, end?: any) => {
   const s = parseDate(start);
   const e = parseDate(end);
   if (!s?.year) return null;
