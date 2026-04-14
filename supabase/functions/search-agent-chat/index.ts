@@ -368,7 +368,34 @@ async function executeTool(
       }
 
       case "web_search": {
-        return JSON.stringify({ note: "Web search not yet available. Use the information from the brief and enrich_company tool instead." });
+        const query = toolInput.query as string;
+        const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+        if (!PERPLEXITY_API_KEY) {
+          return JSON.stringify({ error: "Perplexity API key not configured. Web search unavailable." });
+        }
+        const pplxRes = await fetch("https://api.perplexity.ai/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "sonar",
+            messages: [
+              { role: "system", content: "Provide concise, factual answers with key data points. Focus on company info, market data, recent news, and tech details when relevant. Answer in the same language as the query." },
+              { role: "user", content: query },
+            ],
+          }),
+        });
+        if (!pplxRes.ok) {
+          const errText = await pplxRes.text();
+          console.error(`[web_search] Perplexity error ${pplxRes.status}:`, errText);
+          return JSON.stringify({ error: `Web search failed (${pplxRes.status})` });
+        }
+        const pplxData = await pplxRes.json();
+        const answer = pplxData.choices?.[0]?.message?.content || "No results found.";
+        const citations = pplxData.citations || [];
+        return JSON.stringify({ answer, citations, query });
       }
 
       default:
