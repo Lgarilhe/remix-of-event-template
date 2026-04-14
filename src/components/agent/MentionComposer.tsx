@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Square, AtSign, Search, Loader2 } from 'lucide-react';
-import { useComposerRuntime, useThreadRuntime } from '@assistant-ui/react';
+import { useThreadRuntime } from '@assistant-ui/react';
 import { cn } from '@/lib/utils';
 import {
   useMentionSearch,
@@ -25,7 +25,6 @@ export function clearActiveMentions() {
 }
 
 export function MentionComposer() {
-  const composerRuntime = useComposerRuntime();
   const threadRuntime = useThreadRuntime();
 
   const [text, setText] = useState('');
@@ -58,7 +57,6 @@ export function MentionComposer() {
     if (showMentionMenu && mentionQuery.length >= 1) {
       search(mentionQuery, selectedType);
     } else if (showMentionMenu && mentionQuery.length === 0) {
-      // Show empty state or type selector
       clear();
     }
   }, [mentionQuery, selectedType, showMentionMenu, search, clear]);
@@ -89,7 +87,6 @@ export function MentionComposer() {
       ]);
       closeMentionMenu();
 
-      // Focus back and move cursor
       requestAnimationFrame(() => {
         const el = inputRef.current;
         if (el) {
@@ -107,7 +104,6 @@ export function MentionComposer() {
       const val = e.target.value;
       setText(val);
 
-      // Detect @ trigger
       const cursor = e.target.selectionStart || 0;
       const textBeforeCursor = val.slice(0, cursor);
       const atMatch = textBeforeCursor.match(/@(\S*)$/);
@@ -123,6 +119,24 @@ export function MentionComposer() {
     },
     [showMentionMenu, closeMentionMenu],
   );
+
+  const handleSend = useCallback(() => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    // Use thread runtime's composer to send
+    threadRuntime.composer.setText(trimmed);
+    threadRuntime.composer.send();
+    setText('');
+    setMentions([]);
+    requestAnimationFrame(() => {
+      clearActiveMentions();
+    });
+  }, [text, threadRuntime]);
+
+  const handleCancel = useCallback(() => {
+    threadRuntime.cancelRun();
+  }, [threadRuntime]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -149,33 +163,13 @@ export function MentionComposer() {
         }
       }
 
-      // Submit on Enter (no shift)
       if (e.key === 'Enter' && !e.shiftKey && !showMentionMenu) {
         e.preventDefault();
         handleSend();
       }
     },
-    [showMentionMenu, results, highlightIndex, insertMention, closeMentionMenu],
+    [showMentionMenu, results, highlightIndex, insertMention, closeMentionMenu, handleSend],
   );
-
-  const handleSend = useCallback(() => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    // Set text on composer runtime and send
-    composerRuntime.setText(trimmed);
-    composerRuntime.send();
-    setText('');
-    setMentions([]);
-    // Mentions will be read by the adapter before clearing
-    requestAnimationFrame(() => {
-      clearActiveMentions();
-    });
-  }, [text, composerRuntime]);
-
-  const handleCancel = useCallback(() => {
-    threadRuntime.cancelRun();
-  }, [threadRuntime]);
 
   const typeEmoji: Record<MentionType, string> = {
     mission: '🎯',
@@ -187,7 +181,7 @@ export function MentionComposer() {
     <div className="relative">
       {/* Mention chips */}
       {mentions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-4 pb-2">
+        <div className="flex flex-wrap gap-1.5 pb-2">
           {mentions.map((m, i) => (
             <span
               key={`${m.id}-${i}`}
@@ -196,6 +190,7 @@ export function MentionComposer() {
               <span>{typeEmoji[m.type]}</span>
               {m.label}
               <button
+                type="button"
                 onClick={() => setMentions((prev) => prev.filter((_, j) => j !== i))}
                 className="ml-0.5 text-primary/50 hover:text-primary"
               >
@@ -210,11 +205,13 @@ export function MentionComposer() {
       {showMentionMenu && (
         <div
           ref={menuRef}
-          className="absolute bottom-full left-0 right-0 mb-1 mx-4 bg-popover border border-border rounded-xl shadow-lg z-50 overflow-hidden animate-fade-in"
+          className="absolute bottom-full left-0 right-0 mb-1 bg-popover border border-border rounded-xl shadow-lg z-50 overflow-hidden animate-fade-in"
         >
           {/* Type filter tabs */}
           <div className="flex border-b border-border/50 px-2 py-1.5 gap-1">
             <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => { setSelectedType(undefined); setHighlightIndex(0); }}
               className={cn(
                 'px-2 py-1 text-[11px] font-medium rounded-md transition-colors',
@@ -227,7 +224,9 @@ export function MentionComposer() {
             </button>
             {MENTION_TYPES.map((t) => (
               <button
+                type="button"
                 key={t.type}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { setSelectedType(t.type); setHighlightIndex(0); }}
                 className={cn(
                   'px-2 py-1 text-[11px] font-medium rounded-md transition-colors',
@@ -262,9 +261,10 @@ export function MentionComposer() {
             <div className="max-h-[200px] overflow-y-auto py-1">
               {results.map((entity, i) => (
                 <button
+                  type="button"
                   key={`${entity.type}-${entity.id}`}
                   onMouseDown={(e) => {
-                    e.preventDefault(); // prevent blur
+                    e.preventDefault();
                     insertMention(entity);
                   }}
                   onMouseEnter={() => setHighlightIndex(i)}
@@ -306,6 +306,7 @@ export function MentionComposer() {
         {/* @ button */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             if (showMentionMenu) {
               closeMentionMenu();
@@ -345,7 +346,7 @@ export function MentionComposer() {
           value={text}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder="Posez une question… (@mention pour contextualiser)"
+          placeholder="Posez une question… (@ pour contextualiser)"
           className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none min-h-[24px] max-h-[160px] leading-relaxed"
           rows={1}
           autoFocus
