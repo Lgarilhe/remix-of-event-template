@@ -39,9 +39,11 @@ Pose les questions de clarification UNE PAR UNE. Un message = une question.
 Utilise [OPTIONS] pour les choix.
 
 ETAPE 2 — RECHERCHER
-Utilise les outils disponibles :
-- search_candidates : chercher des profils dans la base (265M+ contacts)
-- enrich_company : contextualiser l'entreprise cliente (taille, funding, stack, actualites)
+⚠️ REGLE ABSOLUE : Tu DOIS utiliser l'outil search_candidates pour trouver des profils. NE JAMAIS inventer de profils fictifs. Si tu n'as pas appele search_candidates, tu n'as pas de profils a montrer.
+
+Outils disponibles (tu DOIS les appeler, pas inventer les donnees) :
+- search_candidates : chercher des profils REELS dans la base (265M+ contacts). OBLIGATOIRE.
+- enrich_company : contextualiser l'entreprise cliente (taille, funding, stack, actualites). Recommande.
 - web_search : rechercher sur le web (societe, marche, concurrents)
 
 Strategie multi-angles (TOUJOURS lancer plusieurs recherches) :
@@ -460,6 +462,20 @@ Propose des exemples concrets de messages.`;
             while (maxToolRounds > 0) {
               console.log(`[search-agent-chat] Tool loop round ${6 - maxToolRounds}, messages: ${currentMessages.length}`);
 
+              const apiBody: any = {
+                model: resolvedModel,
+                max_tokens: 16000,
+                system: [{ type: "text", text: activeSystemPrompt }],
+                messages: currentMessages,
+                tools: sourcingTools,
+              };
+
+              // On the first round after diagnostic questions are answered,
+              // hint the model to use tools (but don't force on every round)
+              // tool_choice: "auto" lets the model decide, which is the default
+
+              console.log(`[search-agent-chat] Sending to Anthropic: ${currentMessages.length} messages, ${sourcingTools.length} tools, model: ${resolvedModel}`);
+
               const loopResponse = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: {
@@ -467,13 +483,7 @@ Propose des exemples concrets de messages.`;
                   "anthropic-version": "2023-06-01",
                   "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                  model: resolvedModel,
-                  max_tokens: 16000,
-                  system: [{ type: "text", text: activeSystemPrompt }],
-                  messages: currentMessages,
-                  tools: sourcingTools,
-                }),
+                body: JSON.stringify(apiBody),
               }, 90000);
 
               if (!loopResponse.ok) {
@@ -487,6 +497,8 @@ Propose des exemples concrets de messages.`;
               const data = await loopResponse.json();
               _tokensIn += data.usage?.input_tokens || 0;
               _tokensOut += data.usage?.output_tokens || 0;
+
+              console.log(`[search-agent-chat] API response: stop_reason=${data.stop_reason}, content_types=${(data.content || []).map((b: any) => b.type).join(',')}, tokens=${data.usage?.input_tokens}in+${data.usage?.output_tokens}out`);
 
               if (data.stop_reason === 'tool_use') {
                 const toolUseBlocks = (data.content || []).filter((b: any) => b.type === 'tool_use');
