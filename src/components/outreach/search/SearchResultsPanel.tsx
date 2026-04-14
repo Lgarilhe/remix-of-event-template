@@ -222,12 +222,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     const source = (profile as any)._source;
     const linkedinUrl = profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url;
 
-    // Only enrich via Unipile if the profile lacks key detail data
-    const hasWorkExperience = profile.work_experience?.length > 0;
+    // Enrich via Unipile if the profile lacks detailed data
+    // Apollo provides work_experience titles but NO descriptions, NO summary, NO education details
+    // So we check for data QUALITY, not just presence
     const hasSummary = !!(profile.summary || (profile as any).about);
-    const hasSkills = (profile.skills?.length || 0) > 0;
     const hasEducation = ((profile as any).education?.length || 0) > 0;
-    const needsEnrichment = !hasWorkExperience || !hasSummary || !hasSkills || !hasEducation;
+    const hasDetailedExperience = profile.work_experience?.some(
+      (w: any) => w.description || w.summary || w.bullet_points?.length
+    );
+    const hasSkills = (profile.skills?.length || 0) > 0;
+    const needsEnrichment = !hasSummary || !hasEducation || !hasDetailedExperience || !hasSkills;
 
     if (source === 'database' && linkedinUrl && selectedAccount && needsEnrichment) {
       setEnriching(true);
