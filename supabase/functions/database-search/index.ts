@@ -669,6 +669,43 @@ function apolloToLinkedInProfile(p: Record<string, unknown>): Record<string, unk
   };
 }
 
+async function fetchApolloPerson(
+  apolloApiKey: string,
+  identifier: string,
+): Promise<Record<string, unknown> | null> {
+  const isLinkedInUrl = identifier.includes("linkedin.com");
+
+  const response = await fetchWithTimeout(`${APOLLO_BASE}/v1/people/match`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": apolloApiKey,
+    },
+    body: JSON.stringify(
+      isLinkedInUrl
+        ? {
+            linkedin_url: identifier,
+            reveal_personal_emails: false,
+            reveal_phone_number: false,
+          }
+        : {
+            id: identifier,
+            reveal_personal_emails: false,
+            reveal_phone_number: false,
+          },
+    ),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.warn(`[database-search] people/match failed ${response.status}:`, errText.slice(0, 200));
+    return null;
+  }
+
+  const data = await response.json();
+  return (data.person || data.match || null) as Record<string, unknown> | null;
+}
+
 // ─── Main handler ───────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -970,34 +1007,45 @@ Deno.serve(async (req) => {
 
     // Get profile details (for enrichment / profile view)
     if (action === "get_profile") {
-      const profileId = body.profile_id || body.linkedin_url;
+      const profileId = body.profile_id || body.linkedin_url || body.profile_url;
       if (!profileId) {
         return json({ success: false, error: "profile_id required" }, 400);
       }
 
-      // Try to find by LinkedIn URL in Apollo
-      const searchPayload: Record<string, unknown> = { per_page: 1 };
-      if (String(profileId).includes("linkedin.com")) {
-        searchPayload.person_linkedin_url = profileId;
-      } else {
-        searchPayload.q_keywords = profileId;
+      let person = await fetchApolloPerson(apolloApiKey, String(profileId));
+
+      if (
+        person &&
+        ((person.employment_history || []) as Array<unknown>).length <= 1 &&
+        typeof person.linkedin_url === "string" &&
+        person.linkedin_url
+      ) {
+        const retryPerson = await fetchApolloPerson(apolloApiKey, String(person.linkedin_url));
+        if (
+          retryPerson &&
+          (((retryPerson.employment_history || []) as Array<unknown>).length >=
+            ((person.employment_history || []) as Array<unknown>).length)
+        ) {
+          person = retryPerson;
+        }
       }
 
-      const response = await fetchWithTimeout(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Api-Key": apolloApiKey,
-        },
-        body: JSON.stringify(searchPayload),
-      });
+      if (!person && String(profileId).includes("linkedin.com")) {
+        const response = await fetchWithTimeout(`${APOLLO_BASE}/v1/mixed_people/api_search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Api-Key": apolloApiKey,
+          },
+          body: JSON.stringify({ per_page: 1, person_linkedin_url: profileId }),
+        });
 
-      if (!response.ok) {
-        return json({ success: false, error: "Profil non trouvé" });
+        if (response.ok) {
+          const data = await response.json();
+          person = data.people?.[0] || null;
+        }
       }
 
-      const data = await response.json();
-      const person = data.people?.[0];
       if (!person) {
         return json({ success: false, error: "Profil non trouvé" });
       }

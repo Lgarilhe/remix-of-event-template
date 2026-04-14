@@ -56,6 +56,47 @@ const collectStrings = (input: unknown, depth = 0): string[] => {
 
 const unique = (values: string[]) => Array.from(new Set(values.map((value) => value.trim())));
 
+const getProfileQualitySignals = (profile?: LinkedInProfile | null) => {
+  const workExperience = profile?.work_experience || [];
+  const hasSummary = Boolean(profile?.summary && profile.summary.trim().length > 0);
+  const hasEducation = (profile?.education?.length || 0) > 0;
+  const hasSkills = (profile?.skills?.length || 0) > 0;
+  const hasDetailedExperience = workExperience.some((exp: any) =>
+    Boolean(normalizeValue(exp?.description)) ||
+    Boolean(normalizeValue(exp?.role || exp?.position)) ||
+    Boolean(normalizeValue(exp?.company))
+  );
+
+  return {
+    hasSummary,
+    hasEducation,
+    hasSkills,
+    hasDetailedExperience,
+  };
+};
+
+const mergeProfileData = (
+  base: LinkedInProfile,
+  incoming?: Partial<LinkedInProfile> | null,
+): LinkedInProfile => {
+  if (!incoming) return base;
+
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value == null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    merged[key] = value;
+  }
+
+  merged.id = base.id;
+  merged.provider_id = (incoming.provider_id as string | undefined) || base.provider_id || base.id;
+  merged._source = (incoming as any)?._source || (base as any)._source;
+  merged.source = (incoming as any)?.source || (base as any).source;
+
+  return merged as unknown as LinkedInProfile;
+};
+
 const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
   const [fallbackIndex, setFallbackIndex] = useState(0);
 
@@ -210,7 +251,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   }, [profile?.id]);
 
   useEffect(() => {
-    if (!open || !profile || !accountId) {
+    if (!open || !profile) {
       setIsEnriching(false);
       return;
     }
@@ -219,17 +260,19 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       (profile as any)._source === 'database' ||
       (profile as any).source === 'database';
     const isPoolProfile = Boolean((profile as any)._fromPool);
-    const needsEnrichment =
-      (isPoolProfile || isDatabaseProfile) &&
-      (!profile.work_experience?.length); // Only enrich if missing work experience — don't enrich just for summary/skills
 
-    if (!needsEnrichment) {
-      setIsEnriching(false);
-      return;
-    }
+    const baseSignals = getProfileQualitySignals(profile);
+    const needsDatabaseDetail = isDatabaseProfile && !baseSignals.hasDetailedExperience && !baseSignals.hasEducation;
+    const needsAnyEnrichment =
+      needsDatabaseDetail ||
+      ((isPoolProfile || isDatabaseProfile) && (
+        !baseSignals.hasSummary ||
+        !baseSignals.hasEducation ||
+        !baseSignals.hasSkills ||
+        !baseSignals.hasDetailedExperience
+      ));
 
-    const profileUrl = profile.public_profile_url || profile.profile_url;
-    if (!profileUrl) {
+    if (!needsAnyEnrichment) {
       setIsEnriching(false);
       return;
     }
@@ -240,7 +283,36 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     setIsEnriching(true);
 
     (async () => {
+      let workingProfile = profile;
+
       try {
+        if (needsDatabaseDetail) {
+          const { data: databaseResponse } = await invokeEdgeFunction<Record<string, unknown>>('database-search', {
+            action: 'get_profile',
+            profile_id: profile.provider_id || profile.id,
+          });
+
+          if (!cancelled && databaseResponse?.success && databaseResponse.profile) {
+            workingProfile = mergeProfileData(workingProfile, databaseResponse.profile as Partial<LinkedInProfile>);
+            setEnrichedProfile(workingProfile);
+          }
+        }
+
+        const refreshedSignals = getProfileQualitySignals(workingProfile);
+        const profileUrl = workingProfile.public_profile_url || workingProfile.profile_url;
+        const shouldFetchUnipile = Boolean(
+          accountId &&
+          profileUrl &&
+          ((isPoolProfile || isDatabaseProfile) && (
+            !refreshedSignals.hasSummary ||
+            !refreshedSignals.hasEducation ||
+            !refreshedSignals.hasSkills ||
+            !refreshedSignals.hasDetailedExperience
+          ))
+        );
+
+        if (!shouldFetchUnipile) return;
+
         const response = await Promise.race([
           invokeUnipile({
             body: {
@@ -260,11 +332,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
         const unipileResponse = response.data;
         if (unipileResponse?.success && unipileResponse.profile) {
-          emitQuotaAction('profileVisits', 1, accountId);
+          emitQuotaAction('profileVisits', 1, accountId!);
           const p = unipileResponse.profile as Record<string, any>;
 
-          // Only replace fields that are ACTUALLY better than what we already have
-          // This prevents Apollo data from being overwritten with empty Unipile responses
           const enrichedSkills = p.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean);
           const enrichedWorkExp = (p.positions || p.experiences || []).map((exp: any) => ({
             role: exp.title,
@@ -282,17 +352,18 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             end: edu.end_date || edu.ends_at,
           }));
 
-          setEnrichedProfile({
-            ...profile,
-            summary: p.about || p.summary || profile.summary,
-            skills: enrichedSkills?.length ? enrichedSkills : (profile.skills || []),
-            work_experience: enrichedWorkExp.length ? enrichedWorkExp : (profile.work_experience || []),
-            education: enrichedEducation.length ? enrichedEducation : ((profile as any).education || []),
-            location: p.location?.name || p.location || profile.location,
-            profile_picture_url: p.profile_picture_url || p.picture_url || profile.profile_picture_url,
-            connections_count: p.connections_count || profile.connections_count,
-            network_distance: p.network_distance || profile.network_distance,
-          } as LinkedInProfile);
+          workingProfile = mergeProfileData(workingProfile, {
+            summary: (p.about || p.summary || workingProfile.summary) as string | undefined,
+            skills: enrichedSkills?.length ? enrichedSkills : (workingProfile.skills || []),
+            work_experience: enrichedWorkExp.length ? enrichedWorkExp : (workingProfile.work_experience || []),
+            education: enrichedEducation.length ? enrichedEducation : ((workingProfile as any).education || []),
+            location: (p.location?.name || p.location || workingProfile.location) as string | undefined,
+            profile_picture_url: (p.profile_picture_url || p.picture_url || workingProfile.profile_picture_url) as string | undefined,
+            connections_count: (p.connections_count || workingProfile.connections_count) as number | undefined,
+            network_distance: (p.network_distance || workingProfile.network_distance) as string | number | undefined,
+          } as Partial<LinkedInProfile>);
+
+          setEnrichedProfile(workingProfile);
 
           const { error } = await supabase
             .from('job_candidate_status')
@@ -319,7 +390,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       if (timeoutId) clearTimeout(timeoutId);
       setIsEnriching(false);
     };
-  }, [open, profile?.id, accountId]);
+  }, [open, profile?.id, profile?.provider_id, accountId]);
 
   const effectiveProfile = enrichedProfile || profile;
 
