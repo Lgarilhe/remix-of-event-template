@@ -166,10 +166,50 @@ async function executeTool(
   try {
     switch (toolName) {
       case "search_candidates": {
+        // Map Apollo-style params (from tool schema) to database-search format
+        const searchParams: any = { action: "search", organization_id: orgId };
+
+        // person_titles → role (database-search format)
+        if (toolInput.person_titles?.length) {
+          searchParams.role = [{ keywords: toolInput.person_titles.join(' OR ') }];
+        }
+        // person_locations → location
+        if (toolInput.person_locations?.length) {
+          searchParams.location = toolInput.person_locations.map((l: string) => ({ name: l }));
+        }
+        // person_seniorities → seniority
+        if (toolInput.person_seniorities?.length) {
+          searchParams.seniority = toolInput.person_seniorities;
+        }
+        // Pass through Apollo-native params directly
+        if (toolInput.organization_num_employees_ranges) {
+          searchParams.db_company_size_ranges = toolInput.organization_num_employees_ranges;
+        }
+        if (toolInput.q_organization_keyword_tags) {
+          searchParams.db_industry_tags = toolInput.q_organization_keyword_tags;
+        }
+        if (toolInput.currently_using_any_of_technology_uids) {
+          searchParams.currently_using_any_of_technology_uids = toolInput.currently_using_any_of_technology_uids;
+        }
+        if (toolInput.q_keywords) {
+          searchParams.keywords = toolInput.q_keywords;
+        }
+        if (toolInput.q_organization_domains_list) {
+          searchParams.q_organization_domains_list = toolInput.q_organization_domains_list;
+        }
+        if (toolInput.q_organization_job_titles) {
+          searchParams.q_organization_job_titles = toolInput.q_organization_job_titles;
+        }
+        if (toolInput.per_page) {
+          searchParams.limit = toolInput.per_page;
+        }
+
+        console.log(`[search-agent-chat] search_candidates params:`, JSON.stringify(searchParams).slice(0, 500));
+
         const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
           method: "POST",
           headers: { "Authorization": authHeader, "apikey": anonKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "search", organization_id: orgId, ...toolInput }),
+          body: JSON.stringify(searchParams),
         }, 25000);
         const data = await res.json();
         const profiles = data.items || data.results || [];
