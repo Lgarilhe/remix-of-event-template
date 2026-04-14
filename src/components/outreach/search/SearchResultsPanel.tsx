@@ -583,11 +583,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <SelectItem value="score_asc" className="text-xs"><span className="flex items-center gap-1"><ArrowUp className="w-3 h-3" /> Score ↑</span></SelectItem>
               <SelectItem value="recent" className="text-xs"><span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Récents</span></SelectItem>
               <SelectItem value="name" className="text-xs"><span className="flex items-center gap-1"><SortAsc className="w-3 h-3" /> A→Z</span></SelectItem>
-              <SelectItem value="tech_desc" className="text-xs"><span className="flex items-center gap-1">🔧 Tech ↓</span></SelectItem>
-              <SelectItem value="xp_desc" className="text-xs"><span className="flex items-center gap-1">📊 Expérience ↓</span></SelectItem>
-              <SelectItem value="domain_desc" className="text-xs"><span className="flex items-center gap-1">🏢 Domaine ↓</span></SelectItem>
-              <SelectItem value="fit_desc" className="text-xs"><span className="flex items-center gap-1">🤝 Culture fit ↓</span></SelectItem>
-              <SelectItem value="soft_desc" className="text-xs"><span className="flex items-center gap-1">💬 Soft skills ↓</span></SelectItem>
+              <SelectItem value="tech_desc" className="text-xs">Tech ↓</SelectItem>
+              <SelectItem value="xp_desc" className="text-xs">Expérience ↓</SelectItem>
+              <SelectItem value="domain_desc" className="text-xs">Domaine ↓</SelectItem>
+              <SelectItem value="fit_desc" className="text-xs">Culture fit ↓</SelectItem>
+              <SelectItem value="soft_desc" className="text-xs">Soft skills ↓</SelectItem>
             </SelectContent>
           </Select>
         </div>
