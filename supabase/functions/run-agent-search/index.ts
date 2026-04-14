@@ -409,7 +409,8 @@ Deno.serve(async (req) => {
           break;
         }
 
-        const results = searchData.results || [];
+        // database-search returns { items }, not { results }
+        const results = searchData.items || searchData.results || [];
 
         // Deduplicate: skip profiles already treated for this job
         for (const profile of results) {

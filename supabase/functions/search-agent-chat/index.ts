@@ -535,12 +535,13 @@ async function fetchSampleProfiles(
     }
 
     const data = await res.json();
-    if (!data.success || !(data.results?.length || data.profiles?.length)) {
-      console.warn('[search-agent-chat] No profiles found via Apollo');
+    // database-search returns { success, items, total, cursor } — NOT results/profiles
+    const results = data.items || data.results || data.profiles || [];
+    if (!data.success || results.length === 0) {
+      console.warn(`[search-agent-chat] No profiles from Apollo. Keys: ${Object.keys(data).join(', ')}, success: ${data.success}`);
       return [];
     }
 
-    const results = data.results || data.profiles || [];
     console.log(`[search-agent-chat] Apollo returned ${results.length} profiles for calibration`);
     return results.slice(0, fetchLimit);
   } catch (e) {
