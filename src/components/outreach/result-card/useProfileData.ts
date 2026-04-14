@@ -3,6 +3,17 @@ import { LinkedInProfile } from '../types';
 import { ProfileData } from './types';
 import { parseDate, getYear } from '../dateUtils';
 
+const normalizeLegacyPosition = (position: any, currentFallback: boolean) => ({
+  ...position,
+  role: position?.role || position?.position || '',
+  position: position?.position || position?.role || '',
+  company: position?.company || '',
+  logo: position?.logo || position?.company_picture_url || undefined,
+  start: position?.start || null,
+  end: position?.end || null,
+  current: position?.current ?? currentFallback,
+});
+
 export const getTenureDisplay = (start?: any, end?: any) => {
   const s = parseDate(start);
   const e = parseDate(end);
@@ -92,10 +103,24 @@ export function useProfileData(profile: LinkedInProfile): ProfileData {
     const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
     const fullName = profile.name || `${firstName} ${lastName}`.trim();
 
-    const workExperience = (profile.work_experience || []).map((exp: any) => ({
-      ...exp,
-      role: exp.role || exp.position, // Normalize position → role
-    }));
+    const legacyExperience = [
+      ...((profile.current_positions || []).map((position: any) => normalizeLegacyPosition(position, true))),
+      ...((profile.past_positions || []).map((position: any) => normalizeLegacyPosition(position, false))),
+    ];
+
+    const workExperienceSource = (profile.work_experience && profile.work_experience.length > 0)
+      ? profile.work_experience
+      : legacyExperience;
+
+    const workExperience = workExperienceSource
+      .map((exp: any) => ({
+        ...exp,
+        role: exp.role || exp.position,
+        position: exp.position || exp.role,
+        company: exp.company || '',
+        current: exp.current ?? !exp.end,
+      }))
+      .filter((exp: any) => exp.role || exp.company || exp.description);
     const currentJobs = workExperience.filter((exp: any) => !exp.end && exp.current !== false);
     const currentJob = workExperience.find((exp: any) => exp.current === true) || currentJobs[0] || workExperience[0];
     const otherCurrentJobs = currentJobs.filter((j: any) => j !== currentJob);
