@@ -28,9 +28,8 @@ function SkalrAssistantMessage() {
       <div className="max-w-[85%] px-4 py-2.5 border border-border bg-muted/30 text-sm">
         <MessagePrimitive.Content
           components={{
-            Text: ({ text }) => (
+            Text: () => (
               <MarkdownTextPrimitive
-                text={text}
                 remarkPlugins={[remarkGfm]}
                 className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-3 prose-pre:bg-muted prose-pre:border prose-pre:border-border"
               />
