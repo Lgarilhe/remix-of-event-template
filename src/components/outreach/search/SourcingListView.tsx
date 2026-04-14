@@ -146,32 +146,6 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
       const q = companyFilter.toLowerCase();
       list = list.filter(({ exp }) => exp?.company?.toLowerCase().includes(q));
     }
-    if (locationFilter) {
-      const q = locationFilter.toLowerCase();
-      list = list.filter(({ profile: p }) => p.location?.toLowerCase().includes(q));
-    }
-    if (headlineFilter) {
-      const q = headlineFilter.toLowerCase();
-      list = list.filter(({ profile: p }) => p.headline?.toLowerCase().includes(q));
-    }
-    if (skillFilter) {
-      const q = skillFilter.toLowerCase();
-      list = list.filter(({ profile: p, score }) => {
-        const profileSkills = p.skills?.some(s => s.name.toLowerCase().includes(q));
-        const matchingSkills = score?.matching_skills?.some(s => s.toLowerCase().includes(q));
-        return profileSkills || matchingSkills;
-      });
-    }
-    if (industryFilter) {
-      const q = industryFilter.toLowerCase();
-      list = list.filter(({ profile: p, exp }) => {
-        const pIndustry = p.industry?.toLowerCase().includes(q);
-        const expIndustry = Array.isArray(exp?.industry)
-          ? exp.industry.some((i: string) => i.toLowerCase().includes(q))
-          : (typeof exp?.industry === 'string' && exp.industry.toLowerCase().includes(q));
-        return pIndustry || expIndustry;
-      });
-    }
     if (recFilter !== 'all') {
       list = list.filter(({ score }) => score?.recommendation === recFilter);
     }
@@ -188,29 +162,8 @@ export const SourcingListView: React.FC<SourcingListViewProps> = ({
         return true;
       });
     }
-    if (openToWorkFilter !== 'all') {
-      list = list.filter(({ profile: p }) => {
-        const otw = p.open_to_work || p.is_open_to_work;
-        return openToWorkFilter === 'yes' ? !!otw : !otw;
-      });
-    }
-    if (networkFilter !== 'all') {
-      list = list.filter(({ profile: p }) => {
-        const dist = getNetworkDist(p);
-        if (networkFilter === '1st') return dist === 1;
-        if (networkFilter === '2nd') return dist === 2;
-        if (networkFilter === '3rd') return dist === 3;
-        return true;
-      });
-    }
-    if (hasEmailFilter !== 'all') {
-      list = list.filter(({ profile: p }) => {
-        const hasEmail = !!(p.contact_info?.emails?.length);
-        return hasEmailFilter === 'yes' ? hasEmail : !hasEmail;
-      });
-    }
     return list;
-  }, [enriched, nameFilter, companyFilter, locationFilter, headlineFilter, skillFilter, industryFilter, recFilter, expMatchFilter, scoreRangeFilter, openToWorkFilter, networkFilter, hasEmailFilter]);
+  }, [enriched, nameFilter, companyFilter, recFilter, expMatchFilter, scoreRangeFilter]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
