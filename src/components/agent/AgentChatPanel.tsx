@@ -65,21 +65,33 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     return () => subscription.unsubscribe();
   }, []);
 
-  // Build chat adapter for assistant-ui
+  // Build chat adapter for assistant-ui — use getter refs so the adapter
+  // always reads the latest values without needing to be recreated.
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
+
   const adapter = useMemo(
     () =>
       createSkalrChatAdapter({
         supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-        accessToken: accessToken || '',
+        getConversationId: () => conversationIdRef.current || '',
+        setConversationId: (id: string) => {
+          conversationIdRef.current = id;
+          setConversationId(id);
+          setShowList(false);
+        },
+        getAccessToken: () => accessTokenRef.current || '',
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        conversationId: conversationId || '',
         modelOverride: selectedModel,
         contextMode,
         briefContext,
         projectId,
         accountId,
+        organizationId: undefined, // will set below
       }),
-    [conversationId, accessToken, selectedModel, contextMode, briefContext, projectId, accountId],
+    [selectedModel, contextMode, briefContext, projectId, accountId],
   );
 
   const runtime = useLocalRuntime(adapter);
