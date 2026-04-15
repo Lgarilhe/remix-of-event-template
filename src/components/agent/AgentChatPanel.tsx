@@ -58,6 +58,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   conversationIdRef.current = conversationId;
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
+  const selectedModelRef = useRef(selectedModel);
+  selectedModelRef.current = selectedModel;
 
   const adapter = useMemo(
     () =>
@@ -71,14 +73,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         },
         getAccessToken: () => accessTokenRef.current || '',
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        modelOverride: selectedModel,
+        getModelOverride: () => selectedModelRef.current,
         contextMode,
         briefContext,
         projectId,
         accountId,
         organizationId: organizationId || undefined,
       }),
-    [selectedModel, contextMode, briefContext, projectId, accountId, organizationId],
+    [contextMode, briefContext, projectId, accountId, organizationId],
   );
 
   const runtime = useLocalRuntime(adapter);
