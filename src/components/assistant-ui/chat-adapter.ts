@@ -113,7 +113,8 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
           finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
         }
         finalParts.push({ type: 'text' as const, text: accumulated || '…' });
-        return { content: finalParts };
+        yield { content: finalParts };
+        return;
       }
 
       // Existing conversation — stream
@@ -192,7 +193,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
         finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
       }
       finalParts.push({ type: 'text' as const, text: accumulated || '…' });
-      return { content: finalParts };
+      yield { content: finalParts };
     },
   };
 }
