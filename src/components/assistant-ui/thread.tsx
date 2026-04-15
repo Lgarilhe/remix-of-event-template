@@ -1,17 +1,16 @@
 /**
- * SkalrThread — Custom assistant-ui Thread component with thinking display and Skalr styling.
+ * SkalrThread — Custom assistant-ui Thread component with Skalr styling.
  */
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
-  useThreadRuntime,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { cn } from "@/lib/utils";
 import { Send, User, Bot } from "lucide-react";
-import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
+
 
 interface SkalrThreadProps {
   contextMode?: string | null;
@@ -64,13 +63,14 @@ const SkalrAssistantMessage: React.FC = () => {
         <MessagePrimitive.Content
           components={{
             Text: ({ text }) => (
-              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
-                <MarkdownTextPrimitive>{text}</MarkdownTextPrimitive>
+              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed" dangerouslySetInnerHTML={{ __html: '' }}>
               </div>
             ),
           }}
         />
-        {/* Streaming cursor handled via Content components */}
+        <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
+          <MarkdownTextPrimitive />
+        </div>
       </div>
     </div>
   );
