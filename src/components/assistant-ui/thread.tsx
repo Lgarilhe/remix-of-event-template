@@ -92,7 +92,8 @@ export const ThreadWelcome: FC<ThreadWelcomeProps> = ({ contextMode, suggestions
 
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 py-12">
-      <h3 className="text-base font-medium text-foreground">
+      <AnimatedOrb size={44} speed={3} />
+      <h3 className="mt-5 text-base font-medium text-foreground">
         Comment puis-je vous aider ?
       </h3>
       <div className="mt-6 w-full max-w-[400px] space-y-0.5">
