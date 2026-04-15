@@ -1,9 +1,7 @@
-import type { ChatModelAdapter } from "@assistant-ui/react";
-import { supabase } from "@/integrations/supabase/client";
+import type { ChatModelAdapter, ChatModelRunOptions } from '@assistant-ui/react';
 
-export interface SkalrChatAdapterOptions {
+interface SkalrAdapterConfig {
   supabaseUrl: string;
-  /** Mutable ref-like: conversationId can be empty initially and set later */
   getConversationId: () => string;
   setConversationId: (id: string) => void;
   getAccessToken: () => string;
@@ -13,121 +11,189 @@ export interface SkalrChatAdapterOptions {
   briefContext?: Record<string, unknown> | null;
   projectId?: string | null;
   accountId?: string | null;
-  organizationId?: string | null;
+  organizationId?: string;
 }
 
-export function createSkalrChatAdapter(
-  options: SkalrChatAdapterOptions,
-): ChatModelAdapter {
+export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAdapter {
   return {
-    async *run({ messages, abortSignal }) {
-      const lastUserMessage = messages[messages.length - 1];
-      const text =
-        lastUserMessage?.content
-          ?.filter(
-            (p): p is { type: "text"; text: string } => p.type === "text",
-          )
-          .map((p) => p.text)
-          .join("") || "";
+    async *run({ messages, abortSignal }: ChatModelRunOptions) {
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+      const userContent = lastUserMsg
+        ? lastUserMsg.content
+            .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+            .map(p => p.text)
+            .join('\n')
+        : '';
 
-      // Auto-create conversation if none exists
-      let conversationId = options.getConversationId();
+      if (!userContent.trim()) return;
+
+      let conversationId = config.getConversationId();
+
+      // Auto-create conversation if needed
       if (!conversationId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user || !options.organizationId) {
-          throw new Error("Not authenticated");
-        }
-
-        const { data, error } = await supabase
-          .from("agent_conversations")
-          .insert({
-            organization_id: options.organizationId,
-            created_by: user.id,
-            status: "calibrating",
-          })
-          .select("id")
-          .single();
-
-        if (error || !data) {
-          throw new Error("Failed to create conversation");
-        }
-
-        conversationId = data.id;
-        options.setConversationId(conversationId);
-      }
-
-      const accessToken = options.getAccessToken();
-      if (!accessToken) {
-        throw new Error("No access token");
-      }
-
-      const response = await fetch(
-        `${options.supabaseUrl}/functions/v1/search-agent-chat`,
-        {
-          method: "POST",
+        const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-            apikey: options.apiKey,
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.getAccessToken()}`,
+            apikey: config.apiKey,
           },
           body: JSON.stringify({
-            conversation_id: conversationId,
-            message: text,
-            _ai_model: options.modelOverride || undefined,
-            _ai_action: "agent_search_calibration",
-            context_mode: options.contextMode || undefined,
-            brief_context: options.briefContext || undefined,
-            project_id: options.projectId || undefined,
-            account_id: options.accountId || undefined,
+            message: userContent,
+            create_conversation: true,
+            organization_id: config.organizationId,
+            _ai_model: config.modelOverride || undefined,
+            _ai_action: 'agent_search_calibration',
+            context_mode: config.contextMode || undefined,
+            brief_context: config.briefContext || undefined,
+            project_id: config.projectId || undefined,
+            account_id: config.accountId || undefined,
           }),
           signal: abortSignal,
-        },
-      );
+        });
 
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(`search-agent-chat failed: ${response.status} ${errText}`);
+        if (!resp.ok) throw new Error(`Edge function error: ${resp.status}`);
+
+        const reader = resp.body!.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+        let thinkingAccumulated = '';
+        let isThinking = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+
+              // Capture conversation_id from first event
+              if (parsed.conversation_id && !conversationId) {
+                conversationId = parsed.conversation_id;
+                config.setConversationId(conversationId);
+              }
+              if (parsed.done === true) continue;
+
+              const thinkingText = parsed.choices?.[0]?.delta?.thinking;
+              if (thinkingText) {
+                thinkingAccumulated += thinkingText;
+                isThinking = true;
+                yield {
+                  content: [
+                    { type: 'reasoning' as const, text: thinkingAccumulated },
+                  ],
+                };
+                continue;
+              }
+
+              const text = parsed.choices?.[0]?.delta?.content;
+              if (text) {
+                if (isThinking) isThinking = false;
+                accumulated += text;
+                const parts: any[] = [];
+                if (thinkingAccumulated) {
+                  parts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
+                }
+                parts.push({ type: 'text' as const, text: accumulated });
+                yield { content: parts };
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+
+        const finalParts: any[] = [];
+        if (thinkingAccumulated) {
+          finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
+        }
+        finalParts.push({ type: 'text' as const, text: accumulated || '…' });
+        yield { content: finalParts };
+        return;
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
+      // Existing conversation — stream
+      const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.getAccessToken()}`,
+          apikey: config.apiKey,
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message: userContent,
+          _ai_model: config.modelOverride || undefined,
+          _ai_action: 'agent_search_calibration',
+          context_mode: config.contextMode || undefined,
+          brief_context: config.briefContext || undefined,
+          project_id: config.projectId || undefined,
+          account_id: config.accountId || undefined,
+        }),
+        signal: abortSignal,
+      });
 
+      if (!resp.ok) throw new Error(`Edge function error: ${resp.status}`);
+
+      const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
-      let fullText = "";
-      let buffer = "";
+      let accumulated = '';
+      let thinkingAccumulated = '';
+      let isThinking = false;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr || jsonStr === "[DONE]") continue;
-
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
           try {
-            const event = JSON.parse(jsonStr);
+            const parsed = JSON.parse(data);
+            if (parsed.done === true) continue;
 
-            // Server-side done confirmation event
-            if (event.done === true) continue;
-
-            // Handle text content
-            const contentText = event.choices?.[0]?.delta?.content;
-            if (contentText) {
-              fullText += contentText;
+            const thinkingText = parsed.choices?.[0]?.delta?.thinking;
+            if (thinkingText) {
+              thinkingAccumulated += thinkingText;
+              isThinking = true;
               yield {
-                content: [{ type: "text" as const, text: fullText }],
+                content: [
+                  { type: 'reasoning' as const, text: thinkingAccumulated },
+                ],
               };
+              continue;
+            }
+
+            const text = parsed.choices?.[0]?.delta?.content;
+            if (text) {
+              if (isThinking) isThinking = false;
+              accumulated += text;
+              const parts: any[] = [];
+              if (thinkingAccumulated) {
+                parts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
+              }
+              parts.push({ type: 'text' as const, text: accumulated });
+              yield { content: parts };
             }
           } catch {
-            // skip malformed JSON lines
+            // Ignore parse errors
           }
         }
       }
+
+      const finalParts: any[] = [];
+      if (thinkingAccumulated) {
+        finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
+      }
+      finalParts.push({ type: 'text' as const, text: accumulated || '…' });
+      yield { content: finalParts };
     },
   };
 }
