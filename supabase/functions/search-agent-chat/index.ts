@@ -886,6 +886,10 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
                 system: [{ type: "text", text: activeSystemPrompt }],
                 messages: currentMessages,
                 tools: sourcingTools,
+                thinking: {
+                  type: "enabled",
+                  budget_tokens: 8000,
+                },
               };
 
               // On the first round after diagnostic questions are answered,
