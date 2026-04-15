@@ -8,7 +8,7 @@ import {
   MessagePrimitive,
   useThreadRuntime,
 } from "@assistant-ui/react";
-import { MarkdownText } from "@assistant-ui/react-markdown";
+import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { cn } from "@/lib/utils";
 import { Send, User, Bot } from "lucide-react";
 import { AnimatedOrb } from "@/components/ui/AnimatedOrb";
@@ -65,14 +65,12 @@ const SkalrAssistantMessage: React.FC = () => {
           components={{
             Text: ({ text }) => (
               <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
-                <MarkdownText text={text} />
+                <MarkdownTextPrimitive text={text} />
               </div>
             ),
           }}
         />
-        <MessagePrimitive.InProgress>
-          <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse ml-0.5 rounded-sm" />
-        </MessagePrimitive.InProgress>
+        {/* Streaming cursor handled via Content components */}
       </div>
     </div>
   );
