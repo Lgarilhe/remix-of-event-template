@@ -13,10 +13,10 @@ export interface MentionEntity {
   contextPayload?: Record<string, unknown>;
 }
 
-const TYPE_META: Record<MentionType, { emoji: string; label: string }> = {
-  mission: { emoji: '🎯', label: 'Mission' },
-  candidat: { emoji: '👤', label: 'Candidat' },
-  shortlist: { emoji: '📋', label: 'Shortlist' },
+const TYPE_META: Record<MentionType, { icon: string; label: string }> = {
+  mission: { icon: 'mission', label: 'Mission' },
+  candidat: { icon: 'candidat', label: 'Candidat' },
+  shortlist: { icon: 'shortlist', label: 'Shortlist' },
 };
 
 export const MENTION_TYPES = Object.entries(TYPE_META).map(([key, meta]) => ({

@@ -174,10 +174,10 @@ export function MentionComposer() {
     [showMentionMenu, results, highlightIndex, insertMention, closeMentionMenu, handleSend],
   );
 
-  const typeEmoji: Record<MentionType, string> = {
-    mission: '🎯',
-    candidat: '👤',
-    shortlist: '📋',
+  const typeColors: Record<MentionType, string> = {
+    mission: 'bg-orange-500/15 text-orange-400',
+    candidat: 'bg-blue-500/15 text-blue-400',
+    shortlist: 'bg-violet-500/15 text-violet-400',
   };
 
   return (
