@@ -9,6 +9,7 @@ export interface SkalrChatAdapterOptions {
   getAccessToken: () => string;
   apiKey: string;
   modelOverride?: string | null;
+  getModelOverride?: () => string | null;
   contextMode?: string | null;
   briefContext?: Record<string, unknown> | null;
   projectId?: string | null;
