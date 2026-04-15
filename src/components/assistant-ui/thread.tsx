@@ -80,10 +80,9 @@ const StreamingIndicator = () => (
 
 /** Single assistant message */
 const AssistantMessage = () => {
-  const message = useMessage();
-  const isInProgress = message.isLast && message.status?.type === 'running';
-  const hasTextContent = message.message?.content?.some(
-    (part: any) => part.type === 'text' && part.text?.trim()
+  const isRunning = useMessage((s) => s.status?.type === 'running');
+  const hasText = useMessage((s) =>
+    s.content?.some((part: any) => part.type === 'text' && part.text?.trim())
   );
 
   return (
