@@ -37,6 +37,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 }) => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [showList, setShowList] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
