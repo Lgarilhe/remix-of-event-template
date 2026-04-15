@@ -65,7 +65,7 @@ const SkalrAssistantMessage: React.FC = () => {
           components={{
             Text: ({ text }) => (
               <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
-                <MarkdownTextPrimitive text={text} />
+                <MarkdownTextPrimitive>{text}</MarkdownTextPrimitive>
               </div>
             ),
           }}
