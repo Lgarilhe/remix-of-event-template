@@ -292,7 +292,12 @@ export function MentionComposer() {
                     i === highlightIndex ? 'bg-primary/5' : 'hover:bg-muted/50',
                   )}
                 >
-                  <span className="text-sm shrink-0">{typeEmoji[entity.type]}</span>
+                  <span className={cn(
+                    "w-2 h-2 rounded-full shrink-0",
+                    entity.type === 'mission' && 'bg-orange-400',
+                    entity.type === 'candidat' && 'bg-blue-400',
+                    entity.type === 'shortlist' && 'bg-violet-400',
+                  )} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">
                       {entity.label}
