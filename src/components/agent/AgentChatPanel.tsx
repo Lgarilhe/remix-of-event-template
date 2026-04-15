@@ -100,11 +100,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   }, []);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
-    // Just clear conversation — the adapter will auto-create on first message
     setConversationId(null);
     setSelectedJob(job || null);
     setShowList(false);
-  }, []);
+    // Reset the assistant-ui thread to clear messages
+    runtime.switchToNewThread();
+  }, [runtime]);
 
   const handleSelectConversation = useCallback((conv: AgentConversation) => {
     setConversationId(conv.id);
