@@ -7,16 +7,13 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
 } from "@assistant-ui/react";
-import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
-import { cn } from "@/lib/utils";
 import { Send, User, Bot } from "lucide-react";
-
 
 interface SkalrThreadProps {
   contextMode?: string | null;
 }
 
-export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode }) => {
+export const SkalrThread: React.FC<SkalrThreadProps> = () => {
   return (
     <ThreadPrimitive.Root className="flex flex-col flex-1 overflow-hidden">
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -32,7 +29,6 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode }) => {
   );
 };
 
-// ── User Message ──
 const SkalrUserMessage: React.FC = () => {
   return (
     <div className="flex gap-3 justify-end animate-fade-in">
@@ -52,7 +48,6 @@ const SkalrUserMessage: React.FC = () => {
   );
 };
 
-// ── Assistant Message ──
 const SkalrAssistantMessage: React.FC = () => {
   return (
     <div className="flex gap-3 animate-fade-in">
@@ -63,20 +58,17 @@ const SkalrAssistantMessage: React.FC = () => {
         <MessagePrimitive.Content
           components={{
             Text: ({ text }) => (
-              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed" dangerouslySetInnerHTML={{ __html: '' }}>
+              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                {text}
               </div>
             ),
           }}
         />
-        <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
-          <MarkdownTextPrimitive />
-        </div>
       </div>
     </div>
   );
 };
 
-// ── Composer ──
 const SkalrComposer: React.FC = () => {
   return (
     <ComposerPrimitive.Root className="border-t border-border/60 bg-background/80 backdrop-blur-sm p-3">
