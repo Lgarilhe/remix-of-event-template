@@ -311,7 +311,7 @@ export function MentionComposer() {
       )}
 
       {/* Composer */}
-      <div className="relative flex items-end gap-2 border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/10 transition-all duration-200 px-4 py-3 bg-muted/5 rounded-2xl">
+      <div className="relative flex items-end gap-2 border border-border/40 focus-within:border-border transition-colors duration-200 px-3 py-2.5 bg-muted/30 rounded-2xl">
         {/* @ button */}
         <button
           type="button"
@@ -340,14 +340,14 @@ export function MentionComposer() {
             }
           }}
           className={cn(
-            'h-8 w-8 flex items-center justify-center shrink-0 rounded-xl transition-all duration-150',
+            'h-7 w-7 flex items-center justify-center shrink-0 rounded-lg transition-all duration-150',
             showMentionMenu
               ? 'bg-primary/10 text-primary'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+              : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50',
           )}
           title="Mentionner (@candidat, @mission, @shortlist)"
         >
-          <AtSign className="h-4 w-4" />
+          <AtSign className="h-3.5 w-3.5" />
         </button>
 
         <textarea
@@ -355,27 +355,36 @@ export function MentionComposer() {
           value={text}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder="Posez une question… (@ pour contextualiser)"
-          className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none min-h-[24px] max-h-[160px] leading-relaxed"
+          placeholder="Faites ce que vous voulez avec l'IA…"
+          className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none min-h-[24px] max-h-[160px] leading-relaxed"
           rows={1}
           autoFocus
         />
 
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!text.trim()}
-          className="h-8 w-8 flex items-center justify-center bg-foreground text-background hover:bg-foreground/90 shrink-0 transition-all duration-150 active:scale-90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-xl"
-        >
-          <Send className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleCancel}
-          className="h-8 w-8 flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 shrink-0 transition-all duration-150 rounded-xl"
-        >
-          <Square className="h-3 w-3 fill-current" />
-        </button>
+        {/* Send or Stop button */}
+        {isRunning ? (
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="h-7 w-7 flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 shrink-0 transition-all duration-150 rounded-lg"
+          >
+            <Square className="h-3 w-3 fill-current" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!text.trim()}
+            className={cn(
+              'h-7 w-7 flex items-center justify-center shrink-0 transition-all duration-150 rounded-lg',
+              text.trim()
+                ? 'bg-foreground text-background hover:bg-foreground/90 active:scale-90'
+                : 'bg-muted/50 text-muted-foreground/30 cursor-not-allowed',
+            )}
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
