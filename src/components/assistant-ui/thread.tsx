@@ -88,10 +88,10 @@ const AssistantMessage = () => {
   return (
     <div className="flex gap-2.5 animate-fade-in">
       <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-        <AnimatedOrb size={18} speed={isInProgress ? 6 : 2} />
+        <AnimatedOrb size={18} speed={isRunning ? 6 : 2} />
       </div>
       <div className="flex-1 min-w-0 space-y-2">
-        {isInProgress && !hasTextContent && <StreamingIndicator />}
+        {isRunning && !hasText && <StreamingIndicator />}
         <MessagePrimitive.Content
           components={{
             Text: ({ text }) => (
@@ -102,7 +102,7 @@ const AssistantMessage = () => {
             Reasoning: ({ text }) => <ReasoningBlock text={text} />,
           }}
         />
-        {isInProgress && hasTextContent && (
+        {isRunning && hasText && (
           <span className="inline-block w-1.5 h-4 bg-primary/50 animate-pulse rounded-sm ml-0.5" />
         )}
       </div>
