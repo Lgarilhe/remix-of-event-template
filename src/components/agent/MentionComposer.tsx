@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Square, AtSign, Search, Loader2 } from 'lucide-react';
-import { useThreadRuntime } from '@assistant-ui/react';
+import { Send, Square, AtSign, Search, Loader2, ArrowUp } from 'lucide-react';
+import { useThreadRuntime, useAuiState } from '@assistant-ui/react';
 import { cn } from '@/lib/utils';
 import {
   useMentionSearch,
