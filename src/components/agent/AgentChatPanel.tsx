@@ -259,6 +259,22 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         )}
       </div>
 
+      {/* History drawer overlay */}
+      {showHistory && (
+        <div className="absolute inset-0 z-20 flex">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setShowHistory(false)} />
+          <div className="relative ml-auto w-full max-w-xs bg-background border-l border-border h-full flex flex-col animate-slide-in-right">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <h4 className="text-sm font-semibold">Historique</h4>
+              <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <AgentConversationsList onSelect={(conv) => { handleSelectConversation(conv); setShowHistory(false); }} listConversations={listConversations} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Thread — assistant-ui handles everything */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <AssistantRuntimeProvider runtime={runtime}>
