@@ -3,7 +3,6 @@ import { ArrowLeft, Bot, History, Plus } from 'lucide-react';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
-import { AgentJobSelector } from './AgentJobSelector';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useAgent } from '@/contexts/AgentContext';
