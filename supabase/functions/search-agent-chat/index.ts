@@ -877,19 +877,20 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
             let maxToolRounds = 5;
 
             // Tool-calling loop
+            let toolRound = 0;
             while (maxToolRounds > 0) {
-              console.log(`[search-agent-chat] Tool loop round ${6 - maxToolRounds}, messages: ${currentMessages.length}`);
+              toolRound++;
+              console.log(`[search-agent-chat] Tool loop round ${toolRound}, messages: ${currentMessages.length}`);
 
+              // Only enable thinking on first round (keeps latency manageable)
+              const useThinking = toolRound === 1;
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
                 system: [{ type: "text", text: activeSystemPrompt }],
                 messages: currentMessages,
                 tools: sourcingTools,
-                thinking: {
-                  type: "enabled",
-                  budget_tokens: 8000,
-                },
+                ...(useThinking ? { thinking: { type: "enabled", budget_tokens: 4000 } } : {}),
               };
 
               // On the first round after diagnostic questions are answered,
