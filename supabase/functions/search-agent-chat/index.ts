@@ -509,13 +509,16 @@ Deno.serve(async (req) => {
       content: message,
     });
 
-    // Fetch conversation history (limit to 24 messages to control token costs)
-    const { data: history } = await supabase
+    // Fetch conversation history (most recent 24 messages to control token costs)
+    // We order DESC + limit to get the LATEST messages, then reverse to chronological.
+    // This ensures the newest user message is always included (critical for thinking mode).
+    const { data: historyDesc } = await supabase
       .from("agent_messages")
       .select("role, content, metadata")
       .eq("conversation_id", conversation_id)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(24);
+    const history = (historyDesc || []).reverse();
 
     // Build messages for AI
     const messages: any[] = [];
