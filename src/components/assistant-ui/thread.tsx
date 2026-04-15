@@ -3,9 +3,8 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
-  useMessage,
 } from '@assistant-ui/react';
-import { Send, ChevronDown, ChevronRight, Brain, Loader2 } from 'lucide-react';
+import { Send, ChevronDown, ChevronRight, Brain } from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -55,7 +54,7 @@ const ReasoningBlock = ({ text }: { text: string }) => {
   );
 };
 
-/** Animated typing indicator — pulsing orb + bouncing dots */
+/** Animated typing indicator — 3 bouncing dots */
 const TypingIndicator = () => (
   <div className="flex gap-2.5 animate-fade-in">
     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
@@ -70,28 +69,14 @@ const TypingIndicator = () => (
   </div>
 );
 
-/** Streaming indicator shown inside the assistant message while content is loading */
-const StreamingIndicator = () => (
-  <div className="flex items-center gap-2 py-1 animate-fade-in">
-    <Loader2 className="h-3.5 w-3.5 text-primary/60 animate-spin" />
-    <span className="text-xs text-muted-foreground/70">Génération en cours…</span>
-  </div>
-);
-
 /** Single assistant message */
 const AssistantMessage = () => {
-  const isRunning = useMessage((s) => s.status?.type === 'running');
-  const hasText = useMessage((s) =>
-    s.content?.some((part: any) => part.type === 'text' && part.text?.trim())
-  );
-
   return (
     <div className="flex gap-2.5 animate-fade-in">
       <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-        <AnimatedOrb size={18} speed={isRunning ? 6 : 2} />
+        <AnimatedOrb size={18} />
       </div>
       <div className="flex-1 min-w-0 space-y-2">
-        {isRunning && !hasText && <StreamingIndicator />}
         <MessagePrimitive.Content
           components={{
             Text: ({ text }) => (
@@ -102,9 +87,6 @@ const AssistantMessage = () => {
             Reasoning: ({ text }) => <ReasoningBlock text={text} />,
           }}
         />
-        {isRunning && hasText && (
-          <span className="inline-block w-1.5 h-4 bg-primary/50 animate-pulse rounded-sm ml-0.5" />
-        )}
       </div>
     </div>
   );
@@ -135,7 +117,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode }) => {
           }}
         />
 
-        {/* Loading indicator before any assistant message appears */}
+        {/* Loading indicator while AI is processing */}
         <ThreadPrimitive.If running>
           <TypingIndicator />
         </ThreadPrimitive.If>
