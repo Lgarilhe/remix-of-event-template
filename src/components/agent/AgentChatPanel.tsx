@@ -222,13 +222,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   return (
     <div className="flex flex-col h-full bg-background relative animate-slide-in-right">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
-        <button
-          onClick={() => setShowList(true)}
-          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 text-foreground" />
-        </button>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
         <AnimatedOrb size={24} speed={4}>
           <Bot className="w-3 h-3 text-foreground/70" />
         </AnimatedOrb>
@@ -239,11 +233,30 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               : contextMode === 'outreach' ? 'Outreach Assistant'
               : 'Copilot IA'}
           </h3>
-          <p className="text-[11px] text-muted-foreground">
-            {contextMode ? 'Mode contextuel' : 'Conversation libre'}
-          </p>
         </div>
+        <button
+          onClick={() => handleNewConversation()}
+          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          title="Nouvelle conversation"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setShowHistory(!showHistory)}
+          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          title="Historique"
+        >
+          <History className="w-4 h-4" />
+        </button>
         <ModelPicker actionId="agent_search_calibration" value={selectedModel} onChange={setSelectedModel} compact />
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-muted rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Thread — assistant-ui handles everything */}
