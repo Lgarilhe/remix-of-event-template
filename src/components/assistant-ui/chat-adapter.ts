@@ -88,7 +88,7 @@ export function createSkalrChatAdapter(
           body: JSON.stringify({
             conversation_id: conversationId,
             message: text,
-            _ai_model: options.modelOverride || undefined,
+            _ai_model: (options.getModelOverride ? options.getModelOverride() : options.modelOverride) || undefined,
             _ai_action: "agent_search_calibration",
             context_mode: options.contextMode || undefined,
             brief_context: options.briefContext || undefined,
