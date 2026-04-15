@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Bot, History, Plus, ChevronDown, X, Minus } from 'lucide-react';
+import { History, Plus, ChevronDown, Minus } from 'lucide-react';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
