@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ArrowLeft, Bot, History, Plus } from 'lucide-react';
+import { Bot, History, Plus } from 'lucide-react';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
