@@ -925,6 +925,15 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
               if (data.stop_reason === 'tool_use') {
                 const toolUseBlocks = (data.content || []).filter((b: any) => b.type === 'tool_use');
                 const textBlocks = (data.content || []).filter((b: any) => b.type === 'text');
+                const thinkingBlocks = (data.content || []).filter((b: any) => b.type === 'thinking');
+
+                // Stream thinking blocks
+                for (const tb of thinkingBlocks) {
+                  if (tb.thinking) {
+                    const chunk = { choices: [{ delta: { thinking: tb.thinking }, index: 0 }] };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  }
+                }
 
                 // Stream any text that came before the tool call
                 for (const tb of textBlocks) {
@@ -951,7 +960,14 @@ Candidats shortlistés: ${shortlisted?.length || 0}`;
                 continue;
               }
 
-              // Final response (end_turn) — stream it
+              // Final response (end_turn) — stream thinking then text
+              const finalThinking = (data.content || []).filter((b: any) => b.type === 'thinking');
+              for (const tb of finalThinking) {
+                if (tb.thinking) {
+                  const chunk = { choices: [{ delta: { thinking: tb.thinking }, index: 0 }] };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                }
+              }
               for (const block of (data.content || [])) {
                 if (block.type === 'text' && block.text) {
                   fullResponse += block.text;
