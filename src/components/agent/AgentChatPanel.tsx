@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Bot, History, Plus } from 'lucide-react';
+import { History, Plus, ChevronDown, Minus } from 'lucide-react';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
 import { Job } from '@/types/jobs';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useAgent } from '@/contexts/AgentContext';
-import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocalRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
@@ -129,43 +127,43 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
   // ── Chat view — assistant-ui is the sole runtime ──
   return (
-    <div className="flex flex-col h-full bg-background relative animate-slide-in-right">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
-        <AnimatedOrb size={24} speed={4}>
-          <Bot className="w-3 h-3 text-foreground/70" />
-        </AnimatedOrb>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold truncate text-foreground">
+    <div className="flex flex-col h-full bg-background relative">
+      {/* Header — Notion-style */}
+      <div className="flex items-center px-4 py-2.5 border-b border-border/40 shrink-0 bg-background">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <span className="text-sm font-medium text-foreground truncate">
             {contextMode === 'sourcing' ? 'Sourcing Assistant' 
               : contextMode === 'brief' ? 'Brief Assistant'
               : contextMode === 'outreach' ? 'Outreach Assistant'
-              : 'Copilot IA'}
-          </h3>
+              : 'Nouvelle discussion avec l\'IA'}
+          </span>
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
         </div>
-        <button
-          onClick={() => handleNewConversation()}
-          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          title="Nouvelle conversation"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          title="Historique"
-        >
-          <History className="w-4 h-4" />
-        </button>
-        <ModelPicker actionId="agent_search_calibration" value={selectedModel} onChange={setSelectedModel} compact />
-        {onClose && (
+        <div className="flex items-center gap-0.5">
           <button
-            onClick={onClose}
-            className="text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 hover:bg-muted rounded-lg transition-colors"
+            onClick={() => handleNewConversation()}
+            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted/60 transition-colors text-muted-foreground/70 hover:text-foreground"
+            title="Nouvelle conversation"
           >
-            ✕
+            <Plus className="w-4 h-4" />
           </button>
-        )}
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted/60 transition-colors text-muted-foreground/70 hover:text-foreground"
+            title="Historique"
+          >
+            <History className="w-4 h-4" />
+          </button>
+          <ModelPicker actionId="agent_search_calibration" value={selectedModel} onChange={setSelectedModel} compact />
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted/60 transition-colors text-muted-foreground/70 hover:text-foreground ml-0.5"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* History drawer overlay */}
