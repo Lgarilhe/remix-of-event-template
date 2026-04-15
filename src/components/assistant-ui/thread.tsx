@@ -508,10 +508,10 @@ export function SkalrThread({ contextMode }: SkalrThreadProps) {
       </ThreadPrimitive.ScrollToBottom>
 
       {/* Composer area */}
-      <div className="border-t border-border/30 px-4 py-3 shrink-0 bg-background">
+      <div className="px-4 py-3 shrink-0 bg-background">
         <div className="max-w-2xl mx-auto">
           <MentionComposer />
-          <p className="text-[10px] text-muted-foreground/30 text-center mt-2 select-none">
+          <p className="text-[10px] text-muted-foreground/20 text-center mt-2 select-none">
             L'IA peut faire des erreurs — vérifiez les informations.
           </p>
         </div>
