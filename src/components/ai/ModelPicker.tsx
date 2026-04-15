@@ -54,6 +54,15 @@ export const ModelPicker = ({
   const isAutoRouted = !value;
   const estimatedCost = estimateCredits(actionId, resolvedModelId);
 
+  // Filter models by supported providers for this action
+  const allowedProviders = action?.providers;
+  const filteredModelOrder = allowedProviders
+    ? modelOrder.filter((id) => {
+        const model = MODEL_CATALOG[id];
+        return model && allowedProviders.includes(model.provider);
+      })
+    : modelOrder;
+
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild disabled={disabled}>
@@ -103,7 +112,7 @@ export const ModelPicker = ({
 
           <DropdownMenuSeparator />
 
-          {modelOrder.map((modelId) => {
+          {filteredModelOrder.map((modelId) => {
             const model = MODEL_CATALOG[modelId];
             if (!model) return null;
             const cost = estimateCredits(actionId, modelId);

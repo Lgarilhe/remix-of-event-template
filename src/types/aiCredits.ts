@@ -98,6 +98,8 @@ export interface AIActionCost {
   typicalTokens: number;
   routingTier: RoutingTier;
   category: "sourcing" | "outreach" | "qualification" | "agent";
+  /** Restrict model selection to these providers. If omitted, all providers are available. */
+  providers?: ModelProvider[];
 }
 
 export const ACTION_COSTS: Record<string, AIActionCost> = {
@@ -108,8 +110,8 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   generate_scorecard: { action: "generate_scorecard", label: "Scorecard", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   call_report: { action: "call_report", label: "Compte-rendu d'appel", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   live_coaching: { action: "live_coaching", label: "Coaching live (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
-  agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 6_000, routingTier: "thinking", category: "agent" },
-  agent_search_run: { action: "agent_search_run", label: "Agent — recherche", floor: 10, typicalTokens: 25_000, routingTier: "default", category: "agent" },
+  agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 6_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
+  agent_search_run: { action: "agent_search_run", label: "Agent — recherche", floor: 10, typicalTokens: 25_000, routingTier: "default", category: "agent", providers: ["anthropic"] },
   filter_generation: { action: "filter_generation", label: "Filtres IA auto", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing" },
   filter_assistant_msg: { action: "filter_assistant_msg", label: "Chat filtres", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   refine_search: { action: "refine_search", label: "Affiner recherche", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },

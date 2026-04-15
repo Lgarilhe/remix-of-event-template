@@ -122,6 +122,8 @@ export interface AIActionCost {
   routingTier: RoutingTier;
   /** Category for grouping in UI */
   category: "sourcing" | "outreach" | "qualification" | "agent";
+  /** Restrict model selection to these providers. If omitted, all providers are available. */
+  providers?: ModelProvider[];
 }
 
 export const ACTION_COSTS: Record<string, AIActionCost> = {
@@ -188,6 +190,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 6_000,
     routingTier: "thinking",
     category: "agent",
+    providers: ["anthropic"],
   },
   agent_search_run: {
     action: "agent_search_run",
@@ -196,6 +199,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 25_000,
     routingTier: "default",
     category: "agent",
+    providers: ["anthropic"],
   },
   filter_generation: {
     action: "filter_generation",
