@@ -174,10 +174,10 @@ export function MentionComposer() {
     [showMentionMenu, results, highlightIndex, insertMention, closeMentionMenu, handleSend],
   );
 
-  const typeEmoji: Record<MentionType, string> = {
-    mission: '🎯',
-    candidat: '👤',
-    shortlist: '📋',
+  const typeColors: Record<MentionType, string> = {
+    mission: 'bg-orange-500/15 text-orange-400',
+    candidat: 'bg-blue-500/15 text-blue-400',
+    shortlist: 'bg-violet-500/15 text-violet-400',
   };
 
   return (
@@ -188,9 +188,13 @@ export function MentionComposer() {
           {mentions.map((m, i) => (
             <span
               key={`${m.id}-${i}`}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary border border-primary/20 rounded-md"
+              className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border",
+                typeColors[m.type],
+                "border-current/10"
+              )}
             >
-              <span>{typeEmoji[m.type]}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-current" />
               {m.label}
               <button
                 type="button"
@@ -201,7 +205,7 @@ export function MentionComposer() {
                     return next;
                   })
                 }
-                className="ml-0.5 text-primary/50 hover:text-primary"
+                className="ml-0.5 opacity-50 hover:opacity-100"
               >
                 ×
               </button>
@@ -216,17 +220,17 @@ export function MentionComposer() {
           ref={menuRef}
           className="absolute bottom-full left-0 right-0 mb-1 bg-popover border border-border rounded-xl shadow-lg z-50 overflow-hidden animate-fade-in"
         >
-          {/* Type filter tabs */}
-          <div className="flex border-b border-border/50 px-2 py-1.5 gap-1">
+          {/* Type filter tabs — Qonto-style pills */}
+          <div className="flex items-center gap-0.5 px-2 py-2 border-b border-border/30">
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { setSelectedType(undefined); setHighlightIndex(0); }}
               className={cn(
-                'px-2 py-1 text-[11px] font-medium rounded-md transition-colors',
+                'px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all duration-200',
                 !selectedType
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted/50',
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
               )}
             >
               Tous
@@ -238,13 +242,19 @@ export function MentionComposer() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { setSelectedType(t.type); setHighlightIndex(0); }}
                 className={cn(
-                  'px-2 py-1 text-[11px] font-medium rounded-md transition-colors',
+                  'px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all duration-200 flex items-center gap-1.5',
                   selectedType === t.type
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted/50',
+                    ? 'bg-foreground text-background shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
                 )}
               >
-                {t.emoji} {t.label}
+                <span className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  t.type === 'mission' && 'bg-orange-400',
+                  t.type === 'candidat' && 'bg-blue-400',
+                  t.type === 'shortlist' && 'bg-violet-400',
+                )} />
+                {t.label}
               </button>
             ))}
           </div>
@@ -282,7 +292,12 @@ export function MentionComposer() {
                     i === highlightIndex ? 'bg-primary/5' : 'hover:bg-muted/50',
                   )}
                 >
-                  <span className="text-sm shrink-0">{typeEmoji[entity.type]}</span>
+                  <span className={cn(
+                    "w-2 h-2 rounded-full shrink-0",
+                    entity.type === 'mission' && 'bg-orange-400',
+                    entity.type === 'candidat' && 'bg-blue-400',
+                    entity.type === 'shortlist' && 'bg-violet-400',
+                  )} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">
                       {entity.label}
