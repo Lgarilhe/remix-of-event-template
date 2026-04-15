@@ -29,6 +29,7 @@ export function clearActiveMentions() {
 
 export function MentionComposer() {
   const threadRuntime = useThreadRuntime();
+  const isRunning = useAuiState((s) => s.thread.isRunning);
 
   const [text, setText] = useState('');
   const [showMentionMenu, setShowMentionMenu] = useState(false);
