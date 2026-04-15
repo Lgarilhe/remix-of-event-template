@@ -57,51 +57,50 @@ function WaitingIndicator() {
   );
 }
 
-// ── Welcome screen (Notion-style) ──
+// ── Welcome screen (clean, no emojis) ──
 interface ThreadWelcomeProps {
   contextMode?: string | null;
-  suggestions?: { label: string; prompt: string; icon?: string }[];
+  suggestions?: { label: string; prompt: string }[];
 }
 
 export const ThreadWelcome: FC<ThreadWelcomeProps> = ({ contextMode, suggestions }) => {
   const defaultSuggestions =
     contextMode === "sourcing"
       ? [
-          { icon: "🔍", label: "Lancer une recherche", prompt: "Aide-moi à sourcer des candidats pour cette mission." },
-          { icon: "🎯", label: "Affiner les critères", prompt: "Quels critères dois-je utiliser pour cette recherche ?" },
-          { icon: "📊", label: "Analyser le marché", prompt: "Analyse le marché pour ce type de profil." },
+          { label: "Lancer une recherche", prompt: "Aide-moi à sourcer des candidats pour cette mission." },
+          { label: "Affiner les critères", prompt: "Quels critères dois-je utiliser pour cette recherche ?" },
+          { label: "Analyser le marché", prompt: "Analyse le marché pour ce type de profil." },
         ]
       : contextMode === "brief"
         ? [
-            { icon: "📋", label: "Analyser le brief", prompt: "Analyse ce brief et propose un ICP." },
-            { icon: "✍️", label: "Améliorer la fiche", prompt: "Comment améliorer cette fiche de poste ?" },
+            { label: "Analyser le brief", prompt: "Analyse ce brief et propose un ICP." },
+            { label: "Améliorer la fiche", prompt: "Comment améliorer cette fiche de poste ?" },
           ]
         : contextMode === "outreach"
           ? [
-              { icon: "✉️", label: "Rédiger un message", prompt: "Aide-moi à rédiger un message d'approche." },
-              { icon: "📈", label: "Optimiser la séquence", prompt: "Comment optimiser ma séquence de messages ?" },
+              { label: "Rédiger un message", prompt: "Aide-moi à rédiger un message d'approche." },
+              { label: "Optimiser la séquence", prompt: "Comment optimiser ma séquence de messages ?" },
             ]
           : [
-              { icon: "🔍", label: "Sourcer des candidats", prompt: "Je cherche des candidats. Aide-moi à définir les critères." },
-              { icon: "✍️", label: "Rédiger un message d'approche", prompt: "Aide-moi à rédiger un message d'approche personnalisé." },
-              { icon: "📊", label: "Analyser un poste", prompt: "Analyse les postes ouverts et identifie les priorités." },
-              { icon: "💡", label: "Suggérer des actions", prompt: "Quelles actions devrais-je prioriser aujourd'hui ?" },
+              { label: "Sourcer des candidats", prompt: "Je cherche des candidats. Aide-moi à définir les critères." },
+              { label: "Rédiger un message d'approche", prompt: "Aide-moi à rédiger un message d'approche personnalisé." },
+              { label: "Analyser un poste", prompt: "Analyse les postes ouverts et identifie les priorités." },
+              { label: "Suggérer des actions", prompt: "Quelles actions devrais-je prioriser aujourd'hui ?" },
             ];
 
   const items = suggestions || defaultSuggestions;
 
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 py-12">
-      <AnimatedOrb size={48} speed={3} />
-      <h3 className="mt-5 text-base font-semibold text-foreground">
-        Quel tour de magie allons-nous faire ?
+      <h3 className="text-base font-medium text-foreground">
+        Comment puis-je vous aider ?
       </h3>
-      <div className="mt-8 w-full max-w-[400px] space-y-1.5">
+      <div className="mt-6 w-full max-w-[400px] space-y-0.5">
         {items.map((s) => (
           <ThreadPrimitive.Suggestion key={s.prompt} prompt={s.prompt} method="replace" autoSend>
-            <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:bg-muted/50 transition-colors duration-150 rounded-xl group">
-              <span className="text-base shrink-0">{s.icon || "✨"}</span>
-              <span className="text-foreground/80 group-hover:text-foreground transition-colors">{s.label}</span>
+            <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left hover:bg-muted/50 transition-colors duration-150 rounded-lg group">
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/40 shrink-0" />
+              <span className="text-muted-foreground group-hover:text-foreground transition-colors">{s.label}</span>
             </button>
           </ThreadPrimitive.Suggestion>
         ))}
