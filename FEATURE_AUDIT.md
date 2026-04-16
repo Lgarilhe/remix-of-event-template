@@ -56,37 +56,53 @@ Les redirects `/outreach → /missions`, `/ats → /pipeline`, `/candidates → 
 
 Les deux donnent des conseils contextuels sur la mission. **Action** : transformer MissionCopilot en simples "nudges" inline, laisser toute l'IA interactive dans AgentDrawer.
 
-### B3. Trois éditeurs de séquence
-- `SequenceBuilder.tsx` (1 310 l)
-- `VisualSequenceEditor.tsx`
-- `WorkflowCanvas.tsx`
+### B3. Éditeurs de séquence — hiérarchie correcte mais confusion nominale
+Vérification faite, ce ne sont PAS 3 éditeurs concurrents :
+- `SequenceBuilder.tsx` (1 310 l) = container avec tabs "Construire" / "Visuel"
+- `VisualSequenceEditor.tsx` = enfant appelé dans le tab "Visuel" (`SequenceBuilder.tsx:980-1230`)
+- `WorkflowCanvas.tsx` = ReactFlow graph consommé par `VisualSequenceEditor`
 
-Sous `src/components/outreach/sequence/`, coexistent aussi `SequenceWizardStepper`, `InteractiveFlowDiagram`. Probable évolution historique. **Action** : identifier lequel est la source de vérité, supprimer les autres ou les documenter comme "stepper vs canvas vs builder".
+Plus `SequenceWizardStepper` et `InteractiveFlowDiagram` qui gravitent autour. **Pas de duplication logique**, mais nommage trompeur et surface de code énorme (SequenceBuilder 1 310 l → à découper).
 
-### B4. Trois sources de "candidat"
-| Hook | Source | Utilisé dans |
-|---|---|---|
-| `useATSData` | table `candidates` (pipeline interne) | `/pipeline`, `/dashboard` |
-| `useNotionCandidates` | Notion (client Konekt) | `ScorecardFullPage`, ShortlistSpace |
-| `useVivierCandidates` | table vivier | `/prospection` |
+### B4. Quatre types "candidat" non harmonisés
+| Type | Fichier | Source | Contexte |
+|---|---|---|---|
+| `LinkedInProfile` | `src/components/outreach/types.ts:313` | Unipile/LinkedIn API | Recherche sourcing |
+| `ATSCandidate` | `src/hooks/useATSData.ts:8` | Table `candidates` | `/pipeline`, `/dashboard` |
+| `VivierContact` | `src/hooks/useVivierCandidates.ts:4` | Airtable CRM | `/prospection` |
+| `ProspectProfile` | `src/types/prospects.ts:1` | PDL / Apollo | Enrichissement externe |
 
-Ce ne sont pas vraiment des doublons techniques (3 sources distinctes), mais 3 définitions différentes de ce qu'est un "candidat" pour l'utilisateur. **Action** : unifier la surface API (un type canonique `CandidateView`) avec adaptateurs par source.
+Quatre représentations pour ce qui est **le même concept métier** ("une personne que je considère pour un poste"). Aucun type canonique d'union, aucun adaptateur systématique. **Action** : créer `CandidateEntity` (type discriminé par `source`) + adaptateurs.
 
-### B5. Cinq hooks "profile"
+### B5. 10 hooks "candidat/profile" — granularité excessive
+- `useATSData` — liste pipeline
+- `useCandidateContext` — contexte IA scorecard
+- `useCandidateFullProfile` — agrégation profil complet
+- `useCandidateHistory` — historique Notion stage_changes
+- `useJobCandidateStatus` — statut par job (discovered/messaged/replied)
+- `useNotionCandidates` — shortlist Notion
+- `useProfileActivity` — timeline
 - `useProfileEnrichment` — enrichissement Unipile/Apollo
-- `useProfileActivity` — log d'activité
-- `useCandidateHistory` — historique contacts
-- `useCandidateContext` — agrégation contexte pour IA
-- `useCandidateFullProfile` — profil complet
+- `useVivierCandidates` — Airtable CRM
+- `useVivierEnrichment` — enrichissement vivier
 
-Consommés par 14 composants différents, parfois 2-3 à la fois. **Action** : créer un `useCandidate(id)` façade qui retourne `{ profile, history, activity, context, enrichment }`.
+Chevauchement confirmé : `useCandidateFullProfile` et `useCandidateContext` chargent tous deux "profil + contexte". Consommés par 14 composants, parfois 2-3 à la fois. **Action** : façade `useCandidate(id)` retournant `{ profile, history, activity, context, enrichment, status }`.
 
-### B6. Trois états pour la recherche LinkedIn
-1. `missionSearchCache` (in-memory Map) — `src/hooks/useLinkedInSearch.ts`
-2. `OutreachSearchContext` (legacy) — `src/contexts/OutreachSearchContext.tsx`
-3. React Query cache (implicite via `useLinkedInSearchActions`)
+### B6. Trois caches pour la recherche LinkedIn — dont un zombie
+1. **`missionSearchCache`** (in-memory `Map`) — `src/components/outreach/LinkedInSearch.tsx:61`. Écrit sur tab switch / filter change, hydraté sur re-entry. Survit aux remounts.
+2. **React Query** — via `useSourcingProjects` (stale 5 min), stocke `filters_snapshot` + `job_details`.
+3. **`OutreachSearchContext`** — `src/contexts/OutreachSearchContext.tsx`. Wrapped dans `MissionSourcing.tsx:190` mais **`useLinkedInSearch` ne le lit pas**. Provider présent, données jamais consommées ⇒ **code zombie**.
 
-CLAUDE.md note déjà que OutreachSearchContext est "mostly replaced". **Action** : achever la migration et supprimer.
+**Action** : supprimer `OutreachSearchContext` et son provider. Documenter `missionSearchCache` + React Query comme les deux seules sources.
+
+### B7. Trois formats de filtre sans convertisseur typé
+| Format | Où | Shape clé |
+|---|---|---|
+| AI (edge function) | `filters_snapshot` JSON en DB | `skills_keywords[]`, `location_keywords[]`, `role[].keywords` |
+| UI | `LinkedInFiltersState` | `skills[]` (avec priority), `role[]` (avec scope), `calculated_experience_min` |
+| Apollo/DB | `mapFiltersToApollo()` dans edge function | `q_keywords`, `person_titles`, `person_locations` |
+
+Transformation AI → UI dans `useLinkedInSearch.ts:266-306`. **UI → Apollo n'a pas de type TS** — conversion ad-hoc dans l'edge function `database-search`. **Action** : types explicites + fonctions pures `toAIFormat / fromAIFormat / toApolloFormat`.
 
 ---
 
@@ -160,11 +176,14 @@ Mélange de containers et de présentations. Les plus gros (VivierList, Sequence
 
 - Pages : 24 (dont **3 dead/quasi-dead**, 1 stub)
 - Composants > 500 l : 39 (mélangent logique et présentation)
-- Hooks : 61 (pas de structure par domaine)
+- Hooks : 61 (pas de structure par domaine) — dont 10 autour de "candidat/profile"
+- Contextes React : 3 (dont `OutreachSearchContext` zombie)
 - Copilotes IA coexistants : 2
-- Vues candidat : 3
-- Éditeurs de séquence : 3
+- Vues candidat : 3 (modal / sheet / fullpage)
+- Types "candidat" : 4 (`LinkedInProfile` / `ATSCandidate` / `VivierContact` / `ProspectProfile`)
 - Sources de candidat : 3 (ATS / Notion / Vivier)
+- Formats de filtre : 3 (AI / UI / Apollo) sans type pivot explicite
+- Caches de recherche LinkedIn : 3 (mémoire + React Query + context zombie)
 - Inbox : 3 canaux non unifiés
 - Settings tabs : 9 (plusieurs fusionnables)
 - Redirects legacy actifs : 3 (mais encore utilisés dans le code)
