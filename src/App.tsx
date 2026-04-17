@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, lazy, Suspense } from "react";
+import * as Sentry from "@sentry/react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -81,12 +82,13 @@ const AppContent = () => {
         clearOrgIdCache();
         queryClient.clear();
         prevUserIdRef.current = null;
+        Sentry.setUser(null);
 
         const currentPath = locationRef.current;
-        const isPublicRoute = PUBLIC_ROUTES.some(route => 
+        const isPublicRoute = PUBLIC_ROUTES.some(route =>
           currentPath === route || currentPath.startsWith(route + '/')
         );
-        
+
         if (!isPublicRoute && currentPath !== '/auth') {
           setSessionExpired(true);
         }
@@ -97,6 +99,9 @@ const AppContent = () => {
           queryClient.clear();
         }
         prevUserIdRef.current = newUserId;
+        if (newUserId) {
+          Sentry.setUser({ id: newUserId });
+        }
         setSessionExpired(false);
       }
     });
