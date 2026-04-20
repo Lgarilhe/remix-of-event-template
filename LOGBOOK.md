@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-04-20 — INSIGHT — Workflow Lovable + garde-fous Claude Code validés
+
+**Contexte** : setup check final sur worktree `hungry-rhodes-5ca453`, branche `claude/hungry-rhodes-5ca453`.
+**Synthèse** :
+1. Hooks `PreToolUse` sur `Bash(git commit:*)` déclenchent `tsc --noEmit` + `vite build --mode production` et bloquent le commit si l'un échoue — fichiers traces `/tmp/tsc-check.txt` et `/tmp/vite-build.txt`.
+2. Skill `/qa` chargé avec 4 personas (Guillaume power-user, Claire DRH client, Théo edge-case sécurité, Sophie freelance mobile) — règle absolue : touche à `requireAuth`/`verifyOrgMembership`/RLS = Théo obligatoire.
+3. LOGBOOK.md adopté comme journal source de vérité : une entry par décision/insight, format strict daté ISO, newest-first, pas de PII client.
+4. Workflow standard confirmé : branche feature + PR vers main (Lovable deploy prod depuis main), aucun push direct main sans confirmation explicite — option A recommandée, option C demande warning.
+5. Option B validée aujourd'hui : `git push -u origin <branche>` sans PR = sauvegarde propre sans déclencher redeploy Lovable.
+
+**Impact** : `.claude/settings.json` (hooks), `.claude/skills/qa.md` (QA), `LOGBOOK.md` (journal), branche distante `claude/hungry-rhodes-5ca453`.
+**Refs** : commits `ae81aac8` (test hooks) + commit à venir (cette synthèse).
+
+---
+
 ## 2026-04-20 — INSIGHT — Hooks préflight tsc + vite vérifiés sur worktree
 
 **Contexte** : setup check final sur worktree `hungry-rhodes-5ca453`.
