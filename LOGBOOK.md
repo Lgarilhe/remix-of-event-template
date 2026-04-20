@@ -32,6 +32,15 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-04-20 — INSIGHT — Hooks préflight tsc + vite vérifiés sur worktree
+
+**Contexte** : setup check final sur worktree `hungry-rhodes-5ca453`.
+**Fait** : hooks `PreToolUse` sur `Bash(git commit:*)` exécutent `npx tsc --noEmit` puis `npx vite build --mode production` et bloquent le commit si l'un échoue.
+**Impact** : `.claude/settings.json` (config hooks confirmée).
+**Refs** : worktree `hungry-rhodes-5ca453`, commit de vérification à venir.
+
+---
+
 ## 2026-04-20 — DECISION — Package Claude Code consolidé livré
 
 **Contexte** : 25 fichiers (CLAUDE.md + 15 skills + settings + 4 guides + LOGBOOK + PROMPTS + routines) prêts à être déposés dans le repo Konekt AI Platform.
