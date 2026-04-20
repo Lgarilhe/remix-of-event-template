@@ -32,6 +32,28 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-04-20 — DECISION — Migration Lovable Cloud → Supabase préparée
+
+**Contexte** : Lovable Cloud verrouillé (85 tables, 78 edge functions, 4 users). Migration vers Supabase externe pour retirer le vendor lock-in avant commercialisation.
+
+**État de préparation** :
+- Supabase konekt-production créé (ref: crckfywoyjxkawathdff, eu-west-3)
+- Credentials sauvegardés dans supabase-creds.txt local
+- CLI 2.90.0 installée et linkée au projet
+- 175 migrations SQL et 78 edge functions déjà versionnées dans le repo → migration largement automatisable
+
+**Reste à faire (ce week-end, 4-5h)** :
+- [ ] Installer Docker Desktop
+- [ ] supabase db push (migrations)
+- [ ] supabase functions deploy --all
+- [ ] Setter secrets (Anthropic, Apollo, Unipile, Aircall, Airtable, etc.)
+- [ ] Export CSV data Lovable Cloud → import Supabase
+- [ ] Script Node migration users
+- [ ] Nouveau projet Lovable branché sur konekt-production
+- [ ] Tests complets avant bascule
+
+---
+
 ## 2026-04-20 — INSIGHT — Workflow Lovable + garde-fous Claude Code validés
 
 **Contexte** : setup check final sur worktree `hungry-rhodes-5ca453`, branche `claude/hungry-rhodes-5ca453`.
