@@ -115,9 +115,9 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 **Reste à faire** :
 - [x] Valider l'onboarding complet jusqu'au dashboard (testé OK 2026-04-21 soir).
-- [ ] Décider si on transforme `fix-organizations-rls.sql` en migration datée dans `supabase/migrations/` pour qu'elle soit traquée par l'historique (actuellement à la racine, applicable à la main).
+- [x] Transformé en migration datée : `supabase/migrations/20260421180000_grants_bootstrap_owner_uniques.sql`, marquée `applied` en remote via `supabase migration repair`.
 
-**Refs** : commits `00acc732` + commit à venir pour le bug #5. Fichier : `fix-organizations-rls.sql`.
+**Refs** : commits `00acc732` + `bb9b1ec1` (bug #5 UNIQUE constraints) + commit de consolidation. Migration : `20260421180000_grants_bootstrap_owner_uniques.sql`.
 
 ---
 

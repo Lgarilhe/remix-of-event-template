@@ -192,7 +192,7 @@ https://supabase.com/dashboard/project/crckfywoyjxkawathdff/auth/url-configurati
 
 ## Gotcha RLS (fix du 2026-04-21)
 
-Le schéma importé depuis Lovable n'avait PAS les GRANTs sur les tables public → erreur "permission denied for table organizations" lors de l'onboarding. Fix appliqué : `fix-organizations-rls.sql` à la racine, qui grant SELECT/INSERT/UPDATE/DELETE à `authenticated` + default privileges pour les futures tables. À rejouer si un export/reset casse les grants.
+Le schéma importé depuis Lovable n'avait PAS les GRANTs sur les tables public → erreur "permission denied for table organizations" lors de l'onboarding. Fix appliqué : migration `supabase/migrations/20260421180000_grants_bootstrap_owner_uniques.sql`, qui grant SELECT/INSERT/UPDATE/DELETE à `authenticated` + default privileges + fix bootstrap owner (enforce_role_hierarchy) + ajout UNIQUE constraints sur 10 tables (profiles, connector_instances, ai_credit_balances, organization_subscriptions, chat_categories, job_candidate_status, member_email_accounts, member_linkedin_accounts, member_quotas, message_analysis_cache) + extension `members_select` sur organizations pour inclure `created_by = auth.uid()`. Idempotente, rejouable.
 
 ---
 
