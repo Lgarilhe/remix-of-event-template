@@ -1,7 +1,10 @@
-project_id = "vprofpsxzmtndzbrscrq"
+project_id = "crckfywoyjxkawathdff"
 
-[functions.copilot]
-verify_jwt = false
+# NOTE: auth site_url + additional_redirect_urls à configurer manuellement dans le Dashboard :
+# https://supabase.com/dashboard/project/crckfywoyjxkawathdff/auth/url-configuration
+# Site URL         : https://konekt-app-navy.vercel.app
+# Redirect URLs    : https://konekt-app-navy.vercel.app/**, http://localhost:5173/**, http://localhost:8080/**
+# (on évite `supabase config push` qui reset d'autres settings auth non gérés ici.)
 
 [functions.process-inmail-queue]
 verify_jwt = false

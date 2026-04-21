@@ -27,3 +27,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local tool state (not checked in)
+.claude/settings.local.json
+.claude/worktrees/
+supabase/.temp/

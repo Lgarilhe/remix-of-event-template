@@ -1,16 +1,36 @@
-# CLAUDE.md — Rules & Code Map for Skalr
+# CLAUDE.md — Rules & Code Map for Konekt
+
+## Stack & infrastructure (post-migration 2026-04-21)
+- **Frontend** : Vite + React + TS, déployé sur **Vercel** (branche `main` auto-deploy)
+  - Prod URL : https://konekt-app-navy.vercel.app
+  - `vercel.json` gère les rewrites SPA (toutes les routes → `index.html`)
+- **Backend** : Supabase self-managed project **konekt-production** (ref `crckfywoyjxkawathdff`, West EU Ireland)
+  - Dashboard : https://supabase.com/dashboard/project/crckfywoyjxkawathdff
+  - SQL editor : https://supabase.com/dashboard/project/crckfywoyjxkawathdff/sql
+  - Edge functions : https://supabase.com/dashboard/project/crckfywoyjxkawathdff/functions
+  - Auth URL config : https://supabase.com/dashboard/project/crckfywoyjxkawathdff/auth/url-configuration
+- **Lovable est retiré** : plus de push automatique vers main depuis Lovable Cloud. Tout passe par commits Git → Vercel.
 
 ## Before modifying any file
 1. **Read the FULL file** (or at minimum all imports + the function being changed)
 2. **Search for all call sites** — grep for the function/component name to find who uses it
 3. **Check for caches, memos, effects** — React state that might override your changes
 4. **Check for race conditions** — useEffect dependency arrays, async timing
-5. **Always sync with main first** — `git fetch origin main && git rebase origin/main` (Lovable pushes to main)
+5. **Sync with main first** — `git fetch origin main && git rebase origin/main`
 
 ## Before committing
 1. Run `npx tsc --noEmit` — zero errors required
 2. Run `npx vite build` — must succeed
 3. Verify no orphaned imports (grep for removed component/function names)
+
+## Runbook hotfix prod
+1. Fix en local sur une branche.
+2. `npx tsc --noEmit && npx vite build` → doit passer.
+3. Commit + push → PR ou merge direct sur `main`.
+4. Vercel redéploie auto le frontend (~2min).
+5. **Edge functions** ne sont PAS auto-déployées : `supabase functions deploy <name> --project-ref crckfywoyjxkawathdff`.
+6. **Migrations SQL** ne sont PAS auto-appliquées : `supabase db push --linked` ou `supabase db query --linked --file <file.sql>`.
+7. Rollback Vercel : Dashboard Vercel → Deployments → "Promote to Production" sur le deploy précédent.
 
 ---
 
@@ -118,6 +138,57 @@ Data:       enrich-contact, enrich-company, generate-embedding
 Email:      send-transactional-email, process-email-queue, process-inmail-queue
 Integrations: unipile-search, unipile-accounts, stripe-webhook, aircall-webhook, calendly-webhook
 ```
+77 fonctions déployées sur konekt-production. Voir liste complète : `ls supabase/functions/`.
+
+---
+
+## Supabase secrets (edge functions)
+
+Configurer via dashboard : https://supabase.com/dashboard/project/crckfywoyjxkawathdff/settings/functions
+ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
+
+### Auto-provisionnés par Supabase (ne pas toucher)
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, `SUPABASE_PUBLISHABLE_KEY`.
+
+### CRITICAL — à setter absolument, sinon fonctionnalités core cassées
+| Secret | Utilisé par (principales) |
+|--------|---------------------------|
+| `ANTHROPIC_API_KEY` | ai-chat-completion (fallback), score-profile-job, refine-search-filters, generate-search-filters, generate-outreach-message, generate-reply-suggestions, nurturing-analyzer, search-agent-chat, chat-filter-assistant, auto-analyze-message, sequence-send-email, enrich-vivier-contacts, process-sequences |
+| `LOVABLE_API_KEY` | ai-chat-completion, analyze-linkedin-profile, analyze-response, audit-employer-brand, auto-categorize-chats, detect-profile-fraud, enrich-company, fetch-notion-jobs, generate-call-report, generate-recruiter-bio, generate-scorecard, handle-email-suppression, live-coach, nurturing-analyzer, preview-transactional-email, process-debrief, process-email-queue, screen-candidate |
+| `OPENAI_API_KEY` | backfill-knowledge-lake, fetch-notion-jobs, generate-embedding, ingest-context, retrieve-context |
+| `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
+| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | add-to-shortlist, submit-application, process-sequences, auto-analyze-message, screen-candidate, fetch-notion-* |
+| `STRIPE_SECRET_KEY` | create-checkout-session |
+
+### IMPORTANT — features secondaires
+| Secret | Utilisé par |
+|--------|-------------|
+| `APOLLO_API_KEY` | apollo-search, database-search, enrich-company, enrich-contact, enrich-vivier-contacts, scan-recruiter-linkedin |
+| `PDL_API_KEY` | pdl-search |
+| `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
+| `AIRCALL_WEBHOOK_TOKEN` | aircall-webhook |
+| `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook |
+| `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, sequence-webhooks-handler |
+| `PROCESS_SEQUENCES_SECRET` | process-sequences (cron auth) |
+| `APP_URL` | create-checkout-session (= https://konekt-app-navy.vercel.app) |
+
+### OPTIONAL — fallback/dev
+`DEEPGRAM_API_KEY`, `DEEPGRAM_PROJECT_ID`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`, `LOVABLE_SEND_URL`.
+
+## Supabase Auth config (URL allow-list)
+
+À configurer manuellement dans le Dashboard (pas via `supabase config push` qui reset d'autres settings) :
+https://supabase.com/dashboard/project/crckfywoyjxkawathdff/auth/url-configuration
+
+- **Site URL** : `https://konekt-app-navy.vercel.app`
+- **Redirect URLs** (additional) :
+  - `https://konekt-app-navy.vercel.app/**`
+  - `http://localhost:5173/**`
+  - `http://localhost:8080/**`
+
+## Gotcha RLS (fix du 2026-04-21)
+
+Le schéma importé depuis Lovable n'avait PAS les GRANTs sur les tables public → erreur "permission denied for table organizations" lors de l'onboarding. Fix appliqué : `fix-organizations-rls.sql` à la racine, qui grant SELECT/INSERT/UPDATE/DELETE à `authenticated` + default privileges pour les futures tables. À rejouer si un export/reset casse les grants.
 
 ---
 
