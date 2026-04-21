@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,34 +44,17 @@ Deno.serve(async (req) => {
       alerts_log,
     } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "AI gateway not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    let response: Response;
-    try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `Tu es un expert recrutement senior. Tu rédiges des comptes-rendus d'entretien factuels et actionnables.
+    const result = await callClaudeCompat({
+      messages: [
+        {
+          role: "system",
+          content: `Tu es un expert recrutement senior. Tu rédiges des comptes-rendus d'entretien factuels et actionnables.
 Phrases courtes. Pas de jargon. Cite des verbatims entre guillemets.
 Pas de "en conclusion", pas de "en résumé".`,
-            },
-            {
-              role: "user",
-              content: `CANDIDAT : ${candidate_name}
+        },
+        {
+          role: "user",
+          content: `CANDIDAT : ${candidate_name}
 POSTE : ${job_title}
 DURÉE : ${Math.round((call_duration_seconds || 0) / 60)} minutes
 
@@ -95,24 +79,14 @@ Retourne UNIQUEMENT ce JSON :
   "recommendation_reason": "1 phrase",
   "follow_up_message": "Message candidat 4-5 lignes"
 }`,
-            },
-          ],
-          response_format: { type: "json_object" },
-        }),
-      }, 60000);
-    } catch (e) {
-      console.error("AI gateway timeout:", e);
-      throw e;
-    }
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 3000,
+      timeoutMs: 60000,
+    });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const aiRes = await response.json();
-    const text = aiRes.choices?.[0]?.message?.content || "{}";
+    const text = result.content || "{}";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     let report = null;
     if (jsonMatch) {

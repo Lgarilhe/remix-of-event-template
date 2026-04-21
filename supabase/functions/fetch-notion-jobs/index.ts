@@ -1,6 +1,7 @@
 // Deno.serve used directly
 // Pin + target=deno to reduce cold-start flakiness / upstream bundle changes.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +9,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const HAS_AI_KEY = Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -39,7 +40,7 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
 }
 
 console.log('[fetch-notion-jobs] boot', {
-  hasLovableKey: Boolean(LOVABLE_API_KEY),
+  hasAnthropicKey: HAS_AI_KEY,
   hasSupabaseUrl: Boolean(SUPABASE_URL),
   hasServiceRole: Boolean(SUPABASE_SERVICE_ROLE_KEY),
 });
@@ -135,8 +136,8 @@ async function extractSkillsWithAI(jobs: Array<{
 }>): Promise<Map<string, string[]>> {
   const skillsMap = new Map<string, string[]>();
   
-  if (!LOVABLE_API_KEY) {
-    console.warn('LOVABLE_API_KEY not configured, skipping AI skill extraction');
+  if (!HAS_AI_KEY) {
+    console.warn('ANTHROPIC_API_KEY not configured, skipping AI skill extraction');
     return skillsMap;
   }
 
@@ -155,18 +156,11 @@ Description: ${job.description}
   }
 
   try {
-    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          {
-            role: 'system',
-            content: `Tu es un expert en recrutement tech. Extrais les compétences techniques de chaque offre d'emploi.
+    const result = await callClaudeCompat({
+      messages: [
+        {
+          role: 'system',
+          content: `Tu es un expert en recrutement tech. Extrais les compétences techniques de chaque offre d'emploi.
 Retourne UNIQUEMENT un JSON valide avec ce format exact:
 {
   "job_id_1": ["skill1", "skill2"],
@@ -179,23 +173,18 @@ Règles:
 - Maximum 10 skills par poste, les plus importants
 - Pas de soft skills, pas de descriptions de poste
 - Retourne un objet JSON valide, rien d'autre`
-          },
-          {
-            role: 'user',
-            content: `Extrais les compétences techniques de ces offres:\n\n${jobsContext}`
-          }
-        ],
-        temperature: 0.1,
-      }),
-    }, 30000);
+        },
+        {
+          role: 'user',
+          content: `Extrais les compétences techniques de ces offres:\n\n${jobsContext}`
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 2500,
+      timeoutMs: 30000,
+    });
 
-    if (!response.ok) {
-      console.error('Lovable AI error:', response.status, await response.text());
-      return skillsMap;
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const content = result.content;
     
     // Parse the JSON response
     try {

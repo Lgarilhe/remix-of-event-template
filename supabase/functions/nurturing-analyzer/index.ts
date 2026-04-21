@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -176,7 +177,6 @@ Deno.serve(async (req) => {
     }
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY"); // Keep for intent analysis (lightweight)
 
     // Resolve Unipile credentials from org_integrations with env fallback
     let UNIPILE_API_KEY: string | null = null;
@@ -224,7 +224,6 @@ Deno.serve(async (req) => {
           jobs || [],
           account_id,
           user_id,
-          LOVABLE_API_KEY || '' // Intent analysis uses Gemini (lightweight), fallback to empty triggers neutral
         );
         if (opportunity) {
           opportunities.push(opportunity);
@@ -689,7 +688,6 @@ async function analyzeConversation(
   jobs: Array<{ id: string; title: string; client?: string }>,
   accountId: string,
   userId: string,
-  apiKey: string
 ): Promise<NurturingOpportunity | null> {
   
   const now = new Date();
@@ -728,7 +726,7 @@ async function analyzeConversation(
   // Analyze intent from last message if available
   let detectedIntent: string | null = null;
   if (conv.last_message_text) {
-    const intentAnalysis = await analyzeMessageIntent(conv.last_message_text, apiKey);
+    const intentAnalysis = await analyzeMessageIntent(conv.last_message_text);
     detectedIntent = intentAnalysis.intent;
     
     // Adjust priority based on intent
@@ -786,26 +784,17 @@ async function analyzeConversation(
 
 async function analyzeMessageIntent(
   messageText: string,
-  apiKey: string
 ): Promise<{ intent: string; confidence: number }> {
   try {
-    let response: Response;
-    response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: "Tu es un expert en analyse de messages LinkedIn. Réponds uniquement en JSON."
-          },
-          {
-            role: "user",
-            content: `Analyse ce message et détermine l'intention:
+    const result = await callClaudeCompat({
+      messages: [
+        {
+          role: "system",
+          content: "Tu es un expert en analyse de messages LinkedIn. Réponds uniquement en JSON."
+        },
+        {
+          role: "user",
+          content: `Analyse ce message et détermine l'intention:
 "${messageText.slice(0, 500)}"
 
 Réponds en JSON:
@@ -813,21 +802,15 @@ Réponds en JSON:
   "intent": "interested|not_interested|needs_info|wants_call|timing_issue|neutral",
   "confidence": 0-100
 }`
-          }
-        ],
-        max_tokens: 100,
-        temperature: 0.1,
-      }),
-    }, 30000);
+        }
+      ],
+      max_tokens: 100,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      timeoutMs: 30000,
+    });
 
-    if (!response.ok) {
-      return { intent: 'neutral', confidence: 0 };
-    }
-
-    const data = await response.json();
-    let content = data.choices?.[0]?.message?.content || "";
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
+    const content = result.content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(content);
     return {
       intent: parsed.intent || 'neutral',

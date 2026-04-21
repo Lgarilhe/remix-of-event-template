@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -377,39 +378,22 @@ ${jobMatchingPrompt}
 
 Analyse cette conversation et retourne le JSON.`;
 
-    console.log("[analyze-response] Calling Lovable AI (gemini-2.5-flash)...");
+    console.log("[analyze-response] Calling Claude Haiku...");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    let response: Response;
+    let content = "";
     try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          max_tokens: 4096,
-          temperature: 0.2,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ],
-        }),
-      }, 55000);
+      const result = await callClaudeCompat({
+        max_tokens: 4096,
+        temperature: 0.2,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        timeoutMs: 55000,
+      });
+      content = result.content;
     } catch (e) {
-      console.error("AI gateway timeout:", e);
-      throw e;
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[analyze-response] AI API error:", response.status, errorText);
+      console.error("[analyze-response] Claude API error:", e);
       // Return fallback analysis instead of crashing
       return new Response(
         JSON.stringify({
@@ -436,13 +420,9 @@ Analyse cette conversation et retourne le JSON.`;
       );
     }
 
-    const data = await response.json();
-    // OpenAI-compatible format: data.choices[0].message.content
-    let content = data.choices?.[0]?.message?.content || "";
-    
     // Clean up potential markdown code blocks
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
+
     console.log("[analyze-response] Claude response received");
 
     try {

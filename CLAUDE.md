@@ -153,12 +153,13 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 ### CRITICAL — à setter absolument, sinon fonctionnalités core cassées
 | Secret | Utilisé par (principales) |
 |--------|---------------------------|
-| `ANTHROPIC_API_KEY` | ai-chat-completion (fallback), score-profile-job, refine-search-filters, generate-search-filters, generate-outreach-message, generate-reply-suggestions, nurturing-analyzer, search-agent-chat, chat-filter-assistant, auto-analyze-message, sequence-send-email, enrich-vivier-contacts, process-sequences |
-| `LOVABLE_API_KEY` | ai-chat-completion, analyze-linkedin-profile, analyze-response, audit-employer-brand, auto-categorize-chats, detect-profile-fraud, enrich-company, fetch-notion-jobs, generate-call-report, generate-recruiter-bio, generate-scorecard, handle-email-suppression, live-coach, nurturing-analyzer, preview-transactional-email, process-debrief, process-email-queue, screen-candidate |
-| `OPENAI_API_KEY` | backfill-knowledge-lake, fetch-notion-jobs, generate-embedding, ingest-context, retrieve-context |
+| `ANTHROPIC_API_KEY` | **tous les appels AI** — le helper `_shared/call-claude.ts` est l'unique passerelle vers les LLM depuis la migration Lovable → Anthropic direct (2026-04-21). Ancien Lovable Gateway Gemini remplacé par Claude Haiku 4.5. Utilisé par ~30 fonctions : ai-chat-completion, score-profile-job, generate-search-filters, refine-search-filters, generate-outreach-message, generate-reply-suggestions, nurturing-analyzer, search-agent-chat, chat-filter-assistant, auto-analyze-message, sequence-send-email, enrich-vivier-contacts, process-sequences, analyze-linkedin-profile, analyze-response, audit-employer-brand, auto-categorize-chats, detect-profile-fraud, enrich-company, fetch-notion-jobs, generate-call-report, generate-recruiter-bio, generate-scorecard, live-coach, process-debrief, screen-candidate, n8n-create-workflow |
+| `OPENAI_API_KEY` | backfill-knowledge-lake, fetch-notion-jobs, generate-embedding, ingest-context, retrieve-context (embeddings seulement) |
 | `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
 | `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | add-to-shortlist, submit-application, process-sequences, auto-analyze-message, screen-candidate, fetch-notion-* |
 | `STRIPE_SECRET_KEY` | create-checkout-session |
+
+**Note importante** : `LOVABLE_API_KEY` est DEPRECATED côté AI (migration 2026-04-21 vers Anthropic direct). Encore utilisé par `process-email-queue`, `preview-transactional-email`, `handle-email-suppression` (service Lovable Email). Pour sortir totalement de Lovable, migrer ces 3 fonctions vers Resend/Postmark/SES.
 
 ### IMPORTANT — features secondaires
 | Secret | Utilisé par |
@@ -173,7 +174,10 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `APP_URL` | create-checkout-session (= https://konekt-app-navy.vercel.app) |
 
 ### OPTIONAL — fallback/dev
-`DEEPGRAM_API_KEY`, `DEEPGRAM_PROJECT_ID`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`, `LOVABLE_SEND_URL`.
+`DEEPGRAM_API_KEY`, `DEEPGRAM_PROJECT_ID`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`.
+
+### Email provider (DEPRECATED — à migrer)
+`LOVABLE_API_KEY`, `LOVABLE_SEND_URL` — utilisés par `process-email-queue`, `preview-transactional-email`, `handle-email-suppression`. Service Lovable Email à remplacer par Resend ou équivalent.
 
 ## Supabase Auth config (URL allow-list)
 

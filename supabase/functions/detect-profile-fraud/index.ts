@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,9 +47,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     // Build profile summary for analysis
     const experiences = profileData.experiences || profileData.positions || [];
     const education = profileData.education || [];
@@ -85,83 +83,65 @@ Catégories d'anomalies à chercher :
 
 Réponds UNIQUEMENT avec un JSON structuré, pas de texte autour.`;
 
-    let response: Response;
+    let result;
     try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Analyse ce profil :\n${profileSummary}` },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "report_anomalies",
-                description: "Report detected anomalies in a professional profile",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    trust_score: {
-                      type: "number",
-                      description: "Score de confiance global de 0 à 100. 100 = aucun problème, 0 = fraude évidente"
-                    },
-                    anomalies: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          category: { type: "string", enum: ["TIMELINE", "INFLATION", "EDUCATION", "COHERENCE"] },
-                          severity: { type: "string", enum: ["low", "medium", "high"] },
-                          description: { type: "string", description: "Description courte de l'anomalie en français" },
-                          detail: { type: "string", description: "Explication détaillée" }
-                        },
-                        required: ["category", "severity", "description"],
-                        additionalProperties: false
-                      }
-                    }
+      result = await callClaudeCompat({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Analyse ce profil :\n${profileSummary}` },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "report_anomalies",
+              description: "Report detected anomalies in a professional profile",
+              parameters: {
+                type: "object",
+                properties: {
+                  trust_score: {
+                    type: "number",
+                    description: "Score de confiance global de 0 à 100. 100 = aucun problème, 0 = fraude évidente"
                   },
-                  required: ["trust_score", "anomalies"],
-                  additionalProperties: false
-                }
+                  anomalies: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        category: { type: "string", enum: ["TIMELINE", "INFLATION", "EDUCATION", "COHERENCE"] },
+                        severity: { type: "string", enum: ["low", "medium", "high"] },
+                        description: { type: "string", description: "Description courte de l'anomalie en français" },
+                        detail: { type: "string", description: "Explication détaillée" }
+                      },
+                      required: ["category", "severity", "description"],
+                      additionalProperties: false
+                    }
+                  }
+                },
+                required: ["trust_score", "anomalies"],
+                additionalProperties: false
               }
             }
-          ],
-          tool_choice: { type: "function", function: { name: "report_anomalies" } },
-        }),
-      }, 30000);
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "report_anomalies" } },
+        max_tokens: 2000,
+        timeoutMs: 30000,
+      });
     } catch (e) {
-      console.error("AI gateway timeout:", e);
-      throw e;
-    }
-
-    if (!response.ok) {
-      if (response.status === 429) {
+      if (e instanceof ClaudeCompatError && e.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("[detect-profile-fraud] Claude API error:", e);
+      throw e;
     }
 
-    const result = await response.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-    
-    if (toolCall?.function?.arguments) {
-      try {
-        const analysis = JSON.parse(toolCall.function.arguments);
-        return new Response(JSON.stringify(analysis), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      } catch (e) {
-        console.error("detect-profile-fraud JSON parse error:", e, "Raw:", toolCall.function.arguments?.slice(0, 200));
-      }
+    if (result.toolCall?.input) {
+      return new Response(JSON.stringify(result.toolCall.input), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({ anomalies: [], trust_score: 100 }), {

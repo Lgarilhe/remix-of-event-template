@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,11 +52,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Profile data is required' }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
     // Sanitize inputs
     const safeName = sanitize(profile.name, 100);
     const safeHeadline = sanitize(profile.headline, 200);
@@ -91,43 +87,29 @@ Règles:
 - fit_score: score de 0-100 basé sur l'attractivité du profil pour un recruteur tech
 - Sois factuel, pas de flatterie. Base-toi uniquement sur les données fournies.`;
 
-    let response: Response;
+    let content = "";
     try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: "Tu es un expert en recrutement tech. Tu analyses des profils LinkedIn et fournis des insights structurés. Tu réponds TOUJOURS en JSON valide, sans markdown, sans code blocks." },
-            { role: "user", content: prompt }
-          ],
-          max_tokens: 400,
-          temperature: 0.3,
-        }),
-      }, 30000);
+      const result = await callClaudeCompat({
+        messages: [
+          { role: "system", content: "Tu es un expert en recrutement tech. Tu analyses des profils LinkedIn et fournis des insights structurés. Tu réponds TOUJOURS en JSON valide, sans markdown, sans code blocks." },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 400,
+        temperature: 0.3,
+        timeoutMs: 30000,
+      });
+      content = result.content;
     } catch (e) {
-      console.error("AI gateway timeout:", e);
+      if (e instanceof ClaudeCompatError && e.status === 429) {
+        return new Response(JSON.stringify({ error: "Limite de requêtes atteinte, réessayez plus tard." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (e instanceof ClaudeCompatError && e.status === 402) {
+        return new Response(JSON.stringify({ error: "Crédits IA épuisés." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      console.error("[analyze-linkedin-profile] Claude API error:", e);
       throw e;
     }
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requêtes atteinte, réessayez plus tard." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Crédits IA épuisés." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let content = data.choices?.[0]?.message?.content || "";
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
     try {

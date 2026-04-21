@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -37,10 +38,9 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    if (!Deno.env.get("ANTHROPIC_API_KEY")) {
       return new Response(
-        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
+        JSON.stringify({ error: "AI not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -62,41 +62,22 @@ Retourne EXACTEMENT 3 bullet-points ultra-courts (max 8 mots chacun) :
 
 Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase complète, pas de guillemets.`;
 
-      let introResponse: Response;
       try {
-        introResponse = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
-            max_tokens: 150,
-            messages: [
-              { role: "user", content: introPrompt },
-            ],
-          }),
+        const result = await callClaudeCompat({
+          messages: [{ role: "user", content: introPrompt }],
+          max_tokens: 150,
+          timeoutMs: 15000,
         });
-      } catch {
-        // fetchWithTimeout handles timeout errors via AbortController
-        throw new Error("Intro generation timeout or network error");
-      }
-
-      if (!introResponse.ok) {
-        const errText = await introResponse.text();
-        console.error("Intro AI error:", introResponse.status, errText);
+        const intro = result.content.trim() || null;
+        return new Response(JSON.stringify({ intro }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("Intro AI error:", e);
         return new Response(JSON.stringify({ intro: null }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      const introRes = await introResponse.json();
-      const intro = introRes.choices?.[0]?.message?.content?.trim() || null;
-      
-      return new Response(JSON.stringify({ intro }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     // === NORMAL COACHING MODE ===
@@ -109,13 +90,6 @@ Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase compl
       elapsed_seconds,
       pending_signals,
     } = body;
-
-    if (!LOVABLE_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Truncate transcript to last ~2000 chars for speed
     const truncatedTranscript = full_transcript.length > 2000
@@ -163,104 +137,80 @@ SECTION "next_topic" — PROACTIVITÉ ULTRA-CONCISE :
 
 IMPORTANT : Sois CONCIS et RAPIDE.`;
 
-    let response: Response;
+    let aiResult;
     try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          max_tokens: 512,
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: `CALL EN COURS (${elapsed_seconds}s écoulées)\n\nTRANSCRIPTION RÉCENTE :\n${truncatedTranscript}\n\nDERNIER SEGMENT :\n${latest_chunk}`,
-            },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "coach_analysis",
-                description: "Return live coaching analysis for the ongoing interview",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    resolved_signals: {
-                      type: "array",
-                      items: { type: "string" },
-                      description: "Signals from pending_signals that have been addressed"
-                    },
-                    dig_deeper: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          signal: { type: "string" },
-                          question: { type: "string" }
-                        },
-                        required: ["signal", "question"],
-                        additionalProperties: false
-                      },
-                      description: "0-3 items worth digging into"
-                    },
-                    criteria_updates: {
-                      type: "object",
-                      description: "Map of criterion ID to update object with covered, verbatim, auto_score, sentiment fields"
-                    },
-                    next_topic: {
+      aiResult = await callClaudeCompat({
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `CALL EN COURS (${elapsed_seconds}s écoulées)\n\nTRANSCRIPTION RÉCENTE :\n${truncatedTranscript}\n\nDERNIER SEGMENT :\n${latest_chunk}`,
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "coach_analysis",
+              description: "Return live coaching analysis for the ongoing interview",
+              parameters: {
+                type: "object",
+                properties: {
+                  resolved_signals: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Signals from pending_signals that have been addressed"
+                  },
+                  dig_deeper: {
+                    type: "array",
+                    items: {
                       type: "object",
                       properties: {
-                        topic: { type: "string", description: "Next criterion or subject to cover" },
-                        transition: { type: "string", description: "Natural transition phrase the recruiter can use verbatim" },
-                        why: { type: "string", description: "Why this topic now (1 sentence)" }
+                        signal: { type: "string" },
+                        question: { type: "string" }
                       },
-                      required: ["topic", "transition", "why"],
-                      additionalProperties: false,
-                      description: "Proactive suggestion for the next interview topic"
-                    }
+                      required: ["signal", "question"],
+                      additionalProperties: false
+                    },
+                    description: "0-3 items worth digging into"
                   },
-                  required: ["resolved_signals", "dig_deeper", "criteria_updates", "next_topic"],
-                  additionalProperties: false
-                }
+                  criteria_updates: {
+                    type: "object",
+                    description: "Map of criterion ID to update object with covered, verbatim, auto_score, sentiment fields"
+                  },
+                  next_topic: {
+                    type: "object",
+                    properties: {
+                      topic: { type: "string", description: "Next criterion or subject to cover" },
+                      transition: { type: "string", description: "Natural transition phrase the recruiter can use verbatim" },
+                      why: { type: "string", description: "Why this topic now (1 sentence)" }
+                    },
+                    required: ["topic", "transition", "why"],
+                    additionalProperties: false,
+                    description: "Proactive suggestion for the next interview topic"
+                  }
+                },
+                required: ["resolved_signals", "dig_deeper", "criteria_updates", "next_topic"],
+                additionalProperties: false
               }
             }
-          ],
-          tool_choice: { type: "function", function: { name: "coach_analysis" } },
-        }),
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "coach_analysis" } },
+        max_tokens: 1024,
+        timeoutMs: 20000,
       });
-    } catch {
-      // fetchWithTimeout handles timeout errors via AbortController
+    } catch (e) {
+      console.error("[live-coach] Claude error:", e);
       throw new Error("Coach analysis timeout or network error");
     }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Lovable AI error:", response.status, errText);
-      throw new Error(`AI error: ${response.status}`);
-    }
-
-    const aiRes = await response.json();
     let analysis = { resolved_signals: [] as string[], dig_deeper: [] as any[], criteria_updates: {} };
-
-    // Try tool_calls first (structured output), fall back to content parsing
-    const toolCall = aiRes.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      try {
-        analysis = JSON.parse(toolCall.function.arguments);
-      } catch {
-        console.warn("Tool call JSON parse failed, trying content fallback");
-      }
-    }
-    
-    // Fallback: parse from content if tool_calls didn't work
-    if (!toolCall?.function?.arguments || !analysis.criteria_updates) {
-      const text = aiRes.choices?.[0]?.message?.content || "{}";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (aiResult.toolCall?.input) {
+      analysis = aiResult.toolCall.input as any;
+    } else if (aiResult.content) {
+      // Fallback: parse from content if tool call didn't come back
+      const jsonMatch = aiResult.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           analysis = JSON.parse(jsonMatch[0]);

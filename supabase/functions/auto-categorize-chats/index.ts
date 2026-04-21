@@ -1,4 +1,5 @@
 // Deno.serve used directly
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -54,22 +55,12 @@ async function fetchChatMessages(
   }
 }
 
-async function callAiWithRetry(prompt: string, apiKey: string): Promise<Response> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    let response: Response | undefined;
-    try {
-      response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            {
-              role: 'system',
-              content: `Tu es un expert en recrutement. Tu analyses des conversations LinkedIn entre un recruteur (R) et un candidat (C).
+async function callAi(prompt: string): Promise<string> {
+  const result = await callClaudeCompat({
+    messages: [
+      {
+        role: 'system',
+        content: `Tu es un expert en recrutement. Tu analyses des conversations LinkedIn entre un recruteur (R) et un candidat (C).
 
 Tu dois classer chaque conversation dans UNE catégorie basée sur l'ENSEMBLE de la conversation, pas juste le dernier message :
 
@@ -88,29 +79,15 @@ RÈGLES IMPORTANTES :
 
 Réponds UNIQUEMENT avec un JSON array : [{"index": 0, "category": "..."}, ...]
 Pas de texte avant ou après.`,
-            },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.1,
-          max_tokens: 4000,
-        }),
-      }, 30000);
-    } catch (e) {
-      if (attempt === 2) throw e;
-      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-      continue;
-    }
-
-    if (response!.ok) return response!;
-
-    if (!RETRYABLE_STATUS.has(response!.status) || attempt === 2) {
-      const errorText = await response!.text();
-      throw new Error(`AI API error: ${response!.status} - ${errorText}`);
-    }
-
-    await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-  }
-  throw new Error('AI API unavailable after retries');
+      },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.1,
+    max_tokens: 4000,
+    timeoutMs: 30000,
+    maxRetries: 2,
+  });
+  return result.content;
 }
 
 Deno.serve(async (req) => {
@@ -141,9 +118,6 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) throw new Error('Missing LOVABLE_API_KEY');
 
     // Resolve Unipile credentials from org_integrations with env fallback
     let UNIPILE_API_KEY: string;
@@ -208,12 +182,9 @@ Deno.serve(async (req) => {
     const aiCategoriesByIndex = new Map<number, ChatCategory>();
 
     try {
-      const aiResponse = await callAiWithRetry(
-        `Voici ${chats.length} conversations à catégoriser :\n\n${chatSummaries}`,
-        LOVABLE_API_KEY
+      const content = await callAi(
+        `Voici ${chats.length} conversations à catégoriser :\n\n${chatSummaries}`
       );
-      const aiResult = await aiResponse.json();
-      const content = aiResult?.choices?.[0]?.message?.content || '';
       const jsonMatch = content.match(/\[[\s\S]*\]/);
 
       if (jsonMatch) {

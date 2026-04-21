@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,8 +29,7 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authError || !user) throw new Error("Non authentifié");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("Clé AI manquante");
+    if (!Deno.env.get("ANTHROPIC_API_KEY")) throw new Error("Clé AI manquante");
 
     const { profileData, classifications } = await req.json();
     if (!profileData) throw new Error("Données de profil manquantes");
@@ -132,25 +132,13 @@ CONSIGNES STRICTES :
 
     const prompt = hasExperiences || hasAbout || hasSkills ? richPrompt : lightPrompt;
 
-    const aiRes = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [{ role: "user", content: prompt }],
-      }),
+    const aiResult = await callClaudeCompat({
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 500,
+      timeoutMs: 30000,
     });
 
-    if (!aiRes.ok) {
-      console.error("AI error:", aiRes.status);
-      throw new Error("Erreur lors de la génération du résumé");
-    }
-
-    const aiData = await aiRes.json();
-    const bio = aiData.choices?.[0]?.message?.content?.trim() || "";
+    const bio = aiResult.content.trim();
     if (!bio) throw new Error("Résumé vide généré");
 
     // Save bio + classifications to profile

@@ -9,6 +9,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
+import { callClaudeCompat, ClaudeCompatError } from '../_shared/call-claude.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -115,9 +116,8 @@ Deno.serve(async (req) => {
     }
 
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
-    if (!LOVABLE_API_KEY) {
+    if (!Deno.env.get('ANTHROPIC_API_KEY')) {
       return new Response(JSON.stringify({ success: false, error: 'AI not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -320,11 +320,9 @@ ${sourcesSummary}`;
 
     console.log('[audit] Calling AI for analysis...');
 
-    const aiRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+    let aiResult;
+    try {
+      aiResult = await callClaudeCompat({
         messages: [
           { role: 'system', content: 'Tu es un analyste marque employeur. Retourne UNIQUEMENT le résultat via le tool call, pas de texte.' },
           { role: 'user', content: aiPrompt },
@@ -362,39 +360,28 @@ ${sourcesSummary}`;
           },
         }],
         tool_choice: { type: 'function', function: { name: 'return_audit' } },
-      }),
-    }, 20000);
-
-    if (!aiRes.ok) {
-      const errText = await readResponseText(aiRes, 3000).catch(() => '');
-      console.error('[audit] AI error:', aiRes.status, errText);
-
-      if (aiRes.status === 429) {
+        max_tokens: 3000,
+        timeoutMs: 20000,
+      });
+    } catch (e) {
+      console.error('[audit] Claude error:', e);
+      if (e instanceof ClaudeCompatError && e.status === 429) {
         return new Response(JSON.stringify({ success: false, error: 'Trop de requêtes. Réessayez dans quelques secondes.' }), {
           status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      if (aiRes.status === 402) {
-        return new Response(JSON.stringify({ success: false, error: 'Crédits IA insuffisants.' }), {
-          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
       return new Response(JSON.stringify({ success: false, error: 'AI analysis failed' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const aiData = JSON.parse(await readResponseText(aiRes));
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-
-    if (!toolCall) {
+    if (!aiResult.toolCall) {
       return new Response(JSON.stringify({ success: false, error: 'AI returned no structured data' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const auditResult = JSON.parse(toolCall.function.arguments);
+    const auditResult = aiResult.toolCall.input;
 
     const colorMap: Record<string, string> = {
       website: 'hsl(217 91% 60%)',

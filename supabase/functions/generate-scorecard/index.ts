@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -54,10 +55,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    if (!Deno.env.get("ANTHROPIC_API_KEY")) {
       return new Response(
-        JSON.stringify({ error: "AI gateway not configured" }),
+        JSON.stringify({ error: "AI not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -114,15 +114,9 @@ ${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
-    let response: Response;
-    response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+    let aiResult;
+    try {
+      aiResult = await callClaudeCompat({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -179,42 +173,27 @@ Génère la scorecard d'évaluation sur mesure.`;
           },
         ],
         tool_choice: { type: "function", function: { name: "generate_scorecard" } },
-      }),
-    }, 30000);
-
-    if (!response.ok) {
-      if (response.status === 429) {
+        max_tokens: 4000,
+        timeoutMs: 30000,
+      });
+    } catch (e) {
+      if (e instanceof ClaudeCompatError && e.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("[generate-scorecard] Claude error:", e);
+      throw e;
     }
 
-    const data = await response.json();
-    const _tokensIn = data.usage?.prompt_tokens ?? data.usage?.input_tokens ?? 0;
-    const _tokensOut = data.usage?.completion_tokens ?? data.usage?.output_tokens ?? 0;
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    
-    if (!toolCall?.function?.arguments) {
+    const _tokensIn = aiResult.usage.input_tokens;
+    const _tokensOut = aiResult.usage.output_tokens;
+
+    if (!aiResult.toolCall?.input) {
       throw new Error("No tool call response from AI");
     }
 
-    const parsed = (() => {
-      try {
-        return JSON.parse(toolCall.function.arguments);
-      } catch (e) {
-        console.error("generate-scorecard JSON parse error:", e, "Raw:", toolCall.function.arguments?.slice(0, 200));
-        throw new Error("Failed to parse AI scorecard response");
-      }
-    })();
+    const parsed = aiResult.toolCall.input;
 
     // ── Fire-and-forget RAG ingestion (scorecard) ──
     const supabaseUrlRag = Deno.env.get('SUPABASE_URL');

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -12,7 +13,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const HAS_AI_KEY = Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -40,9 +41,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
 
-    if (!LOVABLE_API_KEY) {
+    if (!HAS_AI_KEY) {
       return new Response(
-        JSON.stringify({ error: "AI gateway not configured" }),
+        JSON.stringify({ error: "AI not configured" }),
         { status: 500, headers: corsHeaders }
       );
     }
@@ -74,37 +75,23 @@ Analyse le transcript/debrief et retourne un JSON avec :
 
 Réponds UNIQUEMENT en JSON valide.`;
 
-    let response: Response;
+    let content = "";
     try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: transcript },
-          ],
-          temperature: 0.3,
-          max_tokens: 1500,
-        }),
-      }, 30000);
-    } catch {
-      // fetchWithTimeout handles timeout errors via AbortController
+      const aiResult = await callClaudeCompat({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: transcript },
+        ],
+        temperature: 0.3,
+        max_tokens: 1500,
+        response_format: { type: "json_object" },
+        timeoutMs: 30000,
+      });
+      content = aiResult.content;
+    } catch (e) {
+      console.error("[process-debrief] Claude error:", e);
       throw new Error("Debrief analysis timeout or network error");
     }
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "Unknown error");
-      console.error("AI gateway error:", response.status, errText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
 
     // Parse JSON from response
     let result;

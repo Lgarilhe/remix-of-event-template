@@ -8,6 +8,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -679,7 +680,7 @@ Deno.serve(async (req) => {
 
     const APOLLO_API_KEY = Deno.env.get('APOLLO_API_KEY');
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const HAS_AI_KEY = Boolean(Deno.env.get('ANTHROPIC_API_KEY'));
 
     const result: Record<string, any> = {
       name: smartCapitalize(company_name.trim()),
@@ -1140,77 +1141,70 @@ Deno.serve(async (req) => {
           }
 
           const textContent = toPlainText(extractionRaw).slice(0, 40000);
-          if (textContent.length > 100 && LOVABLE_API_KEY && (!result.industry || !result.description || !result.foundedYear || !result.fundingEvents?.length)) {
+          if (textContent.length > 100 && HAS_AI_KEY && (!result.industry || !result.description || !result.foundedYear || !result.fundingEvents?.length)) {
             try {
-              const profileRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'google/gemini-2.5-flash',
-                  messages: [
-                    {
-                      role: 'system',
-                      content: `Tu extrais des informations FACTUELLES sur l'entreprise "${result.name}" depuis son site officiel / ATS officiel. Aucune spéculation. Si une donnée est absente, retourne null ou un tableau vide. Retourne UNIQUEMENT via tool call.`,
-                    },
-                    {
-                      role: 'user',
-                      content: `Extrais le profil officiel de l'entreprise "${result.name}" depuis ce contenu : industrie, description courte, année de création, localisation du siège si explicitement mentionnée, mots-clés produit/stack, et éventuelles levées de fonds mentionnées.\n\n${textContent.slice(0, 16000)}`,
-                    },
-                  ],
-                  tools: [{
-                    type: 'function',
-                    function: {
-                      name: 'return_company_profile',
-                      parameters: {
-                        type: 'object',
-                        properties: {
-                          industry: { type: 'string' },
-                          description: { type: 'string' },
-                          founded_year: { type: 'number' },
-                          headquarters_location: { type: 'string' },
-                          keywords: { type: 'array', items: { type: 'string' } },
-                          funding_events: {
-                            type: 'array',
-                            items: {
-                              type: 'object',
-                              properties: {
-                                date: { type: 'string' },
-                                type: { type: 'string' },
-                                amount: { type: 'number' },
-                                investors: { type: 'array', items: { type: 'string' } },
-                              },
-                              required: ['type'],
-                              additionalProperties: false,
+              const profileResult = await callClaudeCompat({
+                messages: [
+                  {
+                    role: 'system',
+                    content: `Tu extrais des informations FACTUELLES sur l'entreprise "${result.name}" depuis son site officiel / ATS officiel. Aucune spéculation. Si une donnée est absente, retourne null ou un tableau vide. Retourne UNIQUEMENT via tool call.`,
+                  },
+                  {
+                    role: 'user',
+                    content: `Extrais le profil officiel de l'entreprise "${result.name}" depuis ce contenu : industrie, description courte, année de création, localisation du siège si explicitement mentionnée, mots-clés produit/stack, et éventuelles levées de fonds mentionnées.\n\n${textContent.slice(0, 16000)}`,
+                  },
+                ],
+                tools: [{
+                  type: 'function',
+                  function: {
+                    name: 'return_company_profile',
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        industry: { type: 'string' },
+                        description: { type: 'string' },
+                        founded_year: { type: 'number' },
+                        headquarters_location: { type: 'string' },
+                        keywords: { type: 'array', items: { type: 'string' } },
+                        funding_events: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              date: { type: 'string' },
+                              type: { type: 'string' },
+                              amount: { type: 'number' },
+                              investors: { type: 'array', items: { type: 'string' } },
                             },
+                            required: ['type'],
+                            additionalProperties: false,
                           },
                         },
-                        required: ['funding_events', 'keywords'],
-                        additionalProperties: false,
                       },
+                      required: ['funding_events', 'keywords'],
+                      additionalProperties: false,
                     },
-                  }],
-                  tool_choice: { type: 'function', function: { name: 'return_company_profile' } },
-                }),
-              }, 12000);
+                  },
+                }],
+                tool_choice: { type: 'function', function: { name: 'return_company_profile' } },
+                max_tokens: 1500,
+                timeoutMs: 12000,
+              });
 
-              if (profileRes.ok) {
-                const profileData = await parseJsonResponse(profileRes);
-                const toolCall = profileData.choices?.[0]?.message?.tool_calls?.[0];
-                if (toolCall) {
-                  const parsed = JSON.parse(toolCall.function.arguments);
-                  if (!result.industry && parsed.industry) result.industry = parsed.industry;
-                  if (!result.description && parsed.description) result.description = String(parsed.description).slice(0, 320);
-                  if (!result.foundedYear && parsed.founded_year) result.foundedYear = parsed.founded_year;
-                  if (!result.location && parsed.headquarters_location) result.location = parsed.headquarters_location;
-                  if ((!result.keywords || result.keywords.length === 0) && parsed.keywords?.length) {
-                    result.keywords = parsed.keywords.slice(0, 10);
-                  }
-                  if ((!result.fundingEvents || result.fundingEvents.length === 0) && parsed.funding_events?.length) {
-                    result.fundingEvents = parsed.funding_events;
-                    const latestFunding = parsed.funding_events[0];
-                    if (!result.funding && latestFunding?.type) {
-                      result.funding = `${latestFunding.type}${latestFunding.amount ? ` · ${formatFunding(latestFunding.amount)}` : ''}`;
-                    }
+              if (profileResult.toolCall?.input) {
+                const parsed = profileResult.toolCall.input as any;
+                if (!result.industry && parsed.industry) result.industry = parsed.industry;
+                if (!result.description && parsed.description) result.description = String(parsed.description).slice(0, 320);
+                if (!result.foundedYear && parsed.founded_year) result.foundedYear = parsed.founded_year;
+                if (!result.location && parsed.headquarters_location) result.location = parsed.headquarters_location;
+                if ((!result.keywords || result.keywords.length === 0) && parsed.keywords?.length) {
+                  result.keywords = parsed.keywords.slice(0, 10);
+                }
+                if ((!result.fundingEvents || result.fundingEvents.length === 0) && parsed.funding_events?.length) {
+                  result.fundingEvents = parsed.funding_events;
+                  const latestFunding = parsed.funding_events[0];
+                  if (!result.funding && latestFunding?.type) {
+                    result.funding = `${latestFunding.type}${latestFunding.amount ? ` · ${formatFunding(latestFunding.amount)}` : ''}`;
                   }
                 }
               }
@@ -1219,70 +1213,63 @@ Deno.serve(async (req) => {
             }
           }
 
-          if (textContent.length > 100 && LOVABLE_API_KEY) {
-            const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'google/gemini-2.5-flash',
-                messages: [
-                  {
-                    role: 'system',
-                    content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts publiés directement par l'entreprise "${result.name}". EXCLUS les offres de partenaires, filiales, clients ou toute autre entreprise tierce. Si le titre ou la description mentionne clairement une autre société, ignore cette offre. Ignore aussi les slogans marketing, la culture d'entreprise, les témoignages et les phrases descriptives. Retourne UNIQUEMENT via tool call.`,
-                  },
-                  {
-                    role: 'user',
-                    content: `Extrais les postes ouverts de la page carrière de "${result.name}". Ne retourne QUE les postes appartenant directement à cette entreprise, pas ceux de partenaires ou filiales. Retourne title, location, department pour CHAQUE poste.\n\n${textContent}`,
-                  },
-                ],
-                tools: [{
-                  type: 'function',
-                  function: {
-                    name: 'return_jobs',
-                    parameters: {
-                      type: 'object',
-                      properties: {
-                        jobs: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            properties: {
-                              title: { type: 'string' },
-                              location: { type: 'string' },
-                              department: { type: 'string' },
-                            },
-                            required: ['title'],
-                            additionalProperties: false,
+          if (textContent.length > 100 && HAS_AI_KEY) {
+            const extractResult = await callClaudeCompat({
+              messages: [
+                {
+                  role: 'system',
+                  content: `Tu extrais UNIQUEMENT les vraies offres d'emploi / postes ouverts publiés directement par l'entreprise "${result.name}". EXCLUS les offres de partenaires, filiales, clients ou toute autre entreprise tierce. Si le titre ou la description mentionne clairement une autre société, ignore cette offre. Ignore aussi les slogans marketing, la culture d'entreprise, les témoignages et les phrases descriptives. Retourne UNIQUEMENT via tool call.`,
+                },
+                {
+                  role: 'user',
+                  content: `Extrais les postes ouverts de la page carrière de "${result.name}". Ne retourne QUE les postes appartenant directement à cette entreprise, pas ceux de partenaires ou filiales. Retourne title, location, department pour CHAQUE poste.\n\n${textContent}`,
+                },
+              ],
+              tools: [{
+                type: 'function',
+                function: {
+                  name: 'return_jobs',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      jobs: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            title: { type: 'string' },
+                            location: { type: 'string' },
+                            department: { type: 'string' },
                           },
+                          required: ['title'],
+                          additionalProperties: false,
                         },
                       },
-                      required: ['jobs'],
-                      additionalProperties: false,
                     },
+                    required: ['jobs'],
+                    additionalProperties: false,
                   },
-                }],
-                tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-              }),
-            }, 18000);
+                },
+              }],
+              tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+              max_tokens: 3000,
+              timeoutMs: 18000,
+            }).catch((e) => { console.warn('[enrich] Careers AI failed:', e); return null; });
 
-            if (extractRes.ok) {
-              const extractData = await parseJsonResponse(extractRes);
-              const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-              if (toolCall) {
-                const parsed = JSON.parse(toolCall.function.arguments);
-                (parsed.jobs || []).forEach((j: any) => {
-                  if (j.title) {
-                    jobSources.push({
-                      title: j.title,
-                      location: j.location || '',
-                      source: 'Site carrière',
-                      department: j.department,
-                      url: result.careersUrl || undefined,
-                    });
-                  }
-                });
-                console.log(`[enrich] Careers AI: ${(parsed.jobs || []).length} jobs`);
-              }
+            if (extractResult?.toolCall?.input) {
+              const parsed = extractResult.toolCall.input as any;
+              (parsed.jobs || []).forEach((j: any) => {
+                if (j.title) {
+                  jobSources.push({
+                    title: j.title,
+                    location: j.location || '',
+                    source: 'Site carrière',
+                    department: j.department,
+                    url: result.careersUrl || undefined,
+                  });
+                }
+              });
+              console.log(`[enrich] Careers AI: ${(parsed.jobs || []).length} jobs`);
             }
           }
         } catch (e) {
@@ -1367,7 +1354,7 @@ Deno.serve(async (req) => {
           }
 
           const textContent = toPlainText(wttjRaw).slice(0, 40000);
-          if (!textContent || textContent.length < 200 || !LOVABLE_API_KEY) continue;
+          if (!textContent || textContent.length < 200 || !HAS_AI_KEY) continue;
 
           // Validate that the WTTJ page belongs to the correct company
           const companyToken = normalizeTextToken(result.name);
@@ -1379,55 +1366,48 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                { role: 'system', content: `Tu extrais UNIQUEMENT les vrais postes publi\u00e9s directement par "${result.name}" sur Welcome to the Jungle. EXCLUS les offres de partenaires, filiales ou soci\u00e9t\u00e9s tierces. Ignore slogans, culture et marketing. Retourne uniquement via tool call.` },
-                { role: 'user', content: `Extrais les postes ouverts sur cette page WTTJ pour "${result.name}". Ne retourne QUE les postes appartenant \u00e0 cette entreprise. Retourne title et location pour chaque poste.\n\n${textContent}` },
-              ],
-              tools: [{
-                type: 'function',
-                function: {
-                  name: 'return_jobs',
-                  parameters: {
-                    type: 'object',
-                    properties: {
-                      jobs: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: { title: { type: 'string' }, location: { type: 'string' } },
-                          required: ['title'],
-                          additionalProperties: false,
-                        },
+          const extractResult = await callClaudeCompat({
+            messages: [
+              { role: 'system', content: `Tu extrais UNIQUEMENT les vrais postes publi\u00e9s directement par "${result.name}" sur Welcome to the Jungle. EXCLUS les offres de partenaires, filiales ou soci\u00e9t\u00e9s tierces. Ignore slogans, culture et marketing. Retourne uniquement via tool call.` },
+              { role: 'user', content: `Extrais les postes ouverts sur cette page WTTJ pour "${result.name}". Ne retourne QUE les postes appartenant \u00e0 cette entreprise. Retourne title et location pour chaque poste.\n\n${textContent}` },
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'return_jobs',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    jobs: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: { title: { type: 'string' }, location: { type: 'string' } },
+                        required: ['title'],
+                        additionalProperties: false,
                       },
                     },
-                    required: ['jobs'],
-                    additionalProperties: false,
                   },
+                  required: ['jobs'],
+                  additionalProperties: false,
                 },
-              }],
-              tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-            }),
-          }, 18000);
+              },
+            }],
+            tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+            max_tokens: 3000,
+            timeoutMs: 18000,
+          }).catch((e) => { console.warn('[enrich] WTTJ AI call failed:', e); return null; });
 
-          if (extractRes.ok) {
-            const extractData = await parseJsonResponse(extractRes);
-            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-            if (toolCall) {
-              const parsed = JSON.parse(toolCall.function.arguments);
-              (parsed.jobs || []).forEach((j: any) => {
-                if (j.title) {
-                  jobSources.push({ title: j.title, location: j.location || '', source: 'WTTJ', url: wttjUrl });
-                }
-              });
-              console.log(`[enrich] WTTJ AI extraction: ${(parsed.jobs || []).length} jobs from ${wttjUrl}`);
-              result.wttjUrl = wttjUrl;
-              if ((parsed.jobs || []).length > 0) break;
-            }
+          if (extractResult?.toolCall?.input) {
+            const parsed = extractResult.toolCall.input as any;
+            (parsed.jobs || []).forEach((j: any) => {
+              if (j.title) {
+                jobSources.push({ title: j.title, location: j.location || '', source: 'WTTJ', url: wttjUrl });
+              }
+            });
+            console.log(`[enrich] WTTJ AI extraction: ${(parsed.jobs || []).length} jobs from ${wttjUrl}`);
+            result.wttjUrl = wttjUrl;
+            if ((parsed.jobs || []).length > 0) break;
           }
         } catch (e) {
           console.warn('[enrich] WTTJ extraction failed:', e);
@@ -1522,62 +1502,55 @@ Deno.serve(async (req) => {
           },
         );
 
-        if (content && LOVABLE_API_KEY) {
-          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                { role: 'system', content: 'Extract ONLY real job listings from the text. Ignore marketing sentences and summaries. Return ONLY via tool call.' },
-                { role: 'user', content: `Extract ALL real job positions for ${company_name}:\n\n${content}` },
-              ],
-              tools: [{
-                type: 'function',
-                function: {
-                  name: 'return_jobs',
-                  parameters: {
-                    type: 'object',
-                    properties: {
-                      jobs: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: { title: { type: 'string' }, location: { type: 'string' }, source: { type: 'string' } },
-                          required: ['title'],
-                          additionalProperties: false,
-                        },
+        if (content && HAS_AI_KEY) {
+          const extractResult = await callClaudeCompat({
+            messages: [
+              { role: 'system', content: 'Extract ONLY real job listings from the text. Ignore marketing sentences and summaries. Return ONLY via tool call.' },
+              { role: 'user', content: `Extract ALL real job positions for ${company_name}:\n\n${content}` },
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'return_jobs',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    jobs: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: { title: { type: 'string' }, location: { type: 'string' }, source: { type: 'string' } },
+                        required: ['title'],
+                        additionalProperties: false,
                       },
                     },
-                    required: ['jobs'],
-                    additionalProperties: false,
                   },
+                  required: ['jobs'],
+                  additionalProperties: false,
                 },
-              }],
-              tool_choice: { type: 'function', function: { name: 'return_jobs' } },
-            }),
-          }, 10000);
+              },
+            }],
+            tool_choice: { type: 'function', function: { name: 'return_jobs' } },
+            max_tokens: 2500,
+            timeoutMs: 10000,
+          }).catch((e) => { console.warn('[enrich] Perplexity job AI call failed:', e); return null; });
 
-          if (extractRes.ok) {
-            const extractData = await parseJsonResponse(extractRes);
-            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-            if (toolCall) {
-              const parsed = JSON.parse(toolCall.function.arguments);
-              (parsed.jobs || []).forEach((j: any) => {
-                if (j.title) {
-                  const matchingCitation = citations.find((c: string) =>
-                    c.includes('linkedin.com/jobs') || c.includes('welcometothejungle.com') || c.includes(result.domain || '__none__')
-                  );
-                  const source = j.source?.includes('LinkedIn')
-                    ? 'LinkedIn (non vérifié)'
-                    : j.source?.includes('WTTJ') || j.source?.includes('Welcome')
-                      ? 'WTTJ (non vérifié)'
-                      : 'Web (non vérifié)';
-                  jobSources.push({ title: j.title, location: j.location || '', source, url: matchingCitation || undefined });
-                }
-              });
-              console.log(`[enrich] Perplexity job fallback: ${(parsed.jobs || []).length} jobs`);
-            }
+          if (extractResult?.toolCall?.input) {
+            const parsed = extractResult.toolCall.input as any;
+            (parsed.jobs || []).forEach((j: any) => {
+              if (j.title) {
+                const matchingCitation = citations.find((c: string) =>
+                  c.includes('linkedin.com/jobs') || c.includes('welcometothejungle.com') || c.includes(result.domain || '__none__')
+                );
+                const source = j.source?.includes('LinkedIn')
+                  ? 'LinkedIn (non vérifié)'
+                  : j.source?.includes('WTTJ') || j.source?.includes('Welcome')
+                    ? 'WTTJ (non vérifié)'
+                    : 'Web (non vérifié)';
+                jobSources.push({ title: j.title, location: j.location || '', source, url: matchingCitation || undefined });
+              }
+            });
+            console.log(`[enrich] Perplexity job fallback: ${(parsed.jobs || []).length} jobs`);
           }
         }
       } catch (e) {
@@ -1625,7 +1598,7 @@ Deno.serve(async (req) => {
     const needsHeadcountData = !result.departmentalHeadcount;
     const elapsedBeforeFallback = Date.now() - startTime;
 
-    if (!jobsOnly && PERPLEXITY_API_KEY && LOVABLE_API_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
+    if (!jobsOnly && PERPLEXITY_API_KEY && HAS_AI_KEY && (needsFundingData || needsNewsData || needsHeadcountData) && elapsedBeforeFallback < 40000) {
       try {
         console.log('[enrich] Perplexity company insights fallback for:', result.name);
         const companyHint = result.domain ? ` (${result.domain})` : '';
@@ -1641,85 +1614,77 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
         );
 
         if (content) {
-          // Use Lovable AI to extract structured data
-          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                { role: 'system', content: 'Extract structured company data from the text. Return ONLY via tool call. Use null for unavailable data. Amounts in euros.' },
-                { role: 'user', content: `Extract company insights for ${result.name}:\n\n${content}` },
-              ],
-              tools: [{
-                type: 'function',
-                function: {
-                  name: 'return_company_insights',
-                  parameters: {
-                    type: 'object',
-                    properties: {
-                      funding_events: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            date: { type: 'string', description: 'Date like 2024-01 or Juin 2024' },
-                            type: { type: 'string', description: 'Seed, Series A, Series B, etc.' },
-                            amount: { type: 'number', description: 'Amount in euros, null if unknown' },
-                            investors: { type: 'array', items: { type: 'string' } },
-                          },
-                          required: ['type'],
-                        },
-                      },
-                      news_articles: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            title: { type: 'string' },
-                            url: { type: 'string' },
-                            published_at: { type: 'string' },
-                            source: { type: 'string' },
-                          },
-                          required: ['title'],
-                        },
-                      },
-                      departmental_headcount: {
+          const extractResult = await callClaudeCompat({
+            messages: [
+              { role: 'system', content: 'Extract structured company data from the text. Return ONLY via tool call. Use null for unavailable data. Amounts in euros.' },
+              { role: 'user', content: `Extract company insights for ${result.name}:\n\n${content}` },
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'return_company_insights',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    funding_events: {
+                      type: 'array',
+                      items: {
                         type: 'object',
-                        description: 'Department name -> employee count. Use lowercase department names like engineering, sales, marketing, product, hr, finance, operations',
-                        additionalProperties: { type: 'number' },
+                        properties: {
+                          date: { type: 'string', description: 'Date like 2024-01 or Juin 2024' },
+                          type: { type: 'string', description: 'Seed, Series A, Series B, etc.' },
+                          amount: { type: 'number', description: 'Amount in euros, null if unknown' },
+                          investors: { type: 'array', items: { type: 'string' } },
+                        },
+                        required: ['type'],
                       },
-                      num_suborganizations: { type: 'number', description: 'Number of subsidiaries, null if unknown' },
                     },
-                    required: ['funding_events', 'news_articles'],
-                    additionalProperties: false,
+                    news_articles: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          title: { type: 'string' },
+                          url: { type: 'string' },
+                          published_at: { type: 'string' },
+                          source: { type: 'string' },
+                        },
+                        required: ['title'],
+                      },
+                    },
+                    departmental_headcount: {
+                      type: 'object',
+                      description: 'Department name -> employee count. Use lowercase department names like engineering, sales, marketing, product, hr, finance, operations',
+                      additionalProperties: { type: 'number' },
+                    },
+                    num_suborganizations: { type: 'number', description: 'Number of subsidiaries, null if unknown' },
                   },
+                  required: ['funding_events', 'news_articles'],
+                  additionalProperties: false,
                 },
-              }],
-              tool_choice: { type: 'function', function: { name: 'return_company_insights' } },
-            }),
-          }, 12000);
+              },
+            }],
+            tool_choice: { type: 'function', function: { name: 'return_company_insights' } },
+            max_tokens: 2500,
+            timeoutMs: 12000,
+          }).catch((e) => { console.warn('[enrich] Perplexity insight AI call failed:', e); return null; });
 
-          if (extractRes.ok) {
-            const extractData = await parseJsonResponse(extractRes);
-            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-            if (toolCall) {
-              const parsed = JSON.parse(toolCall.function.arguments);
-              if (needsFundingData && parsed.funding_events?.length) {
-                result.fundingEvents = parsed.funding_events;
-                console.log(`[enrich] Perplexity fallback: ${parsed.funding_events.length} funding events`);
-              }
-              if (needsNewsData && parsed.news_articles?.length) {
-                result.newsArticles = selectRecentNewsArticles(parsed.news_articles, { maxAgeMonths: 15, includeUndated: true });
-                console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} recent news articles`);
-              }
-              if (needsHeadcountData && parsed.departmental_headcount && Object.keys(parsed.departmental_headcount).length >= 2) {
-                result.departmentalHeadcount = parsed.departmental_headcount;
-                console.log(`[enrich] Perplexity fallback: headcount for ${Object.keys(parsed.departmental_headcount).length} departments`);
-              }
-              if (parsed.num_suborganizations != null && !result.numSuborganizations) {
-                result.numSuborganizations = parsed.num_suborganizations;
-              }
+          if (extractResult?.toolCall?.input) {
+            const parsed = extractResult.toolCall.input as any;
+            if (needsFundingData && parsed.funding_events?.length) {
+              result.fundingEvents = parsed.funding_events;
+              console.log(`[enrich] Perplexity fallback: ${parsed.funding_events.length} funding events`);
+            }
+            if (needsNewsData && parsed.news_articles?.length) {
+              result.newsArticles = selectRecentNewsArticles(parsed.news_articles, { maxAgeMonths: 15, includeUndated: true });
+              console.log(`[enrich] Perplexity fallback: ${result.newsArticles.length} recent news articles`);
+            }
+            if (needsHeadcountData && parsed.departmental_headcount && Object.keys(parsed.departmental_headcount).length >= 2) {
+              result.departmentalHeadcount = parsed.departmental_headcount;
+              console.log(`[enrich] Perplexity fallback: headcount for ${Object.keys(parsed.departmental_headcount).length} departments`);
+            }
+            if (parsed.num_suborganizations != null && !result.numSuborganizations) {
+              result.numSuborganizations = parsed.num_suborganizations;
             }
           }
         }
@@ -1728,7 +1693,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
       }
     }
 
-    if (!jobsOnly && !result.newsArticles.length && PERPLEXITY_API_KEY && LOVABLE_API_KEY && Date.now() - startTime < 45000) {
+    if (!jobsOnly && !result.newsArticles.length && PERPLEXITY_API_KEY && HAS_AI_KEY && Date.now() - startTime < 45000) {
       try {
         console.log('[enrich] Perplexity broad news fallback for:', result.name);
         const { content } = await perplexitySearch(
@@ -1742,55 +1707,48 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
         );
 
         if (content) {
-          const extractRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                { role: 'system', content: 'Extract recent news articles about this company from the text. Each article MUST have a title, source media name, published_at date in YYYY-MM-DD format, and URL. Return ONLY via tool call. Prioritize the most recent and impactful news (funding, partnerships, product launches, nominations).' },
-                { role: 'user', content: `Extract all recent news articles about ${result.name}:\n\n${content}` },
-              ],
-              tools: [{
-                type: 'function',
-                function: {
-                  name: 'return_recent_news',
-                  parameters: {
-                    type: 'object',
-                    properties: {
-                      recent_news: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            title: { type: 'string' },
-                            url: { type: 'string' },
-                            published_at: { type: 'string' },
-                            source: { type: 'string' },
-                          },
-                          required: ['title'],
-                          additionalProperties: false,
+          const extractResult = await callClaudeCompat({
+            messages: [
+              { role: 'system', content: 'Extract recent news articles about this company from the text. Each article MUST have a title, source media name, published_at date in YYYY-MM-DD format, and URL. Return ONLY via tool call. Prioritize the most recent and impactful news (funding, partnerships, product launches, nominations).' },
+              { role: 'user', content: `Extract all recent news articles about ${result.name}:\n\n${content}` },
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'return_recent_news',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    recent_news: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          title: { type: 'string' },
+                          url: { type: 'string' },
+                          published_at: { type: 'string' },
+                          source: { type: 'string' },
                         },
+                        required: ['title'],
+                        additionalProperties: false,
                       },
                     },
-                    required: ['recent_news'],
-                    additionalProperties: false,
                   },
+                  required: ['recent_news'],
+                  additionalProperties: false,
                 },
-              }],
-              tool_choice: { type: 'function', function: { name: 'return_recent_news' } },
-            }),
-          }, 12000);
+              },
+            }],
+            tool_choice: { type: 'function', function: { name: 'return_recent_news' } },
+            max_tokens: 2000,
+            timeoutMs: 12000,
+          }).catch((e) => { console.warn('[enrich] News AI call failed:', e); return null; });
 
-          if (extractRes.ok) {
-            const extractData = await parseJsonResponse(extractRes);
-            const toolCall = extractData.choices?.[0]?.message?.tool_calls?.[0];
-            if (toolCall) {
-              const parsed = JSON.parse(toolCall.function.arguments);
-              if (parsed.recent_news?.length) {
-                result.newsArticles = selectRecentNewsArticles(parsed.recent_news, { maxAgeMonths: 15, includeUndated: true });
-                console.log(`[enrich] Official-site news fallback: ${result.newsArticles.length} recent news articles`);
-              }
+          if (extractResult?.toolCall?.input) {
+            const parsed = extractResult.toolCall.input as any;
+            if (parsed.recent_news?.length) {
+              result.newsArticles = selectRecentNewsArticles(parsed.recent_news, { maxAgeMonths: 15, includeUndated: true });
+              console.log(`[enrich] Official-site news fallback: ${result.newsArticles.length} recent news articles`);
             }
           }
         }
@@ -1806,7 +1764,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
     const timeRemaining = 55000 - elapsed;
     const insightsTimeout = Math.min(timeRemaining - 3000, 20000); // Leave 3s buffer for cache write
 
-    if (!jobsOnly && LOVABLE_API_KEY && insightsTimeout > 5000 && (result.description || result.industry)) {
+    if (!jobsOnly && HAS_AI_KEY && insightsTimeout > 5000 && (result.description || result.industry)) {
       try {
         const prompt = `Entreprise : ${result.name}
 Industrie : ${result.industry || 'inconnue'}
@@ -1827,55 +1785,48 @@ Génère EXACTEMENT 4 insights structurés pour un recruteur/décideur :
 Chaque insight = un objet { key, title (5-8 mots max), body (1-2 phrases percutantes) }.
 NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet de recrutement.`;
 
-        const aiRes = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash-lite',
-            messages: [
-              { role: 'system', content: 'Tu es un expert recrutement tech français. Réponds UNIQUEMENT en français via le tool call.' },
-              { role: 'user', content: prompt },
-            ],
-            tools: [{
-              type: 'function',
-              function: {
-                name: 'return_insights',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    structured_insights: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          key: { type: 'string', enum: ['difficulty', 'salary', 'attractivity', 'timing'] },
-                          title: { type: 'string' },
-                          body: { type: 'string' },
-                        },
-                        required: ['key', 'title', 'body'],
+        const aiResult = await callClaudeCompat({
+          messages: [
+            { role: 'system', content: 'Tu es un expert recrutement tech français. Réponds UNIQUEMENT en français via le tool call.' },
+            { role: 'user', content: prompt },
+          ],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'return_insights',
+              parameters: {
+                type: 'object',
+                properties: {
+                  structured_insights: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        key: { type: 'string', enum: ['difficulty', 'salary', 'attractivity', 'timing'] },
+                        title: { type: 'string' },
+                        body: { type: 'string' },
                       },
+                      required: ['key', 'title', 'body'],
                     },
                   },
-                  required: ['structured_insights'],
-                  additionalProperties: false,
                 },
+                required: ['structured_insights'],
+                additionalProperties: false,
               },
-            }],
-            tool_choice: { type: 'function', function: { name: 'return_insights' } },
-          }),
-        }, insightsTimeout);
+            },
+          }],
+          tool_choice: { type: 'function', function: { name: 'return_insights' } },
+          max_tokens: 1500,
+          timeoutMs: insightsTimeout,
+        }).catch((e) => { console.warn('[enrich] AI insights call failed:', e); return null; });
 
-        if (aiRes.ok) {
-          const aiData = await parseJsonResponse(aiRes);
-          const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-          if (toolCall) {
-            const parsed = JSON.parse(toolCall.function.arguments);
-            if (parsed.structured_insights?.length) {
-              result.structuredInsights = parsed.structured_insights;
-              result.insights = parsed.structured_insights.map((i: any) => `${i.title}: ${i.body}`);
-            } else if (parsed.insights?.length) {
-              result.insights = parsed.insights;
-            }
+        if (aiResult?.toolCall?.input) {
+          const parsed = aiResult.toolCall.input as any;
+          if (parsed.structured_insights?.length) {
+            result.structuredInsights = parsed.structured_insights;
+            result.insights = parsed.structured_insights.map((i: any) => `${i.title}: ${i.body}`);
+          } else if (parsed.insights?.length) {
+            result.insights = parsed.insights;
           }
         }
       } catch (e) {

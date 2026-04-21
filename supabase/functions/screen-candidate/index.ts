@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,8 +59,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    if (!Deno.env.get("ANTHROPIC_API_KEY")) throw new Error("ANTHROPIC_API_KEY not configured");
 
     // Resolve Unipile + Notion credentials from org_integrations with env fallback
     let UNIPILE_DSN: string;
@@ -247,27 +247,15 @@ Analyse ce profil par rapport à ce poste et retourne un JSON avec :
 Retourne UNIQUEMENT le JSON, pas de texte autour.`;
 
     console.log(`[screen] Calling AI for scoring + message...`);
-    const aiRes = await fetchWithTimeout('https://lovable-ai.lovable.dev/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: aiPrompt }],
-        temperature: 0.7,
-        response_format: { type: 'json_object' },
-      }),
-    }, 55000);
+    const aiResult = await callClaudeCompat({
+      messages: [{ role: 'user', content: aiPrompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+      response_format: { type: 'json_object' },
+      timeoutMs: 55000,
+    });
 
-    if (!aiRes.ok) {
-      const errText = await aiRes.text();
-      throw new Error(`AI error [${aiRes.status}]: ${errText.slice(0, 300)}`);
-    }
-
-    const aiData = await aiRes.json();
-    const rawContent = aiData.choices?.[0]?.message?.content || '{}';
+    const rawContent = aiResult.content || '{}';
 
     // Parse AI response
     let analysis: any;

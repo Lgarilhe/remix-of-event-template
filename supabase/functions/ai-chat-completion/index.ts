@@ -1,18 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -20,7 +13,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth check
     let auth;
     try {
       auth = await requireAuth(req, corsHeaders);
@@ -41,13 +33,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
 
-    if (!LOVABLE_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "AI gateway not configured" }),
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
     const { messages } = await req.json();
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(
@@ -56,75 +41,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Call AI gateway
-    let response: Response;
-    try {
-      response = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages,
-          temperature: 0.7,
-          max_tokens: 2000,
-        }),
-      }, 45000);
-    } catch (e) {
-      console.error("AI gateway timeout:", e);
-      throw e;
-    }
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "Unknown error");
-      console.error("AI gateway error:", response.status, errText);
-
-      // Retry once on 429/5xx
-      if (response.status === 429 || response.status >= 500) {
-        await new Promise(r => setTimeout(r, 2000));
-        const retryResponse = await fetchWithTimeout("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
-            messages,
-            temperature: 0.7,
-            max_tokens: 2000,
-          }),
-        }, 45000);
-
-        if (!retryResponse.ok) {
-          throw new Error(`AI gateway error after retry: ${retryResponse.status}`);
-        }
-
-        const retryData = await retryResponse.json();
-        const content = retryData.choices?.[0]?.message?.content || "";
-        return new Response(
-          JSON.stringify({ success: true, response: content }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
+    const result = await callClaudeCompat({
+      messages,
+      temperature: 0.7,
+      max_tokens: 2000,
+      timeoutMs: 45000,
+      maxRetries: 1,
+    });
 
     return new Response(
-      JSON.stringify({ success: true, response: content }),
+      JSON.stringify({ success: true, response: result.content }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("ai-chat-completion error:", error);
+    const status = error instanceof ClaudeCompatError ? error.status : 500;
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
