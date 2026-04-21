@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-04-20 — INSIGHT — Migration Lovable Cloud bloquée, plan révisé
+
+**Contexte** : tentative de migration Lovable Cloud → Supabase konekt-production via supabase db push (173 migrations versionnées). Bloqué après 70 migrations sur des conflits de CREATE POLICY redondants.
+
+**Cause racine** : les migrations historiques contiennent des CREATE POLICY identiques sur les mêmes tables, créés à différents moments du dev sans DROP IF EXISTS préalable. Joué sur une base vide ils se contredisent.
+
+**Décision** : abandonner l'approche migration-by-migration. Reprendre samedi avec un dump SQL complet du schéma actuel Lovable Cloud.
+
+**Décision metier** : ne migrer QUE les tables structurelles (organizations, members, profiles, subs, configs). Ignorer airtable_*, aircall_*, notion_*, knowledge_chunks, match_scores. Repartir clean pour commercialisation.
+
+**Reste à faire** : voir MIGRATION_PLAN.md.
+
+---
+
 ## 2026-04-20 — DECISION — Migration Lovable Cloud → Supabase préparée
 
 **Contexte** : Lovable Cloud verrouillé (85 tables, 78 edge functions, 4 users). Migration vers Supabase externe pour retirer le vendor lock-in avant commercialisation.
