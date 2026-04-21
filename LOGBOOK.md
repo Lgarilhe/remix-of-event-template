@@ -54,12 +54,41 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 **Reste à faire** :
 - [ ] Setter les 6 secrets CRITICAL dans le Dashboard Supabase : `ANTHROPIC_API_KEY`, `LOVABLE_API_KEY`, `OPENAI_API_KEY`, `UNIPILE_API_KEY`, `UNIPILE_DSN`, `NOTION_API_KEY` (+ 3 `NOTION_*_DB_ID`), `STRIPE_SECRET_KEY`.
-- [ ] Configurer Site URL + Redirect URLs dans le Dashboard Auth (CLAUDE.md → section "Supabase Auth config").
+- [x] Configurer Site URL + Redirect URLs dans le Dashboard Auth.
 - [ ] Setter les secrets IMPORTANT (Apollo, PDL, webhooks) pour débloquer enrichissement et webhooks.
-- [ ] Tester end-to-end un onboarding freelance + un onboarding enterprise pour valider le fix RLS.
+- [x] Tester onboarding end-to-end — débugging complet des 3 bugs RLS/triggers (voir 2026-04-21-bis).
 - [ ] Rejouer un premier scoring LinkedIn pour valider la chaîne Unipile + score-profile-job.
 
 **Refs** : commits à venir sur main — voir `git log` après push.
+
+---
+
+## 2026-04-21 — BUG — Onboarding org creation : 3 bugs en cascade (RESOLVED)
+
+**Contexte** : après la migration Supabase, la création d'organisation pendant l'onboarding échouait avec "new row violates row-level security policy for table organizations". Symptôme côté UI : impossible de passer l'étape "Parlez-nous de vous" (scene org).
+
+**Décision / Fait** : 3 bugs distincts découverts en cascade pendant le debug, tous patchés dans `fix-organizations-rls.sql` :
+
+1. **GRANTs manquants** (fix initial) — la role `authenticated` n'avait aucun privilège sur les tables `public.*`. Fix : GRANT SELECT/INSERT/UPDATE/DELETE à authenticated + default privileges.
+
+2. **Catch-22 enforce_role_hierarchy** — le trigger `handle_new_organization` (AFTER INSERT) tentait d'ajouter le créateur comme 'owner' dans `organization_members`, mais le trigger BEFORE `enforce_role_hierarchy` bloquait : "Only owners can assign the owner role". Or personne n'est owner d'une org qui vient d'être créée. Fix : ajout d'une clause bootstrap dans `enforce_role_hierarchy` — laisser passer si c'est le tout premier membre de l'org ET que le user = created_by de l'org.
+
+3. **UNIQUE constraint manquante sur ai_credit_balances** — la fonction `sync_credit_balance_from_subscription` fait `ON CONFLICT (organization_id) DO UPDATE` mais la contrainte UNIQUE n'existait pas → cascade de triggers cassée à la création d'org. Fix : `ADD CONSTRAINT ... UNIQUE (organization_id)`.
+
+4. **Race condition sur members_select / RETURNING** — `INSERT ... RETURNING *` via supabase-js évaluait `is_org_member(auth.uid(), id)` pour le RETURNING, mais à un moment où le trigger AFTER n'avait pas encore inséré le user dans `organization_members` (ou visibility glitch PostgREST). Résultat : erreur RLS bien que l'INSERT ait réussi. Fix : étendre `members_select` pour accepter aussi `created_by = auth.uid()` — sémantiquement normal (le créateur doit pouvoir voir sa propre org).
+
+**Raison** : le schéma importé depuis Lovable avait des triggers et policies qui supposaient implicitement des grants/conventions Supabase que l'import n'a pas transférés.
+
+**Impact** :
+- `fix-organizations-rls.sql` : 4 sections + vérification post-fix DO block, idempotent (rejouable).
+- DB prod : policies/constraints/trigger fn mis à jour.
+- `LOGBOOK.md` + `CLAUDE.md` : doc.
+
+**Reste à faire** :
+- [ ] Valider une inscription fresh + onboarding complet jusqu'au dashboard (un test partiel réussi = scene org OK, suite non testée).
+- [ ] Décider si on transforme `fix-organizations-rls.sql` en migration datée dans `supabase/migrations/` pour qu'elle soit traquée par l'historique (actuellement à la racine, applicable à la main).
+
+**Refs** : commits à venir après la clôture de cette session. Fichier : `fix-organizations-rls.sql`.
 
 ---
 
