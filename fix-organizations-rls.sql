@@ -85,14 +85,72 @@ BEGIN
 END;
 $$;
 
--- 7. Contrainte UNIQUE manquante sur ai_credit_balances.organization_id
--- La fonction sync_credit_balance_from_subscription fait ON CONFLICT (organization_id)
--- DO UPDATE, mais la contrainte UNIQUE manque → trigger crash en cascade lors de la
--- création d'une org (auto_create_free_subscription → sync_credit_balance_from_subscription).
-ALTER TABLE public.ai_credit_balances
-  DROP CONSTRAINT IF EXISTS ai_credit_balances_organization_id_unique;
-ALTER TABLE public.ai_credit_balances
-  ADD CONSTRAINT ai_credit_balances_organization_id_unique UNIQUE (organization_id);
+-- 7. Contraintes UNIQUE manquantes (batch)
+-- Le schema importé depuis Lovable a perdu toutes les UNIQUE constraints — sans elles,
+-- les upserts client + triggers ON CONFLICT échouent avec "there is no unique or
+-- exclusion constraint matching the ON CONFLICT specification".
+--
+-- On ajoute chaque contrainte dans un DO block pour rester idempotent : si elle existe
+-- déjà (autre nom possible), on skip. Si les colonnes existent mais pas la contrainte,
+-- on l'ajoute. Les doublons existants seraient un blocker, mais sur une base fraîche
+-- les tables sont vides.
+
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT table_name, cols FROM (VALUES
+      ('ai_credit_balances'::text, ARRAY['organization_id']::text[]),
+      ('organization_subscriptions'::text, ARRAY['organization_id']::text[]),
+      ('profiles'::text, ARRAY['user_id']::text[]),
+      ('connector_instances'::text, ARRAY['organization_id','connector_id']::text[]),
+      ('chat_categories'::text, ARRAY['chat_id','created_by']::text[]),
+      ('job_candidate_status'::text, ARRAY['job_id','candidate_id','created_by']::text[]),
+      ('member_email_accounts'::text, ARRAY['organization_id','email_account_id']::text[]),
+      ('member_linkedin_accounts'::text, ARRAY['organization_id','user_id']::text[]),
+      ('member_quotas'::text, ARRAY['organization_id','user_id']::text[]),
+      ('message_analysis_cache'::text, ARRAY['chat_id','account_id']::text[])
+    ) AS t(table_name, cols)
+  LOOP
+    -- Skip if table doesn't exist
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema='public' AND table_name=r.table_name
+    ) THEN
+      RAISE NOTICE 'Skip % (table missing)', r.table_name;
+      CONTINUE;
+    END IF;
+
+    -- Skip if one of the cols is missing
+    IF EXISTS (
+      SELECT unnest(r.cols) AS c
+      EXCEPT
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema='public' AND table_name=r.table_name
+    ) THEN
+      RAISE NOTICE 'Skip % (column missing in %)', r.table_name, r.cols;
+      CONTINUE;
+    END IF;
+
+    -- Predictable constraint name
+    DECLARE
+      cons_name text := r.table_name || '_' || array_to_string(r.cols, '_') || '_unique';
+    BEGIN
+      EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I', r.table_name, cons_name);
+      EXECUTE format(
+        'ALTER TABLE public.%I ADD CONSTRAINT %I UNIQUE (%s)',
+        r.table_name,
+        cons_name,
+        array_to_string(array(SELECT quote_ident(c) FROM unnest(r.cols) c), ', ')
+      );
+      RAISE NOTICE 'Added/replaced UNIQUE on %(%)', r.table_name, array_to_string(r.cols, ',');
+    EXCEPTION WHEN duplicate_table THEN
+      -- contrainte identique existe déjà sous un autre nom → ignorer
+      RAISE NOTICE 'UNIQUE already exists on %(%) under another name — skipped', r.table_name, array_to_string(r.cols, ',');
+    END;
+  END LOOP;
+END $$;
 
 -- 8. members_select — autoriser le créateur à voir sa propre org
 -- La policy originale ne permettait le SELECT que si is_org_member → mais lors d'un

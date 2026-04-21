@@ -84,11 +84,13 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 - DB prod : policies/constraints/trigger fn mis à jour.
 - `LOGBOOK.md` + `CLAUDE.md` : doc.
 
+**Bug #5 — UNIQUE constraints perdues à l'import Lovable** : 8 autres tables avaient le même problème (contraintes UNIQUE disparues), bloquant les upserts client (`SceneProfile` onboarding, `ConnectorSettings`, `useJobCandidateStatus`, `useMemberLinkedInAccounts`, etc.). Fix : loop DO block dans `fix-organizations-rls.sql` qui ajoute idempotemment les UNIQUE sur `profiles`, `connector_instances`, `chat_categories`, `job_candidate_status`, `member_email_accounts`, `member_linkedin_accounts`, `member_quotas`, `message_analysis_cache` (+ celles déjà patchées).
+
 **Reste à faire** :
-- [ ] Valider une inscription fresh + onboarding complet jusqu'au dashboard (un test partiel réussi = scene org OK, suite non testée).
+- [x] Valider l'onboarding complet jusqu'au dashboard (testé OK 2026-04-21 soir).
 - [ ] Décider si on transforme `fix-organizations-rls.sql` en migration datée dans `supabase/migrations/` pour qu'elle soit traquée par l'historique (actuellement à la racine, applicable à la main).
 
-**Refs** : commits à venir après la clôture de cette session. Fichier : `fix-organizations-rls.sql`.
+**Refs** : commits `00acc732` + commit à venir pour le bug #5. Fichier : `fix-organizations-rls.sql`.
 
 ---
 
