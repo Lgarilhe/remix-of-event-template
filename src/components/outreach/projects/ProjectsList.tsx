@@ -326,9 +326,9 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
     };
   };
 
-  const isLoading = spLoading || jobsLoading;
-
-  if (isLoading) {
+  // On n'attend que sourcing_projects (la source de vérité) — Notion est optionnel
+  // et peut échouer silencieusement si NOTION_API_KEY n'est pas configuré.
+  if (spLoading) {
     return <BrutalLoader variant="default" rows={3} messages={['Chargement des projets…', 'Synchronisation Notion…', 'Récupération des postes…']} />;
   }
 

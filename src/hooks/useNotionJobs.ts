@@ -31,6 +31,10 @@ export function useNotionJobs() {
     gcTime: GC_TIME,
     refetchOnWindowFocus: false,
     refetchInterval: organizationId ? REFETCH_INTERVAL : false,
+    // Si NOTION_API_KEY n'est pas configuré ou l'edge function plante,
+    // on retry pas 3x (backoff exponentiel qui bloque l'UI). On remonte
+    // l'erreur immédiatement et le consumer affiche [] (jobs optionnels).
+    retry: 0,
   });
 }
 
