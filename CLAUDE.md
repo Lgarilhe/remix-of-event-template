@@ -158,8 +158,9 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
 | `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | add-to-shortlist, submit-application, process-sequences, auto-analyze-message, screen-candidate, fetch-notion-* |
 | `STRIPE_SECRET_KEY` | create-checkout-session |
+| `RESEND_API_KEY` | process-email-queue (envoi emails via Resend API) |
 
-**Note importante** : `LOVABLE_API_KEY` est DEPRECATED côté AI (migration 2026-04-21 vers Anthropic direct). Encore utilisé par `process-email-queue`, `preview-transactional-email`, `handle-email-suppression` (service Lovable Email). Pour sortir totalement de Lovable, migrer ces 3 fonctions vers Resend/Postmark/SES.
+**Note importante** : `LOVABLE_API_KEY` est entièrement retiré depuis 2026-04-21 (AI + Email). Emails sont maintenant sur Resend. AI sur Anthropic direct.
 
 ### IMPORTANT — features secondaires
 | Secret | Utilisé par |
@@ -172,12 +173,10 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, sequence-webhooks-handler |
 | `PROCESS_SEQUENCES_SECRET` | process-sequences (cron auth) |
 | `APP_URL` | create-checkout-session (= https://konekt-app-navy.vercel.app) |
+| `RESEND_WEBHOOK_SECRET` | handle-email-suppression (Svix signature verif, format `whsec_...`) |
 
 ### OPTIONAL — fallback/dev
 `DEEPGRAM_API_KEY`, `DEEPGRAM_PROJECT_ID`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`.
-
-### Email provider (DEPRECATED — à migrer)
-`LOVABLE_API_KEY`, `LOVABLE_SEND_URL` — utilisés par `process-email-queue`, `preview-transactional-email`, `handle-email-suppression`. Service Lovable Email à remplacer par Resend ou équivalent.
 
 ## Supabase Auth config (URL allow-list)
 

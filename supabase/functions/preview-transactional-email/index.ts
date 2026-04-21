@@ -8,28 +8,26 @@ const corsHeaders = {
 }
 
 // Renders all registered templates with their previewData.
-// Gated by LOVABLE_API_KEY — only the Go API calls this.
+// Gated by service-role key — only trusted backend callers should hit this.
+// (verify_jwt=false in config.toml, we compare Bearer token to SERVICE_ROLE_KEY manually.)
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
-  const apiKey = Deno.env.get('LOVABLE_API_KEY')
-  if (!apiKey) {
+  const expectedKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!expectedKey) {
+    console.error('Missing SUPABASE_SERVICE_ROLE_KEY')
     return new Response(
       JSON.stringify({ error: 'Server configuration error' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 
-  // Verify the caller is authorized with LOVABLE_API_KEY
   const authHeader = req.headers.get('Authorization')
-  const token = authHeader?.replace(/^Bearer\s+/i, '')
-  if (token !== apiKey) {
+  const token = authHeader?.replace(/^Bearer\s+/i, '') || ''
+  if (token !== expectedKey) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -63,7 +61,7 @@ Deno.serve(async (req) => {
 
     try {
       const html = await renderAsync(
-        React.createElement(entry.component, entry.previewData)
+        React.createElement(entry.component, entry.previewData),
       )
       const resolvedSubject =
         typeof entry.subject === 'function'
