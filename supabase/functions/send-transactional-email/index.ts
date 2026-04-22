@@ -3,10 +3,10 @@ import { renderAsync } from 'npm:@react-email/components@0.0.22'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { TEMPLATES } from '../_shared/transactional-email-templates/registry.ts'
 
-// Configuration baked in at scaffold time
-const SITE_NAME = "Remix of Event Template"
-const SENDER_DOMAIN = "notify.konekt.fr"
-const FROM_DOMAIN = "konekt.fr"
+// Configuration (overridable via env vars for staging/dev)
+const SITE_NAME = Deno.env.get('EMAIL_SITE_NAME') || "Konekt"
+const SENDER_DOMAIN = Deno.env.get('EMAIL_SENDER_DOMAIN') || "notify.konekt.fr"
+const FROM_DOMAIN = Deno.env.get('EMAIL_FROM_DOMAIN') || "konekt.fr"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

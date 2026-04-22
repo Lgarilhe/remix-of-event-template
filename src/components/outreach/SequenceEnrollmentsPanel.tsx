@@ -637,13 +637,14 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             {/* Actions menu */}
                             <DropdownMenu modal={false}>
                               <DropdownMenuTrigger asChild>
-                                <Button 
-                                  variant="outline" 
+                                <Button
+                                  variant="outline"
                                   size="icon"
                                   className="h-8 w-8 shrink-0 border-border rounded-lg"
                                   onClick={(e) => e.stopPropagation()}
+                                  aria-label="Actions de l'inscription"
                                 >
-                                  <MoreHorizontal className="w-4 h-4" />
+                                  <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="z-[3000] bg-background border-border rounded-lg">

@@ -104,14 +104,15 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
         {/* Title + refresh */}
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-foreground uppercase tracking-wide text-xs">Messages</h3>
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-6 w-6"
             onClick={onRefresh}
             disabled={loadingChats}
+            aria-label="Rafraîchir les messages"
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", loadingChats && "animate-spin")} />
+            <RefreshCw className={cn("w-3.5 h-3.5", loadingChats && "animate-spin")} aria-hidden="true" />
           </Button>
         </div>
 
@@ -123,6 +124,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-8 h-7 text-xs border-border rounded-lg"
+            aria-label="Rechercher dans les messages"
           />
         </div>
         

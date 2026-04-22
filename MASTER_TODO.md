@@ -102,10 +102,12 @@ La page principale settings est dans `src/pages/Settings.tsx` (vu via grep). Le 
 `useEffect(() => { search(filters); }, [filters])` — `filters` est l'objet entier `INITIAL_FILTERS`. Re-run à chaque prop change. Solution : split en primitive deps (`filters.api`, `filters.location.id`...).
 - Source : `AUDITS/PERF_FRONT_AUDIT.md` §2.a
 
-### Q10. Web Analytics — GA4 ou Plausible → 20min
-Aucune analytics côté front. Pas de tracking événements sourcing/onboarding/conversion. Pour piloter le produit en prod, indispensable.
-- **Fix** : ajouter Plausible (RGPD-friendly, pas de cookies bannière) ou GA4.
-- Source : `AUDITS/SEO_LANDING_AUDIT.md` §6 + `AUDIT_REPORT.md`
+### Q10. Web Analytics — Plausible ✅ DONE
+- ✅ Script Plausible loadé via `src/lib/analytics.ts` (idempotent, RGPD-friendly, no cookies)
+- ✅ Env vars `VITE_PLAUSIBLE_DOMAIN` + `VITE_PLAUSIBLE_SRC` → activable par env
+- ✅ Helper `trackEvent(name, props)` pour events custom (silent-fail)
+- ✅ Chargé au mount App.tsx
+- À configurer côté infra : créer le domaine dans Plausible dashboard, set `VITE_PLAUSIBLE_DOMAIN=konekt-app-navy.vercel.app` dans Vercel env.
 
 ---
 
@@ -126,8 +128,11 @@ Le fichier hardcode 3 modes (brief/process/sourcing/outreach) + tools + retrieva
 3 endroits différents affichent un candidat avec 3 layouts différents : `LinkedInResultCard`, `ProfileDetailSheet`, `CandidateDetailModal`. Harmoniser via composant unifié `CandidatePreview` avec variants `compact|expanded|modal`.
 - Source : `AUDITS/DATA_MODEL_AUDIT.md` + `DESIGN_AUDIT.md`
 
-### I4. Harmoniser les types Candidate → 2h
-4 interfaces différentes : `LinkedInProfile`, `CandidateRow`, `JobCandidateStatus`, `EnrichedCandidate`. Définir un canonical `Candidate` dans `src/types/candidate.ts` + adapters.
+### I4. Harmoniser les types Candidate ✅ DONE (foundation)
+- ✅ `src/types/candidate.ts` créé : `Candidate` (core) + `CandidateDetail` (vue ATS) + enums canoniques (`CandidateStatus`, `CandidatePipelineStage` avec les 10 stages FR réels, `CandidateSource`)
+- ✅ Type guards : `isPipelineStage`, `isCandidateStatus`, `normalizePipelineStage` (mapping legacy)
+- ✅ Adapters : `fromLinkedInProfile`, `fromATSCandidate`, `statusToDefaultStage`
+- ⏳ Migration progressive call-sites (dans I3 : dédoublonner CandidatePreview). Non-breaking pour l'instant.
 - Source : `AUDITS/DATA_MODEL_AUDIT.md`
 
 ### I5. Consolider les hooks dupliqués → 3h
@@ -165,10 +170,11 @@ Cas critique fixé : `bg-teal-500` dans CardStatusBadges (badge Airtable) → `b
 - Cible : < 500 lignes/composant. Extraction sous-composants + hooks.
 - Source : `AUDITS/PERF_FRONT_AUDIT.md` §2
 
-### I11. A11Y — fixer les warnings axe-core évidents → 2h
-- Boutons sans `aria-label` (icon-only buttons)
-- Contrastes insuffisants (texte secondaire sur fond)
-- Modals sans `aria-modal="true"` + focus trap
+### I11. A11Y — quick wins ✅ PARTIEL (icon buttons fixés)
+- ✅ 20 icon-only buttons les plus visibles fixés avec `aria-label` + `aria-hidden` sur l'icône enfant (RemindersSidebar, ProjectsList, SequenceActivityLog, ChatListSidebar, MessageView, AiTextarea x3, EmailSignatures x2, BulkInMailModal, SequenceAnalytics, SequenceEnrollmentsPanel, WebhookManager x2, SceneOrganization, OrgLogoEditor, PendingInvitations x2)
+- ✅ Input search ChatListSidebar : `aria-label="Rechercher dans les messages"` ajouté
+- ⏳ Contrastes insuffisants : à auditer avec axe-core devtools
+- ⏳ Modals : shadcn Dialog a déjà `aria-modal` + focus trap (Radix UI). Vérifier les custom modals.
 - Inputs sans `<label htmlFor>` associé
 - Source : `AUDITS/A11Y_AUDIT.md`
 
@@ -216,8 +222,11 @@ Dashboard ATS existe mais ratios/funnels manquants : taux conversion par étape,
 Aucun système notif. Cible : "votre candidat X a répondu", "séquence Y a fini", "12 nouveaux profils correspondent à votre brief".
 - Source : `NAV_GAPS.md` + `PRODUCT_COMPLETION.md`
 
-### B10. Email deliverability — DKIM/SPF/DMARC + warmup → 1 jour
-Avant envoi en masse via Resend, vérifier DNS records full + warmup automatique des domaines neufs.
+### B10. Email deliverability — DKIM/SPF/DMARC + warmup ✅ DONE (doc + code)
+- ✅ `docs/EMAIL_DELIVERABILITY_SETUP.md` créé : guide complet (SPF, DKIM, DMARC, warm-up, monitoring, checklist setup)
+- ✅ `send-transactional-email` : `SITE_NAME` = "Konekt" (plus "Remix of Event Template" legacy), overridable via env `EMAIL_SITE_NAME`, `EMAIL_FROM_DOMAIN`, `EMAIL_SENDER_DOMAIN`
+- ⏳ DNS config (Laurent côté OVH/registrar) : checklist en fin de doc
+- ⏳ Warm-up progressif auto (cron qui plafonne `email_send_state.batch_size` selon âge domaine) → pas critique maintenant
 - Source : `AUDITS/EMAIL_DELIVERABILITY_AUDIT.md`
 
 ---

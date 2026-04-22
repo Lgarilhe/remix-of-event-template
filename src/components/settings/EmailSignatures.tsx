@@ -100,16 +100,17 @@ export const EmailSignatures: React.FC = () => {
                     </p>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(sig)}>
-                      <Pencil className="w-3.5 h-3.5" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(sig)} aria-label="Modifier la signature">
+                      <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
                       onClick={() => handleDelete(sig.id)}
+                      aria-label="Supprimer la signature"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

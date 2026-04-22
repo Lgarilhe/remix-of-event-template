@@ -318,8 +318,8 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       {/* Search input */}
       <div className="flex gap-2">
         {onBack && (
-          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border border-border shrink-0">
-            <ArrowLeft className="w-4 h-4" />
+          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 border border-border shrink-0" aria-label="Étape précédente">
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           </Button>
         )}
         <div className="relative flex-1">

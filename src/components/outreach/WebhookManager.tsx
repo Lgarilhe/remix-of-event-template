@@ -137,8 +137,9 @@ export function WebhookManager() {
             size="icon"
             onClick={fetchWebhooks}
             disabled={loading}
+            aria-label="Rafraîchir les webhooks"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
           </Button>
         </div>
       </CardHeader>
@@ -197,6 +198,7 @@ export function WebhookManager() {
                       onClick={() => handleDelete(webhook.id)}
                       disabled={deletingId === webhook.id}
                       className="text-destructive hover:text-destructive"
+                      aria-label="Supprimer le webhook"
                     >
                       {deletingId === webhook.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

@@ -118,8 +118,8 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
           <Bell className="w-5 h-5 text-warning" />
           <h3 className="font-semibold text-foreground">Rappels</h3>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="w-4 h-4" />
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fermer les rappels">
+          <X className="w-4 h-4" aria-hidden="true" />
         </Button>
       </div>
 

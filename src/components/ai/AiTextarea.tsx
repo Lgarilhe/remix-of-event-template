@@ -233,8 +233,9 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
               variant="ghost"
               className="absolute top-1.5 right-1.5 h-7 w-7 hover:bg-brand-purple/10 text-muted-foreground hover:text-brand-purple"
               title="Commandes IA (/ai)"
+              aria-label="Commandes IA"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-2">
@@ -293,8 +294,9 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
             onClick={rejectPreview}
             className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
             title="Rejeter"
+            aria-label="Rejeter la prévisualisation IA"
           >
-            <X className="w-3 h-3" />
+            <X className="w-3 h-3" aria-hidden="true" />
           </Button>
           <Button
             type="button"
@@ -302,8 +304,9 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
             onClick={acceptPreview}
             className="h-6 w-6 bg-brand-purple text-white hover:bg-brand-purple/90"
             title="Accepter"
+            aria-label="Accepter la prévisualisation IA"
           >
-            <Check className="w-3 h-3" />
+            <Check className="w-3 h-3" aria-hidden="true" />
           </Button>
         </div>
       )}

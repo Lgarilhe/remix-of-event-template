@@ -16,6 +16,7 @@ import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
+import { loadAnalytics } from "@/lib/analytics";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
@@ -55,6 +56,11 @@ const AppContent = () => {
   useEffect(() => {
     locationRef.current = location.pathname;
   }, [location.pathname]);
+
+  // Q10 — Plausible analytics (loaded once at app mount, no-op si env absente)
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
 
   useEffect(() => {
     const tokenFromUrl = persistPreviewAccessToken(location.search);

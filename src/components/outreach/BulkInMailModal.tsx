@@ -561,8 +561,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       className="h-7 w-7"
                       onClick={() => refetchBalance()}
                       disabled={isLoadingBalance}
+                      aria-label="Rafraîchir le solde de crédits InMail"
                     >
-                      <RefreshCw className={cn("h-3 w-3", isLoadingBalance && "animate-spin")} />
+                      <RefreshCw className={cn("h-3 w-3", isLoadingBalance && "animate-spin")} aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

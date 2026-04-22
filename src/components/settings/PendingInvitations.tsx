@@ -162,8 +162,9 @@ export const PendingInvitations = ({
                     className="h-7 w-7 text-muted-foreground hover:text-foreground"
                     onClick={() => handleCopyLink(inv)}
                     title="Copier le lien d'invitation"
+                    aria-label="Copier le lien d'invitation"
                   >
-                    {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-primary" /> : <Link className="w-3.5 h-3.5" />}
+                    {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-primary" aria-hidden="true" /> : <Link className="w-3.5 h-3.5" aria-hidden="true" />}
                   </Button>
                 )}
                 {canDelete && (
@@ -172,8 +173,9 @@ export const PendingInvitations = ({
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     onClick={() => onCancel(inv.id)}
+                    aria-label="Annuler l'invitation"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3.5 h-3.5" aria-hidden="true" />
                   </Button>
                 )}
               </div>

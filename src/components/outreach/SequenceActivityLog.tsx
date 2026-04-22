@@ -389,8 +389,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                   <SelectItem value="upcoming">À venir</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" className="shrink-0 border-border rounded-lg" onClick={fetchExecutions} disabled={loading}>
-                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+              <Button variant="outline" size="icon" className="shrink-0 border-border rounded-lg" onClick={fetchExecutions} disabled={loading} aria-label="Rafraîchir les activités">
+                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} aria-hidden="true" />
               </Button>
             </div>
           </div>

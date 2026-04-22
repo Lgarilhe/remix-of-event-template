@@ -210,8 +210,9 @@ export const OrgLogoEditor = ({ organizationId, logoUrl, website, orgName, isOwn
                 size="icon"
                 className="h-7 w-7 text-muted-foreground"
                 onClick={() => { setWebsiteValue(website || ''); setEditingWebsite(true); }}
+                aria-label="Modifier le site web"
               >
-                <Building2 className="w-3.5 h-3.5" />
+                <Building2 className="w-3.5 h-3.5" aria-hidden="true" />
               </Button>
             )}
           </div>

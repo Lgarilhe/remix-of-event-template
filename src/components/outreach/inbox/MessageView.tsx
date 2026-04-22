@@ -231,8 +231,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
           size="icon"
           className="h-8 w-8 shrink-0"
           onClick={onBack}
+          aria-label="Retour à la liste des messages"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-5 h-5" aria-hidden="true" />
         </Button>
         <Avatar className="w-8 h-8 md:w-10 md:h-10 rounded-lg shrink-0">
           <AvatarImage src={avatar} />

@@ -589,8 +589,8 @@ export const ProjectsList: React.FC<ProjectsListProps> = () => {
                       {hasSourcingProject && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-9 w-9">
-                              <MoreVertical className="w-3.5 h-3.5" />
+                            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Options du projet">
+                              <MoreVertical className="w-3.5 h-3.5" aria-hidden="true" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">

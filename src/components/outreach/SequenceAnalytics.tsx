@@ -309,8 +309,9 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 onClick={fetchData}
                 disabled={loading}
                 className="border-border rounded-lg h-9 w-9"
+                aria-label="Rafraîchir les statistiques"
               >
-                <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+                <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} aria-hidden="true" />
               </Button>
             </div>
 
