@@ -808,7 +808,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
 const scoreStyles: Record<string, string> = {
   Go: 'bg-success/15 text-success border border-success/20',
   Maybe: 'bg-warning/15 text-warning border border-warning/20',
-  No: 'bg-red-500/15 text-red-600 border border-red-500/20',
+  No: 'bg-destructive/15 text-destructive border border-destructive/20',
 };
 
 function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {

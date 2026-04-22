@@ -251,4 +251,67 @@
   .perspective-800 {
     perspective: 800px;
   }
+
+  /* ── Design system — micro-interactions ── */
+
+  /**
+   * Card hover lift — utilisable sur toute card interactive
+   * (kanban, event, task row, etc.). Subtil mais perceptible.
+   */
+  .interactive-card {
+    @apply transition-all duration-150 ease-out;
+  }
+  .interactive-card:hover {
+    @apply -translate-y-px bg-muted/40 border-foreground/30;
+    box-shadow: 0 2px 6px -1px hsl(0 0% 0% / 0.08), 0 1px 3px -1px hsl(0 0% 0% / 0.06);
+  }
+  .interactive-card:active {
+    @apply translate-y-0;
+  }
+
+  /**
+   * Row hover (pour les lists denses comme Tasks / Inbox / Pipeline table)
+   */
+  .interactive-row {
+    @apply transition-colors duration-100;
+  }
+  .interactive-row:hover {
+    @apply bg-muted/40;
+  }
+
+  /**
+   * Focus ring brutal (visible sur fond sombre ET clair) — utile quand
+   * l'outline par défaut est overridden par un composant shadcn
+   */
+  .focus-ring-brutal {
+    @apply outline-none;
+  }
+  .focus-ring-brutal:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Animation stagger pour les listes : délai progressif */
+  .stagger-in > * {
+    @apply animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out;
+    animation-fill-mode: backwards;
+  }
+  .stagger-in > *:nth-child(1)  { animation-delay: 0ms; }
+  .stagger-in > *:nth-child(2)  { animation-delay: 40ms; }
+  .stagger-in > *:nth-child(3)  { animation-delay: 80ms; }
+  .stagger-in > *:nth-child(4)  { animation-delay: 120ms; }
+  .stagger-in > *:nth-child(5)  { animation-delay: 160ms; }
+  .stagger-in > *:nth-child(6)  { animation-delay: 200ms; }
+  .stagger-in > *:nth-child(7)  { animation-delay: 240ms; }
+  .stagger-in > *:nth-child(n+8) { animation-delay: 280ms; }
+
+  /* Respect prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .interactive-card,
+    .interactive-row,
+    .stagger-in > * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
 }

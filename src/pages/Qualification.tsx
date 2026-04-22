@@ -36,8 +36,8 @@ type QualificationSession = {
 };
 
 const VERDICT_OPTIONS = [
-  { value: 'go', label: 'Go ✅', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  { value: 'no_go', label: 'No Go ❌', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  { value: 'go', label: 'Go ✅', color: 'bg-success/20 text-success border-success/30' },
+  { value: 'no_go', label: 'No Go ❌', color: 'bg-destructive/20 text-destructive border-destructive/30' },
   { value: 'maybe', label: 'À revoir 🤔', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
   { value: 'pending', label: 'En attente ⏳', color: 'bg-muted text-muted-foreground border-border' },
 ];
@@ -250,10 +250,10 @@ export default function Qualification() {
               <CardContent className="space-y-4">
                 {scoring.overall_score != null && (
                   <div className="flex items-center gap-3">
-                    <div className={`text-2xl font-bold ${
-                      scoring.overall_score >= 70 ? 'text-emerald-400' :
-                      scoring.overall_score >= 50 ? 'text-amber-400' :
-                      'text-red-400'
+                    <div className={`text-2xl font-bold font-mono tabular-nums ${
+                      scoring.overall_score >= 70 ? 'text-success' :
+                      scoring.overall_score >= 50 ? 'text-warning' :
+                      'text-destructive'
                     }`}>
                       {scoring.overall_score}/100
                     </div>
@@ -267,11 +267,11 @@ export default function Qualification() {
 
                 {scoring.strengths?.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-emerald-400 mb-1.5">Points forts</p>
+                    <p className="text-xs font-medium text-success mb-1.5">Points forts</p>
                     <ul className="space-y-1">
                       {scoring.strengths.map((s: string, i: number) => (
                         <li key={i} className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" aria-hidden="true" />
                           {s}
                         </li>
                       ))}
@@ -281,11 +281,11 @@ export default function Qualification() {
 
                 {scoring.weaknesses?.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-red-400 mb-1.5">Points faibles</p>
+                    <p className="text-xs font-medium text-destructive mb-1.5">Points faibles</p>
                     <ul className="space-y-1">
                       {scoring.weaknesses.map((w: string, i: number) => (
                         <li key={i} className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                          <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                          <XCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
                           {w}
                         </li>
                       ))}

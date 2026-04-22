@@ -160,10 +160,14 @@ Le fichier hardcode 3 modes (brief/process/sourcing/outreach) + tools + retrieva
 - `AgentDrawer` : SectionErrorBoundary ajoutée dans App.tsx (un crash du chat ne plante plus l'app)
 - Source : `AUDITS/PERF_FRONT_AUDIT.md` §5
 
-### I9. Design tokens — virer les couleurs hardcoded ⚠️ TRACKING
-Audit 22/04 : 25+ occurrences `bg-(teal|indigo|emerald|sky|cyan|rose|fuchsia|amber|lime)-NNN`. La plupart sont **contextuellement justifiées** (amber=warnings, emerald=success-temp).
-Action : refacto au fur et à mesure des touches sur les fichiers concernés. Pas de bulk sed (risque de régression visuelle).
-Cas critique fixé : `bg-teal-500` dans CardStatusBadges (badge Airtable) → `bg-success` lors du merge audit-sourcing-interface.
+### I9. Design tokens — virer les couleurs hardcoded ⚠️ EN COURS
+Audit 22/04 : 25+ occurrences `bg-(teal|indigo|emerald|sky|cyan|rose|fuchsia|amber|lime)-NNN`.
+Fixes session 22/04 PM :
+- ✅ `ATS.tsx:203` sync badge : `text-blue-600 border-blue-300` → `text-info border-info/40 bg-info/10`
+- ✅ `Qualification.tsx` go/no-go + scoring (score, strengths, weaknesses) : `emerald/red-400` → `success/destructive`
+- ✅ `AgentMessageBubble.tsx:811` CandidateMini 'No' score : `bg-red-500/15 text-red-600` → `bg-destructive/15 text-destructive`
+- ⏳ Restent ~45 occurrences dans prospection, missions, settings — refacto progressif au fil des touches.
+- Cas critique initial : `bg-teal-500` CardStatusBadges (badge Airtable) → `bg-success` fixé lors du merge audit-sourcing-interface.
 - Source : `DESIGN_AUDIT.md`
 
 ### I10. Réduire taille des composants obèses → 4h

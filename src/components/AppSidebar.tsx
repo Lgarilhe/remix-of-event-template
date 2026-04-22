@@ -89,11 +89,15 @@ export function AppSidebar() {
         {/* Search bar — opens AI Agent drawer */}
         {!collapsed ? (
           <div className="mb-4 px-1">
-            <button onClick={() => toggleAgent()} className="w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-xs cursor-pointer hover:bg-sidebar-accent/80 transition-colors">
-              <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-              <span className="flex-1 text-left">Rechercher</span>
+            <button
+              onClick={() => toggleAgent()}
+              className="w-full flex items-center gap-2.5 h-9 px-3 rounded-lg bg-sidebar-accent text-muted-foreground text-xs cursor-pointer hover:bg-sidebar-accent/80 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              aria-label="Ouvrir le copilot IA (Ctrl+K). Astuce : Ctrl+J pour la navigation rapide."
+            >
+              <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+              <span className="flex-1 text-left">Chercher, agir…</span>
               <kbd className="text-[10px] font-mono bg-sidebar-background px-1.5 py-0.5 rounded border border-border">
-                Ctrl+K
+                ⌘K
               </kbd>
             </button>
           </div>

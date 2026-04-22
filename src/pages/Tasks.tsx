@@ -20,18 +20,25 @@ import { CheckSquare, Bell, Clock, CheckCircle2, AlertCircle, CalendarDays, Refr
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+// Design system — primitives partagées
+import { PageLayout, PageHeader, EmptyState, StatTile, StatGrid } from '@/components/layout';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-const BUCKET_META: Record<ReminderBucket, { label: string; icon: React.ElementType; color: string; emptyMessage: string }> = {
-  overdue:  { label: 'En retard',       icon: AlertCircle,  color: 'text-destructive border-destructive/30 bg-destructive/5',       emptyMessage: 'Aucun retard 🎉' },
-  today:    { label: "Aujourd'hui",     icon: Clock,        color: 'text-warning border-warning/30 bg-warning/5',                   emptyMessage: "Rien pour aujourd'hui" },
-  week:     { label: 'Cette semaine',   icon: CalendarDays, color: 'text-info border-info/30 bg-info/5',                            emptyMessage: 'Rien cette semaine' },
-  later:    { label: 'Plus tard',       icon: Bell,         color: 'text-muted-foreground border-border bg-muted/30',               emptyMessage: 'Rien prévu' },
-  done:     { label: 'Terminées',       icon: CheckCircle2, color: 'text-success border-success/30 bg-success/5',                   emptyMessage: 'Aucune tâche terminée' },
+const BUCKET_META: Record<ReminderBucket, {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  statVariant: 'destructive' | 'warning' | 'info' | 'default' | 'success';
+}> = {
+  overdue: { label: 'En retard',     icon: AlertCircle,  color: 'text-destructive',       statVariant: 'destructive' },
+  today:   { label: "Aujourd'hui",   icon: Clock,        color: 'text-warning',           statVariant: 'warning' },
+  week:    { label: 'Cette semaine', icon: CalendarDays, color: 'text-info',              statVariant: 'info' },
+  later:   { label: 'Plus tard',     icon: Bell,         color: 'text-muted-foreground',  statVariant: 'default' },
+  done:    { label: 'Terminées',     icon: CheckCircle2, color: 'text-success',           statVariant: 'success' },
 };
 
 export default function TasksPage() {
@@ -46,128 +53,108 @@ export default function TasksPage() {
   const isEmpty = counts.active === 0 && (view === 'active' || counts.done === 0);
 
   return (
-    <div className="min-h-screen bg-background">
+    <PageLayout maxWidth="lg">
       <SEOHead
         title="Tâches | Konekt"
         description="Vos rappels et tâches en cours"
       />
 
-      <div className="py-6 pb-8">
-        <div className="max-w-[1200px] mx-auto px-3 sm:px-6 lg:px-8">
-
-          {/* Header */}
-          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div className="flex items-center gap-2.5">
-              <CheckSquare className="w-5 h-5 text-foreground" aria-hidden="true" />
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Tâches</h1>
-              {counts.active > 0 && (
-                <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                  {counts.active} en cours
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center border border-border">
-                <button
-                  onClick={() => setView('active')}
-                  className={cn(
-                    'h-8 px-3 text-xs uppercase tracking-wider font-medium transition-colors',
-                    view === 'active' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  Actives ({counts.active})
-                </button>
-                <button
-                  onClick={() => setView('all')}
-                  className={cn(
-                    'h-8 px-3 text-xs uppercase tracking-wider font-medium transition-colors border-l border-border',
-                    view === 'all' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  Toutes
-                </button>
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => refetch()}
-                aria-label="Actualiser les tâches"
-                className="h-8 gap-1.5"
+      <PageHeader
+        icon={CheckSquare}
+        title="Tâches"
+        meta={counts.active > 0 ? `${counts.active} en cours` : undefined}
+        actions={
+          <>
+            <div className="flex items-center border border-border" role="tablist" aria-label="Filtre tâches">
+              <button
+                role="tab"
+                aria-selected={view === 'active'}
+                onClick={() => setView('active')}
+                className={cn(
+                  'h-8 px-3 text-xs uppercase tracking-wider font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                  view === 'active' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+                )}
               >
-                <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">Actualiser</span>
-              </Button>
+                Actives ({counts.active})
+              </button>
+              <button
+                role="tab"
+                aria-selected={view === 'all'}
+                onClick={() => setView('all')}
+                className={cn(
+                  'h-8 px-3 text-xs uppercase tracking-wider font-medium transition-colors border-l border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                  view === 'all' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+                )}
+              >
+                Toutes
+              </button>
             </div>
-          </div>
 
-          {/* KPI strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-0 mb-6 border border-border">
-            {(['overdue', 'today', 'week', 'later', 'done'] as const).map((bucket, i) => {
-              const meta = BUCKET_META[bucket];
-              const Icon = meta.icon;
-              const count = counts[bucket];
-              const isPrimaryAlert = bucket === 'overdue' && count > 0;
-              return (
-                <div
-                  key={bucket}
-                  className={cn(
-                    'p-3 flex flex-col gap-1',
-                    i > 0 && 'sm:border-l border-border',
-                    i % 2 !== 0 && 'max-sm:border-l border-border',
-                    i >= 2 && 'max-sm:border-t border-border',
-                    isPrimaryAlert && 'bg-destructive/5',
-                  )}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Icon className={cn('w-3 h-3', isPrimaryAlert ? 'text-destructive' : 'text-muted-foreground')} aria-hidden="true" />
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium truncate">{meta.label}</span>
-                  </div>
-                  <span className={cn('text-xl font-bold font-mono tabular-nums', isPrimaryAlert && 'text-destructive')}>
-                    {count}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              aria-label="Actualiser les tâches"
+              className="h-8 gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Actualiser</span>
+            </Button>
+          </>
+        }
+      />
 
-          {/* Loading / Empty / Content */}
-          {isLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map(i => <div key={i} className="h-20 bg-muted animate-pulse border border-border" />)}
-            </div>
-          ) : isEmpty ? (
-            <div className="text-center py-16 border border-dashed border-border">
-              <CheckCircle2 className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" aria-hidden="true" />
-              <h3 className="text-sm font-bold uppercase tracking-wider mb-1">Zéro tâche en cours</h3>
-              <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                Les rappels créés sur un candidat apparaîtront ici. Tu peux en ajouter depuis le modal de détail d'un candidat.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {visibleBuckets.map(bucket => {
-                const items = grouped[bucket];
-                const meta = BUCKET_META[bucket];
-                if (items.length === 0) return null;
-                return (
-                  <BucketSection
-                    key={bucket}
-                    bucket={bucket}
-                    items={items}
-                    meta={meta}
-                    onToggle={toggleComplete}
-                    onDelete={deleteReminder}
-                    onNavigate={(candidateId) => navigate(`/pipeline?candidate=${candidateId}`)}
-                  />
-                );
-              })}
-            </div>
-          )}
+      {/* KPI strip — primitives StatTile/StatGrid */}
+      <StatGrid cols={{ base: 2, sm: 5 }} className="mb-6">
+        {(['overdue', 'today', 'week', 'later', 'done'] as const).map((bucket) => {
+          const meta = BUCKET_META[bucket];
+          const count = counts[bucket];
+          const isAlert = bucket === 'overdue' && count > 0;
+          return (
+            <StatTile
+              key={bucket}
+              label={meta.label}
+              value={count}
+              icon={meta.icon}
+              variant={isAlert ? 'destructive' : meta.statVariant}
+              accent={isAlert || (bucket !== 'done' && count > 0)}
+            />
+          );
+        })}
+      </StatGrid>
+
+      {/* Loading / Empty / Content */}
+      {isLoading ? (
+        <div className="space-y-4 stagger-in">
+          {[1, 2, 3].map(i => <div key={i} className="h-20 bg-muted animate-pulse border border-border" />)}
         </div>
-      </div>
-    </div>
+      ) : isEmpty ? (
+        <EmptyState
+          icon={CheckCircle2}
+          title="Zéro tâche en cours"
+          description="Les rappels créés sur un candidat apparaîtront ici. Tu peux en ajouter depuis le modal de détail d'un candidat."
+        />
+      ) : (
+        <div className="space-y-6 stagger-in">
+          {visibleBuckets.map(bucket => {
+            const items = grouped[bucket];
+            const meta = BUCKET_META[bucket];
+            if (items.length === 0) return null;
+            return (
+              <BucketSection
+                key={bucket}
+                bucket={bucket}
+                items={items}
+                meta={meta}
+                onToggle={toggleComplete}
+                onDelete={deleteReminder}
+                onNavigate={(candidateId) => navigate(`/pipeline?candidate=${candidateId}`)}
+              />
+            );
+          })}
+        </div>
+      )}
+    </PageLayout>
   );
 }
 
@@ -185,9 +172,9 @@ function BucketSection({
   return (
     <section>
       <div className="flex items-center gap-2 mb-2 px-1">
-        <Icon className={cn('w-4 h-4', meta.color.split(' ')[0])} aria-hidden="true" />
+        <Icon className={cn('w-4 h-4', meta.color)} aria-hidden="true" />
         <h2 className="text-xs uppercase tracking-wider font-bold">{meta.label}</h2>
-        <span className="text-xs font-mono text-muted-foreground">({items.length})</span>
+        <span className="text-xs font-mono text-muted-foreground tabular-nums">({items.length})</span>
       </div>
       <ul className="divide-y divide-border border border-border bg-background">
         {items.map(r => (
@@ -220,7 +207,7 @@ const TaskRow = React.memo(function TaskRow({
   })();
 
   return (
-    <li className={cn('flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors', isCompleted && 'opacity-60')}>
+    <li className={cn('flex items-start gap-3 px-4 py-3 interactive-row', isCompleted && 'opacity-60')}>
       <Checkbox
         checked={isCompleted}
         onCheckedChange={async () => {

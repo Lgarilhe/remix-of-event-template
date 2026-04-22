@@ -13,6 +13,7 @@ import { AgentProvider } from "@/contexts/AgentContext";
 import { AgentDrawer } from "@/components/agent";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { NavigationPalette } from "@/components/layout/NavigationPalette";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
@@ -183,6 +184,8 @@ const AppContent = () => {
       <SectionErrorBoundary fallbackTitle="Erreur dans le copilot IA">
         <AgentDrawer />
       </SectionErrorBoundary>
+      {/* NavigationPalette — Cmd+J / Ctrl+J pour navigation rapide + actions */}
+      <NavigationPalette />
       <SessionExpiredDialog
         open={sessionExpired}
         onOpenChange={handleSessionExpiredClose}
