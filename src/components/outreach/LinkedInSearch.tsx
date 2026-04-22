@@ -914,6 +914,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   return (
     <div className="w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]">
+{/* Note merge: l'ancien FilterWizard ajouté en haut par design-audit-6EE0c est ignoré
+    car HEAD a déjà un FilterWizard ligne ~1024 avec une signature plus complète
+    (job, accountId, onApplyFilters). On garde la version HEAD. */}
       {/* Filters bar — always visible */}
       <AppliedFiltersBar
         filters={search.filters}
