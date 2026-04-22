@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const userId = auth.userId;
 
     // Rate limit
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await svc.rpc('check_rate_limit', {
       p_user_id: userId,
       p_action: 'process_debrief',

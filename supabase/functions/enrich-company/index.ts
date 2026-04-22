@@ -615,7 +615,7 @@ Deno.serve(async (req) => {
     const user = { id: auth.userId as string };
 
     // Rate limiting: 5 enrichments per minute per user
-    const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await serviceClient.rpc('check_rate_limit', {
       p_user_id: user.id,
       p_action: 'enrich_company',

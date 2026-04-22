@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     // Create admin client early for org membership check
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!
     );
 
     // Verify org membership (skip for service_role calls)

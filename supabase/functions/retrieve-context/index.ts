@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
       // Mode A — authenticated user
       const svcAuth = createClient(
         Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!,
       );
 
       // Rate limit
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
     // ── 4. Call the RPC ────────────────────────────────────────
     const svc = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!,
     );
 
     // deno-lint-ignore no-explicit-any

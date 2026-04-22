@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
     const userId = auth.userId;
 
     // Rate limit: 30 req/min
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'generate_reply_suggestions', p_max_requests: 30, p_window_seconds: 60 });
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -620,7 +620,7 @@ Réponds UNIQUEMENT en JSON valide:
     if (_tokensIn + _tokensOut > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
         const orgId2 = userId ? await resolveOrgIdFromUser(userId, adminClient) as string | null : null;
         if (orgId2) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
@@ -674,7 +674,7 @@ Réponds UNIQUEMENT en JSON valide:
           // Settle credits for the retry tokens before returning
           try {
             const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-            const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
             const retryOrgId = userId ? await resolveOrgIdFromUser(userId, adminClient) as string | null : null;
             if (retryOrgId && (retryTokensIn + retryTokensOut) > 0) {
               const { settleCredits } = await import("../_shared/settle-credits.ts");

@@ -120,7 +120,7 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
   if (organizationId) {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
       const sb = createClient(supabaseUrl, serviceKey);
       
       const { data } = await sb
@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
     const { action, account_id, organization_id, ...params } = await req.json();
 
     if (organization_id) {
-      const sb = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const sb = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
       const { data: membership } = await sb.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organization_id).maybeSingle();
       if (!membership) {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
 
     // --- Rate limiting: 60 requests per minute per user (skip for service_role) ---
     {
-      const sbService = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const sbService = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
       const { data: allowed } = await sbService.rpc('check_rate_limit', {
         p_user_id: user.id,
         p_action: 'unipile_search',

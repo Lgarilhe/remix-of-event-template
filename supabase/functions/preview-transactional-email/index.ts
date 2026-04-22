@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
-  const expectedKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const expectedKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
   if (!expectedKey) {
     console.error('Missing SUPABASE_SERVICE_ROLE_KEY')
     return new Response(

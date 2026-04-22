@@ -20,7 +20,7 @@ const ENV_NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
 const ENV_CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
 const ENV_SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 interface OrgCreds {
@@ -590,7 +590,7 @@ Deno.serve(async (req) => {
         return null; // Will use service key mode in ingest-context
       })();
       const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
-      const serviceKeyRag = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      const serviceKeyRag = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
       if (supabaseUrlRag && serviceKeyRag) {
         // Try to find org from member_linkedin_accounts
         const { data: memberMapping } = await supabase

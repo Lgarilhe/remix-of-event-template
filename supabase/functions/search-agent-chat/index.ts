@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
       });
     }
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseKey = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify user
@@ -725,7 +725,7 @@ Propose des exemples concrets de messages.`;
             if (_tokensIn + _tokensOut > 0) {
               try {
                 const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
                 const resolvedOrgId = conv?.organization_id || await resolveOrgIdFromUser(user.id, adminClient as any);
                 if (resolvedOrgId) {
                   const { settleCredits } = await import("../_shared/settle-credits.ts");
@@ -843,7 +843,7 @@ Propose des exemples concrets de messages.`;
             if (_tokensIn + _tokensOut > 0) {
               try {
                 const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
                 const resolvedOrgId = conv?.organization_id || await resolveOrgIdFromUser(user.id, adminClient as any);
                 if (resolvedOrgId) {
                   const { settleCredits } = await import("../_shared/settle-credits.ts");

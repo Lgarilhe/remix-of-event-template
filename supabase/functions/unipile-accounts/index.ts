@@ -20,7 +20,7 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 async function resolveUnipileCredentials(organizationId: string): Promise<{ apiKey: string; dsn: string } | null> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
     const sb = createClient(supabaseUrl, serviceKey);
 
     const { data } = await sb
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseServiceRoleKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 
     const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
 
@@ -110,7 +110,8 @@ Deno.serve(async (req) => {
       throw new HttpError(400, 'Aucune organisation active');
     }
 
-    const { data: membership } = await adminClient
+    const keyPrefix = supabaseServiceRoleKey.slice(0, 12);
+    const { data: membership, error: membershipError } = await adminClient
       .from('organization_members')
       .select('id')
       .eq('organization_id', organizationId)
@@ -118,7 +119,16 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!membership) {
-      throw new HttpError(403, 'Forbidden');
+      console.error('[unipile-accounts] Membership check failed', {
+        requestedOrgId: organizationId,
+        userId: user.id,
+        authMethod: auth.method,
+        errorMsg: membershipError?.message,
+        errorCode: membershipError?.code,
+        keyPrefix,
+        sbSecretDefined: Boolean(Deno.env.get('SB_SECRET_KEY')),
+      });
+      throw new HttpError(403, `Forbidden — user=${user.id} org=${organizationId} err=${membershipError?.message ?? 'no row'} keyPrefix=${keyPrefix} sbSecretDefined=${Boolean(Deno.env.get('SB_SECRET_KEY'))}`);
     }
 
     const credentials = await resolveUnipileCredentials(organizationId);
@@ -134,7 +144,26 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'list': {
-        // List all connected accounts
+        // Résoudre d'abord les account_ids LinkedIn associés à l'org courante
+        // dans member_linkedin_accounts. Sans ce filtre, on renverrait TOUS les
+        // comptes Unipile du tenant partagé (fuite cross-tenant quand plusieurs
+        // clients utilisent la même Unipile platform key).
+        const { data: memberAccounts, error: memberAccountsError } = await adminClient
+          .from('member_linkedin_accounts')
+          .select('linkedin_account_id')
+          .eq('organization_id', organizationId);
+
+        if (memberAccountsError) {
+          console.error('[unipile-accounts] Failed to load org account IDs:', memberAccountsError);
+        }
+
+        const allowedAccountIds = new Set(
+          (memberAccounts ?? [])
+            .map((r: any) => r?.linkedin_account_id)
+            .filter((id: any): id is string => typeof id === 'string' && id.length > 0),
+        );
+
+        // List all connected accounts from Unipile
         const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
           headers: {
             'X-API-KEY': apiKey,
@@ -143,9 +172,9 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
-        // Filter only LinkedIn accounts and extract subscription info
+        // Filter only LinkedIn accounts owned by this org
         const linkedinAccounts = await Promise.all((data.items || [])
-          .filter((acc: { type: string }) => acc.type === 'LINKEDIN')
+          .filter((acc: { type: string; id: string }) => acc.type === 'LINKEDIN' && allowedAccountIds.has(acc.id))
           .map(async (acc: { 
             id: string; 
             name: string; 
@@ -213,6 +242,23 @@ Deno.serve(async (req) => {
       }
 
       case 'list_email': {
+        // Résoudre d'abord les account_ids Email associés à l'org courante
+        // (même logique multi-tenant que pour 'list' ci-dessus).
+        const { data: memberEmailAccounts, error: memberEmailAccountsError } = await adminClient
+          .from('member_email_accounts')
+          .select('email_account_id')
+          .eq('organization_id', organizationId);
+
+        if (memberEmailAccountsError) {
+          console.error('[unipile-accounts] Failed to load org email account IDs:', memberEmailAccountsError);
+        }
+
+        const allowedEmailAccountIds = new Set(
+          (memberEmailAccounts ?? [])
+            .map((r: any) => r?.email_account_id)
+            .filter((id: any): id is string => typeof id === 'string' && id.length > 0),
+        );
+
         // List all connected email accounts (Gmail, Outlook, IMAP)
         const emailResponse = await fetchWithTimeout(`${baseUrl}/accounts`, {
           headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
@@ -221,7 +267,7 @@ Deno.serve(async (req) => {
         const emailData = await emailResponse.json();
         const EMAIL_TYPES = new Set(['GOOGLE', 'OUTLOOK', 'IMAP', 'MAIL', 'GMAIL']);
         const emailAccounts = (emailData.items || [])
-          .filter((acc: { type: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()))
+          .filter((acc: { type: string; id: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()) && allowedEmailAccountIds.has(acc.id))
           .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }>; connection_params?: { mail?: { imap_user?: string; smtp_user?: string } } }) => {
             const sources = acc.sources || [];
             const okSource = sources.find((s: { status: string }) => s.status === 'OK');
@@ -1070,3 +1116,4 @@ Deno.serve(async (req) => {
     );
   }
 });
+// trigger deploy 1776789992

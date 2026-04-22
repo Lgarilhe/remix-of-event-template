@@ -6,52 +6,26 @@ project_id = "crckfywoyjxkawathdff"
 # Redirect URLs    : https://konekt-app-navy.vercel.app/**, http://localhost:5173/**, http://localhost:8080/**
 # (on évite `supabase config push` qui reset d'autres settings auth non gérés ici.)
 
-[functions.process-inmail-queue]
+# IMPORTANT : verify_jwt = false pour TOUTES les fonctions.
+# Supabase a migré les nouveaux projets vers JWT ES256 (asymétrique), mais le
+# gateway `verify_jwt=true` ne sait valider que HS256 → erreur
+# UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM. L'auth est gérée en interne par
+# `_shared/require-auth.ts` qui utilise supabase-js (compatible ES256 via l'API
+# Auth). On ne perd rien en sécurité.
+
+[functions.accept-invitation]
 verify_jwt = false
 
-[functions.fetch-airtable]
+[functions.add-to-shortlist]
 verify_jwt = false
 
-[functions.auto-analyze-message]
+[functions.ai-chat-completion]
 verify_jwt = false
 
-[functions.auto-categorize-chats]
+[functions.ai-credits]
 verify_jwt = false
 
-[functions.calendly-webhook]
-verify_jwt = false
-
-[functions.process-sequences]
-verify_jwt = false
-
-[functions.deepgram-temp-key]
-verify_jwt = false
-
-[functions.live-coach]
-verify_jwt = false
-
-[functions.generate-call-report]
-verify_jwt = false
-
-[functions.detect-profile-fraud]
-verify_jwt = false
-
-[functions.enrich-vivier-contacts]
-verify_jwt = false
-
-[functions.search-agent-chat]
-verify_jwt = false
-
-[functions.run-agent-search]
-verify_jwt = false
-
-[functions.generate-outreach-message]
-verify_jwt = false
-
-[functions.score-profile-job]
-verify_jwt = false
-
-[functions.generate-scorecard]
+[functions.aircall-webhook]
 verify_jwt = false
 
 [functions.analyze-linkedin-profile]
@@ -60,65 +34,212 @@ verify_jwt = false
 [functions.analyze-response]
 verify_jwt = false
 
-[functions.screen-candidate]
+[functions.apollo-search]
 verify_jwt = false
 
-[functions.generate-search-filters]
+[functions.audit-employer-brand]
 verify_jwt = false
 
-[functions.chat-filter-assistant]
+[functions.auto-analyze-message]
 verify_jwt = false
 
-[functions.refine-search-filters]
-verify_jwt = false
-
-[functions.nurturing-analyzer]
-verify_jwt = false
-
-[functions.generate-reply-suggestions]
-verify_jwt = false
-
-[functions.ai-credits]
-verify_jwt = false
-
-[functions.ingest-context]
-verify_jwt = false
-
-[functions.retrieve-context]
+[functions.auto-categorize-chats]
 verify_jwt = false
 
 [functions.auto-ingest-context]
 verify_jwt = false
 
+[functions.backfill-calendly]
+verify_jwt = false
+
 [functions.backfill-knowledge-lake]
 verify_jwt = false
 
-[functions.process-email-queue]
-verify_jwt = true
-
-[functions.send-transactional-email]
+[functions.calendly-webhook]
 verify_jwt = false
 
-[functions.preview-transactional-email]
+[functions.chat-filter-assistant]
 verify_jwt = false
 
-[functions.handle-email-unsubscribe]
+[functions.check-invitation-status]
+verify_jwt = false
+
+[functions.client-portal-data]
+verify_jwt = false
+
+[functions.create-checkout-session]
+verify_jwt = false
+
+[functions.database-search]
+verify_jwt = false
+
+[functions.deepgram-temp-key]
+verify_jwt = false
+
+[functions.detect-profile-fraud]
+verify_jwt = false
+
+[functions.enrich-company]
+verify_jwt = false
+
+[functions.enrich-contact]
+verify_jwt = false
+
+[functions.enrich-vivier-contacts]
+verify_jwt = false
+
+[functions.estimate-search-count]
+verify_jwt = false
+
+[functions.export-org-data]
+verify_jwt = false
+
+[functions.fetch-aircall]
+verify_jwt = false
+
+[functions.fetch-airtable]
+verify_jwt = false
+
+[functions.fetch-notion-candidates]
+verify_jwt = false
+
+[functions.fetch-notion-jobs]
+verify_jwt = false
+
+[functions.fetch-notion-schema]
+verify_jwt = false
+
+[functions.generate-call-report]
+verify_jwt = false
+
+[functions.generate-embedding]
+verify_jwt = false
+
+[functions.generate-outreach-message]
+verify_jwt = false
+
+[functions.generate-recruiter-bio]
+verify_jwt = false
+
+[functions.generate-reply-suggestions]
+verify_jwt = false
+
+[functions.generate-scorecard]
+verify_jwt = false
+
+[functions.generate-search-filters]
 verify_jwt = false
 
 [functions.handle-email-suppression]
 verify_jwt = false
 
-[functions.sequence-send-email]
+[functions.handle-email-unsubscribe]
+verify_jwt = false
+
+[functions.ingest-context]
+verify_jwt = false
+
+[functions.live-coach]
+verify_jwt = false
+
+[functions.n8n-create-workflow]
+verify_jwt = false
+
+[functions.notify-notion]
+verify_jwt = false
+
+[functions.nurturing-analyzer]
+verify_jwt = false
+
+[functions.pdl-search]
+verify_jwt = false
+
+[functions.preview-transactional-email]
+verify_jwt = false
+
+[functions.process-debrief]
+verify_jwt = false
+
+[functions.process-email-queue]
+verify_jwt = false
+
+[functions.process-inmail-queue]
+verify_jwt = false
+
+[functions.process-sequences]
+verify_jwt = false
+
+[functions.refine-search-filters]
+verify_jwt = false
+
+[functions.retrieve-context]
+verify_jwt = false
+
+[functions.rgpd-purge]
+verify_jwt = false
+
+[functions.run-agent-search]
+verify_jwt = false
+
+[functions.scan-career-pages]
+verify_jwt = false
+
+[functions.scan-recruiter-linkedin]
+verify_jwt = false
+
+[functions.score-profile-job]
+verify_jwt = false
+
+[functions.screen-candidate]
+verify_jwt = false
+
+[functions.search-agent-chat]
+verify_jwt = false
+
+[functions.send-team-invitation]
+verify_jwt = false
+
+[functions.send-transactional-email]
 verify_jwt = false
 
 [functions.sequence-email-track]
 verify_jwt = false
 
-[functions.sequence-webhooks-handler]
+[functions.sequence-send-email]
+verify_jwt = false
+
+[functions.sequence-snippets-crud]
 verify_jwt = false
 
 [functions.sequence-templates-crud]
 verify_jwt = false
 
-[functions.sequence-snippets-crud]
+[functions.sequence-webhooks-handler]
+verify_jwt = false
+
+[functions.setup-calendly-webhook]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.submit-application]
+verify_jwt = false
+
+[functions.unipile-accounts]
+verify_jwt = false
+
+[functions.unipile-manage-webhooks]
+verify_jwt = false
+
+[functions.unipile-search]
+verify_jwt = false
+
+[functions.unipile-webhook]
+verify_jwt = false
+
+[functions.update-candidate-stage]
+verify_jwt = false
+
+[functions.update-notion-job]
 verify_jwt = false

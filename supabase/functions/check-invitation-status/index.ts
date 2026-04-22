@@ -11,7 +11,7 @@ const ENV_UNIPILE_API_KEY: string | null = Deno.env.get('UNIPILE_API_KEY') || nu
 const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
 const ENV_UNIPILE_DSN: string = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabaseServiceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {

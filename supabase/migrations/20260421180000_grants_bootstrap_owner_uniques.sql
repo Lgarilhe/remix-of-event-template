@@ -13,31 +13,42 @@
 -- 1. Grants sur toutes les tables existantes du schema public
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
+-- service_role est utilisé par les edge functions via SB_SECRET_KEY (nouveau
+-- système Supabase API keys ES256 / sb_secret_xxx). Sans ces GRANTs, les
+-- fonctions admin retournent "permission denied" malgré la clé service_role.
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 
 -- 2. Grants sur les séquences (pour les colonnes serial/bigserial)
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
 
 -- 3. Grants sur les fonctions (pour RPC + triggers SECURITY INVOKER)
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 
 -- 4. Default privileges pour toutes les futures tables/séquences/fonctions
 -- (évite de devoir refaire ce fix après chaque migration)
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
-
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON TABLES TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT ON TABLES TO anon;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO authenticated, anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON SEQUENCES TO service_role;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO authenticated, anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO service_role;
 
 -- 5. Grant usage sur le schema lui-même (standard Supabase)
-GRANT USAGE ON SCHEMA public TO authenticated, anon;
+GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;
 
 -- 6. Bootstrap owner — catch-22 dans enforce_role_hierarchy
 -- Problème : le trigger handle_new_organization insère le créateur comme 'owner' dans

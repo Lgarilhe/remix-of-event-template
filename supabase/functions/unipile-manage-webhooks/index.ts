@@ -48,7 +48,7 @@ interface WebhookConfig {
 async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
   if (organizationId) {
     try {
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
       const sb = createClient(SUPABASE_URL!, serviceKey);
       
       const { data } = await sb

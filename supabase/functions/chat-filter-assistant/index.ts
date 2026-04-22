@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
     const userId = auth.userId;
 
     // Rate limit: 30 req/min
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'chat_filter_assistant', p_max_requests: 30, p_window_seconds: 60 });
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
             // Settle credits at stream end (fire-and-forget)
             if (_tokensIn + _tokensOut > 0) {
               try {
-                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
                 const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
                 const orgId = userId ? await resolveOrgIdFromUser(userId, adminClient) as string | null : null;
                 if (orgId) {

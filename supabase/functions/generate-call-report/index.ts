@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     }
     const userId = auth.userId;
 
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'generate_call_report', p_max_requests: 10, p_window_seconds: 60 });
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -118,7 +118,7 @@ Retourne UNIQUEMENT ce JSON :
 
       if (session?.candidate_id && session?.organization_id) {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const serviceKey = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
         fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },

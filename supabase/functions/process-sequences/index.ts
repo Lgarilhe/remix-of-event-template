@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
   // Accept: (1) service_role key (internal/cron), (2) PROCESS_SEQUENCES_SECRET, or (3) valid admin JWT (frontend)
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const serviceRoleKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
   const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || '';
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -1791,7 +1791,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         // Delegate to sequence-send-email edge function
         // Pass pre-personalized message so sequence-send-email uses it instead of its basic AI
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
-        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
         try {
           const emailRes = await fetchWithTimeout(
             `${supabaseUrl}/functions/v1/sequence-send-email`,

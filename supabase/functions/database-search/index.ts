@@ -697,7 +697,7 @@ Deno.serve(async (req) => {
     let apolloApiKey = Deno.env.get("APOLLO_API_KEY");
     try {
       const { resolveApolloCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const serviceClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const serviceClient = createClient(supabaseUrl, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
       const orgId = await resolveOrgIdFromUser(user.id, serviceClient);
       if (orgId) {
         const creds = await resolveApolloCredentials(orgId, serviceClient);

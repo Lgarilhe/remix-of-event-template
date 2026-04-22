@@ -14,7 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
 
 interface Conversation {
   id: string;
@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
       if (_tokensIn + _tokensOut > 0) {
         try {
           const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-          const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
           const orgId = authUserId ? await resolveOrgIdFromUser(authUserId, adminClient as any) : null;
           if (orgId && authUserId) {
             const { settleCredits } = await import("../_shared/settle-credits.ts");
@@ -474,7 +474,7 @@ Deno.serve(async (req) => {
       if (message._tokensIn + message._tokensOut > 0) {
         try {
           const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-          const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
           const orgId = authUserId ? await resolveOrgIdFromUser(authUserId, adminClient as any) : null;
           if (orgId && authUserId) {
             const { settleCredits } = await import("../_shared/settle-credits.ts");

@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
     const userId = auth.userId;
 
     // Rate limit: 20 req/min
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'generate_search_filters', p_max_requests: 20, p_window_seconds: 60 });
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -726,7 +726,7 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
     if (_tokensIn + _tokensOut > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
         const orgId = auth.userId ? await resolveOrgIdFromUser(auth.userId, svcSettle) : null;
         if (orgId && auth.userId) {
           // Verify user still belongs to the resolved org before billing credits

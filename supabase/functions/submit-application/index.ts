@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     // ── Rate Limiting by IP + email hash ──
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
     );
 
     // Use email as rate limit key (hash it for privacy)

@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const userId = auth.userId;
 
     // Rate limit: 20 req/min
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
     const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'generate_scorecard', p_max_requests: 20, p_window_seconds: 60 });
     if (allowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
@@ -197,7 +197,7 @@ Génère la scorecard d'évaluation sur mesure.`;
 
     // ── Fire-and-forget RAG ingestion (scorecard) ──
     const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
-    const serviceKeyRag = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const serviceKeyRag = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
     if (supabaseUrlRag && serviceKeyRag && candidateProfile?.name) {
       // Resolve org from user profile
       const { data: userProfile } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
@@ -227,7 +227,7 @@ Génère la scorecard d'évaluation sur mesure.`;
     if (_tokensIn + _tokensOut > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
         const orgId = userId ? await resolveOrgIdFromUser(userId, adminClient) : null;
         if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");

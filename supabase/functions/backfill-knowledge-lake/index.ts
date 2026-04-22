@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
     }
     // Validate JWT or service_role
     const token = authHeader.replace('Bearer ', '');
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
     if (token !== serviceKey) {
       const _authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
         global: { headers: { Authorization: authHeader } },
@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl2 = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey2 = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceKey2 = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
     const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
     if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
 

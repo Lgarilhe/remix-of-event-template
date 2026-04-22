@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     console.log('[unipile-webhook] Received event:', payload.event, 'for account:', payload.account_id);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseServiceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Resolve per-org Unipile credentials based on the account_id in the webhook payload
@@ -675,7 +675,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // ── Fire-and-forget RAG ingestion (conversation message) ──
   if (senderId && chatId) {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
     const orgId = linkedMembers?.[0]?.organization_id;
     if (supabaseUrl && serviceKey && orgId) {
       const senderName = payload.sender?.attendee_name

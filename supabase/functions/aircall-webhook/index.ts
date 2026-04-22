@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const contactNumber = callData.raw_digits || callData.number?.digits;
@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
 
     // ── Fire-and-forget RAG ingestion (call notes) ──
     if (notes && matchedAirtableId) {
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
       if (supabaseUrl && serviceKey) {
         // Find org for this candidate
         const { data: orgData } = await supabase

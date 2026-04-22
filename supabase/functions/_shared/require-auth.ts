@@ -7,7 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
 
 export interface AuthResult {
   /** Authenticated user ID (null for service_role calls) */
@@ -42,15 +42,15 @@ export async function requireAuth(
     return { userId: null, method: "service_role" };
   }
 
-  // 2. Validate user JWT
-  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data: { user }, error } = await (authClient as any).auth.getUser();
+  // 2. Validate user JWT — pass token explicitly so Supabase validates it
+  // against the auth server (works with ES256 / RS256 / HS256 alike).
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: { user }, error } = await (authClient as any).auth.getUser(token);
 
   if (error || !user) {
+    console.error("[requireAuth] getUser failed:", { error: error?.message, hasUser: !!user });
     throw new Response(
-      JSON.stringify({ error: "Unauthorized" }),
+      JSON.stringify({ error: "Unauthorized", detail: error?.message }),
       { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
