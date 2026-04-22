@@ -10,28 +10,25 @@ Ce fichier est l'unique source de vérité pour le backlog. Si un TODO est réso
 
 ## 🔴 Critique sécurité (à faire dans la semaine)
 
-### S1. Webhooks sans vérification de signature → ~30min
+### S1. Webhooks sans vérification de signature → ~30min ⚠️ PARTIEL
+- ❌ `sequence-webhooks-handler/index.ts` (450 lignes) : à analyser et signer
+- ✅ `sequence-email-track/index.ts` : endpoint public (tracking pixel) — signature impossible sans casser les emails clients. Cap MAX_EVENTS_PER_TRACKING=100 déjà en place comme garde-fou. À renforcer avec rate limit par IP si abus constaté.
 - `sequence-email-track/index.ts` : aucune verif (tracking pixel = facile à spoof, peut polluer les analytics)
 - `sequence-webhooks-handler/index.ts` : fallback `UNIPILE_WEBHOOK_SECRET` mais pas obligatoire
 - **Fix** : forcer la verif HMAC, refuser si secret absent. Pattern à reprendre de `handle-email-suppression` (Svix-style).
 - Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §4
 
-### S2. IDOR sur 5 endpoints → ~2h
-Endpoints qui acceptent `org_id` sans `verifyOrgMembership` systématique :
-- `unipile-search` 🔴 (un user peut bruteforce des org_id)
-- `add-to-shortlist` 🔴
-- `client-portal-data` 🔴 (portal token = accès scores/candidats sans vérif org)
-- `accept-invitation` 🟠 (token 64 hex bon, mais vérifier email match)
-- `check-invitation-status` 🟠 (info leakage org_id/role)
-- **Fix** : ajouter `verifyOrgMembership(userId, orgId)` (déjà dispo dans `_shared/require-auth.ts`) en début de chaque handler.
+### S2. IDOR sur 5 endpoints → ~2h ✅ AUDITÉ
+Vérification 22/04 : les 5 endpoints ont DÉJÀ des checks `verifyOrgMembership` inline.
+Helper standardisé `requireOrgAccess()` ajouté dans `_shared/require-auth.ts` pour les futurs endpoints.
+Refacto progressif des 13 endpoints existants à scheduler (low priority).
 - Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §2
 
-### S3. Rate limiting absent sur endpoints coûteux → ~1h
-- `apollo-search` 🔴 — payant, pas d'auth/rate (un attaquant peut faire exploser la facture Apollo)
-- `pdl-search` 🔴 — payant ($), idem
-- `unipile-search` 🟠 — non facturé mais intensif
-- `run-agent-search` 🟠 — Anthropic credits, pas de rate limit explicite
-- **Fix** : ajouter `check_rate_limit` RPC (existe déjà, voir pattern dans `ai-chat-completion`).
+### S3. Rate limiting absent sur endpoints coûteux ✅ DONE
+- ✅ `apollo-search` : 30 req/min/user
+- ✅ `pdl-search` : 20 req/min/user
+- ✅ `run-agent-search` : 10 req/min/user
+- ✅ `unipile-search` : déjà en place (189: check_rate_limit)
 - Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §5
 
 ### S4. Sentry — fuite PII potentielle → ~30min
@@ -39,20 +36,19 @@ Le DSN Sentry est public (ok), mais le scope par défaut envoie `request.headers
 - **Fix** : `Sentry.init({ beforeSend: scrubPII })` dans `src/main.tsx`.
 - Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §3 + `AUDIT_REPORT.md`
 
-### S5. RLS — `portal_tokens` exposition `anon` → ~30min
-La table `portal_tokens` (utilisée par les liens client portal) a une RLS incomplète : `anon` peut lire si on connaît le token, ce qui est ok, mais pas de `WITH CHECK` sur UPDATE/DELETE. Risque : un anon avec un token expiré peut tenter de re-set sa propre expiration.
-- **Fix** : migration ajoutant `WITH CHECK (false)` sur UPDATE/DELETE pour `anon`.
-- Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §1 + `docs/rls-fix-plan.md`
+### S5. RLS — `portal_tokens` exposition `anon` ✅ DONE (migration 20260422140000)
 
-### S6. CORS trop permissif sur edge functions → ~30min
-Toutes les edge functions ont `'Access-Control-Allow-Origin': '*'`. Pour une SaaS commercialisée, on doit restreindre à `konekt-app-navy.vercel.app` + domaines clients (à terme `*.konekt.fr`).
-- **Fix** : centraliser CORS dans `_shared/cors.ts` avec allowlist envvar `ALLOWED_ORIGINS`.
+### S6. CORS trop permissif sur edge functions ✅ HELPER CREE
+Helper `_shared/cors.ts` créé avec :
+- `buildCorsHeaders(req)` : echo l'origin si dans allowlist (default : prod + 2 localhost)
+- `corsHeaders` legacy export pour compat (échantillon `*` ou prod par défaut)
+- Env var `ALLOWED_ORIGINS` (comma-separated, ou `*` pour wildcard)
+
+Migration progressive des 77 fonctions à scheduler (s/`const corsHeaders = {...}`/`import { buildCorsHeaders } from '../_shared/cors.ts'`/`).
 - Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §6
 
-### S7. RLS phase 2 — 12 tables avec gaps → ~2h
-Voir `docs/rls-fix-plan.md` (516 lignes) — plan détaillé Phase 2 RLS. Beaucoup déjà fixé par migrations récentes (notamment 20260416 qu'on a appliquée), mais 12 tables avec `WITH CHECK` manquant ou policy `Anyone can` orpheline.
-- **Fix** : 1 migration consolidant tous les fix restants.
-- Source : `docs/rls-fix-plan.md`
+### S7. RLS phase 2 — 12 tables avec gaps ✅ DONE (migration 20260422140000)
+Vérifié en prod : la majorité des USING(true) ont été fixés par migration 20260416. Les 2 derniers trous (`mission_invitations` lecture publique + `airtable_sync_meta`) sont fixés dans 20260422140000_rls_phase2_consolidation.sql.
 
 ### S8. Logs d'audit — manque d'historique → ~3h (gros)
 Aucune table `audit_log` pour tracer les actions sensibles (suppression mission, modif config, accès portal). Obligation RGPD si on commercialise.

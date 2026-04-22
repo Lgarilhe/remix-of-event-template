@@ -76,3 +76,72 @@ export async function verifyOrgMembership(
     .maybeSingle();
   return !!data;
 }
+
+/**
+ * One-stop helper for edge functions that act on a specific organization.
+ *
+ * Usage:
+ *   const { userId, organizationId, adminClient } = await requireOrgAccess(req, body, corsHeaders);
+ *
+ * Resolution order:
+ *   1. If body.organization_id is provided, verify the user is a member of that org.
+ *      → prevents IDOR (user A trying to act on org B by sending B's id in body)
+ *   2. Else, fall back to profiles.active_organization_id from the user's profile.
+ *   3. If neither resolves, throws a 400 Response.
+ *
+ * Throws a Response (401/403/400) on any failure — call sites should `try/catch` and
+ * return the thrown Response directly.
+ */
+export async function requireOrgAccess(
+  req: Request,
+  body: Record<string, unknown> | null,
+  corsHeaders: Record<string, string>,
+): Promise<{
+  userId: string;
+  organizationId: string;
+  adminClient: ReturnType<typeof createClient>;
+}> {
+  const auth = await requireAuth(req, corsHeaders);
+  if (!auth.userId) {
+    // service_role tokens are not allowed for org-scoped endpoints (would bypass RLS isolation)
+    throw new Response(
+      JSON.stringify({ error: "User authentication required (service_role not allowed)" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+  const userId = auth.userId;
+
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // Try body first, then profile fallback
+  let organizationId: string | null = null;
+  const bodyOrgId = body && typeof body.organization_id === "string" ? body.organization_id : null;
+
+  if (bodyOrgId) {
+    const isMember = await verifyOrgMembership(adminClient, userId, bodyOrgId);
+    if (!isMember) {
+      throw new Response(
+        JSON.stringify({ error: "Forbidden — you are not a member of this organization" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    organizationId = bodyOrgId;
+  } else {
+    // Fallback: resolve from profile
+    const { data: profile } = await (adminClient as any)
+      .from("profiles")
+      .select("active_organization_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    organizationId = profile?.active_organization_id ?? null;
+  }
+
+  if (!organizationId) {
+    throw new Response(
+      JSON.stringify({ error: "No active organization for this user" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  return { userId, organizationId, adminClient };
+}

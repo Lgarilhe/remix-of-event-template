@@ -42,6 +42,21 @@ Deno.serve(async (req) => {
     }
     const user = { id: claimsData.claims.sub as string };
 
+    // Rate limit (S3 audit) — PDL is paid per-request, must throttle
+    const sbAdmin = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
+    const { data: rlAllowed } = await sbAdmin.rpc('check_rate_limit', {
+      p_user_id: user.id,
+      p_action: 'pdl_search',
+      p_max_requests: 20,
+      p_window_seconds: 60,
+    });
+    if (rlAllowed === false) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded — max 20 PDL searches per minute' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const PDL_API_KEY = Deno.env.get('PDL_API_KEY');
     if (!PDL_API_KEY) {
       return new Response(JSON.stringify({ success: false, error: 'PDL_API_KEY not configured' }), {

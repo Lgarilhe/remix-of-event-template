@@ -114,6 +114,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Rate limit (S3 audit) — agent search burns Anthropic + Apollo credits
+    const { data: rlAllowed } = await supabase.rpc('check_rate_limit', {
+      p_user_id: user.id,
+      p_action: 'run_agent_search',
+      p_max_requests: 10,
+      p_window_seconds: 60,
+    });
+    if (rlAllowed === false) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded — max 10 agent searches per minute' }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { conversation_id } = await req.json();
     if (!conversation_id) {
       return new Response(JSON.stringify({ error: "conversation_id required" }), {
