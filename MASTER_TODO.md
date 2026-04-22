@@ -147,15 +147,15 @@ Le fichier hardcode 3 modes (brief/process/sourcing/outreach) + tools + retrieva
 ### I7. Session recovery sur erreur 401 ✅ DONE
 `invokeEdgeFunction` détecte les 401 → appelle `supabase.auth.refreshSession()` → retry une fois avec le nouveau token. Si le refresh échoue, l'erreur 401 remonte (l'user doit se reconnecter).
 
-### I8. Error boundaries par section → 2h
-Une seule `SectionErrorBoundary` existe (ajoutée par `app-audit`). À étendre :
-- Wrap `<MissionWorkspace>` (8 tabs) → si une plante, les autres restent
-- Wrap `<AgentDrawer>` (le chat ne doit pas crasher l'app)
+### I8. Error boundaries par section ✅ DONE
+- `MissionWorkspace` : SectionErrorBoundary autour des 8 tabs (déjà fait dans le merge précédent)
+- `AgentDrawer` : SectionErrorBoundary ajoutée dans App.tsx (un crash du chat ne plante plus l'app)
 - Source : `AUDITS/PERF_FRONT_AUDIT.md` §5
 
-### I9. Design tokens — virer les couleurs hardcoded → 3h
-`bg-teal-500`, `text-teal-700`, `bg-indigo-400` (vu dans CardActions, CardStatusBadges) au lieu des tokens du theme (`bg-success`, `text-brand-purple`). Risque incohérence dark/light mode.
-- **Fix** : grep + remplacement des 30-50 occurrences.
+### I9. Design tokens — virer les couleurs hardcoded ⚠️ TRACKING
+Audit 22/04 : 25+ occurrences `bg-(teal|indigo|emerald|sky|cyan|rose|fuchsia|amber|lime)-NNN`. La plupart sont **contextuellement justifiées** (amber=warnings, emerald=success-temp).
+Action : refacto au fur et à mesure des touches sur les fichiers concernés. Pas de bulk sed (risque de régression visuelle).
+Cas critique fixé : `bg-teal-500` dans CardStatusBadges (badge Airtable) → `bg-success` lors du merge audit-sourcing-interface.
 - Source : `DESIGN_AUDIT.md`
 
 ### I10. Réduire taille des composants obèses → 4h

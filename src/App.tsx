@@ -12,6 +12,7 @@ import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
 import { AgentDrawer } from "@/components/agent";
 import { AppLayout } from "@/components/AppLayout";
+import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
@@ -167,10 +168,14 @@ const AppContent = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
-      <AgentDrawer />
-      <SessionExpiredDialog 
-        open={sessionExpired} 
-        onOpenChange={handleSessionExpiredClose} 
+      {/* AgentDrawer wrapped in error boundary — un crash du chat IA ne doit
+          pas faire planter toute l'app (audit I8). */}
+      <SectionErrorBoundary fallbackTitle="Erreur dans le copilot IA">
+        <AgentDrawer />
+      </SectionErrorBoundary>
+      <SessionExpiredDialog
+        open={sessionExpired}
+        onOpenChange={handleSessionExpiredClose}
       />
     </>
   );
