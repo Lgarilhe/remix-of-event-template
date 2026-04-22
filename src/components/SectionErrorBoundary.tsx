@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -23,6 +24,10 @@ export class SectionErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[SectionErrorBoundary]', error, errorInfo?.componentStack);
+    Sentry.captureException(error, {
+      tags: { boundary: 'section' },
+      contexts: { react: { componentStack: errorInfo?.componentStack } },
+    });
   }
 
   handleRetry = () => {

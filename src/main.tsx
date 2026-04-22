@@ -43,7 +43,7 @@ if (SENTRY_DSN) {
     environment: import.meta.env.MODE,
     integrations: [
       Sentry.browserTracingIntegration(),
-      Sentry.replayIntegration({ maskAllText: false, blockAllMedia: false }),
+      Sentry.replayIntegration({ maskAllText: true, blockAllMedia: true }),
     ],
     tracesSampleRate: 0.1, // 10% of transactions for performance monitoring
     replaysSessionSampleRate: 0, // Don't record replays by default
