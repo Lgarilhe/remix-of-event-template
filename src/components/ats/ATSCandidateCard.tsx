@@ -23,6 +23,9 @@ interface ATSCandidateCardProps {
   isDragging?: boolean;
   onClick: () => void;
   onJobClick?: (jobId: string) => void;
+  /** Si défini, affiche une checkbox (bulk select) */
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 const SOURCE_CONFIG: Record<string, { icon: React.ReactNode; label: string }> = {
@@ -37,6 +40,8 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   isDragging,
   onClick,
   onJobClick,
+  selected,
+  onToggleSelect,
 }) => {
   const sourceConfig = SOURCE_CONFIG[candidate.source] || SOURCE_CONFIG.shortlist;
 
@@ -59,11 +64,41 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       aria-label={`Candidat ${candidate.name}${candidate.score != null ? ', score ' + candidate.score + '%' : ''}, étape ${candidate.stage}`}
       className={`
-        bg-background border border-border p-3 cursor-pointer interactive-card focus-ring-brutal
+        group bg-background border p-3 cursor-pointer interactive-card focus-ring-brutal relative
+        ${selected ? 'border-foreground border-2 bg-accent/30' : 'border-border'}
         ${isDragging ? 'shadow-md border-foreground/30' : ''}
         ${isStagnant ? 'border-l-2 border-l-destructive' : ''}
       `}
     >
+      {/* Bulk select checkbox — visible au hover ou si déjà sélectionné */}
+      {onToggleSelect && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={!!selected}
+          aria-label={`Sélectionner ${candidate.name} pour action groupée`}
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelect();
+            }
+          }}
+          className={`absolute top-1.5 left-1.5 w-4 h-4 border-2 flex items-center justify-center transition-opacity z-10 ${
+            selected
+              ? 'opacity-100 bg-foreground border-foreground'
+              : 'opacity-0 group-hover:opacity-100 hover:opacity-100 border-foreground/40 bg-background'
+          }`}
+        >
+          {selected && (
+            <svg className="w-3 h-3 text-background" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">

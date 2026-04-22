@@ -186,13 +186,28 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-sm hover:shadow-sm`}
+      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-sm hover:shadow-sm hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
       style={{ wordBreak: 'break-word' }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Candidat ${profile.name || 'sans nom'}${profile.headline ? ', ' + profile.headline : ''}${jobScore ? ', score ' + jobScore.match_score + ' sur 100' : ''}`}
       onClick={(e) => {
         if (showScoringOverlay) return;
         const target = e.target as HTMLElement;
         if (target.closest('button, a, input, [role="checkbox"], [data-no-detail]')) return;
         onOpenDetail?.();
+      }}
+      onKeyDown={(e) => {
+        // 🆕 Opus audit B2 : keyboard nav sur les cards de résultats sourcing
+        // (avant aucune gestion — impossible de parcourir les profils au clavier)
+        if (showScoringOverlay) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          // Ignore si l'utilisateur est dans un input/bouton interne
+          const target = e.target as HTMLElement;
+          if (target.closest('button, a, input, [role="checkbox"], [data-no-detail]')) return;
+          e.preventDefault();
+          onOpenDetail?.();
+        }
       }}
     >
       {/* High score indicator — left accent bar */}

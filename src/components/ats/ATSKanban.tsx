@@ -21,14 +21,19 @@ interface ATSKanbanProps {
   onStageChange: (candidateId: string, newStage: string) => void;
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
+  /** Si fournis, active le mode bulk (checkboxes sur cards) */
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
-export const ATSKanban: React.FC<ATSKanbanProps> = ({ 
-  data, 
-  stages, 
-  onStageChange, 
+export const ATSKanban: React.FC<ATSKanbanProps> = ({
+  data,
+  stages,
+  onStageChange,
   onCandidateClick,
   onJobClick,
+  selectedIds,
+  onToggleSelect,
 }) => {
   const [activeCandidate, setActiveCandidate] = React.useState<ATSCandidate | null>(null);
   const [activeOverColumn, setActiveOverColumn] = React.useState<string | null>(null);
@@ -123,6 +128,8 @@ export const ATSKanban: React.FC<ATSKanbanProps> = ({
               isOver={activeOverColumn === stage.key}
               onCandidateClick={onCandidateClick}
               onJobClick={onJobClick}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
             />
           ))}
         </div>

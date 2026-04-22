@@ -11,6 +11,9 @@ interface ATSDroppableColumnProps {
   isOver: boolean;
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
+  /** Set d'ids candidats sélectionnés (bulk mode). Undefined = pas de checkbox */
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
 const INITIAL_VISIBLE = 10;
@@ -23,6 +26,8 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   isOver,
   onCandidateClick,
   onJobClick,
+  selectedIds,
+  onToggleSelect,
 }) => {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
@@ -47,11 +52,11 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       role="region"
       aria-label={`Colonne ${stage.label}, ${candidates.length} candidat${candidates.length > 1 ? 's' : ''}`}
     >
-      {/* Header */}
-      <div className={`p-3 border-b transition-colors ${isOver ? 'border-foreground bg-foreground/5' : 'border-border bg-accent/50'}`}>
+      {/* Header — sticky pour garder le label visible en scroll vertical (Opus B3) */}
+      <div className={`sticky top-0 z-10 p-3 border-b transition-colors ${isOver ? 'border-foreground bg-foreground/5 backdrop-blur-sm' : 'border-border bg-accent/80 backdrop-blur-sm'}`}>
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-foreground text-xs uppercase tracking-wider">{stage.label}</h3>
-          <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold tabular-nums">
+          <h3 className="font-bold text-foreground text-xs uppercase tracking-wider truncate">{stage.label}</h3>
+          <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold tabular-nums shrink-0">
             {candidates.length}
           </span>
         </div>
@@ -75,6 +80,8 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
               columnId={id}
               onClick={() => onCandidateClick(candidate)}
               onJobClick={onJobClick}
+              selected={selectedIds?.has(candidate.id)}
+              onToggleSelect={onToggleSelect ? () => onToggleSelect(candidate.id) : undefined}
             />
           ))
         )}

@@ -8,6 +8,8 @@ interface ATSDraggableCardProps {
   columnId: string;
   onClick: () => void;
   onJobClick?: (jobId: string) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export const ATSDraggableCard: React.FC<ATSDraggableCardProps> = ({
@@ -15,6 +17,8 @@ export const ATSDraggableCard: React.FC<ATSDraggableCardProps> = ({
   columnId,
   onClick,
   onJobClick,
+  selected,
+  onToggleSelect,
 }) => {
   const {
     attributes,
@@ -42,6 +46,8 @@ export const ATSDraggableCard: React.FC<ATSDraggableCardProps> = ({
         isDragging={isDragging}
         onClick={onClick}
         onJobClick={onJobClick}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
       />
     </div>
   );
