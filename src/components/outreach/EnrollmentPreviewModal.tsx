@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
+import { AiTextarea } from '@/components/ai/AiTextarea';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -938,10 +939,16 @@ function MessageStepCard({
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Message</label>
               )}
               {isEditing ? (
-                <Textarea
+                <AiTextarea
                   value={(preview?.message || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')}
                   onChange={e => onEditMessage('message', e.target.value)}
-                  className="min-h-[100px] text-xs mt-0.5 resize-y"
+                  className="min-h-[100px] text-xs mt-0.5 resize-y pr-10"
+                  context={{
+                    purpose: step.actionType === 'email' ? 'email outreach' : 'message LinkedIn',
+                    data: { step_type: step.actionType, candidate: preview?.candidateName },
+                    tone: 'casual',
+                  }}
+                  placeholder="Tape /ai pour générer ou améliorer le message"
                 />
               ) : (
                 <div

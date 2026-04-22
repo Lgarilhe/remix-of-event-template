@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StickyNote, Plus, Trash2, Loader2 } from 'lucide-react';
-import { Textarea } from '@/components/ui/textarea';
+import { AiTextarea } from '@/components/ai/AiTextarea';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -74,11 +74,16 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
       ) : (
         <div className="space-y-4">
           <div className="flex gap-0">
-            <Textarea
+            <AiTextarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
-              placeholder="Ajouter une note personnelle..."
-              className="flex-1 min-h-[60px] rounded-lg border-border text-sm resize-none"
+              placeholder="Ajouter une note personnelle... (tape /ai pour les commandes IA)"
+              className="flex-1 min-h-[60px] rounded-lg border-border text-sm resize-none pr-10"
+              context={{
+                purpose: 'note candidat',
+                data: { candidate_name: candidateName, candidate_id: candidateId, job_id: jobId },
+                tone: 'concise',
+              }}
             />
             <button onClick={handleAdd} disabled={addingNote || !newNote.trim()}
               className="h-auto px-4 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
