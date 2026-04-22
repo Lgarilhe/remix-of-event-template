@@ -39,15 +39,19 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
     <div
       ref={setNodeRef}
       className={`
-        w-[280px] flex-shrink-0 border border-border bg-background transition-all duration-200
-        ${isOver ? 'border-border shadow-md scale-[1.01]' : ''}
+        w-[280px] flex-shrink-0 border bg-background transition-all duration-200
+        ${isOver
+          ? 'border-foreground border-2 shadow-lg scale-[1.02] bg-muted/30'
+          : 'border-border'}
       `}
+      role="region"
+      aria-label={`Colonne ${stage.label}, ${candidates.length} candidat${candidates.length > 1 ? 's' : ''}`}
     >
       {/* Header */}
-      <div className="p-3 border-b border-border bg-accent/50">
+      <div className={`p-3 border-b transition-colors ${isOver ? 'border-foreground bg-foreground/5' : 'border-border bg-accent/50'}`}>
         <div className="flex items-center justify-between">
-          <h3 className="font-medium text-foreground text-xs uppercase tracking-wider">{stage.label}</h3>
-          <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold">
+          <h3 className="font-bold text-foreground text-xs uppercase tracking-wider">{stage.label}</h3>
+          <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold tabular-nums">
             {candidates.length}
           </span>
         </div>
@@ -56,8 +60,12 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       {/* Cards */}
       <div className="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto">
         {visibleCandidates.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-xs uppercase tracking-wider">
-            Aucun candidat
+          <div className={`text-center py-8 text-xs uppercase tracking-wider transition-all border-2 border-dashed rounded-none ${
+            isOver
+              ? 'text-foreground border-foreground bg-foreground/5 font-bold'
+              : 'text-muted-foreground border-border/50'
+          }`}>
+            {isOver ? '⬇️ Déposer ici' : 'Aucun candidat'}
           </div>
         ) : (
           visibleCandidates.map(candidate => (

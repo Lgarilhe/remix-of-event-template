@@ -63,7 +63,12 @@ const tabsConfig = [
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState('profile');
+  // Smart default : si on a un score IA déjà calculé, ouvre directement
+  // sur l'onglet "Évaluation" (cas d'un recruteur qui revient sur un candidat
+  // déjà scoré pour décider go/no-go). Sinon, "Profil" reste le défaut.
+  const [activeTab, setActiveTab] = useState<string>(
+    candidate.score != null && candidate.score > 0 ? 'evaluation' : 'profile'
+  );
   const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const isSplitMode = activeTab === 'evaluation';
   const [notes, setNotes] = useState<Note[]>([]);
@@ -329,7 +334,27 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         <div className="p-3 sm:p-6 pb-0">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <h2 className="text-base sm:text-xl font-bold text-foreground truncate">{candidate.name}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-xl font-bold text-foreground truncate">{candidate.name}</h2>
+                {/* Score IA visible dans le header (avant : caché dans onglet Évaluation) */}
+                {candidate.score != null && candidate.score > 0 && (
+                  <button
+                    onClick={() => setActiveTab('evaluation')}
+                    aria-label={`Score ${candidate.score} sur 100, cliquer pour voir l'évaluation détaillée`}
+                    className={cn(
+                      'inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold font-mono tabular-nums border transition-colors hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                      candidate.score >= 70
+                        ? 'bg-success/15 text-success border-success/40'
+                        : candidate.score >= 50
+                          ? 'bg-warning/15 text-warning border-warning/40'
+                          : 'bg-destructive/15 text-destructive border-destructive/40',
+                    )}
+                  >
+                    <Target className="w-3 h-3" aria-hidden="true" />
+                    {candidate.score}
+                  </button>
+                )}
+              </div>
               {(enrichedProfile?.headline || candidate.headline) && (
                 <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
               )}

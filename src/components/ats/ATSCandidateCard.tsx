@@ -1,6 +1,7 @@
 import React from 'react';
 import { ATSCandidate } from '@/hooks/useATSData';
-import { differenceInDays, parseISO } from 'date-fns';
+import { differenceInDays, parseISO, formatDistanceToNowStrict } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { 
   Mail, 
@@ -53,10 +54,14 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   return (
     <div
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      aria-label={`Candidat ${candidate.name}${candidate.score != null ? ', score ' + candidate.score + '%' : ''}, étape ${candidate.stage}`}
       className={`
-        bg-background border border-border p-3 cursor-pointer transition-all
-        hover:shadow-sm hover:border-border
-        ${isDragging ? 'shadow-md border-border' : ''}
+        bg-background border border-border p-3 cursor-pointer interactive-card focus-ring-brutal
+        ${isDragging ? 'shadow-md border-foreground/30' : ''}
+        ${isStagnant ? 'border-l-2 border-l-destructive' : ''}
       `}
     >
       {/* Header */}
@@ -74,12 +79,16 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         
         {/* Indicators */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          {candidate.score != null && (
-            <span className={`text-xs font-bold px-1.5 py-0.5 border ${
-              candidate.score >= 70 ? 'border-border bg-accent text-foreground' : 
-              candidate.score >= 40 ? 'border-border bg-background text-foreground' : 'border-destructive text-destructive'
-            }`}>
-              {candidate.score}%
+          {candidate.score != null && candidate.score > 0 && (
+            <span
+              className={`text-xs font-bold font-mono tabular-nums px-1.5 py-0.5 border ${
+                candidate.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
+                candidate.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
+                'border-destructive/40 bg-destructive/10 text-destructive'
+              }`}
+              title={`Score IA : ${candidate.score}/100`}
+            >
+              {candidate.score}
             </span>
           )}
           {candidate.hasReminder && (
@@ -200,18 +209,31 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
             <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
           )}
           {candidate.email && (
-            <Mail className="w-3 h-3" />
+            <Mail className="w-3 h-3" aria-label="Email disponible" />
           )}
         </div>
-        
-        {candidate.lastActivity && (
-          <span>
-            {new Date(candidate.lastActivity).toLocaleDateString('fr-FR', {
-              day: 'numeric',
-              month: 'short',
-            })}
-          </span>
-        )}
+
+        {candidate.lastActivity && (() => {
+          // Affichage temps relatif "il y a Xj/h" — plus parlant qu'une date sèche.
+          // Si > 30j, on bascule sur la date pour éviter "il y a 234 jours".
+          const days = daysSince ?? 0;
+          let label: string;
+          try {
+            label = days > 30
+              ? new Date(candidate.lastActivity).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+              : `il y a ${formatDistanceToNowStrict(parseISO(candidate.lastActivity), { locale: fr })}`;
+          } catch {
+            label = '—';
+          }
+          return (
+            <span
+              className={`tabular-nums ${isStagnant ? 'text-destructive font-medium' : ''}`}
+              title={new Date(candidate.lastActivity).toLocaleString('fr-FR')}
+            >
+              {label}
+            </span>
+          );
+        })()}
       </div>
     </div>
   );
