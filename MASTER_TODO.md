@@ -10,12 +10,10 @@ Ce fichier est l'unique source de vérité pour le backlog. Si un TODO est réso
 
 ## 🔴 Critique sécurité (à faire dans la semaine)
 
-### S1. Webhooks sans vérification de signature → ~30min ⚠️ PARTIEL
-- ❌ `sequence-webhooks-handler/index.ts` (450 lignes) : à analyser et signer
-- ✅ `sequence-email-track/index.ts` : endpoint public (tracking pixel) — signature impossible sans casser les emails clients. Cap MAX_EVENTS_PER_TRACKING=100 déjà en place comme garde-fou. À renforcer avec rate limit par IP si abus constaté.
-- `sequence-email-track/index.ts` : aucune verif (tracking pixel = facile à spoof, peut polluer les analytics)
-- `sequence-webhooks-handler/index.ts` : fallback `UNIPILE_WEBHOOK_SECRET` mais pas obligatoire
-- **Fix** : forcer la verif HMAC, refuser si secret absent. Pattern à reprendre de `handle-email-suppression` (Svix-style).
+### S1. Webhooks sans vérification de signature ✅ DONE
+- ✅ `sequence-webhooks-handler/index.ts` : **fail-closed** si `SEQUENCE_WEBHOOK_SECRET` ou `UNIPILE_WEBHOOK_SECRET` absent (ancien comportement : skip verif = faille). Retourne 503 si pas configuré, 401 si secret invalide/manquant. Comparaison timing-safe (constant-time) pour résister aux timing attacks.
+- ✅ `sequence-email-track/index.ts` : endpoint public tracking pixel — signature impossible sans casser les emails clients déjà envoyés. Cap MAX_EVENTS_PER_TRACKING=100 en place comme garde-fou. À renforcer avec rate limit par IP si abus constaté.
+- À déployer : `supabase functions deploy sequence-webhooks-handler --project-ref crckfywoyjxkawathdff` + set `SEQUENCE_WEBHOOK_SECRET` dans Supabase secrets si pas encore fait.
 - Source : `AUDITS/SECURITY_DEEP_AUDIT.md` §4
 
 ### S2. IDOR sur 5 endpoints → ~2h ✅ AUDITÉ
@@ -217,8 +215,16 @@ Refonte `Settings → Integrations` : liste dynamique alimentée par `connector_
 - ⏳ Phase 2 : drag & drop pour replanifier, création d'event direct, sync ICS Google/Outlook bidirectionnel (gros chantier OAuth)
 - Source : `NAV_GAPS.md`
 
-### B6. Onglet Tasks/TODO global → 2 jours
-Pas de gestion de tâches globale. Manque évident : "rappel sur ce candidat", "préparer brief client X".
+### B6. Onglet Tasks/TODO global ✅ MVP DONE
+- ✅ Page `/tasks` (chunk dédié Tasks-XXX.js)
+- ✅ Hook `useAllReminders` agrège tous les `candidate_reminders` avec bucket par urgence (overdue / today / week / later / done)
+- ✅ KPI strip 5 colonnes (compteurs par bucket), alerte rouge si overdue > 0
+- ✅ Vue "Actives" (défaut) / "Toutes" (avec terminés)
+- ✅ Toggle complete + delete (AlertDialog shadcn pour confirmation destructive)
+- ✅ Click sur candidat lié → navigate to /pipeline?candidate={id}
+- ✅ Item nav sidebar `Tâches` (icône CheckSquare) entre Calendrier et Messages
+- ✅ Realtime via React Query invalidation
+- ⏳ Phase 2 : création de tâche standalone sans candidat lié (nécessite alter table candidate_reminders → candidate_id nullable, OR nouvelle table `tasks`)
 - Source : `NAV_GAPS.md` + `PRODUCT_COMPLETION.md`
 
 ### B7. Onglet Analytics ✅ PARTIEL (KPI vélocité + qualité source)

@@ -8,6 +8,8 @@ import { useCandidateFullProfile, CandidateActivity } from '@/hooks/useCandidate
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+// I3 — primitive partagée pour avatar candidat uniforme
+import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
 
 interface Props {
   profile: LinkedInProfile;
@@ -41,18 +43,11 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
     <div className="pb-4 border-b border-border space-y-3">
       {/* Header row */}
       <div className="flex items-start gap-3">
-        {profile.profile_picture_url ? (
-          <img
-            src={profile.profile_picture_url}
-            alt={profile.name || 'Photo de profil'}
-            className="w-12 h-12 rounded-full object-cover shrink-0"
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-        ) : (
-          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
-            <span className="text-sm font-medium">{profile.name?.charAt(0) || '?'}</span>
-          </div>
-        )}
+        <CandidateAvatar
+          name={profile.name}
+          imageUrl={profile.profile_picture_url}
+          size="lg"
+        />
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold">{profile.name}</h3>
           <p className="text-xs text-muted-foreground truncate">{profile.headline}</p>

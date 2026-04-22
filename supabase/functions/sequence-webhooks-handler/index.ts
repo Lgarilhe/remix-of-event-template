@@ -16,6 +16,17 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 const WEBHOOK_SECRET = Deno.env.get('SEQUENCE_WEBHOOK_SECRET') || Deno.env.get('UNIPILE_WEBHOOK_SECRET') || '';
 
+// S1 — timing-safe string comparison (constant time regardless of match position)
+// évite les timing attacks sur la vérification du secret webhook.
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // ============ HELPERS ============
 
 /**
@@ -400,13 +411,25 @@ Deno.serve(async (req) => {
     return ok({ error: 'Method not allowed' });
   }
 
-  // Verify webhook secret
-  if (WEBHOOK_SECRET) {
-    const providedSecret = req.headers.get('x-webhook-secret') || '';
-    if (providedSecret !== WEBHOOK_SECRET) {
-      console.warn('[webhooks] Invalid webhook secret');
-      return ok({ error: 'Invalid secret' });
-    }
+  // S1 — Webhook signature : fail-closed. Si le secret n'est pas configuré
+  // côté Supabase, on refuse tout le trafic (au lieu de l'ancien comportement
+  // "skip verif si secret absent" qui était une faille).
+  // Comparaison timing-safe (constant-time) pour résister aux timing attacks.
+  if (!WEBHOOK_SECRET) {
+    console.error('[webhooks] SEQUENCE_WEBHOOK_SECRET (or UNIPILE_WEBHOOK_SECRET) not configured — refusing webhook for security');
+    return new Response(JSON.stringify({ error: 'Webhook not configured' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const providedSecret = req.headers.get('x-webhook-secret') || '';
+  if (!providedSecret || !timingSafeEqual(providedSecret, WEBHOOK_SECRET)) {
+    console.warn('[webhooks] Invalid or missing webhook secret');
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   try {
