@@ -442,6 +442,38 @@ function statusLabel(status: string | null): string {
 }
 
 /**
+ * Valide qu'une string ressemble à un User-Agent navigateur.
+ * Un UA commence TOUJOURS par "Mozilla/" ou similaire.
+ */
+function looksLikeUserAgent(value: string): boolean {
+  if (!value.trim()) return true; // vide = OK (fallback par défaut)
+  const lower = value.trim().toLowerCase();
+  // Refuse emails / noms simples / strings courtes
+  if (lower.includes('@')) return false;
+  if (value.trim().length < 20) return false;
+  // Accepte les patterns UA courants
+  return lower.startsWith('mozilla/')
+    || lower.startsWith('opera/')
+    || lower.includes('applewebkit')
+    || lower.includes('gecko')
+    || lower.includes('chrome/');
+}
+
+/**
+ * Valide la forme basique d'un cookie li_at.
+ * Un li_at est une string ~80-200 chars, alphanumerique + - _ : (pas d'espaces ni retour ligne).
+ */
+function looksLikeLiAt(value: string): { ok: boolean; reason?: string } {
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: false, reason: 'Cookie vide' };
+  if (trimmed.length < 30) return { ok: false, reason: 'Cookie trop court (< 30 caractères)' };
+  if (trimmed.includes(' ') || trimmed.includes('\n')) return { ok: false, reason: 'Cookie contient des espaces ou retours ligne' };
+  if (trimmed.includes('@')) return { ok: false, reason: 'Cela ressemble à un email, pas à un cookie' };
+  if (trimmed.includes('=')) return { ok: false, reason: 'Copiez uniquement la VALEUR du cookie (pas "li_at=...")' };
+  return { ok: true };
+}
+
+/**
  * Sub-component : formulaire de saisie du cookie li_at + user agent (optionnel).
  * Réutilisé entre "compte en erreur" et "pas de mapping".
  */
@@ -459,6 +491,15 @@ function ReconnectForm({
   hideCancel?: boolean;
   accountStatus?: string | null;
 }) {
+  const liAtValidation = looksLikeLiAt(liAtCookie);
+  const uaValid = looksLikeUserAgent(userAgent);
+
+  const handleUseMyUA = () => {
+    if (typeof navigator !== 'undefined' && navigator.userAgent) {
+      setUserAgent(navigator.userAgent);
+    }
+  };
+
   return (
     <form
       className="space-y-3 p-3 border border-border rounded-lg bg-muted/30"
@@ -475,6 +516,77 @@ function ReconnectForm({
           </div>
         </div>
       )}
+
+      {/* Warning duplicate session — explique pourquoi + donne la marche à suivre */}
+      <div className="flex items-start gap-2 p-3 bg-destructive/5 border border-destructive/40 rounded">
+        <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+        <div className="text-xs text-foreground space-y-1.5">
+          <p className="font-bold uppercase tracking-wider text-destructive">⚠️ À lire avant de reconnecter</p>
+          <p className="leading-relaxed text-muted-foreground">
+            LinkedIn n'autorise qu'<strong className="text-foreground">une seule session active par cookie</strong>. Quand Unipile utilise votre cookie depuis ses serveurs,
+            LinkedIn peut invalider votre session dans Chrome → vous êtes déconnecté de <strong className="text-foreground">LinkedIn Recruiter</strong> dans votre navigateur.
+          </p>
+          <p className="leading-relaxed text-muted-foreground">
+            <strong className="text-foreground">Solution recommandée</strong> : récupérez le cookie depuis une <strong className="text-foreground">fenêtre de navigation privée</strong> ou un
+            <strong className="text-foreground"> profil Chrome séparé</strong> — et laissez LinkedIn Recruiter loggé normalement dans votre session principale.
+          </p>
+        </div>
+      </div>
+
+      {/* Guide pas à pas — explicite et rassurant */}
+      <details className="border border-info/30 bg-info/5 rounded group" open>
+        <summary className="text-xs font-medium cursor-pointer flex items-center gap-1.5 list-none [&::-webkit-details-marker]:hidden p-2.5 text-info">
+          <Info className="w-3.5 h-3.5" aria-hidden="true" />
+          <span>Comment récupérer le cookie li_at (étape par étape)</span>
+          <ChevronDown className="w-3 h-3 ml-auto group-open:hidden" aria-hidden="true" />
+          <ChevronUp className="w-3 h-3 ml-auto hidden group-open:block" aria-hidden="true" />
+        </summary>
+        <ol className="px-3 pb-3 space-y-2 text-xs text-foreground">
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">1.</span>
+            <div>
+              Dans <strong>Chrome</strong>, ouvrez une <strong>fenêtre de navigation privée</strong> (<kbd className="px-1 bg-muted border border-border text-[10px]">Ctrl+Shift+N</kbd>).
+              <span className="block text-muted-foreground text-[11px] mt-0.5">Cela évite d'invalider votre session LinkedIn Recruiter actuelle.</span>
+            </div>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">2.</span>
+            <div>Allez sur <a href="https://www.linkedin.com/login" target="_blank" rel="noopener noreferrer" className="text-info underline">linkedin.com/login</a> et connectez-vous avec votre compte.</div>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">3.</span>
+            <div>
+              Appuyez sur <kbd className="px-1 bg-muted border border-border text-[10px]">F12</kbd> pour ouvrir les DevTools.
+              <span className="block text-muted-foreground text-[11px] mt-0.5">Sur Mac : <kbd className="px-1 bg-muted border border-border text-[10px]">Cmd+Opt+I</kbd></span>
+            </div>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">4.</span>
+            <div>
+              Onglet <strong>Application</strong> (ou <strong>Storage</strong> sur Firefox) → <strong>Cookies</strong> → <strong>https://www.linkedin.com</strong>.
+            </div>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">5.</span>
+            <div>
+              Cherchez la ligne <strong>li_at</strong> dans la liste (triez par nom si besoin). Cliquez dessus pour la sélectionner.
+            </div>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">6.</span>
+            <div>
+              Dans la colonne <strong>Value</strong> (à droite), <strong>double-cliquez sur la valeur</strong> (longue chaîne de caractères type <code className="text-[10px] bg-muted px-1">AQEDATxxxxxx...</code>) et faites <kbd className="px-1 bg-muted border border-border text-[10px]">Ctrl+C</kbd>.
+              <p className="text-destructive text-[11px] mt-0.5">⚠️ Copiez UNIQUEMENT la valeur, pas le nom "li_at" ni le signe "=". Pas d'espaces à la fin.</p>
+            </div>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-mono font-bold text-info shrink-0">7.</span>
+            <div>
+              Revenez ici et collez la valeur dans le champ <strong>"Cookie li_at"</strong> ci-dessous, puis cliquez <strong>Reconnecter</strong>.
+            </div>
+          </li>
+        </ol>
+      </details>
 
       <div className="space-y-1.5">
         <Label htmlFor="li-at" className="text-xs font-medium flex items-center gap-1.5">
@@ -494,29 +606,58 @@ function ReconnectForm({
           type="password"
           value={liAtCookie}
           onChange={(e) => setLiAtCookie(e.target.value)}
-          placeholder="Coller votre cookie li_at LinkedIn"
-          className="text-xs font-mono"
+          placeholder="Coller uniquement la valeur (ex: AQEDAT...)"
+          className={cn(
+            'text-xs font-mono',
+            liAtCookie && !liAtValidation.ok && 'border-destructive focus-visible:ring-destructive',
+          )}
           autoComplete="off"
           spellCheck={false}
+          aria-invalid={liAtCookie.length > 0 && !liAtValidation.ok}
         />
+        {liAtCookie && !liAtValidation.ok && (
+          <p className="text-[10px] text-destructive flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+            {liAtValidation.reason}
+          </p>
+        )}
         <p className="text-[10px] text-muted-foreground leading-relaxed">
-          Dans LinkedIn (Chrome/Firefox) : F12 → Application → Cookies → linkedin.com → li_at → copier la valeur.
+          Dans LinkedIn (Chrome/Firefox) : <kbd className="px-1 bg-muted border border-border text-[9px]">F12</kbd> → <strong>Application</strong> → <strong>Cookies</strong> → <strong>linkedin.com</strong> → clic sur <strong>li_at</strong> → copier uniquement la <strong>colonne "Value"</strong> (pas le nom).
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="ua" className="text-xs font-medium">User-Agent (optionnel)</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="ua" className="text-xs font-medium">User-Agent (optionnel)</Label>
+          <button
+            type="button"
+            onClick={handleUseMyUA}
+            className="text-[10px] text-info hover:text-info/80 underline underline-offset-2"
+          >
+            Utiliser mon navigateur actuel
+          </button>
+        </div>
         <Input
           id="ua"
           value={userAgent}
           onChange={(e) => setUserAgent(e.target.value)}
-          placeholder="Mozilla/5.0 ... Chrome/... Safari/..."
-          className="text-xs font-mono"
+          placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
+          className={cn(
+            'text-xs font-mono',
+            userAgent && !uaValid && 'border-destructive focus-visible:ring-destructive',
+          )}
           autoComplete="off"
           spellCheck={false}
+          aria-invalid={userAgent.length > 0 && !uaValid}
         />
+        {userAgent && !uaValid && (
+          <p className="text-[10px] text-destructive flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+            Ceci ne ressemble pas à un User-Agent. Un UA commence par "Mozilla/" — ce n'est pas votre email ni votre nom. Laissez vide en cas de doute.
+          </p>
+        )}
         <p className="text-[10px] text-muted-foreground">
-          Si laissé vide, un User-Agent Chrome récent par défaut sera utilisé.
+          Chaîne technique de votre navigateur (pas un email ni un nom). Si vide, un UA Chrome par défaut sera utilisé.
         </p>
       </div>
 
@@ -524,7 +665,7 @@ function ReconnectForm({
         <Button
           type="submit"
           size="sm"
-          disabled={reconnecting || !liAtCookie.trim()}
+          disabled={reconnecting || !liAtCookie.trim() || !liAtValidation.ok || !uaValid}
           className="gap-1.5"
         >
           {reconnecting ? (
