@@ -2,9 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
-import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
+import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
@@ -326,7 +325,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       <div className="space-y-2 sm:space-y-3">
-        {/* Filter actions */}
+        {/* Filter actions — HEAD's AutoFillFiltersButton kept (no onOpenFilterWizard
+            prop in HEAD signature; the wizard is invoked via the search.showFilterWizard
+            state from useLinkedInSearch instead) */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <AutoFillFiltersButton
             selectedJob={selectedJob}
@@ -518,27 +519,29 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         accountId={selectedAccount}
       />
 
-      {/* Action buttons */}
-      <div className="flex gap-2">
-        <Button
-          onClick={onSearch}
-          disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
-          className="flex-1 bg-foreground text-background hover:bg-foreground/90"
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <Search className="w-4 h-4 mr-2" />
-          )}
-          {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={onClearFilters}
-          disabled={loading}
-        >
-          Effacer
-        </Button>
+      {/* Action buttons — sticky at bottom */}
+      <div className="sticky bottom-0 z-10 bg-background pt-2 pb-1 border-t border-border -mx-0 px-0">
+        <div className="flex gap-2">
+          <Button
+            onClick={onSearch}
+            disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
+            className="flex-1 bg-foreground text-background hover:bg-foreground/90"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Search className="w-4 h-4 mr-2" />
+            )}
+            {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onClearFilters}
+            disabled={loading}
+          >
+            Effacer
+          </Button>
+        </div>
       </div>
     </div>
   );

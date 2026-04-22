@@ -5,7 +5,7 @@ import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive, Users } from 'lucide-react';
+import { ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
@@ -26,7 +26,6 @@ interface CardActionsProps {
   onArchive?: () => void;
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
-  onFindSimilar?: () => void;
   compact?: boolean;
 }
 
@@ -46,7 +45,6 @@ export const CardActions: React.FC<CardActionsProps> = ({
   onArchive,
   onSequenceEnroll,
   onProfileTreated,
-  onFindSimilar,
   compact = false,
 }) => {
   const buttonSize = compact ? 'h-7 w-7 p-0' : 'h-8 w-8 p-0';
@@ -126,7 +124,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         </Button>
       )}
 
-      {/* Find Similar */}
+      {/* Find Similar (kept from HEAD — new feature added after audit branch) */}
       {onFindSimilar && !compact && (
         <Tooltip>
           <TooltipTrigger asChild>

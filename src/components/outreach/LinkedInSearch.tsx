@@ -14,7 +14,6 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile, LinkedInFiltersState, INITIAL_FILTERS } from './types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
-import { extractTraitsFromProfile, traitsToFilters } from '@/hooks/linkedin/extractSimilarFilters';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -640,28 +639,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     toast.success('Profils inscrits à la séquence');
   }, [search.setSelectedProfiles, queryClient]);
 
-  // Find Similar handler
-  const handleFindSimilar = useCallback((profile: LinkedInProfile) => {
-    const traits = extractTraitsFromProfile(profile);
-    const newFilters = traitsToFilters(traits);
-
-    search.setFilters(prev => ({
-      ...prev,
-      ...newFilters,
-    }));
-
-    const parts: string[] = [];
-    if (traits.roleTitles[0]) parts.push(traits.roleTitles[0]);
-    if (traits.location) parts.push(traits.location);
-    if (traits.experienceYears) parts.push(`~${traits.experienceYears} ans`);
-    const summary = parts.join(' · ') || profile.name || 'profil';
-
-    toast.success(`Filtres appliqués : ${summary}`, {
-      description: 'Cliquez sur Rechercher pour lancer',
-      duration: 4000,
-    });
-  }, [search.setFilters]);
-
   // Refine search state and handler
   const [refineLoading, setRefineLoading] = useState(false);
   const [refineModalOpen, setRefineModalOpen] = useState(false);
@@ -1004,7 +981,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           batchStats={scoring.batchStats}
           batchDurationMs={scoring.batchDurationMs}
           onClearBatchReport={scoring.clearBatchReport}
-          onFindSimilar={handleFindSimilar}
         />
       </div>
 
