@@ -79,7 +79,11 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   const [loading, setLoading] = useState(false);
 
   // Candidates tab
-  const { candidates: allCandidates } = useATSData();
+  // 🐛 BUG FIX (Opus audit) : avant, on consommait juste `candidates` ici et
+  // le modal recevait `onStageChange={()=>{}}` (vide) → drag-to-stage / Select
+  // dans le modal ne faisait rien silencieusement. Fix : récupérer aussi les
+  // handlers depuis useATSData et les passer au modal.
+  const { candidates: allCandidates, handleStageChange, handleTagsChange, refetch } = useATSData();
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
 
   // Sequences tab
@@ -327,9 +331,9 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
         <CandidateDetailModal
           candidate={selectedCandidate}
           onClose={() => setSelectedCandidate(null)}
-          onStageChange={() => {}}
-          onTagsChange={() => {}}
-          onRefresh={() => {}}
+          onStageChange={handleStageChange}
+          onTagsChange={handleTagsChange}
+          onRefresh={refetch}
         />
       )}
     </>

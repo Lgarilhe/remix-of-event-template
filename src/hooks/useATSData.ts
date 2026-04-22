@@ -92,23 +92,29 @@ const STAGE_ORDER: Record<string, number> = {
   'Perdu': -1, // terminal, never auto-promoted out of it
 };
 
-// Compute effective stage: never downgrade from what the status implies
+// Compute effective stage.
+// 🐛 BUG FIX (Opus audit) : avant, on prenait le max entre pipeline_stage et
+// STATUS_TO_STAGE[status] → si recruteur remettait manuellement "Contacté"
+// alors que status='replied' (rang 2 > Contacté rang 1), le next fetch
+// écrasait le choix manuel en "Répondu". User's explicit choice silencieusement
+// annulé.
+//
+// Nouveau comportement : pipeline_stage > status mapping DANS TOUS LES CAS quand
+// pipeline_stage est explicitement set. STATUS_TO_STAGE n'est qu'un FALLBACK
+// quand pipeline_stage est null/vide (première découverte).
+//
+// Edge case : si status='dismissed' (explicite, dismissCandidate a été appelé),
+// on force 'Perdu' — signal fort qui override tout (sinon un candidat dismissed
+// resterait affiché à "Contacté" par erreur).
 function computeEffectiveStage(pipelineStage: string | null, status: string): string {
-  const statusDerivedStage = STATUS_TO_STAGE[status] || 'Nouveau';
-  
-  if (!pipelineStage) return statusDerivedStage;
-  
-  // If pipeline_stage is Perdu, keep it (explicit decision)
-  if (pipelineStage === 'Perdu') return 'Perdu';
-  
-  // If status implies Perdu but pipeline says otherwise, trust pipeline
-  if (statusDerivedStage === 'Perdu') return pipelineStage;
-  
-  const pipelineOrder = STAGE_ORDER[pipelineStage] ?? 0;
-  const statusOrder = STAGE_ORDER[statusDerivedStage] ?? 0;
-  
-  // Take the more advanced of the two
-  return statusOrder > pipelineOrder ? statusDerivedStage : pipelineStage;
+  // Cas 1 : pas de pipeline_stage → on dérive depuis status
+  if (!pipelineStage) return STATUS_TO_STAGE[status] || 'Nouveau';
+
+  // Cas 2 : dismissed explicite → force Perdu (sécurité)
+  if (status === 'dismissed') return 'Perdu';
+
+  // Cas 3 : pipeline_stage explicite → source de vérité
+  return pipelineStage;
 }
 
 // Columns needed for ATS display (excluding heavy linkedin_profile_data JSON)
@@ -365,10 +371,16 @@ export function useATSData() {
     if (!candidate) return;
 
     const oldStage = candidate.stage;
+    const oldLastActivity = candidate.lastActivity;
+    const nowIso = new Date().toISOString();
 
     // 1. Optimistic UI update
+    // 🐛 BUG FIX (Opus audit) : avant, l'optimistic ne mettait à jour que `stage`,
+    // pas `lastActivity`. Du coup la bordure rouge "stagnant" (calculée depuis
+    // daysSince(lastActivity)) restait affichée pendant 30min (staleTime)
+    // après qu'on a explicitement bougé le candidat. Signal visuel incohérent.
     queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
-      old?.map(c => c.id === candidateId ? { ...c, stage: newStage } : c) ?? []
+      old?.map(c => c.id === candidateId ? { ...c, stage: newStage, lastActivity: nowIso } : c) ?? []
     );
 
     try {
@@ -392,13 +404,22 @@ export function useATSData() {
         });
       }
 
-      toast.success(`Candidat déplacé vers "${newStage}"`);
+      // Toast avec action Undo (Opus audit idée #E)
+      toast.success(`Candidat déplacé vers "${newStage}"`, {
+        action: {
+          label: 'Annuler',
+          onClick: () => {
+            // Re-run le change avec l'ancien stage (revert)
+            void handleStageChange(candidateId, oldStage);
+          },
+        },
+      });
     } catch (error) {
       console.error('Error updating stage:', error);
       toast.error('Erreur lors de la mise à jour');
-      // Revert optimistic update
+      // Revert optimistic update — restaurer stage ET lastActivity
       queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
-        old?.map(c => c.id === candidateId ? { ...c, stage: oldStage } : c) ?? []
+        old?.map(c => c.id === candidateId ? { ...c, stage: oldStage, lastActivity: oldLastActivity } : c) ?? []
       );
     }
   }, [candidates, queryClient]);

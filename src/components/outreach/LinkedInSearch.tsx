@@ -591,19 +591,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   const handleBulkAddToProject = useCallback(async () => {
     if (!activeProject || !search.selectedJob) return;
-    
+
     const profilesToAdd = Array.from(search.selectedProfiles)
       .map(id => search.results.find(p => p.id === id))
       .filter((p): p is LinkedInProfile => !!p);
-    
-    for (const profile of profilesToAdd) {
-      await search.candidateStatus.dismissCandidate(profile.id, {
+
+    // 🐛 BUG CRITIQUE FIX (Opus audit) : avant, ce handler appelait
+    // `dismissCandidate` (=archive) alors que le toast disait "ajouté au projet".
+    // Résultat : l'user cliquait "Ajouter au projet" et ses profils étaient archivés
+    // silencieusement. Fix : utiliser `batchDiscover` qui persiste en status='discovered'
+    // sans écraser les statuts existants (cas d'un profil déjà scored/messaged).
+    await search.candidateStatus.batchDiscover(
+      profilesToAdd.map(profile => ({
+        id: profile.id,
         name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
         headline: profile.headline,
         profileUrl: profile.public_profile_url || profile.profile_url,
-      });
-    }
-    
+        linkedinProfileData: profile as unknown as Record<string, unknown>,
+      }))
+    );
+
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
     toast.success(`${profilesToAdd.length} profil(s) ajouté(s) au projet`);

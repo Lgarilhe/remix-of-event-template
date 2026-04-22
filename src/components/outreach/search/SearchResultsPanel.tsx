@@ -701,7 +701,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       </p>
                     </div>
                     <SequenceEnrollButton
-                      selectedProfiles={filteredResults.filter(p => jobScores[p.public_identifier || p.provider_id || '']?.recommendation === 'go')}
+                      // 🐛 BUG FIX (Opus audit) : jobScores est indexé par `profile.id`
+                      // (voir useLinkedInScoring.ts:478 `setJobScores(prev => ({ ...prev, [profile.id]: mapped }))`),
+                      // pas par `public_identifier` ni `provider_id`. Avant, ce filter
+                      // retournait 0 profils silencieusement → le bouton envoyait une
+                      // séquence vide en croyant avoir N candidats "Go".
+                      selectedProfiles={filteredResults.filter(p => jobScores[p.id]?.recommendation === 'go')}
                       accountId={selectedAccount}
                       selectedJob={selectedJob}
                       onSuccess={onSequenceEnrollSuccess}

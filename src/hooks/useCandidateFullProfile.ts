@@ -481,6 +481,19 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     });
   });
 
+  // 🐛 BUG FIX (Opus audit) : airtableNotes étaient fetchées via fetchAirtableHistory
+  // mais jamais intégrées au timeline → notes invisibles pour l'user dans l'onglet
+  // Activité (alors qu'elles apparaissent dans l'onglet Notes). Fix : les ajouter.
+  airtableNotes.forEach(n => {
+    timeline.push({
+      type: 'note_added',
+      date: n.noteDate || '',
+      title: n.title ? `📝 ${n.title}` : '📝 Note',
+      detail: n.detail || undefined,
+      meta: { author: n.author, source: 'airtable' },
+    });
+  });
+
   // Airtable appointments in timeline
   airtableAppointments.forEach(a => {
     timeline.push({

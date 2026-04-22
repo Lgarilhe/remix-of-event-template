@@ -63,12 +63,12 @@ const tabsConfig = [
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
 }) => {
-  // Smart default : si on a un score IA déjà calculé, ouvre directement
-  // sur l'onglet "Évaluation" (cas d'un recruteur qui revient sur un candidat
-  // déjà scoré pour décider go/no-go). Sinon, "Profil" reste le défaut.
-  const [activeTab, setActiveTab] = useState<string>(
-    candidate.score != null && candidate.score > 0 ? 'evaluation' : 'profile'
-  );
+  // Default toujours sur "Profil" (Opus audit : le "smart default Évaluation
+  // si score" était un anti-pattern — la majorité des candidats ont un score
+  // via le scoring IA auto, donc le user atterrissait toujours sur Évaluation
+  // et devait cliquer Profil. Le score reste visible dans le header et signalé
+  // par un badge sur l'onglet Évaluation si besoin).
+  const [activeTab, setActiveTab] = useState<string>('profile');
   const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const isSplitMode = activeTab === 'evaluation';
   const [notes, setNotes] = useState<Note[]>([]);
