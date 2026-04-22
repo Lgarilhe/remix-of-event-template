@@ -877,17 +877,29 @@ export function useLinkedInSearchActions(
         errorMessage?.includes("disconnected") ||
         errorMessage?.includes("unauthorized")
       ) {
-        toast.error(
-          "Compte LinkedIn deconnecte ou session expiree. Reconnectez votre compte dans Parametres > Mon compte.",
-          {
-            id: "search-error",
-            duration: 15000,
-            action: {
-              label: "Reconnecter",
-              onClick: () => { window.location.href = "/settings?tab=account"; },
-            },
-          }
-        );
+        // 🆕 Opus audit fix : différencier les raisons d'erreur d'auth pour
+        // pointer l'user vers la bonne action (avant : message générique
+        // "reconnectez votre compte" identique pour tous les cas)
+        const lowerErr = errorMessage?.toLowerCase() || '';
+        let detail = 'Reconnectez votre compte dans Paramètres > Mon compte.';
+        if (lowerErr.includes('captcha')) {
+          detail = 'LinkedIn demande une vérification captcha. Allez sur linkedin.com pour la valider, puis revenez.';
+        } else if (lowerErr.includes('rate') || lowerErr.includes('429')) {
+          detail = 'Trop de requêtes LinkedIn. Patientez 5-10 min avant de relancer.';
+        } else if (lowerErr.includes('credentials') || lowerErr.includes('expired')) {
+          detail = 'Session LinkedIn expirée. Reconnectez votre compte avec un nouveau cookie li_at.';
+        } else if (lowerErr.includes('not found') || lowerErr.includes('404')) {
+          detail = 'Compte LinkedIn introuvable côté Unipile. Reconnectez ou recréez le mapping.';
+        }
+
+        toast.error(`Compte LinkedIn indisponible — ${detail}`, {
+          id: "search-error",
+          duration: 15000,
+          action: {
+            label: "Reconnecter",
+            onClick: () => { window.location.href = "/settings?tab=account"; },
+          },
+        });
       } else {
         toast.error(errorMessage || "Erreur lors de la recherche", { id: "search-error" });
       }
