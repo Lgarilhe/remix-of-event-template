@@ -12,7 +12,7 @@ import {
 import { format, subDays, parseISO, isAfter, differenceInDays, isToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  TrendingUp, Users, MessageCircle, CheckCircle, Target, Clock,
+  TrendingUp, TrendingDown, Minus, Users, MessageCircle, CheckCircle, Target, Clock,
   ArrowRight, Briefcase, UserCheck, AlertCircle, Star, Send,
   Calendar, ExternalLink, Mail, Zap, UserPlus, UserX,
 } from 'lucide-react';
@@ -89,6 +89,39 @@ function Section({ title, subtitle, icon: Icon, children, action, className }: {
   );
 }
 
+// B7 — petit composant tendance pour les KPI hero. Affiche une flèche ↑/↓
+// avec le % de variation vs la période précédente, ou rien si signal trop faible.
+function KPITrend({ value, period }: { value: number | null; period: number }) {
+  if (value === null) return null; // pas assez de data sur la période précédente
+  if (Math.abs(value) < 5) {
+    // variation insignifiante : on affiche une dash neutre
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium text-muted-foreground/60 shrink-0"
+        title={`Stable vs ${period} jours précédents`}
+      >
+        <Minus className="w-2.5 h-2.5" aria-hidden="true" />
+      </span>
+    );
+  }
+  const positive = value > 0;
+  const Icon = positive ? TrendingUp : TrendingDown;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-0.5 text-[10px] font-mono font-bold tracking-tight shrink-0',
+        positive ? 'text-success' : 'text-destructive',
+      )}
+      title={`${positive ? '+' : ''}${value}% vs ${period}j précédents`}
+    >
+      <Icon className="w-2.5 h-2.5" aria-hidden="true" />
+      {positive ? '+' : ''}{value}%
+    </span>
+  );
+}
+
+// Q5 — composant lourd (recharts ~100KB) → exposé en default export pour
+// React.lazy depuis Dashboard.tsx. Named export conservé pour rétro-compat.
 export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stages, onCandidateClick, onJobClick }: ATSDashboardProps) {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
@@ -102,7 +135,7 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
   // ═══ KPIs ═══
   const kpis = useMemo(() => {
     const total = candidates.length;
-    
+
     const contacted = candidates.filter(c => {
       if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
       if (['Contacté', 'Répondu'].includes(c.stage)) return true;
@@ -110,14 +143,14 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
       if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
       return false;
     }).length;
-    
+
     const replied = candidates.filter(c => {
       if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
       if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
       if (c.sequenceStatus === 'replied') return true;
       return false;
     }).length;
-    
+
     const won = candidates.filter(c => c.stage === 'Gagné').length;
     const inProcess = candidates.filter(c =>
       ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)
@@ -126,6 +159,74 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
 
     return { total, contacted, replied, won, inProcess, responseRate };
   }, [candidates]);
+
+  // ═══ B7 — Vélocité : période actuelle vs précédente (même durée)
+  // Pour chaque KPI on calcule le % de variation. Si pas assez de data
+  // (cohorte précédente vide ou < 3), on n'affiche pas la flèche (signal trop bruité).
+  const trends = useMemo(() => {
+    const now = new Date();
+    const currentStart = subDays(now, period);
+    const previousStart = subDays(now, period * 2);
+
+    const inWindow = (createdAt: string | null | undefined, start: Date, end: Date) => {
+      if (!createdAt) return false;
+      try {
+        const d = parseISO(createdAt);
+        return d >= start && d < end;
+      } catch {
+        return false;
+      }
+    };
+
+    const currentCohort = candidates.filter(c => inWindow(c.createdAt, currentStart, now));
+    const previousCohort = candidates.filter(c => inWindow(c.createdAt, previousStart, currentStart));
+
+    const isContacted = (c: ATSCandidate) => {
+      if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+      if (['Contacté', 'Répondu'].includes(c.stage)) return true;
+      if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) return true;
+      if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
+      return false;
+    };
+    const isReplied = (c: ATSCandidate) => {
+      if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
+      if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
+      if (c.sequenceStatus === 'replied') return true;
+      return false;
+    };
+
+    const cur = {
+      total: currentCohort.length,
+      contacted: currentCohort.filter(isContacted).length,
+      replied: currentCohort.filter(isReplied).length,
+      won: currentCohort.filter(c => c.stage === 'Gagné').length,
+      inProcess: currentCohort.filter(c => ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)).length,
+    };
+    const prev = {
+      total: previousCohort.length,
+      contacted: previousCohort.filter(isContacted).length,
+      replied: previousCohort.filter(isReplied).length,
+      won: previousCohort.filter(c => c.stage === 'Gagné').length,
+      inProcess: previousCohort.filter(c => ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre'].includes(c.stage)).length,
+    };
+    const curRate = cur.contacted > 0 ? (cur.replied / cur.contacted) * 100 : 0;
+    const prevRate = prev.contacted > 0 ? (prev.replied / prev.contacted) * 100 : 0;
+
+    /** % de variation, null si la cohorte précédente est trop petite pour donner un signal */
+    const delta = (currentVal: number, previousVal: number, threshold = 3): number | null => {
+      if (previousVal < threshold) return null;
+      return Math.round(((currentVal - previousVal) / previousVal) * 100);
+    };
+
+    return {
+      total: delta(cur.total, prev.total),
+      contacted: delta(cur.contacted, prev.contacted),
+      replied: delta(cur.replied, prev.replied),
+      won: delta(cur.won, prev.won, 1),
+      inProcess: delta(cur.inProcess, prev.inProcess),
+      responseRate: delta(curRate, prevRate, 5),
+    };
+  }, [candidates, period]);
 
   // ═══ Candidates needing attention (Répondu without action for 2+ days) ═══
   const urgentCandidates = useMemo(() => {
@@ -153,13 +254,26 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
       }));
   }, [candidates, stages]);
 
-  // ═══ Source breakdown ═══
+  // ═══ Source breakdown (volume + quality) ═══
+  // B7 — On enrichit avec response rate par source pour signal qualité
+  // (pas juste "qui ramène le plus de profils" mais "qui ramène les meilleurs")
   const sourceData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    candidates.forEach(c => { counts[c.source] = (counts[c.source] || 0) + 1; });
-    return Object.entries(counts).map(([key, value]) => ({
+    const buckets: Record<string, { volume: number; replied: number; won: number }> = {};
+    candidates.forEach(c => {
+      const key = c.source || 'unknown';
+      if (!buckets[key]) buckets[key] = { volume: 0, replied: 0, won: 0 };
+      buckets[key].volume += 1;
+      const replied = ['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)
+        || ['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')
+        || c.sequenceStatus === 'replied';
+      if (replied) buckets[key].replied += 1;
+      if (c.stage === 'Gagné') buckets[key].won += 1;
+    });
+    return Object.entries(buckets).map(([key, b]) => ({
       name: SOURCE_LABELS[key] || key,
-      value,
+      value: b.volume,
+      replyRate: b.volume > 0 ? Math.round((b.replied / b.volume) * 100) : 0,
+      winRate: b.volume > 0 ? Math.round((b.won / b.volume) * 100) : 0,
     }));
   }, [candidates]);
 
@@ -289,12 +403,12 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
       <div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 relative z-10">
           {[
-            { label: 'Candidats', value: kpis.total, icon: Users, accent: false },
-            { label: "Aujourd'hui", value: `+${todayCount}`, icon: TrendingUp, accent: todayCount > 0 },
-            { label: 'Contactés', value: kpis.contacted, icon: Send, accent: false },
-            { label: 'Taux réponse', value: `${kpis.responseRate}%`, icon: MessageCircle, accent: kpis.responseRate > 20 },
-            { label: 'En process', value: kpis.inProcess, icon: Briefcase, accent: false },
-            { label: 'Gagnés', value: kpis.won, icon: CheckCircle, accent: kpis.won > 0 },
+            { label: 'Candidats', value: kpis.total, icon: Users, accent: false, trend: trends.total },
+            { label: "Aujourd'hui", value: `+${todayCount}`, icon: TrendingUp, accent: todayCount > 0, trend: null },
+            { label: 'Contactés', value: kpis.contacted, icon: Send, accent: false, trend: trends.contacted },
+            { label: 'Taux réponse', value: `${kpis.responseRate}%`, icon: MessageCircle, accent: kpis.responseRate > 20, trend: trends.responseRate },
+            { label: 'En process', value: kpis.inProcess, icon: Briefcase, accent: false, trend: trends.inProcess },
+            { label: 'Gagnés', value: kpis.won, icon: CheckCircle, accent: kpis.won > 0, trend: trends.won },
           ].map((kpi, i) => {
             const Icon = kpi.icon;
             return (
@@ -310,10 +424,13 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                 )}
               >
                 <div className="flex items-center gap-1.5">
-                  <Icon className="w-3 h-3 text-muted-foreground" />
+                  <Icon className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium truncate">{kpi.label}</span>
                 </div>
-                <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight">{kpi.value}</span>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight">{kpi.value}</span>
+                  <KPITrend value={kpi.trend} period={period} />
+                </div>
               </div>
             );
           })}
@@ -485,11 +602,12 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                           <div
                             className="w-2.5 h-2.5 shrink-0 border border-border"
                             style={{ backgroundColor: SOURCE_COLORS[i % SOURCE_COLORS.length] }}
+                            aria-hidden="true"
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline justify-between">
+                            <div className="flex items-baseline justify-between gap-2">
                               <span className="text-xs text-muted-foreground truncate">{s.name}</span>
-                              <span className="text-xs font-bold font-mono ml-2">{s.value}</span>
+                              <span className="text-xs font-bold font-mono shrink-0">{s.value}</span>
                             </div>
                             <div className="h-1 bg-muted mt-1 w-full">
                               <div
@@ -499,6 +617,18 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
                                   backgroundColor: SOURCE_COLORS[i % SOURCE_COLORS.length],
                                 }}
                               />
+                            </div>
+                            {/* B7 — qualité par source : taux réponse + win */}
+                            <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-muted-foreground/70">
+                              <span title="Taux de réponse"
+                                className={cn(s.replyRate >= 30 && "text-success font-bold")}>
+                                {s.replyRate}% rép.
+                              </span>
+                              {s.winRate > 0 && (
+                                <span title="Taux de placement" className="text-success font-bold">
+                                  · {s.winRate}% win
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1014,6 +1144,9 @@ export const ATSDashboard = React.memo(function ATSDashboard({ candidates, stage
     </div>
   );
 });
+
+// Q5 — default export pour React.lazy()
+export default ATSDashboard;
 
 // ─── Pipeline conversion rows ───
 const STAGE_ORDER_CONV = ['Nouveau', 'Contacté', 'Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'];

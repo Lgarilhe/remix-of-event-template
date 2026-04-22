@@ -516,3 +516,6 @@ const LegendDot: React.FC<{ label: string; className: string }> = ({ label, clas
     <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
   </div>
 );
+
+// Q5 — default export pour React.lazy() (recharts ~100KB sort dans son chunk)
+export default SequenceAnalytics;

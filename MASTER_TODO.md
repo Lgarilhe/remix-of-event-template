@@ -78,9 +78,11 @@ robots.txt présent mais minimal. Pas de sitemap. Google + Bing ratent les pages
 La page principale settings est dans `src/pages/Settings.tsx` (vu via grep). Le nom "Admin" serait peut-être historique. À vérifier qu'aucun import legacy n'existe.
 - Source : `FEATURE_AUDIT.md` (à valider)
 
-### Q5. Lazy-load Recharts → 15min
-`recharts` est importé globalement dans `ATSDashboard.tsx:9-11` (38KB gzipped chargé sur toutes les routes lazy). Wrap avec `React.lazy()` au niveau du dashboard.
-- **Fix** : `const RechartsContent = React.lazy(() => import('./RechartsCharts'))` + Suspense fallback.
+### Q5. Lazy-load Recharts ✅ DONE
+- ✅ `ATSDashboard` exporté en default → lazy-loaded depuis `Dashboard.tsx` (Suspense fallback `ATSStatsSkeleton`)
+- ✅ `SequenceAnalytics` exporté en default → lazy-loaded depuis `SequencesList.tsx` (rendu conditionnel)
+- ✅ Build vérifié : `BarChart-XXX.js` 365 kB sort dans son propre chunk, ne se charge qu'à l'ouverture du dashboard ou des analytics séquence (au lieu d'être bundled dans `index.js` global)
+- Chunks visibles : `ATSDashboard-Bc5n7uwj.js` 74 kB · `SequenceAnalytics-BjLBpnyi.js` 16 kB
 - Source : `AUDITS/PERF_FRONT_AUDIT.md` §1
 
 ### Q6. ESLint warnings — fix les `any` types isolés → 20min
@@ -124,8 +126,11 @@ Le fichier hardcode 3 modes (brief/process/sourcing/outreach) + tools + retrieva
 ### I2. Re-ranking Claude-as-reranker ✅ DONE
 `retrieve-context` fetch désormais `limit*4` (max 30) puis rerank via Claude Haiku tool_use (rank_chunks 0-10). Filtre les < 3/10 (clairement non pertinents), trie par score, renvoie top `limit`. Toggle via `rerank: false` dans le body.
 
-### I3. Dédoublonner les vues "candidat" → 2h
-3 endroits différents affichent un candidat avec 3 layouts différents : `LinkedInResultCard`, `ProfileDetailSheet`, `CandidateDetailModal`. Harmoniser via composant unifié `CandidatePreview` avec variants `compact|expanded|modal`.
+### I3. Dédoublonner les vues "candidat" ✅ PARTIEL (primitives partagées)
+- ✅ `src/components/candidates/shared/CandidateAvatar.tsx` : primitive avatar uniforme (5 tailles : xs/sm/md/lg/xl, fallback initiales 1-2 lettres, alt accessible)
+- ✅ `src/components/candidates/shared/CandidateBadge.tsx` : micro-card compacte (3 variantes : inline / compact / card) — utilisable dans agent approval, history feed, listes denses
+- ✅ Adoption dans `CandidateSidebarCard` (enrollment-preview) — démontre le pattern
+- ⏳ Adoption progressive dans `CandidateContextHeader`, `LinkedInResultCard`, `CandidateCard`, `DraggableCandidateCard` — non-breaking, à faire au fil des touches
 - Source : `AUDITS/DATA_MODEL_AUDIT.md` + `DESIGN_AUDIT.md`
 
 ### I4. Harmoniser les types Candidate ✅ DONE (foundation)
@@ -202,16 +207,25 @@ Refonte `Settings → Integrations` : liste dynamique alimentée par `connector_
 - Voir `AUDITS/AIRTABLE_REMOVAL_PLAN.md` Phase 2 pour le pattern.
 - Source : `FEATURE_AUDIT.md` + `AUDIT_REPORT.md`
 
-### B5. Onglet Calendrier (mission interview steps) → 3 jours
-Pas d'UI calendrier. Les `mission_process_steps` existent mais pas de visualisation timeline. Brancher Google Calendar / Outlook Calendar via OAuth pour sync bidirectionnel.
+### B5. Onglet Calendrier ✅ MVP DONE (read-only)
+- ✅ Page `/calendar` (lazy-loaded, chunk dédié `Calendar-XXX.js`)
+- ✅ Hook `useCalendarEvents` agrège 3 sources : `qualification_sessions` (entretiens) + `inmail_queue` (InMails programmés) + `sequence_step_executions` (étapes séquence visibles, exclut `wait_*`)
+- ✅ Vue semaine 7j avec navigation précédent/suivant + bouton Aujourd'hui
+- ✅ Item nav sidebar `Calendrier` (icône CalendarDays) entre Pipeline et Messages
+- ✅ Cards événement colorées par type (qualif=purple, inmail=info, séquence=cyan)
+- ✅ Empty state + skeletons + actualiser
+- ⏳ Phase 2 : drag & drop pour replanifier, création d'event direct, sync ICS Google/Outlook bidirectionnel (gros chantier OAuth)
 - Source : `NAV_GAPS.md`
 
 ### B6. Onglet Tasks/TODO global → 2 jours
 Pas de gestion de tâches globale. Manque évident : "rappel sur ce candidat", "préparer brief client X".
 - Source : `NAV_GAPS.md` + `PRODUCT_COMPLETION.md`
 
-### B7. Onglet Analytics → 3 jours
-Dashboard ATS existe mais ratios/funnels manquants : taux conversion par étape, temps moyen entre stages, performance par sourceur.
+### B7. Onglet Analytics ✅ PARTIEL (KPI vélocité + qualité source)
+- ✅ Vélocité : flèches ↑/↓ + % de variation vs période précédente sur les 6 KPI hero (Candidats, Contactés, Taux réponse, En process, Gagnés). Signal masqué si cohorte précédente trop petite (< 3) pour éviter le bruit.
+- ✅ Qualité par source : ajout reply-rate + win-rate par source (pas juste volume) — visible dans le bloc Sources droite
+- Existait déjà : conversion pipeline (table %), top jobs, response rates par canal, taux acceptation séquences, daily invitations chart
+- ⏳ Manquants : temps moyen entre stages (Nouveau→Contacté en X jours...), performance par sourceur (membre équipe)
 - Source : `NAV_GAPS.md` + `PRODUCT_COMPLETION.md` + `COMPETITORS.md`
 
 ### B8. RGPD — droit à l'oubli + export data → 2 jours

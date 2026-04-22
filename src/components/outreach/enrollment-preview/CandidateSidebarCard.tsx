@@ -11,6 +11,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+// I3 — primitive partagée pour avatar candidat
+import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
 
 interface Props {
   profile: LinkedInProfile;
@@ -47,19 +49,12 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
       )}
     >
       <div className="flex items-start gap-2">
-        {/* Avatar */}
-        {profile.profile_picture_url ? (
-          <img
-            src={profile.profile_picture_url}
-            alt={profile.name || 'Photo de profil'}
-            className="w-8 h-8 rounded-full object-cover shrink-0"
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-medium">{profile.name?.charAt(0) || '?'}</span>
-          </div>
-        )}
+        {/* Avatar — primitive partagée I3 */}
+        <CandidateAvatar
+          name={profile.name}
+          imageUrl={profile.profile_picture_url}
+          size="sm"
+        />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">

@@ -49,7 +49,8 @@ import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
-import { SequenceAnalytics } from './SequenceAnalytics';
+// Q5 — SequenceAnalytics contient recharts (~100KB), lazy-load pour split chunk
+const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
 import { LinkedInProfile } from './types';
 import { formatDistanceToNow } from 'date-fns';
@@ -879,20 +880,26 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         onClose={() => setShowActivityLog(false)}
       />
 
-      {/* Global Analytics */}
-      <SequenceAnalytics
-        isOpen={showGlobalAnalytics}
-        onClose={() => setShowGlobalAnalytics(false)}
-      />
+      {/* Global Analytics — lazy chunk recharts */}
+      {showGlobalAnalytics && (
+        <React.Suspense fallback={null}>
+          <SequenceAnalytics
+            isOpen={showGlobalAnalytics}
+            onClose={() => setShowGlobalAnalytics(false)}
+          />
+        </React.Suspense>
+      )}
 
-      {/* Per-sequence Analytics */}
+      {/* Per-sequence Analytics — lazy chunk recharts */}
       {analyticsSequence && (
-        <SequenceAnalytics
-          isOpen={!!analyticsSequence}
-          onClose={() => setAnalyticsSequence(null)}
-          sequenceId={analyticsSequence.id}
-          sequenceName={analyticsSequence.name}
-        />
+        <React.Suspense fallback={null}>
+          <SequenceAnalytics
+            isOpen={!!analyticsSequence}
+            onClose={() => setAnalyticsSequence(null)}
+            sequenceId={analyticsSequence.id}
+            sequenceName={analyticsSequence.name}
+          />
+        </React.Suspense>
       )}
 
       {/* Delete confirmation */}

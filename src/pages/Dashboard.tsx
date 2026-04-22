@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
-import { ATSDashboard } from '@/components/ats/ATSDashboard';
+// Q5 — ATSDashboard contient recharts (~100KB), lazy-load pour split chunk
+const ATSDashboard = lazy(() => import('@/components/ats/ATSDashboard'));
 import { ATSStatsSkeleton } from '@/components/ats/ATSStatsSkeleton';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
@@ -63,12 +64,14 @@ export default function Dashboard() {
                   </Button>
                 </div>
               )}
-              <ATSDashboard
-                candidates={candidates}
-                stages={ATS_STAGES}
-                onCandidateClick={(c) => setSelectedCandidate(c)}
-                onJobClick={(jobId) => setSelectedJobId(jobId)}
-              />
+              <Suspense fallback={<ATSStatsSkeleton />}>
+                <ATSDashboard
+                  candidates={candidates}
+                  stages={ATS_STAGES}
+                  onCandidateClick={(c) => setSelectedCandidate(c)}
+                  onJobClick={(jobId) => setSelectedJobId(jobId)}
+                />
+              </Suspense>
             </>
           )}
         </div>
