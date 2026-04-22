@@ -7,6 +7,12 @@ import {
   type ToolContext,
 } from "../_shared/agent-tools.ts";
 import { registerMutatingTools } from "../_shared/agent-tools-mutations.ts";
+import {
+  getRelevantInsights,
+  formatInsightsForPrompt,
+  bumpInsightUsage,
+  extractInsightsFromConversation,
+} from "../_shared/user-memory.ts";
 
 // Register mutation tools at module load (idempotent)
 registerMutatingTools();
@@ -605,6 +611,23 @@ Propose des exemples concrets de messages.`;
         : sourcingSystemPrompt;
     }
 
+    // Sprint 3 — Mémoire cross-session : injection des user_insights
+    // pertinents en début de system prompt (juste sous le rôle).
+    try {
+      const insights = await getRelevantInsights(supabase, {
+        userId: user.id,
+        organizationId: orgId,
+        limit: 8,
+      });
+      if (insights.length > 0) {
+        activeSystemPrompt = activeSystemPrompt + formatInsightsForPrompt(insights);
+        // Fire-and-forget bump (ne bloque pas la conv)
+        bumpInsightUsage(supabase, insights.map((i) => i.id)).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[search-agent-chat] user-memory injection skipped:', e);
+    }
+
     // --- Sourcing mode: tool-calling loop (non-streaming), then stream final response ---
     if (isSourcingMode) {
       const encoder = new TextEncoder();
@@ -758,6 +781,35 @@ Propose des exemples concrets de messages.`;
                 await supabase.from("agent_conversations")
                   .update({ search_config: enrichedConfig, status: "plan_proposed" })
                   .eq("id", conversation_id);
+              }
+
+              // Sprint 3 — Mémoire cross-session : extraction async fire-and-forget
+              // après chaque réponse (toutes les 4-5 messages on aura assez de signal).
+              // On compte les messages totaux pour ne pas extraire trop souvent.
+              try {
+                const { count } = await supabase
+                  .from('agent_messages')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('conversation_id', conversation_id);
+                // Tous les 6 messages, on tente une extraction (idempotent côté DB).
+                if ((count ?? 0) >= 6 && (count ?? 0) % 6 === 0) {
+                  const { data: msgs } = await supabase
+                    .from('agent_messages')
+                    .select('role, content')
+                    .eq('conversation_id', conversation_id)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+                  const formatted = (msgs ?? []).reverse().map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }));
+                  // Fire-and-forget — pas d'await pour ne pas ralentir la response
+                  extractInsightsFromConversation(supabase, {
+                    userId: user.id,
+                    organizationId: orgId,
+                    conversationId: conversation_id,
+                    messages: formatted,
+                  }).catch((e) => console.warn('[search-agent-chat] insight extraction failed:', e));
+                }
+              } catch (e) {
+                console.warn('[search-agent-chat] insight extraction count check failed:', e);
               }
             }
 
