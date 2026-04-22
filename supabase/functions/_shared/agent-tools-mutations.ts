@@ -15,20 +15,41 @@ import { registerTool } from './agent-tools.ts';
 
 // ─── Tool 1 — update_candidate_stage ────────────────────────────────────────
 // MVP : seul tool implémenté pour valider la mécanique end-to-end.
-// Met à jour le statut d'un candidat dans job_candidate_status (table locale).
-// Sync Notion optionnel (edge function update-candidate-stage existante) — non
-// inclus pour le MVP, on l'ajoutera dans v2.
+//
+// Updates `pipeline_stage` (the business-facing kanban stage seen in the ATS
+// view), NOT `status` (the technical state machine). The frontend ATS calls
+// computeEffectiveStage(pipeline_stage, status) to combine both — see
+// useATSData.ts:96. Updating pipeline_stage is the right "user-facing"
+// mutation : moves the card across the kanban board.
+//
+// MVP refuse to UPSERT — it requires the row to already exist. This avoids
+// Claude hallucinating candidate_ids and creating orphan rows. The candidate
+// must have been "discovered" first (via LinkedIn search) before we can move
+// it on the pipeline.
 
-const ALLOWED_STAGES = ['new', 'contacted', 'replied', 'pre_qualified', 'cv_sent', 'interview_in_progress', 'offer', 'won', 'rejected', 'dismissed'] as const;
-type CandidateStage = (typeof ALLOWED_STAGES)[number];
+// Business pipeline stages (matches STAGE_ORDER in useATSData.ts).
+// Final states: Gagné = won, Perdu = lost.
+const ALLOWED_STAGES = [
+  'Nouveau',
+  'Contacté',
+  'Répondu',
+  'Pressenti',
+  'Pré-qualif',
+  'CV envoyé',
+  'ITW en cours',
+  'Offre',
+  'Gagné',
+  'Perdu',
+] as const;
+type PipelineStage = (typeof ALLOWED_STAGES)[number];
 
 const updateCandidateStage: AgentTool = {
   name: 'update_candidate_stage',
   description:
-    'Update the recruitment pipeline stage for a candidate on a specific job/mission. ' +
-    'Use this when the user explicitly asks to move a candidate forward or backward in the funnel ' +
-    '(e.g. "passe Marie en pré-qualifiée", "rejette John pour ce poste"). ' +
-    'Always proposes the change for user approval — never executes silently.',
+    "Move a candidate forward or backward in the recruitment pipeline (kanban) for a specific job. " +
+    "Use this when the user explicitly says things like 'passe Marie en pré-qualif', 'archive John', 'CV de Paul est parti', 'on a perdu ce candidat'. " +
+    "The candidate MUST have been discovered first (via LinkedIn search) — this tool refuses unknown candidate IDs to avoid orphan rows. " +
+    "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
   inputSchema: {
@@ -36,20 +57,22 @@ const updateCandidateStage: AgentTool = {
     properties: {
       candidate_id: {
         type: 'string',
-        description: 'The unique candidate identifier (UUID or LinkedIn provider ID).',
+        description:
+          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or notion_candidate_id, or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
       },
       job_id: {
         type: 'string',
-        description: 'The job/mission UUID this stage change applies to.',
+        description: 'The sourcing_projects (mission) UUID this stage change applies to.',
       },
       new_stage: {
         type: 'string',
         enum: ALLOWED_STAGES as unknown as string[],
-        description: 'The new pipeline stage. Must be one of the allowed values.',
+        description:
+          "Business pipeline stage. One of: Nouveau, Contacté, Répondu, Pressenti, Pré-qualif, CV envoyé, ITW en cours, Offre, Gagné, Perdu.",
       },
       reason: {
         type: 'string',
-        description: 'Optional short reason explaining why the stage is changed (visible in audit log).',
+        description: "Optional short note explaining the change (stored as skip_reason if stage = 'Perdu').",
       },
     },
     required: ['candidate_id', 'job_id', 'new_stage'],
@@ -57,90 +80,112 @@ const updateCandidateStage: AgentTool = {
 
   async verifyAccess(params, ctx) {
     const jobId = String(params.job_id || '');
-    if (!jobId) return { allowed: false, reason: 'job_id is required' };
+    const candidateId = String(params.candidate_id || '');
+    if (!jobId || !candidateId) return { allowed: false, reason: 'job_id and candidate_id are required' };
 
-    // Verify the job belongs to the user's org
+    // 1. Job must belong to the user's org
     const { data: project } = await ctx.adminClient
       .from('sourcing_projects')
       .select('id, organization_id')
       .eq('id', jobId)
       .maybeSingle();
 
-    if (!project) return { allowed: false, reason: `Job ${jobId} not found` };
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
     if (project.organization_id !== ctx.organizationId) {
-      return { allowed: false, reason: 'Job belongs to another organization' };
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
     }
+
+    // 2. Row must already exist (we don't create candidates from chat)
+    const { data: row } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('id')
+      .eq('job_id', jobId)
+      .eq('candidate_id', candidateId)
+      .eq('created_by', ctx.userId)
+      .maybeSingle();
+
+    if (!row) {
+      return {
+        allowed: false,
+        reason: `Le candidat ${candidateId} n'est pas encore associé à cette mission. Lance d'abord une recherche LinkedIn ou ajoute-le manuellement avant de modifier son stade.`,
+      };
+    }
+
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
     const jobId = String(params.job_id);
-    const newStage = String(params.new_stage) as CandidateStage;
+    const newStage = String(params.new_stage) as PipelineStage;
     const reason = params.reason ? String(params.reason) : null;
 
-    // Fetch current status (for the diff in preview)
-    const { data: current } = await ctx.adminClient
-      .from('job_candidate_status')
-      .select('status, updated_at')
-      .eq('candidate_id', candidateId)
-      .eq('job_id', jobId)
-      .eq('created_by', ctx.userId)
-      .maybeSingle();
-
-    // Fetch job + candidate names for human-readable preview
-    const { data: project } = await ctx.adminClient
-      .from('sourcing_projects')
-      .select('name, job_title, client_name')
-      .eq('id', jobId)
-      .maybeSingle();
+    // Fetch current row + project metadata in parallel
+    const [{ data: current }, { data: project }] = await Promise.all([
+      ctx.adminClient
+        .from('job_candidate_status')
+        .select('pipeline_stage, status, candidate_name, candidate_headline, updated_at')
+        .eq('candidate_id', candidateId)
+        .eq('job_id', jobId)
+        .eq('created_by', ctx.userId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sourcing_projects')
+        .select('name, job_title, client_name')
+        .eq('id', jobId)
+        .maybeSingle(),
+    ]);
 
     const jobLabel = project?.job_title || project?.name || jobId;
     const clientLabel = project?.client_name ? ` (${project.client_name})` : '';
-    const fromStage = current?.status || '(aucun)';
-    const isNoOp = current?.status === newStage;
+    const candidateLabel = current?.candidate_name || candidateId;
+    const fromStage = current?.pipeline_stage || '(non défini)';
+    const isNoOp = current?.pipeline_stage === newStage;
 
     return {
       summary: isNoOp
-        ? `Le candidat est déjà au stade « ${newStage} » sur "${jobLabel}${clientLabel}"`
-        : `Passe le candidat du stade « ${fromStage} » à « ${newStage} » sur "${jobLabel}${clientLabel}"`,
+        ? `${candidateLabel} est déjà au stade « ${newStage} » sur "${jobLabel}${clientLabel}"`
+        : `Déplacer ${candidateLabel} : « ${fromStage} » → « ${newStage} » sur "${jobLabel}${clientLabel}"`,
       details: {
         candidate_id: candidateId,
+        candidate_name: current?.candidate_name ?? null,
+        candidate_headline: current?.candidate_headline ?? null,
         job_id: jobId,
         job_label: jobLabel,
         client_label: project?.client_name ?? null,
         from_stage: fromStage,
         to_stage: newStage,
+        underlying_status: current?.status ?? null,
         reason,
-        will_create_row: !current,
         is_no_op: isNoOp,
       },
-      warning: isNoOp ? 'Aucun changement à faire — le candidat est déjà à ce stade.' : undefined,
+      warning: isNoOp
+        ? 'Aucun changement — le candidat est déjà à ce stade.'
+        : newStage === 'Perdu'
+        ? 'Stade terminal : ce candidat sera marqué comme perdu pour cette mission.'
+        : undefined,
     };
   },
 
   async execute(params, ctx) {
     const candidateId = String(params.candidate_id);
     const jobId = String(params.job_id);
-    const newStage = String(params.new_stage) as CandidateStage;
+    const newStage = String(params.new_stage) as PipelineStage;
     const reason = params.reason ? String(params.reason) : null;
 
-    // Upsert : si la row existe, on update son status. Sinon on la crée.
-    // Note : la contrainte UNIQUE est (job_id, candidate_id, created_by) — voir
-    // migration 20260421180000_grants_bootstrap_owner_uniques.sql.
+    // UPDATE only — row existence already verified in verifyAccess
+    const updatePayload: Record<string, unknown> = { pipeline_stage: newStage };
+    if (newStage === 'Perdu' && reason) {
+      updatePayload.skip_reason = reason;
+    }
+
     const { data, error } = await ctx.adminClient
       .from('job_candidate_status')
-      .upsert(
-        {
-          job_id: jobId,
-          candidate_id: candidateId,
-          created_by: ctx.userId,
-          status: newStage,
-          skip_reason: newStage === 'rejected' || newStage === 'dismissed' ? reason : null,
-        },
-        { onConflict: 'job_id,candidate_id,created_by' },
-      )
-      .select('id, status, updated_at')
+      .update(updatePayload)
+      .eq('job_id', jobId)
+      .eq('candidate_id', candidateId)
+      .eq('created_by', ctx.userId)
+      .select('id, pipeline_stage, status, updated_at')
       .single();
 
     if (error) {
@@ -151,7 +196,8 @@ const updateCandidateStage: AgentTool = {
       success: true,
       data: {
         row_id: data.id,
-        new_status: data.status,
+        new_pipeline_stage: data.pipeline_stage,
+        underlying_status: data.status,
         updated_at: data.updated_at,
       },
     };
