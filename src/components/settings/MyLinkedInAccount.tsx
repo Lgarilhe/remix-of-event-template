@@ -135,6 +135,12 @@ export const MyLinkedInAccount = () => {
 
     setReconnecting(true);
     try {
+      // 🆕 Doc Unipile : POST /api/v1/accounts/{id} est l'endpoint RECONNECT qui
+      // préserve l'account_id (vs POST /accounts qui en crée un nouveau).
+      // On passe reconnect_account_id quand on a déjà un mapping → même account_id,
+      // même message history, même webhooks déjà abonnés.
+      const existingAccountId = myMapping?.linkedin_account_id;
+
       const { data, error } = await invokeEdgeFunction<{
         success: boolean;
         error?: string;
@@ -145,6 +151,7 @@ export const MyLinkedInAccount = () => {
         action: 'connect_cookie',
         access_token: liAtCookie.trim(),
         user_agent: userAgent.trim() || undefined,
+        reconnect_account_id: existingAccountId || undefined,
       });
 
       if (error || !data?.success) {
@@ -411,16 +418,27 @@ export const MyLinkedInAccount = () => {
 
 /**
  * Mappe un statut Unipile brut vers un label FR lisible.
+ * Liste complète selon la doc Unipile :
+ *   OK, CREDENTIALS, ERROR/STOPPED, CONNECTING, CREATION_SUCCESS, RECONNECTED,
+ *   SYNC_SUCCESS, DELETED + extensions (RATE_LIMITED, CAPTCHA).
  */
 function statusLabel(status: string | null): string {
   if (!status) return 'Inconnu';
-  const lower = status.toLowerCase();
-  if (lower === 'credentials') return 'Session LinkedIn expirée';
-  if (lower === 'connecting') return 'Connexion en cours…';
-  if (lower === 'rate_limited') return 'Rate limit LinkedIn (patientez)';
-  if (lower === 'captcha') return 'Captcha LinkedIn requis';
-  if (lower === 'error') return 'Erreur';
-  return status;
+  const upper = status.toUpperCase();
+  switch (upper) {
+    case 'OK':                 return 'Actif';
+    case 'CREDENTIALS':        return 'Session LinkedIn expirée';
+    case 'CONNECTING':         return 'Connexion en cours…';
+    case 'CREATION_SUCCESS':   return 'Connexion réussie (sync initiale)';
+    case 'RECONNECTED':        return 'Reconnecté';
+    case 'SYNC_SUCCESS':       return 'Synchronisation terminée';
+    case 'ERROR':
+    case 'STOPPED':            return 'Erreur — arrêté';
+    case 'DELETED':            return 'Supprimé côté Unipile';
+    case 'RATE_LIMITED':       return 'Rate limit LinkedIn (patientez)';
+    case 'CAPTCHA':            return 'Captcha LinkedIn requis';
+    default:                   return status;
+  }
 }
 
 /**

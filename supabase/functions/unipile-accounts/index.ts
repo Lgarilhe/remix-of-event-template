@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
 
       case 'hosted_auth_link': {
         // Generate a hosted auth link for white-label account connection (LinkedIn, WhatsApp, or Email)
-        const { success_redirect_url, failure_redirect_url, notify_url, org_name, providers: requestedProviders } = params;
+        const { success_redirect_url, failure_redirect_url, notify_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
 
         // Allow caller to specify provider(s), default to LinkedIn
         const resolvedProviders = Array.isArray(requestedProviders) && requestedProviders.length > 0
@@ -306,19 +306,37 @@ Deno.serve(async (req) => {
           ? [...defaultDisabled, 'credentials_auth', 'cookie_auth']
           : defaultDisabled;
 
+        // 🐛 BUG FIX (doc Unipile) : l'ancien code mettait `name = org_name` ce qui
+        // rend le webhook incapable d'identifier l'utilisateur qui a initié le flow.
+        // Fix : `name` encode userId:orgId:accountId(optional) pour que le webhook
+        // account_connected puisse upsert dans member_linkedin_accounts avec la bonne
+        // paire (user_id, organization_id, linkedin_account_id).
+        // Format : 'user:{userId}|org:{orgId}[|reconnect:{accountId}]'
+        const stateName = reconnect_account_id
+          ? `user:${user.id}|org:${organizationId}|reconnect:${reconnect_account_id}`
+          : `user:${user.id}|org:${organizationId}`;
+
         const hostedBody: Record<string, unknown> = {
-          type: 'create',
+          type: reconnect_account_id ? 'reconnect' : 'create',
           providers: resolvedProviders,
           api_url: `https://${dsn}`,
           expiresOn: new Date(Date.now() + 30 * 60 * 1000).toISOString().replace(/(\.\d{3})\d*Z/, '$1Z'),
           bypass_success_screen: false,
           disabled_options: disabledOptions,
+          name: stateName, // user+org encoding pour webhook identification
         };
+
+        // Si reconnect, Unipile attend aussi le account_id (doc hosted-auth)
+        if (reconnect_account_id) {
+          hostedBody.reconnect_account = reconnect_account_id;
+        }
 
         if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;
         if (failure_redirect_url) hostedBody.failure_redirect_url = failure_redirect_url;
         if (notify_url) hostedBody.notify_url = notify_url;
-        if (org_name) hostedBody.name = org_name;
+        // Note : `org_name` est legacy/ignoré maintenant car `name` contient user:org encoding.
+        // Si un caller veut un display name, il faut ajouter un champ custom séparé.
+        if (org_name) hostedBody.organization_display_name = org_name;
 
         console.log('[hosted_auth_link] Generating link with body:', JSON.stringify(hostedBody));
 
@@ -349,9 +367,13 @@ Deno.serve(async (req) => {
       }
 
       case 'connect_cookie': {
-        // Connect LinkedIn account with cookie (li_at)
-        const { access_token, user_agent } = params;
-        
+        // Connect LinkedIn account with cookie (li_at).
+        // Si `reconnect_account_id` fourni, on cible l'endpoint reconnect
+        // (POST /api/v1/accounts/{id}) qui PRÉSERVE l'account_id au lieu
+        // de créer un nouveau compte. C'est le comportement attendu quand
+        // le statut est CREDENTIALS (cookie expiré) — fix majeur UX.
+        const { access_token, user_agent, reconnect_account_id } = params;
+
         if (!access_token) {
           return new Response(
             JSON.stringify({ success: false, error: 'Cookie li_at requis' }),
@@ -359,37 +381,70 @@ Deno.serve(async (req) => {
           );
         }
 
-        console.log('Connecting with cookie, length:', access_token.length);
+        const isReconnect = typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0;
+        const endpoint = isReconnect
+          ? `${baseUrl}/accounts/${encodeURIComponent(reconnect_account_id)}`
+          : `${baseUrl}/accounts`;
 
-        const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
+        console.log('[connect_cookie]', isReconnect ? 'RECONNECT' : 'CREATE', 'length:', access_token.length, 'endpoint:', endpoint);
+
+        const unipilePayload: Record<string, unknown> = {
+          provider: 'LINKEDIN',
+          access_token,
+          user_agent: user_agent || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        };
+
+        const response = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          body: JSON.stringify({
-            provider: 'LINKEDIN',
-            access_token,
-            user_agent: user_agent || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          }),
+          body: JSON.stringify(unipilePayload),
         });
 
         const data = await response.json();
-        console.log('Unipile response status:', response.status, 'data:', JSON.stringify(data));
+        console.log('[connect_cookie] Unipile response status:', response.status, 'data:', JSON.stringify(data).slice(0, 500));
 
         if (!response.ok) {
           // Provide more specific error messages
           let errorMessage = data.message || data.error || 'Erreur de connexion';
           if (response.status === 401) {
-            errorMessage = 'Cookie li_at invalide ou expiré. Veuillez récupérer un nouveau cookie.';
+            errorMessage = 'Cookie li_at invalide ou expiré. Veuillez récupérer un nouveau cookie depuis votre navigateur.';
+          } else if (response.status === 403) {
+            errorMessage = 'Accès refusé par LinkedIn. Un captcha ou une vérification est peut-être requise.';
+          } else if (response.status === 404 && isReconnect) {
+            errorMessage = 'Compte introuvable côté Unipile. Utilisez la connexion initiale au lieu du reconnect.';
           } else if (response.status === 409) {
-            errorMessage = 'Ce compte LinkedIn est déjà connecté.';
+            errorMessage = 'Ce compte LinkedIn est déjà connecté sous un autre identifiant.';
           }
           return new Response(
             JSON.stringify({ success: false, error: errorMessage }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
+        }
+
+        // Upsert dans member_linkedin_accounts si nouveau compte (create path).
+        // Pour le reconnect, le webhook account_connected suffira à repasser en OK.
+        if (!isReconnect && data.account_id) {
+          try {
+            await adminClient
+              .from('member_linkedin_accounts')
+              .upsert({
+                user_id: user.id,
+                organization_id: organizationId,
+                linkedin_account_id: data.account_id,
+                linkedin_account_name: data.name || 'Mon compte LinkedIn',
+                account_status: data.object === 'Checkpoint' ? 'CONNECTING' : 'OK',
+                last_checked_at: new Date().toISOString(),
+              }, {
+                onConflict: 'user_id,organization_id',
+              });
+            console.log('[connect_cookie] Upserted member_linkedin_accounts for user', user.id, 'account', data.account_id);
+          } catch (e) {
+            console.warn('[connect_cookie] Failed to upsert member_linkedin_accounts:', e);
+          }
         }
 
         return new Response(

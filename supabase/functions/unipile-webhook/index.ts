@@ -57,6 +57,12 @@ interface WebhookPayload {
   event: string;
   account_id: string;
   data?: Record<string, unknown>;
+  // hosted_auth flow : le `name` qu'on passe à /hosted/accounts/link revient ici.
+  // On encode "user:{uuid}|org:{uuid}[|reconnect:{acc}]" pour tracer qui a initié
+  // la connexion et faire un upsert correct dans member_linkedin_accounts.
+  name?: string;
+  // account_connected / account_status_updated : le status Unipile courant
+  status?: string;
   // new_relation format (flat)
   user_provider_id?: string;
   user_full_name?: string;
@@ -66,6 +72,35 @@ interface WebhookPayload {
   chat_id?: string;
   sender?: { attendee_id?: string; attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string };
   attendees?: Array<{ attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string }>;
+}
+
+/**
+ * Parse le `name` passé par hosted_auth pour extraire user_id + org_id + reconnect hint.
+ * Format attendu : "user:{uuid}|org:{uuid}[|reconnect:{account_id}]"
+ * Retourne null si format inconnu (flow legacy avec org_name brut).
+ */
+function parseHostedAuthState(name: string | undefined): {
+  userId: string;
+  organizationId: string;
+  reconnectAccountId: string | null;
+} | null {
+  if (!name || typeof name !== 'string') return null;
+  const parts = name.split('|');
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    const colonIdx = part.indexOf(':');
+    if (colonIdx > 0) {
+      const k = part.slice(0, colonIdx).trim();
+      const v = part.slice(colonIdx + 1).trim();
+      if (k && v) map[k] = v;
+    }
+  }
+  if (!map.user || !map.org) return null;
+  return {
+    userId: map.user,
+    organizationId: map.org,
+    reconnectAccountId: map.reconnect || null,
+  };
 }
 
 interface SequenceEnrollment {
@@ -126,16 +161,74 @@ Deno.serve(async (req) => {
       }
       
       case 'account_connected': {
-        console.log('[unipile-webhook] Account connected:', payload.account_id);
-        // Update status in member_linkedin_accounts if the column exists
+        console.log('[unipile-webhook] Account connected:', payload.account_id, 'name:', payload.name);
+
+        // Parse le state encodé dans `name` par hosted_auth (user + org)
+        const hostedState = parseHostedAuthState(payload.name);
+
+        if (hostedState) {
+          // Flow hosted_auth moderne : UPSERT avec user_id + org_id pour garantir
+          // le mapping même si la row n'existait pas (cas après "Dissocier").
+          // C'est le FIX du dead-end où un nouveau compte Unipile était créé
+          // mais jamais lié à un user -> invisible dans Settings.
+          try {
+            await supabase
+              .from('member_linkedin_accounts')
+              .upsert({
+                user_id: hostedState.userId,
+                organization_id: hostedState.organizationId,
+                linkedin_account_id: payload.account_id,
+                linkedin_account_name: (payload.data as any)?.name || 'Compte LinkedIn',
+                account_status: 'OK',
+                last_checked_at: new Date().toISOString(),
+                failure_reason: null,
+              }, {
+                onConflict: 'user_id,organization_id',
+              });
+            console.log('[unipile-webhook] Upserted via hosted_auth for user', hostedState.userId, 'org', hostedState.organizationId);
+          } catch (e) {
+            console.error('[unipile-webhook] Upsert via hosted_auth failed:', e);
+          }
+        } else {
+          // Fallback legacy : simple UPDATE sur linkedin_account_id (ancien comportement)
+          try {
+            await supabase
+              .from('member_linkedin_accounts')
+              .update({ account_status: 'OK', last_checked_at: new Date().toISOString(), failure_reason: null })
+              .eq('linkedin_account_id', payload.account_id);
+          } catch (e) {
+            console.warn('[unipile-webhook] Could not update account status (legacy flow):', e);
+          }
+        }
+        break;
+      }
+
+      // Webhook Unipile « account_status_updated » : tient compte de toutes les
+      // transitions de statut (OK, CONNECTING, CREDENTIALS, ERROR, SYNC_SUCCESS,
+      // RECONNECTED, CREATION_SUCCESS, DELETED). Manquait avant — on ratait les
+      // transitions intermédiaires en prod.
+      case 'account_status_updated':
+      case 'account.status_updated': {
+        const newStatus = payload.status || (payload.data as any)?.status || 'UNKNOWN';
+        console.log('[unipile-webhook] Status updated:', payload.account_id, '->', newStatus);
         try {
+          // Normaliser les status Unipile pour simplifier la lecture frontend.
+          // OK et RECONNECTED et SYNC_SUCCESS sont tous "compte fonctionnel".
+          const normalizedStatus =
+            newStatus === 'RECONNECTED' || newStatus === 'SYNC_SUCCESS' || newStatus === 'CREATION_SUCCESS'
+              ? 'OK'
+              : newStatus;
           await supabase
             .from('member_linkedin_accounts')
-            .update({ account_status: 'OK', last_checked_at: new Date().toISOString(), failure_reason: null })
+            .update({
+              account_status: normalizedStatus,
+              last_checked_at: new Date().toISOString(),
+              // Si on repasse OK, on efface la raison d'échec précédente
+              ...(normalizedStatus === 'OK' ? { failure_reason: null } : {}),
+            })
             .eq('linkedin_account_id', payload.account_id);
         } catch (e) {
-          // Column may not exist yet — silently ignore
-          console.warn('[unipile-webhook] Could not update account status (column may not exist):', e);
+          console.warn('[unipile-webhook] status_updated handler failed:', e);
         }
         break;
       }
