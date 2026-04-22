@@ -119,9 +119,8 @@ Le fichier hardcode 3 modes (brief/process/sourcing/outreach) + tools + retrieva
 - `index.ts` réduit à l'orchestration
 - Source : `RAG_AGENT_AUDIT.md` §2
 
-### I2. Re-ranking Claude-as-reranker → 2h
-`retrieve-context` v2 : fetch top-30 vectoriel, rerank avec Claude Haiku, renvoyer top-8. Gain attendu : +30-40 % pertinence des recherches candidat.
-- Source : `RAG_AGENT_AUDIT.md` §8 Sprint 2
+### I2. Re-ranking Claude-as-reranker ✅ DONE
+`retrieve-context` fetch désormais `limit*4` (max 30) puis rerank via Claude Haiku tool_use (rank_chunks 0-10). Filtre les < 3/10 (clairement non pertinents), trie par score, renvoie top `limit`. Toggle via `rerank: false` dans le body.
 
 ### I3. Dédoublonner les vues "candidat" → 2h
 3 endroits différents affichent un candidat avec 3 layouts différents : `LinkedInResultCard`, `ProfileDetailSheet`, `CandidateDetailModal`. Harmoniser via composant unifié `CandidatePreview` avec variants `compact|expanded|modal`.
@@ -145,10 +144,8 @@ Le fichier hardcode 3 modes (brief/process/sourcing/outreach) + tools + retrieva
 - Outreach séquence
 - Source : `AUDITS/TESTS_AUDIT.md`
 
-### I7. Session recovery sur erreur 401 → 1h
-Quand le JWT expire, l'app affiche "Session expirée" mais ne retry pas automatiquement le refresh token. User doit recharger manuellement.
-- **Fix** : intercepteur global qui appelle `supabase.auth.refreshSession()` puis retry.
-- Source : `AUDITS/PERF_FRONT_AUDIT.md` §4 + observation user (cf. session 21/04)
+### I7. Session recovery sur erreur 401 ✅ DONE
+`invokeEdgeFunction` détecte les 401 → appelle `supabase.auth.refreshSession()` → retry une fois avec le nouveau token. Si le refresh échoue, l'erreur 401 remonte (l'user doit se reconnecter).
 
 ### I8. Error boundaries par section → 2h
 Une seule `SectionErrorBoundary` existe (ajoutée par `app-audit`). À étendre :

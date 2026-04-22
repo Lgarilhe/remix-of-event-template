@@ -85,6 +85,33 @@ async function extractEdgeFunctionError(err: unknown): Promise<string> {
   return humanizeError(err instanceof Error ? err : String(err));
 }
 
+/**
+ * Make a single fetch call to the edge function. Used both for the initial
+ * request and for the post-refresh retry.
+ */
+async function doFetchEdgeFunction(
+  functionName: string,
+  enrichedBody: Record<string, unknown>,
+  accessToken: string | null,
+): Promise<Response> {
+  const abortController = new AbortController();
+  const timer = window.setTimeout(() => abortController.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify(enrichedBody),
+      signal: abortController.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function invokeEdgeFunction<T = Record<string, unknown>>(
   functionName: string,
   body: Record<string, unknown> = {}
@@ -98,25 +125,24 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
   }
 
   try {
-    const abortController = new AbortController();
-    const timer = window.setTimeout(() => abortController.abort(), TIMEOUT_MS);
+    let { data: { session } } = await supabase.auth.getSession();
+    let response = await doFetchEdgeFunction(functionName, enrichedBody, session?.access_token ?? null);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      },
-      body: JSON.stringify(enrichedBody),
-      signal: abortController.signal,
-    });
-
-    clearTimeout(timer);
+    // I7 — Session recovery on 401 : si le JWT est expiré, on force un refresh
+    // (Supabase tente normalement auto via autoRefreshToken: true mais peut rater
+    // si l'onglet est resté longtemps en background ou si le refresh token a
+    // été rotaté en parallèle). On retry une fois, pas plus.
+    if (response.status === 401) {
+      console.warn(`[invokeEdgeFunction] ${functionName} got 401, attempting session refresh + retry`);
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        // Refresh impossible → l'user doit se reconnecter (on laisse l'erreur 401 remonter)
+        console.error('[invokeEdgeFunction] session refresh failed, user must re-login:', refreshError?.message);
+      } else {
+        session = refreshData.session;
+        response = await doFetchEdgeFunction(functionName, enrichedBody, session.access_token);
+      }
+    }
 
     const { payload, text } = await readEdgeResponse(response);
 
