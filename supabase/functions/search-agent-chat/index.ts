@@ -1,5 +1,15 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import {
+  getAnthropicToolDefinitions,
+  getTool as getRegistryTool,
+  handleProposedToolCall,
+  type ToolContext,
+} from "../_shared/agent-tools.ts";
+import { registerMutatingTools } from "../_shared/agent-tools-mutations.ts";
+
+// Register mutation tools at module load (idempotent)
+registerMutatingTools();
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -612,19 +622,22 @@ Propose des exemples concrets de messages.`;
             while (maxToolRounds > 0) {
               console.log(`[search-agent-chat] Tool loop round ${6 - maxToolRounds}, messages: ${currentMessages.length}`);
 
+              // Combine read-only sourcing tools (hardcoded) + registry mutating tools
+              // (dynamically registered via registerMutatingTools()).
+              const registryTools = getAnthropicToolDefinitions();
+              const allTools = [...sourcingTools, ...registryTools];
+
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
                 system: [{ type: "text", text: activeSystemPrompt }],
                 messages: currentMessages,
-                tools: sourcingTools,
+                tools: allTools,
               };
 
-              // On the first round after diagnostic questions are answered,
-              // hint the model to use tools (but don't force on every round)
-              // tool_choice: "auto" lets the model decide, which is the default
+              // tool_choice: "auto" (default) lets the model decide.
 
-              console.log(`[search-agent-chat] Sending to Anthropic: ${currentMessages.length} messages, ${sourcingTools.length} tools, model: ${resolvedModel}`);
+              console.log(`[search-agent-chat] Sending to Anthropic: ${currentMessages.length} messages, ${allTools.length} tools (${sourcingTools.length} read-only + ${registryTools.length} registry), model: ${resolvedModel}`);
 
               const loopResponse = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
                 method: "POST",
@@ -666,12 +679,39 @@ Propose des exemples concrets de messages.`;
                 // Add the assistant message with tool_use blocks to the conversation
                 currentMessages.push({ role: 'assistant', content: data.content });
 
-                // Execute each tool and add results
+                // Execute each tool and add results.
+                // Dispatch:
+                //   - registry tool (mutation, requires approval) → handleProposedToolCall
+                //     → returns { outcome, executionId, payload } that we serialize for Claude
+                //   - hardcoded sourcing tool (read-only) → existing executeTool
                 const toolResults: any[] = [];
                 for (const tc of toolUseBlocks) {
                   console.log(`[search-agent-chat] Tool call: ${tc.name}(${JSON.stringify(tc.input).slice(0, 200)})`);
-                  const result = await executeTool(tc.name, tc.input, supabaseUrl, authHeader, anonKey, orgId);
-                  toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
+
+                  const registryTool = getRegistryTool(tc.name);
+                  if (registryTool) {
+                    // Mutation via registry — propose, don't execute
+                    const ctx: ToolContext = {
+                      userId: user.id,
+                      organizationId: orgId,
+                      conversationId: conversation_id,
+                      messageId: null, // we don't have a message_id yet at this point
+                      adminClient: supabase,
+                    };
+                    const handled = await handleProposedToolCall(tc.name, tc.input, ctx);
+                    // Serialize for Claude — include executionId so the model can
+                    // mention it in its reply ("J'ai préparé l'action #abc, valide via le bandeau")
+                    const resultForClaude = JSON.stringify({
+                      outcome: handled.outcome,
+                      execution_id: handled.executionId,
+                      ...handled.payload,
+                    });
+                    toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: resultForClaude });
+                  } else {
+                    // Hardcoded read-only sourcing tool
+                    const result = await executeTool(tc.name, tc.input, supabaseUrl, authHeader, anonKey, orgId);
+                    toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
+                  }
                 }
                 currentMessages.push({ role: 'user', content: toolResults });
 

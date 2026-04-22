@@ -15,6 +15,7 @@ import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
 import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
 import type { AgentConversation } from '@/hooks/useAgentChat';
+import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 
 interface AgentChatPanelProps {
   onClose?: () => void;
@@ -244,6 +245,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </div>
         <ModelPicker actionId="agent_search_calibration" value={selectedModel} onChange={setSelectedModel} compact />
       </div>
+
+      {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
+      <AgentToolApprovalCard conversationId={conversationId} />
 
       {/* Thread — assistant-ui handles everything */}
       <AssistantRuntimeProvider runtime={runtime}>
