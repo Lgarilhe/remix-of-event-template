@@ -25,6 +25,9 @@ verify_jwt = false
 [functions.ai-credits]
 verify_jwt = false
 
+[functions.agent-tool-action]
+verify_jwt = false
+
 [functions.aircall-webhook]
 verify_jwt = false
 
