@@ -268,17 +268,8 @@ const sourcingTools = [
       required: ["company_name"],
     },
   },
-  {
-    name: "web_search",
-    description: "Search the web for information about a company, market, or topic. Use this to find recent funding news, tech stack details, company culture, competitor analysis.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        query: { type: "string", description: "Search query" },
-      },
-      required: ["query"],
-    },
-  },
+  // web_search disabled — handler is a stub (returns "not available"). Re-enable
+  // when Perplexity Sonar / Tavily integration ships (Sprint 5 in RAG_AGENT_AUDIT.md).
 ];
 
 async function executeTool(

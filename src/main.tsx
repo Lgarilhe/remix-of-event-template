@@ -53,6 +53,50 @@ if (SENTRY_DSN) {
       if (event.exception?.values?.some(v => isRecoverableImportError(v.value))) {
         return null;
       }
+
+      // PII scrubbing — RGPD compliance for multi-tenant SaaS
+      // Strip cookies, auth tokens, request bodies, and user emails before
+      // sending to Sentry. Sentry sees only sanitized error context.
+      try {
+        if (event.request) {
+          // Cookies (auth session)
+          if (event.request.cookies) event.request.cookies = '[Filtered]';
+          if (event.request.headers) {
+            const headers = event.request.headers as Record<string, string>;
+            for (const key of Object.keys(headers)) {
+              const lk = key.toLowerCase();
+              if (lk === 'cookie' || lk === 'authorization' || lk === 'x-supabase-auth' || lk.startsWith('x-api')) {
+                headers[key] = '[Filtered]';
+              }
+            }
+          }
+          // Request body (peut contenir messages, params privés)
+          if (event.request.data) event.request.data = '[Filtered]';
+        }
+        // User PII : on garde id (utile pour debug) mais on scrub email
+        if (event.user) {
+          if (event.user.email) event.user.email = '[Filtered]';
+          if (event.user.username) event.user.username = '[Filtered]';
+          if (event.user.ip_address) event.user.ip_address = '[Filtered]';
+        }
+        // Breadcrumbs : strip data field (souvent params POST)
+        if (event.breadcrumbs) {
+          for (const crumb of event.breadcrumbs) {
+            if (crumb.data) {
+              const cd = crumb.data as Record<string, unknown>;
+              for (const k of Object.keys(cd)) {
+                if (/email|password|token|cookie|authorization/i.test(k)) {
+                  cd[k] = '[Filtered]';
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Si le scrub plante, mieux vaut ne rien envoyer que d'envoyer du PII
+        return null;
+      }
+
       return event;
     },
   });
