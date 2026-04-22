@@ -204,6 +204,387 @@ const updateCandidateStage: AgentTool = {
   },
 };
 
+// ─── Tool 2 — add_to_shortlist ──────────────────────────────────────────────
+// Raccourci sémantique : alias de update_candidate_stage avec stage='Pressenti'
+// (= shortlist business). Existe séparément car Claude le comprend mieux quand
+// l'user dit "ajoute X à ma shortlist" sans connaître le nom exact du stage.
+
+const addToShortlist: AgentTool = {
+  name: 'add_to_shortlist',
+  description:
+    "Add a candidate to the user's shortlist for a specific mission. Internally moves the candidate to the 'Pressenti' pipeline stage. " +
+    "Use this when the user says 'ajoute X à la shortlist', 'shortliste Y', 'mets-le dans mes pressentis'.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_id: { type: 'string', description: 'Stable candidate ID, must already exist in job_candidate_status for this job.' },
+      job_id: { type: 'string', description: 'The mission UUID.' },
+      reason: { type: 'string', description: 'Optional note explaining why the candidate is shortlisted.' },
+    },
+    required: ['candidate_id', 'job_id'],
+  },
+
+  verifyAccess: (params, ctx) => updateCandidateStage.verifyAccess(params, ctx),
+
+  async dryRun(params, ctx) {
+    return updateCandidateStage.dryRun({ ...params, new_stage: 'Pressenti' }, ctx);
+  },
+
+  async execute(params, ctx) {
+    return updateCandidateStage.execute({ ...params, new_stage: 'Pressenti' }, ctx);
+  },
+};
+
+// ─── Tool 3 — create_mission ────────────────────────────────────────────────
+// INSERT dans sourcing_projects. Le created_by est l'user, organization_id
+// dérivé de l'auth context. Status par défaut 'active'.
+
+const createMission: AgentTool = {
+  name: 'create_mission',
+  description:
+    "Create a new recruitment mission (sourcing project) in the user's workspace. " +
+    "Use when the user says 'crée une mission pour X', 'nouveau poste de Y chez Z'. " +
+    "Always proposes for approval — the mission won't appear in the kanban until the user approves.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Short mission name (≤80 chars), e.g. "DevOps Senior — Acme Series B".' },
+      job_title: { type: 'string', description: 'The role being recruited for, e.g. "DevOps Engineer".' },
+      client_name: { type: 'string', description: 'Optional client / company name.' },
+      description: { type: 'string', description: 'Optional 1-3 sentence brief.' },
+    },
+    required: ['name', 'job_title'],
+  },
+
+  async verifyAccess(_params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    return { allowed: true };
+  },
+
+  async dryRun(params, _ctx) {
+    return {
+      summary: `Créer la mission « ${params.name} » (${params.job_title})${params.client_name ? ` chez ${params.client_name}` : ''}`,
+      details: {
+        name: params.name,
+        job_title: params.job_title,
+        client_name: params.client_name ?? null,
+        description: params.description ?? null,
+        status: 'active',
+      },
+    };
+  },
+
+  async execute(params, ctx) {
+    const { data, error } = await ctx.adminClient
+      .from('sourcing_projects')
+      .insert({
+        name: String(params.name).slice(0, 200),
+        job_title: String(params.job_title).slice(0, 200),
+        client_name: params.client_name ? String(params.client_name).slice(0, 200) : null,
+        description: params.description ? String(params.description).slice(0, 2000) : null,
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+        status: 'active',
+        filters_snapshot: {},
+      })
+      .select('id, name, job_title')
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return {
+      success: true,
+      data: { mission_id: data.id, name: data.name, job_title: data.job_title },
+    };
+  },
+};
+
+// ─── Tool 4 — enroll_in_sequence ────────────────────────────────────────────
+// INSERT dans sequence_enrollments. Le candidat doit déjà exister
+// (job_candidate_status row), et la séquence doit appartenir à l'org.
+
+const enrollInSequence: AgentTool = {
+  name: 'enroll_in_sequence',
+  description:
+    "Enroll a candidate into an outreach sequence. The sequence steps will start being processed by the cron. " +
+    "Use when the user says 'enrôle X dans ma séquence Y', 'lance la séquence sur ce candidat'. " +
+    "Requires the candidate to already exist on the mission and the sequence to belong to the user's org.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      sequence_id: { type: 'string', description: 'UUID of the outreach_sequences row.' },
+      candidate_id: { type: 'string', description: 'Provider/Unipile ID of the candidate (used as provider_id).' },
+      profile_url: { type: 'string', description: 'LinkedIn URL of the candidate.' },
+      profile_name: { type: 'string', description: 'Display name (e.g. "Marie Martin").' },
+      account_id: { type: 'string', description: 'Unipile LinkedIn account_id of the recruiter who will send.' },
+      job_id: { type: 'string', description: 'Mission UUID this enrollment is tied to.' },
+    },
+    required: ['sequence_id', 'candidate_id', 'account_id', 'job_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const sequenceId = String(params.sequence_id || '');
+    const jobId = String(params.job_id || '');
+    if (!sequenceId || !jobId) return { allowed: false, reason: 'sequence_id and job_id required' };
+
+    // Sequence must belong to the user's org
+    const { data: seq } = await ctx.adminClient
+      .from('outreach_sequences')
+      .select('id, organization_id, name, is_active')
+      .eq('id', sequenceId)
+      .maybeSingle();
+    if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
+    if (seq.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
+    }
+    if (!seq.is_active) return { allowed: false, reason: `La séquence "${seq.name}" est désactivée` };
+
+    // Job must also belong to org
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!project || project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Mission inaccessible' };
+    }
+
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const [{ data: seq }, { data: project }] = await Promise.all([
+      ctx.adminClient
+        .from('outreach_sequences')
+        .select('name')
+        .eq('id', String(params.sequence_id))
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sourcing_projects')
+        .select('name, job_title')
+        .eq('id', String(params.job_id))
+        .maybeSingle(),
+    ]);
+
+    // Check if already enrolled
+    const { data: existing } = await ctx.adminClient
+      .from('sequence_enrollments')
+      .select('id, current_step_order')
+      .eq('sequence_id', String(params.sequence_id))
+      .eq('provider_id', String(params.candidate_id))
+      .maybeSingle();
+
+    return {
+      summary: existing
+        ? `${params.profile_name ?? params.candidate_id} est déjà enrôlé dans « ${seq?.name ?? 'cette séquence'} »`
+        : `Enrôler ${params.profile_name ?? params.candidate_id} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}`,
+      details: {
+        sequence_name: seq?.name ?? null,
+        candidate: params.profile_name ?? params.candidate_id,
+        job: project?.job_title ?? project?.name ?? null,
+        already_enrolled: !!existing,
+      },
+      warning: existing ? 'Ce candidat est déjà dans cette séquence — pas de double enrôlement.' : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const { data, error } = await ctx.adminClient
+      .from('sequence_enrollments')
+      .insert({
+        sequence_id: String(params.sequence_id),
+        provider_id: String(params.candidate_id),
+        profile_url: params.profile_url ? String(params.profile_url) : null,
+        profile_name: params.profile_name ? String(params.profile_name) : null,
+        account_id: String(params.account_id),
+        job_id: String(params.job_id),
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+        current_step_order: 0,
+      })
+      .select('id, current_step_order')
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: { enrollment_id: data.id } };
+  },
+};
+
+// ─── Tool 5 — draft_outreach_message ────────────────────────────────────────
+// Génère un draft de message LinkedIn/email pour un candidat (via Claude).
+// Le message est sauvegardé dans dry_run_result.draft. À l'approbation,
+// l'execute() le copie dans le clipboard de l'user (pas d'envoi auto pour
+// l'instant — l'envoi via Unipile/Resend nécessite une UX dédiée et un canal
+// résolu, on l'ajoute en v3).
+
+const draftOutreachMessage: AgentTool = {
+  name: 'draft_outreach_message',
+  description:
+    "Draft a personalized outreach message for a candidate (LinkedIn DM or email). " +
+    "Returns a polished draft that the user can review, edit, and copy/send manually. Does NOT send automatically — sending via integrated channels comes in v3. " +
+    "Use when the user says 'écris un message pour X', 'rédige une approche pour Y', 'prépare un DM personnalisé'.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_id: { type: 'string', description: 'Stable candidate ID (already on the mission).' },
+      job_id: { type: 'string', description: 'Mission UUID.' },
+      tone: {
+        type: 'string',
+        enum: ['casual', 'professional', 'enthusiastic', 'concise'],
+        description: 'Tone of the message (default: casual).',
+      },
+      channel: {
+        type: 'string',
+        enum: ['linkedin_dm', 'linkedin_inmail', 'email'],
+        description: 'Channel — affects length and format (default: linkedin_dm).',
+      },
+      angle: {
+        type: 'string',
+        description: 'Optional specific angle (e.g. "mention his recent open-source contribution").',
+      },
+    },
+    required: ['candidate_id', 'job_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    return updateCandidateStage.verifyAccess(params, ctx);
+  },
+
+  async dryRun(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const jobId = String(params.job_id);
+
+    const [{ data: row }, { data: project }] = await Promise.all([
+      ctx.adminClient
+        .from('job_candidate_status')
+        .select('candidate_name, candidate_headline, linkedin_profile_data')
+        .eq('candidate_id', candidateId)
+        .eq('job_id', jobId)
+        .eq('created_by', ctx.userId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sourcing_projects')
+        .select('name, job_title, client_name, description, job_details')
+        .eq('id', jobId)
+        .maybeSingle(),
+    ]);
+
+    const tone = String(params.tone ?? 'casual');
+    const channel = String(params.channel ?? 'linkedin_dm');
+    const candidateName = row?.candidate_name ?? candidateId;
+
+    return {
+      summary: `Rédiger un ${channel === 'email' ? 'email' : channel === 'linkedin_inmail' ? 'InMail LinkedIn' : 'DM LinkedIn'} en ton « ${tone} » à ${candidateName} pour ${project?.job_title ?? 'cette mission'}`,
+      details: {
+        candidate: candidateName,
+        candidate_headline: row?.candidate_headline ?? null,
+        job_title: project?.job_title ?? null,
+        client_name: project?.client_name ?? null,
+        tone,
+        channel,
+        angle: params.angle ?? null,
+        // Note : la génération du message n'a pas lieu en dry-run. Elle se fait
+        // dans execute() pour économiser les tokens si l'user reject.
+      },
+    };
+  },
+
+  async execute(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const jobId = String(params.job_id);
+    const tone = String(params.tone ?? 'casual');
+    const channel = String(params.channel ?? 'linkedin_dm');
+    const angle = params.angle ? String(params.angle) : null;
+
+    // Fetch context
+    const [{ data: row }, { data: project }] = await Promise.all([
+      ctx.adminClient
+        .from('job_candidate_status')
+        .select('candidate_name, candidate_headline, linkedin_profile_data')
+        .eq('candidate_id', candidateId)
+        .eq('job_id', jobId)
+        .eq('created_by', ctx.userId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sourcing_projects')
+        .select('name, job_title, client_name, description, job_details')
+        .eq('id', jobId)
+        .maybeSingle(),
+    ]);
+
+    if (!row || !project) {
+      return { success: false, error: 'Candidat ou mission introuvable' };
+    }
+
+    // Use the existing _shared/call-claude helper to draft the message
+    const { callClaudeCompat } = await import('./call-claude.ts');
+    const profile = (row.linkedin_profile_data as Record<string, unknown>) ?? {};
+    const jd = (project.job_details as Record<string, unknown>) ?? {};
+
+    const lengthHint =
+      channel === 'linkedin_dm'
+        ? '300 caractères max (LinkedIn DM = ultra court)'
+        : channel === 'linkedin_inmail'
+        ? '600 caractères max avec sujet (InMail)'
+        : '120-150 mots avec sujet (email)';
+
+    const systemPrompt = `Tu es un recruteur expert qui rédige des messages d'approche très personnalisés. Ton: ${tone}. Tu réponds UNIQUEMENT en JSON valide: {"subject": "...", "body": "..."}. Pour LinkedIn DM, "subject" peut être null.`;
+    const userPrompt = `Rédige un message ${channel} en ${tone} pour:
+
+CANDIDAT: ${row.candidate_name}
+HEADLINE: ${row.candidate_headline ?? 'non spécifiée'}
+PROFIL: ${JSON.stringify(profile).slice(0, 1500)}
+
+POSTE: ${project.job_title} ${project.client_name ? `chez ${project.client_name}` : ''}
+DESCRIPTION: ${project.description ?? jd.description ?? 'voir brief'}
+
+${angle ? `ANGLE D'ATTAQUE: ${angle}` : ''}
+
+CONTRAINTES:
+- ${lengthHint}
+- Personnaliser via 1 élément précis du profil (pas du blabla générique)
+- Pas de "j'espère que vous allez bien", pas de copywriting cringe
+- Tutoiement
+- CTA clair en fin de message`;
+
+    try {
+      const result = await callClaudeCompat({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 600,
+        temperature: 0.6,
+        response_format: { type: 'json_object' },
+        timeoutMs: 25000,
+      });
+      const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
+      return {
+        success: true,
+        data: {
+          channel,
+          tone,
+          subject: parsed.subject ?? null,
+          body: parsed.body ?? '',
+          candidate_name: row.candidate_name,
+          // Note pour l'UI : ce draft est à copier-coller manuellement.
+          // L'envoi automatisé via Unipile/Resend viendra en v3.
+          action_required: 'copy_to_clipboard',
+        },
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Draft generation failed' };
+    }
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -213,11 +594,11 @@ let registered = false;
 export function registerMutatingTools(): void {
   if (registered) return;
   registerTool(updateCandidateStage);
-  // TODO Sprint 1 v2 :
-  //   - add_to_shortlist
-  //   - send_outreach_message (avec mode draft)
-  //   - create_mission (avec mode draft)
-  //   - enroll_in_sequence
-  //   - schedule_interview (quand calendar branché)
+  registerTool(addToShortlist);
+  registerTool(createMission);
+  registerTool(enrollInSequence);
+  registerTool(draftOutreachMessage);
+  // schedule_interview reporté : pas de calendar branché, table events
+  // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;
 }

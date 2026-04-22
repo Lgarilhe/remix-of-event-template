@@ -37,7 +37,7 @@ interface AgentToolApprovalCardProps {
 const TOOL_LABEL: Record<string, string> = {
   update_candidate_stage: 'Modifier le stade candidat',
   add_to_shortlist: 'Ajouter à la shortlist',
-  send_outreach_message: 'Envoyer un message',
+  draft_outreach_message: 'Rédiger un message d\'approche',
   create_mission: 'Créer une mission',
   enroll_in_sequence: 'Enrôler dans une séquence',
   schedule_interview: 'Planifier un entretien',
