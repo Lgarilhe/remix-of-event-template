@@ -539,6 +539,14 @@ export function useLinkedInScoring({
     }
 
     setScoringInProgress(true);
+
+    // 🐛 BUG FIX Opus A1 (race scoring cross-projet) : capture l'ID du job au
+    // lancement. Si l'user change de projet pendant que les batches tournent
+    // (Promise.allSettled en parallèle), on refuse d'écrire les scores sur le
+    // nouveau projet. Avant : setJobScores mettait les scores dans la map du
+    // nouveau projet → faux positifs visuels silencieux.
+    const initialJobId = selectedJob.id;
+
     // Use merged results (including pool profiles) if available, otherwise fall back to search results
     const allProfiles = allAvailableProfilesRef?.current || results;
     // Exclude profiles that already have a score to avoid re-scoring
@@ -724,6 +732,18 @@ export function useLinkedInScoring({
             });
           }
         });
+
+        // 🐛 BUG FIX Opus A1 (race scoring cross-projet) : abort si l'user a changé
+        // de projet pendant le scoring — on ne veut pas écrire les scores du job A
+        // dans la map du job B actuellement sélectionné.
+        if (selectedJob?.id !== initialJobId) {
+          console.warn('[useLinkedInScoring] Projet changé pendant scoring, résultats ignorés', {
+            initialJobId,
+            currentJobId: selectedJob?.id,
+          });
+          toast.info('Scoring annulé : vous avez changé de projet.');
+          return;
+        }
 
         setJobScores(prev => ({ ...prev, ...newScores }));
         setSortByScore(true);

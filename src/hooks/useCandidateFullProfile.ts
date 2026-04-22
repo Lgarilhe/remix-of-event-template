@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface CandidateActivity {
@@ -109,6 +109,13 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
   const [inmailsSent, setInmailsSent] = useState<any[]>([]);
   const [scoringHistory, setScoringHistory] = useState<ScoringRecord[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
+  // 🐛 BUG FIX Opus A2 (race accountId) : fetchSequences et fetchInmails
+  // tournent en parallèle via Promise.all. Le check `if (!accountId)` dans
+  // fetchInmails lit le state React qui n'a PAS encore re-rendu → les deux
+  // peuvent set en même temps, l'un écrase l'autre non-déterministiquement.
+  // Fix : ref synchronement updatable, check+set sur la ref, state juste
+  // pour déclencher re-render.
+  const accountIdRef = useRef<string | null>(null);
   const [airtableMatch, setAirtableMatch] = useState<any>(null);
   const [airtableShortlists, setAirtableShortlists] = useState<any[]>([]);
   const [airtableNotes, setAirtableNotes] = useState<any[]>([]);
@@ -161,7 +168,12 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         .order('created_at', { ascending: false });
       
       if (data && data.length > 0) {
-        setAccountId(data[0].account_id || null);
+        // fetchSequences = source prioritaire de account_id (plus fiable que inmails)
+        const newAccountId = data[0].account_id || null;
+        if (newAccountId && accountIdRef.current !== newAccountId) {
+          accountIdRef.current = newAccountId;
+          setAccountId(newAccountId);
+        }
 
         // Fetch detailed step executions
         const enrollmentIds = data.map((e: any) => e.id);
@@ -211,8 +223,14 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         .eq('recipient_profile_id', profileId)
         .order('created_at', { ascending: false });
       
-      if (data && data.length > 0 && !accountId) {
-        setAccountId(data[0].account_id || null);
+      // Fallback : utilise account_id depuis inmails UNIQUEMENT si les séquences
+      // n'en ont pas fourni (check sur la ref, pas le state — fix race condition)
+      if (data && data.length > 0 && !accountIdRef.current) {
+        const fallbackAccountId = data[0].account_id || null;
+        if (fallbackAccountId) {
+          accountIdRef.current = fallbackAccountId;
+          setAccountId(fallbackAccountId);
+        }
       }
 
       setInmailsSent((data || []).map((i: any) => ({

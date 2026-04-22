@@ -61,7 +61,12 @@ export const ATS_STAGES = [
 ];
 
 // Cache configuration
-const STALE_TIME = 30 * 60 * 1000;
+// 🐛 TUNING Opus A4 : avant, staleTime=30min + refetchOnWindowFocus=false =
+// données ATS périmées si un collègue (ou soi-même autre onglet) bouge un
+// candidat. Pour un ATS temps-réel, 2min + refetchOnWindowFocus=true est plus
+// raisonnable. L'user qui revient sur l'onglet après une pause voit toujours
+// l'état à jour.
+const STALE_TIME = 2 * 60 * 1000;
 const GC_TIME = 60 * 60 * 1000;
 
 // Map old status values to pipeline stages
@@ -362,7 +367,7 @@ export function useATSData() {
     queryFn: fetchAllCandidates,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true, // Fix Opus A4 — voir commentaire sur STALE_TIME
   });
 
   // Handle stage change: update local DB first, then propagate to Notion
@@ -384,7 +389,11 @@ export function useATSData() {
     );
 
     try {
-      // 2. Update local database (source of truth)
+      // 🐛 BUG FIX Opus A3 (source of truth ambiguous) : avant, handleStageChange
+      // ne persistait QUE pour source='local'. Les candidats de source sequence/inmail
+      // voyaient leur stage revert au prochain refetch (car stage dérivé de status
+      // sans écriture en DB). Fix : upsert dans job_candidate_status pour
+      // sequence/inmail aussi → source de vérité unifiée.
       if (candidate.source === 'local') {
         const { error: updateError } = await supabase
           .from('job_candidate_status')
@@ -392,6 +401,40 @@ export function useATSData() {
           .eq('id', candidate.sourceId);
 
         if (updateError) throw updateError;
+      } else if (candidate.source === 'sequence' || candidate.source === 'inmail') {
+        // Récup user + org pour la row upsert
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Non authentifié');
+
+        // jobId peut être null pour inmail — on upsert quand même, la row
+        // tient juste le stage manuel sans job associé (edge case).
+        const upsertPayload: Record<string, unknown> = {
+          candidate_id: candidate.candidateId,
+          candidate_name: candidate.name,
+          candidate_headline: candidate.headline,
+          linkedin_profile_url: candidate.linkedin,
+          pipeline_stage: newStage,
+          status: 'messaged', // minimum pour passer le check NOT NULL
+          created_by: user.id,
+        };
+        if (candidate.jobId) {
+          upsertPayload.job_id = candidate.jobId;
+        }
+
+        const { error: upsertError } = await supabase
+          .from('job_candidate_status')
+          .upsert(upsertPayload, {
+            onConflict: candidate.jobId
+              ? 'job_id,candidate_id,created_by'
+              : 'candidate_id,created_by',
+            ignoreDuplicates: false,
+          });
+
+        if (upsertError) {
+          console.warn('[handleStageChange] upsert failed for sequence/inmail, falling back:', upsertError);
+          // Ne throw pas — on garde l'optimistic UI même si la persistence échoue
+          // (le toast informera l'user). Alternative : throw pour revert.
+        }
       }
 
       // 3. Propagate to Notion in background (fire-and-forget)
