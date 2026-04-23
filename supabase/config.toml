@@ -246,3 +246,17 @@ verify_jwt = false
 
 [functions.update-notion-job]
 verify_jwt = false
+
+# Chrome extension Konekt — ajoutés 2026-04-23
+# verify_jwt = false car les functions gèrent l'auth elles-mêmes :
+# - extension-token : requireAuth JWT Konekt (gestion tokens extension)
+# - extension-pipeline-status + extension-quick-add : auth via token extension
+#   dédié (header X-Konekt-Extension-Token), pas via JWT Supabase
+[functions.extension-token]
+verify_jwt = false
+
+[functions.extension-pipeline-status]
+verify_jwt = false
+
+[functions.extension-quick-add]
+verify_jwt = false
