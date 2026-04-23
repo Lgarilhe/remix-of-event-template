@@ -1,0 +1,134 @@
+/**
+ * Styles injectés sur les pages LinkedIn par le content script Konekt.
+ * Préfixés `konekt-` pour éviter les collisions avec les classes LinkedIn.
+ */
+
+/* ─── Bouton flottant "+ Konekt" (bottom right sur page profil) ──────────── */
+
+.konekt-fab {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  z-index: 999999 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  height: 44px !important;
+  padding: 0 16px !important;
+  background: #0a0a0a !important;
+  color: #fff !important;
+  border: 2px solid #0a0a0a !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  cursor: pointer !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+  border-radius: 0 !important;
+}
+
+.konekt-fab:hover:not(:disabled) {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3) !important;
+}
+
+.konekt-fab:active:not(:disabled) {
+  transform: translateY(0) !important;
+}
+
+.konekt-fab:disabled {
+  opacity: 0.7 !important;
+  cursor: wait !important;
+}
+
+.konekt-fab--success {
+  background: #10b981 !important;
+  border-color: #10b981 !important;
+}
+
+.konekt-fab--error {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+}
+
+.konekt-fab--loading::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: konekt-spin 0.7s linear infinite;
+}
+
+@keyframes konekt-spin {
+  to { transform: rotate(360deg); }
+}
+
+.konekt-fab-icon {
+  font-size: 18px !important;
+  line-height: 1 !important;
+  font-weight: 800 !important;
+}
+
+.konekt-fab-label {
+  font-size: 12px !important;
+}
+
+/* ─── Badges overlay sur résultats de recherche LinkedIn ──────────────── */
+
+.konekt-badge {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  z-index: 100 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 3px 8px !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: #fff !important;
+  background: #6366f1 !important;
+  border: 1px solid #6366f1 !important;
+  border-radius: 0 !important;
+  pointer-events: auto !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  white-space: nowrap !important;
+}
+
+.konekt-badge-dot {
+  width: 6px !important;
+  height: 6px !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-radius: 50% !important;
+}
+
+.konekt-badge-score {
+  background: rgba(0, 0, 0, 0.25) !important;
+  padding: 1px 4px !important;
+  font-family: ui-monospace, "SF Mono", Monaco, monospace !important;
+  margin-left: 2px !important;
+}
+
+.konekt-badge-mission {
+  font-weight: 500 !important;
+  text-transform: none !important;
+  opacity: 0.9 !important;
+}
+
+/* Variantes par status */
+.konekt-badge--discovered { background: #6b7280 !important; border-color: #6b7280 !important; }
+.konekt-badge--scored     { background: #6366f1 !important; border-color: #6366f1 !important; }
+.konekt-badge--messaged   { background: #3b82f6 !important; border-color: #3b82f6 !important; }
+.konekt-badge--replied    { background: #06b6d4 !important; border-color: #06b6d4 !important; }
+.konekt-badge--shortlisted { background: #8b5cf6 !important; border-color: #8b5cf6 !important; }
+.konekt-badge--dismissed  { background: #ef4444 !important; border-color: #ef4444 !important; opacity: 0.7 !important; }
+.konekt-badge--unknown    { background: #6b7280 !important; border-color: #6b7280 !important; }

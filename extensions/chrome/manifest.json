@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "Konekt — Recrutement IA",
+  "short_name": "Konekt",
+  "version": "0.1.0",
+  "description": "Capture cookie LinkedIn + overlay pipeline + quick-add candidats depuis LinkedIn vers votre pipeline Konekt.",
+  "author": "Konekt",
+  "homepage_url": "https://konekt-app-navy.vercel.app",
+  "permissions": [
+    "cookies",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.linkedin.com/*",
+    "https://crckfywoyjxkawathdff.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "src/background/sw.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Konekt",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/in/*",
+        "https://www.linkedin.com/recruiter/*",
+        "https://www.linkedin.com/sales/*",
+        "https://www.linkedin.com/search/*"
+      ],
+      "js": ["src/content/linkedin.js"],
+      "css": ["src/content/linkedin.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "src/options/index.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["https://*.linkedin.com/*"]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+extensions/
+e2e/
+AUDITS/
+docs/
+tmp/
+*.md
+!README.md

@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 40 3% 11%;
+    --muted: 40 3% 95%;
+    --muted-foreground: 40 3% 46%;
+    --accent: 40 3% 93%;
+    --border: 40 3% 90%;
+    --info: 217 91% 60%;
+    --success: 142 71% 45%;
+    --destructive: 0 72% 51%;
+    --warning: 45 93% 47%;
+  }
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+/* Tokens utilitaires custom */
+@layer utilities {
+  .text-foreground { color: hsl(var(--foreground)); }
+  .text-muted-foreground { color: hsl(var(--muted-foreground)); }
+  .text-info { color: hsl(var(--info)); }
+  .text-success { color: hsl(var(--success)); }
+  .text-destructive { color: hsl(var(--destructive)); }
+  .text-warning { color: hsl(var(--warning)); }
+
+  .bg-background { background-color: hsl(var(--background)); }
+  .bg-foreground { background-color: hsl(var(--foreground)); color: hsl(var(--background)); }
+  .bg-muted { background-color: hsl(var(--muted)); }
+  .bg-accent { background-color: hsl(var(--accent)); }
+  .bg-info { background-color: hsl(var(--info)); }
+  .bg-success { background-color: hsl(var(--success)); }
+  .bg-destructive { background-color: hsl(var(--destructive)); }
+  .bg-warning { background-color: hsl(var(--warning)); }
+
+  .border-border { border-color: hsl(var(--border)); }
+  .border-foreground { border-color: hsl(var(--foreground)); }
+  .border-muted { border-color: hsl(var(--muted)); }
+  .border-info { border-color: hsl(var(--info)); }
+  .border-success { border-color: hsl(var(--success)); }
+  .border-destructive { border-color: hsl(var(--destructive)); }
+  .border-warning { border-color: hsl(var(--warning)); }
+}
