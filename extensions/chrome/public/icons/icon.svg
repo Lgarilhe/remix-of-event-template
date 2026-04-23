@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Konekt brand icon — brutal design: black square, white "K" in Outfit bold -->
+  <rect width="128" height="128" fill="#0a0a0a" rx="0"/>
+  <!-- Subtle inner border for depth at large size -->
+  <rect x="4" y="4" width="120" height="120" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
+  <!-- K letter, centered -->
+  <text
+    x="64"
+    y="64"
+    font-family="'Outfit', 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    font-size="88"
+    font-weight="900"
+    fill="#ffffff"
+    text-anchor="middle"
+    dominant-baseline="central"
+    letter-spacing="-2">K</text>
+</svg>
