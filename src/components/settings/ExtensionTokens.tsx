@@ -329,17 +329,78 @@ export const ExtensionTokens: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          <a
-            href="https://github.com/Lgarilhe/remix-of-event-template/raw/main/extensions/chrome/dist/konekt-extension.zip"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(
-              'inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium border border-border hover:bg-accent transition-colors',
-            )}
-          >
-            <ExternalLink className="w-3 h-3" aria-hidden="true" />
-            Télécharger l'extension
-          </a>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Puzzle className="w-3.5 h-3.5" aria-hidden="true" />
+                Comment installer l'extension
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Installer l'extension Chrome Konekt</DialogTitle>
+                <DialogDescription>
+                  L'extension n'est pas encore publiée sur le Chrome Web Store. Pour l'instant, installez-la en <strong>mode développeur</strong> depuis le code source.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étape 1 : build l'extension</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ouvre PowerShell dans le dossier du projet Konekt et lance :
+                  </p>
+                  <pre className="bg-muted/50 border border-border p-2.5 text-[11px] font-mono overflow-x-auto">
+                    <code>{`cd C:\\Users\\Hugo\\dev\\remix-of-event-template\\extensions\\chrome
+npm install
+npm run build`}</code>
+                  </pre>
+                  <p className="text-[10px] text-muted-foreground">
+                    Résultat : un dossier <code className="text-[10px] bg-muted px-1">dist/</code> est créé avec l'extension prête à charger.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étape 2 : charger dans Chrome</p>
+                  <ol className="text-xs space-y-1 ml-4 list-decimal">
+                    <li>Ouvre Chrome → <code className="text-[10px] bg-muted px-1">chrome://extensions/</code></li>
+                    <li>Active le toggle <strong>"Mode développeur"</strong> en haut à droite</li>
+                    <li>Clique <strong>"Charger l'extension non empaquetée"</strong></li>
+                    <li>Sélectionne le dossier <code className="text-[10px] bg-muted px-1">extensions/chrome/dist</code> (pas le dossier parent)</li>
+                    <li>L'icône Konekt 🧩 apparaît dans la barre Chrome</li>
+                  </ol>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Étape 3 : configurer le token</p>
+                  <ol className="text-xs space-y-1 ml-4 list-decimal">
+                    <li>Ci-dessus, clique <strong>"Nouveau token"</strong> → copie le token (kekt_...)</li>
+                    <li>Clique sur l'icône Konekt dans Chrome → <strong>"Ouvrir les réglages"</strong></li>
+                    <li>Colle le token → <strong>"Sauvegarder"</strong></li>
+                  </ol>
+                </div>
+
+                <div className="flex items-start gap-2 p-2.5 bg-info/5 border border-info/30 text-xs">
+                  <Puzzle className="w-3.5 h-3.5 text-info shrink-0 mt-0.5" aria-hidden="true" />
+                  <div className="text-foreground">
+                    <p className="font-medium">Mode "non empaquetée" = pas un danger</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      C'est la méthode standard pour tester une extension avant publication. L'extension reste active tant que Chrome est ouvert. Chrome affichera un bandeau d'avertissement au démarrage (normal) — ignore-le.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2 p-2.5 bg-warning/5 border border-warning/30 text-xs">
+                  <Puzzle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+                  <div className="text-foreground">
+                    <p className="font-medium">Chrome Web Store publication à venir</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Une fois publiée sur le Web Store, tout ça sera remplacé par un bouton <em>"Ajouter à Chrome"</em> classique.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </CardContent>
     </Card>
