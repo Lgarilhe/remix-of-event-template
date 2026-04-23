@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Konekt — Recrutement IA",
+  "name": "Konekt — Recrutement IA pour LinkedIn",
   "short_name": "Konekt",
   "version": "0.1.0",
-  "description": "Capture cookie LinkedIn + overlay pipeline + quick-add candidats depuis LinkedIn vers votre pipeline Konekt.",
+  "version_name": "0.1.0 beta",
+  "description": "Reconnectez LinkedIn en 1 clic, voyez le statut pipeline Konekt sur chaque profil, ajoutez des candidats depuis LinkedIn.",
   "author": "Konekt",
   "homepage_url": "https://konekt-app-navy.vercel.app",
   "permissions": [

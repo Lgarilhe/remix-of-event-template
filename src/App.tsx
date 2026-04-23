@@ -41,6 +41,7 @@ const ClientPortalPage = lazy(() => import("./pages/ClientPortal"));
 const AcceptMissionInvite = lazy(() => import("./pages/AcceptMissionInvite"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const PrivacyPage = lazy(() => import("./pages/Privacy"));
+const PrivacyExtensionPage = lazy(() => import("./pages/PrivacyExtension"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 const AgentsPage = lazy(() => import("./pages/Agents"));
 const Prospection = lazy(() => import("./pages/Prospection"));
@@ -154,6 +155,7 @@ const AppContent = () => {
           <Route path="/mission-invite/:token" element={<ProtectedRoute><AcceptMissionInvite /></ProtectedRoute>} />
           <Route path="/unsubscribe" element={<Suspense fallback={null}><UnsubscribePage /></Suspense>} />
           <Route path="/privacy" element={<Suspense fallback={null}><PrivacyPage /></Suspense>} />
+          <Route path="/privacy-extension" element={<Suspense fallback={null}><PrivacyExtensionPage /></Suspense>} />
           <Route path="/r/:slug" element={<RecruiterPublicProfile />} />
 
           {/* Authenticated routes — with sidebar layout */}
