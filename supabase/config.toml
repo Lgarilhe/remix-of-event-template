@@ -37,9 +37,6 @@ verify_jwt = false
 [functions.analyze-response]
 verify_jwt = false
 
-[functions.apollo-search]
-verify_jwt = false
-
 [functions.audit-employer-brand]
 verify_jwt = false
 
@@ -73,9 +70,6 @@ verify_jwt = false
 [functions.create-checkout-session]
 verify_jwt = false
 
-[functions.database-search]
-verify_jwt = false
-
 [functions.deepgram-temp-key]
 verify_jwt = false
 
@@ -85,10 +79,7 @@ verify_jwt = false
 [functions.enrich-company]
 verify_jwt = false
 
-[functions.enrich-contact]
-verify_jwt = false
-
-[functions.enrich-vivier-contacts]
+[functions.enrich-candidate-contact]
 verify_jwt = false
 
 [functions.estimate-search-count]
@@ -133,6 +124,9 @@ verify_jwt = false
 [functions.generate-search-filters]
 verify_jwt = false
 
+[functions.get-enrichment-status]
+verify_jwt = false
+
 [functions.handle-email-suppression]
 verify_jwt = false
 
@@ -152,9 +146,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.nurturing-analyzer]
-verify_jwt = false
-
-[functions.pdl-search]
 verify_jwt = false
 
 [functions.preview-transactional-email]

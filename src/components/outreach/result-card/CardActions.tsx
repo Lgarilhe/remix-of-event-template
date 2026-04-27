@@ -13,6 +13,7 @@ import {
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
+import { EnrichContactButton } from './EnrichContactButton';
 
 interface CardActionsProps {
   profile: LinkedInProfile;
@@ -136,6 +137,14 @@ export const CardActions: React.FC<CardActionsProps> = ({
           compact
           onAdded={onProfileTreated}
         />
+      )}
+
+      {/* ═══ ENRICHMENT — Récupérer email/téléphone ═══
+          Visible uniquement en mode non-compact (sinon ça surcharge la liste).
+          Si profil a déjà un email/phone (Unipile contact_info ou cache), affiche
+          directement, sinon bouton qui lance l'enrichment async via Better Contact. */}
+      {!compact && profileUrl && (
+        <EnrichContactButton profile={profile} compact />
       )}
 
       {/* ═══ OVERFLOW MENU ⋯ ═══ */}
