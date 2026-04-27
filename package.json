@@ -28,6 +28,7 @@
     "@radix-ui/react-collapsible": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-dropdown-menu": "^2.1.15",
+    "@radix-ui/react-hover-card": "^1.1.15",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-popover": "^1.1.14",
     "@radix-ui/react-progress": "^1.1.7",
@@ -72,6 +73,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.47.0",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
@@ -82,7 +84,6 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
-    "@playwright/test": "^1.47.0",
     "lovable-tagger": "^1.1.11",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",

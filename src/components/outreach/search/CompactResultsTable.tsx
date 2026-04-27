@@ -30,10 +30,12 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
   Building2, GraduationCap, Check, X, AlertTriangle, HelpCircle,
   ExternalLink, Linkedin, Mail, Archive, MoreHorizontal, Columns3, Eye, EyeOff,
   ArrowUp, ArrowDown, ArrowUpDown, Phone, Globe, Briefcase, Sparkles,
+  Users, MapPin, CalendarDays, BookOpen,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -332,6 +334,24 @@ const FlagIcon: React.FC<{ active: boolean | undefined; label: string; emoji?: s
   );
 };
 
+/**
+ * Format headcount range from Unipile : { min: 1001, max: 5000 } → "1001-5000"
+ */
+function fmtHeadcount(hc: any): string | null {
+  if (!hc) return null;
+  if (typeof hc === 'number') return hc.toLocaleString('fr-FR');
+  if (hc.min && hc.max) return `${hc.min.toLocaleString('fr-FR')} – ${hc.max.toLocaleString('fr-FR')}`;
+  if (hc.min) return `${hc.min.toLocaleString('fr-FR')}+`;
+  if (hc.max) return `< ${hc.max.toLocaleString('fr-FR')}`;
+  return null;
+}
+
+function fmtIndustry(ind: any): string | null {
+  if (!ind) return null;
+  if (Array.isArray(ind)) return ind.filter(Boolean).join(' · ');
+  return String(ind);
+}
+
 const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
   if (!exp) return <span className="text-muted-foreground/30">—</span>;
   const role = exp.role || exp.position || '';
@@ -340,10 +360,15 @@ const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
   const end = exp.current || !exp.end ? 'Présent' : fmtYearMonth(exp.end);
   const dur = durationLabel(exp.start, exp.end);
   const logo = getCompanyLogo(exp);
+  const industry = fmtIndustry(exp.industry);
+  const headcount = fmtHeadcount(exp.company_headcount);
+  const companyUrl = exp.company_url
+    || (exp.company_id ? `https://www.linkedin.com/company/${exp.company_id}/` : null);
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
+    <HoverCard openDelay={250} closeDelay={120}>
+      <HoverCardTrigger asChild>
+        <div className="flex items-center gap-1.5 min-w-0 max-w-[200px] cursor-help">
           {logo ? (
             <img src={logo} alt="" className="w-4 h-4 rounded-sm object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
@@ -354,28 +379,98 @@ const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
             {company && <span className="text-muted-foreground"> · {company}</span>}
           </span>
         </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs">
-        <p className="text-xs font-bold">{role}{company && ` chez ${company}`}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">{start || '?'} → {end}{dur && ` · ${dur}`}</p>
-        {exp.location && <p className="text-xs text-muted-foreground mt-0.5">📍 {exp.location}</p>}
-      </TooltipContent>
-    </Tooltip>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="start" className="w-96 p-0 overflow-hidden" data-no-detail>
+        {/* Header — Société */}
+        <div className="flex items-start gap-3 p-3 border-b border-border bg-muted/30">
+          {logo ? (
+            <img src={logo} alt="" className="w-12 h-12 rounded-md object-contain shrink-0 border border-border bg-background p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          ) : (
+            <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <h4 className="font-bold text-sm text-foreground truncate">{company || '—'}</h4>
+            {industry && <p className="text-xs text-muted-foreground truncate mt-0.5">{industry}</p>}
+            {companyUrl && (
+              <a
+                href={companyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-info hover:underline mt-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Linkedin className="w-3 h-3" aria-hidden="true" />
+                LinkedIn
+                <ExternalLink className="w-2.5 h-2.5" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Meta société */}
+        {(headcount || exp.location) && (
+          <div className="flex flex-wrap gap-3 px-3 py-2 border-b border-border text-xs">
+            {headcount && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Users className="w-3 h-3" aria-hidden="true" />
+                <span>{headcount} <span className="text-muted-foreground/60">empl.</span></span>
+              </div>
+            )}
+            {exp.location && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <MapPin className="w-3 h-3" aria-hidden="true" />
+                <span className="truncate max-w-[180px]">{exp.location}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Description société */}
+        {exp.company_description && (
+          <div className="px-3 py-2 border-b border-border bg-background">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{exp.company_description}</p>
+          </div>
+        )}
+
+        {/* Détails du poste */}
+        <div className="p-3 bg-background">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1.5">Poste occupé</p>
+          <p className="text-sm font-medium text-foreground">{role || '—'}</p>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+            <CalendarDays className="w-3 h-3" aria-hidden="true" />
+            <span>{start || '?'} → {end}{dur && <span className="text-muted-foreground/70"> · {dur}</span>}</span>
+          </div>
+          {exp.description && (
+            <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-4">{exp.description}</p>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 };
 
 const EducationCell: React.FC<{ edu: any | undefined }> = ({ edu }) => {
   if (!edu) return <span className="text-muted-foreground/30">—</span>;
-  const school = edu.school || '';
+  const school = edu.school || edu.school_details?.name || '';
   const degree = edu.degree || '';
   const field = edu.field_of_study || '';
   const start = fmtYearMonth(edu.start);
   const end = fmtYearMonth(edu.end);
   const logo = getSchoolLogo(edu);
+  const schoolDescription = edu.school_details?.description;
+  const schoolLocation = edu.school_details?.location;
+  const employeeCount = edu.school_details?.employeeCount;
+  const schoolUrl = edu.school_url
+    || edu.school_details?.url
+    || (edu.school_id ? `https://www.linkedin.com/school/${edu.school_id}/` : null);
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-1.5 min-w-0 max-w-[200px]">
+    <HoverCard openDelay={250} closeDelay={120}>
+      <HoverCardTrigger asChild>
+        <div className="flex items-center gap-1.5 min-w-0 max-w-[200px] cursor-help">
           {logo ? (
             <img src={logo} alt="" className="w-4 h-4 rounded-sm object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
@@ -386,13 +481,92 @@ const EducationCell: React.FC<{ edu: any | undefined }> = ({ edu }) => {
             {degree && <span className="text-muted-foreground"> · {degree}</span>}
           </span>
         </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs">
-        <p className="text-xs font-bold">{school}</p>
-        {(degree || field) && <p className="text-xs text-muted-foreground mt-0.5">{[degree, field].filter(Boolean).join(' · ')}</p>}
-        {(start || end) && <p className="text-xs text-muted-foreground mt-0.5">{start || '?'} → {end || '?'}</p>}
-      </TooltipContent>
-    </Tooltip>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="start" className="w-96 p-0 overflow-hidden" data-no-detail>
+        {/* Header — École */}
+        <div className="flex items-start gap-3 p-3 border-b border-border bg-muted/30">
+          {logo ? (
+            <img src={logo} alt="" className="w-12 h-12 rounded-md object-contain shrink-0 border border-border bg-background p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          ) : (
+            <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+              <GraduationCap className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <h4 className="font-bold text-sm text-foreground truncate">{school || '—'}</h4>
+            {schoolUrl && (
+              <a
+                href={schoolUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-info hover:underline mt-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Linkedin className="w-3 h-3" aria-hidden="true" />
+                LinkedIn
+                <ExternalLink className="w-2.5 h-2.5" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Meta école */}
+        {(employeeCount || schoolLocation) && (
+          <div className="flex flex-wrap gap-3 px-3 py-2 border-b border-border text-xs">
+            {employeeCount != null && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Users className="w-3 h-3" aria-hidden="true" />
+                <span>{employeeCount.toLocaleString('fr-FR')} <span className="text-muted-foreground/60">empl.</span></span>
+              </div>
+            )}
+            {schoolLocation && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <MapPin className="w-3 h-3" aria-hidden="true" />
+                <span className="truncate max-w-[180px]">{schoolLocation}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Description école */}
+        {schoolDescription && (
+          <div className="px-3 py-2 border-b border-border bg-background">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{schoolDescription}</p>
+          </div>
+        )}
+
+        {/* Détails du diplôme */}
+        <div className="p-3 bg-background space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">Cursus</p>
+          {degree && (
+            <div className="flex items-start gap-1.5 text-xs">
+              <BookOpen className="w-3 h-3 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />
+              <div>
+                <span className="text-foreground font-medium">{degree}</span>
+                {field && <span className="text-muted-foreground"> · {field}</span>}
+              </div>
+            </div>
+          )}
+          {!degree && field && (
+            <p className="text-xs text-foreground">{field}</p>
+          )}
+          {(start || end) && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <CalendarDays className="w-3 h-3" aria-hidden="true" />
+              <span>{start || '?'} → {end || '?'}</span>
+            </div>
+          )}
+          {edu.grade && <p className="text-xs text-muted-foreground">Mention : {edu.grade}</p>}
+          {edu.activities && (
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{edu.activities}</p>
+          )}
+          {edu.description && !edu.activities && (
+            <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{edu.description}</p>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 };
 
