@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Mail, Phone, Loader2, Sparkles, Check, X, AlertTriangle } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
 import { useAICredits } from '@/hooks/useAICredits';
+import { useEnrichmentPermission } from '@/hooks/useEnrichmentPermission';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -96,14 +97,16 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const { enrich, status, contact, isLoading } = useCandidateEnrichment();
   const elapsed = useElapsed(isLoading);
   const { creditsRemaining, invalidateBalance } = useAICredits();
+  const { canEnrich, quotaMonthly, quotaUsed, quotaRemaining, isQuotaExhausted, refetchQuota } = useEnrichmentPermission();
   const navigate = useNavigate();
 
-  // Invalidate balance cache après settle (quand BC retourne terminated avec contact trouvé)
+  // Invalidate balance + quota cache après settle (quand BC retourne terminated avec contact trouvé)
   useEffect(() => {
     if (status === 'terminated' && (contact?.email || contact?.phone)) {
       invalidateBalance();
+      refetchQuota();
     }
-  }, [status, contact, invalidateBalance]);
+  }, [status, contact, invalidateBalance, refetchQuota]);
 
   // Coût total demandé selon les checkboxes cochées
   const totalCost = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
@@ -271,6 +274,22 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   // ─── Affichage : bouton initial
   if (!linkedinUrl) return null;
 
+  // Si pas la permission → bouton grisé avec tooltip
+  if (!canEnrich) {
+    return (
+      <Button
+        variant="outline"
+        size={compact ? 'sm' : 'default'}
+        disabled
+        className={`gap-1.5 ${compact ? 'h-7 px-2 text-xs' : 'text-xs'} opacity-50 ${className}`}
+        title="Demandez à votre administrateur d'activer l'enrichment de contacts"
+      >
+        <Sparkles className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden="true" />
+        <span>Contact (désactivé)</span>
+      </Button>
+    );
+  }
+
   return (
     <>
       <Button
@@ -323,9 +342,9 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
             </label>
           </div>
 
-          {/* Coût estimé + solde live */}
+          {/* Coût + solde + quota live */}
           <div className={`border rounded-lg px-3 py-2 text-xs space-y-1 ${
-            insufficientCredits ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-muted/40'
+            insufficientCredits || isQuotaExhausted ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-muted/40'
           }`}>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Coût maximum :</span>
@@ -334,14 +353,27 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Votre solde :</span>
+              <span className="text-muted-foreground">Solde Konekt :</span>
               <span className={`font-bold tabular-nums ${
                 insufficientCredits ? 'text-destructive' : 'text-foreground'
               }`}>
                 {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
               </span>
             </div>
-            {insufficientCredits ? (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Quota mensuel :</span>
+              <span className={`font-bold tabular-nums ${
+                isQuotaExhausted ? 'text-destructive' : 'text-foreground'
+              }`}>
+                {quotaUsed}/{quotaMonthly}
+              </span>
+            </div>
+            {isQuotaExhausted ? (
+              <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
+                <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>Quota mensuel atteint. Demandez à votre admin de l'augmenter.</span>
+              </div>
+            ) : insufficientCredits ? (
               <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
                 <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>Crédits insuffisants. Achetez un pack pour continuer.</span>
@@ -355,7 +387,14 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
 
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            {insufficientCredits ? (
+            {isQuotaExhausted ? (
+              <AlertDialogAction
+                onClick={() => setConfirmOpen(false)}
+                disabled
+              >
+                Quota mensuel atteint
+              </AlertDialogAction>
+            ) : insufficientCredits ? (
               <AlertDialogAction
                 onClick={() => { setConfirmOpen(false); navigate('/settings?tab=credits'); }}
                 className="bg-info hover:bg-info/90"

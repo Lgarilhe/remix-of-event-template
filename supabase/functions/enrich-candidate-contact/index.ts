@@ -159,6 +159,46 @@ Deno.serve(async (req) => {
       }
     } catch { /* RPC indispo, on laisse passer */ }
 
+    // ── Permissions + quota mensuel par-user ──
+    // Check si l'user a la permission can_enrich_contacts + quota restant
+    const { data: membership } = await serviceClient
+      .from("organization_members")
+      .select("can_enrich_contacts, enrichment_quota_monthly, role")
+      .eq("organization_id", orgId)
+      .eq("user_id", auth.userId)
+      .maybeSingle();
+
+    if (membership && membership.can_enrich_contacts === false) {
+      return json({
+        success: false,
+        error: "Vous n'avez pas la permission d'enrichir des contacts. Demandez à votre administrateur d'activer cette fonctionnalité dans Paramètres > Équipe.",
+        error_code: "PERMISSION_DENIED",
+      }, 403);
+    }
+
+    const quotaMonthly = membership?.enrichment_quota_monthly ?? 100;
+
+    // Lookup compteur du mois en cours
+    const periodMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const { data: quotaRow } = await serviceClient
+      .from("enrichment_user_quotas")
+      .select("emails_consumed, phones_consumed")
+      .eq("user_id", auth.userId)
+      .eq("organization_id", orgId)
+      .eq("period_month", periodMonth)
+      .maybeSingle();
+
+    const quotaUsed = (quotaRow?.emails_consumed ?? 0) + (quotaRow?.phones_consumed ?? 0);
+    if (quotaUsed >= quotaMonthly) {
+      return json({
+        success: false,
+        error: `Quota mensuel d'enrichments atteint (${quotaUsed}/${quotaMonthly}). Demandez à votre admin d'augmenter votre quota dans Paramètres > Équipe.`,
+        error_code: "QUOTA_EXCEEDED",
+        quota_used: quotaUsed,
+        quota_limit: quotaMonthly,
+      }, 403);
+    }
+
     // ── Cascade lookup PRE-BC : check RGPD + sources gratuites avant payer ──
     // (Unipile contact_info, candidate_enrichments cache, job_candidate_status,
     //  airtable_candidates → si trouvé, on évite l'appel BC payant)

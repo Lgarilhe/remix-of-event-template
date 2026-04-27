@@ -216,27 +216,45 @@ Deno.serve(async (req) => {
       // Si l'user re-clique enrich sur ce profil dans 30j, c'est servi par le cache (pas de re-settle).
       const alreadySettled = (cached.credits_consumed ?? 0) > 0;
       if (!alreadySettled && cached.organization_id) {
+        const ownerUserId = cached.requested_by_user_id || auth.userId;
+        let creditsUsed = 0;
+
         if (contact.email) {
           settleCredits(serviceClient, {
             organizationId: cached.organization_id,
-            userId: cached.requested_by_user_id || auth.userId,
+            userId: ownerUserId,
             aiAction: "enrich_contact_email",
             modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
             tokensInput: 0,
             tokensOutput: 0,
             description: `Email enrichi via cascade — ${cached.linkedin_url}`,
           }).catch(e => console.warn("[get-enrichment-status] settle email failed:", e));
+          creditsUsed += 1;
         }
         if (contact.phone) {
           settleCredits(serviceClient, {
             organizationId: cached.organization_id,
-            userId: cached.requested_by_user_id || auth.userId,
+            userId: ownerUserId,
             aiAction: "enrich_contact_phone",
             modelId: "claude-haiku-4-5",
             tokensInput: 0,
             tokensOutput: 0,
             description: `Téléphone enrichi via cascade — ${cached.linkedin_url}`,
           }).catch(e => console.warn("[get-enrichment-status] settle phone failed:", e));
+          creditsUsed += 10;
+        }
+
+        // Increment quota mensuel utilisateur (atomique via RPC)
+        if (creditsUsed > 0) {
+          serviceClient.rpc("increment_enrichment_quota", {
+            p_user_id: ownerUserId,
+            p_org_id: cached.organization_id,
+            p_emails: contact.email ? 1 : 0,
+            p_phones: contact.phone ? 1 : 0,
+            p_credits: creditsUsed,
+          }).then(({ error }) => {
+            if (error) console.warn("[get-enrichment-status] quota increment failed:", error.message);
+          });
         }
       }
     } else {

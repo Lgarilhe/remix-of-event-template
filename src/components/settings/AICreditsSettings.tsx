@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2, Brain } from 'lucide-react';
 import { format } from 'date-fns';
+import { EnrichmentAnalytics } from '@/components/settings/EnrichmentAnalytics';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
@@ -323,6 +324,9 @@ export const AICreditsSettings = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Section analytics enrichment (cascade Better Contact) */}
+      <EnrichmentAnalytics />
     </div>
   );
 };
