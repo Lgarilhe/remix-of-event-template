@@ -585,6 +585,144 @@ CONTRAINTES:
   },
 };
 
+// ─── Tool : enrich_candidate_contact ───────────────────────────────────────
+// Permet à l'agent IA de récupérer email + téléphone d'un candidat via
+// la cascade waterfall (sources gratuites Unipile/cache/ATS d'abord, puis
+// Better Contact payant en dernier recours).
+//
+// Usage typique côté chat :
+//   - User : "Trouve l'email de Marie Dupont chez Stripe"
+//   - Agent appelle enrich_candidate_contact(linkedin_url, with_email=true)
+//   - User valide → enrichment lancé, retour async avec request_id
+//
+// requiresApproval=true car coûte des crédits Konekt (1 cr email, 10 cr phone).
+
+const enrichCandidateContact: AgentTool = {
+  name: 'enrich_candidate_contact',
+  description:
+    "Retrieve a candidate's professional email and/or mobile phone via a waterfall cascade " +
+    "(free sources first: Unipile contact_info, org cache 30j, ATS sync ; then paid Better Contact " +
+    "in last resort). Use this when the user explicitly says things like 'trouve l'email de X', " +
+    "'récupère le téléphone de Y', 'enrichis ce candidat'. " +
+    "Cost : 1 Konekt credit per email found, 10 credits per mobile found. ZERO credit if not found " +
+    "or if already in cache. Always proposes for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      linkedin_url: {
+        type: 'string',
+        description:
+          "The candidate's full LinkedIn profile URL (e.g. 'https://linkedin.com/in/marie-dupont'). REQUIRED.",
+      },
+      first_name: { type: 'string', description: "Candidate's first name (helps the cascade resolve)." },
+      last_name: { type: 'string', description: "Candidate's last name (helps the cascade resolve)." },
+      company: { type: 'string', description: "Current company name (helps domain inference for email lookup)." },
+      with_email: {
+        type: 'boolean',
+        description: "Whether to search for the professional email. Default true. 1 credit if found.",
+      },
+      with_phone: {
+        type: 'boolean',
+        description: "Whether to search for the mobile phone. Default false (10× more expensive than email). 10 credits if found.",
+      },
+    },
+    required: ['linkedin_url'],
+  },
+
+  async verifyAccess(params, _ctx) {
+    const linkedinUrl = String(params.linkedin_url || '').trim();
+    if (!linkedinUrl) return { allowed: false, reason: 'linkedin_url is required' };
+    if (!/linkedin\.com\/in\//i.test(linkedinUrl)) {
+      return { allowed: false, reason: 'linkedin_url must point to a /in/ profile URL' };
+    }
+    return { allowed: true };
+  },
+
+  async execute(params, ctx) {
+    const linkedinUrl = String(params.linkedin_url);
+    const withEmail = params.with_email !== false; // default true
+    const withPhone = params.with_phone === true;  // default false
+
+    if (!withEmail && !withPhone) {
+      return { success: false, error: 'with_email ou with_phone doit être true' };
+    }
+
+    // Appel interne à l'edge function enrich-candidate-contact
+    // (réutilise le cascade lookup + cache + pre-auth crédits + BC trigger)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    if (!supabaseUrl) return { success: false, error: 'SUPABASE_URL not configured' };
+
+    try {
+      const response = await fetch(`${supabaseUrl}/functions/v1/enrich-candidate-contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Service role pour bypass auth, on a déjà vérifié l'org de l'user via ctx
+          'Authorization': `Bearer ${Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({
+          linkedin_url: linkedinUrl,
+          first_name: params.first_name || null,
+          last_name: params.last_name || null,
+          company: params.company || null,
+          with_email: withEmail,
+          with_phone: withPhone,
+          organization_id: ctx.organizationId, // explicite (auth bypass)
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        return {
+          success: false,
+          error: data.error || `Enrichment failed: HTTP ${response.status}`,
+          data: { error_code: data.error_code },
+        };
+      }
+
+      // Si cached/source gratuite → retour direct
+      if (data.cached && data.contact) {
+        return {
+          success: true,
+          data: {
+            status: 'terminated',
+            source: data.source,
+            email: data.contact.email,
+            phone: data.contact.phone,
+            email_provider: data.contact.email_provider_source,
+            phone_provider: data.contact.phone_provider_source,
+            credits_used: 0,
+            note: data.source === 'cache'
+              ? 'Profil déjà enrichi (cache 30j) — gratuit'
+              : `Trouvé dans ${data.source} — gratuit`,
+          },
+        };
+      }
+
+      // Sinon : enrichment async démarré
+      return {
+        success: true,
+        data: {
+          status: 'pending',
+          request_id: data.request_id,
+          note: `Enrichment lancé via cascade (Unipile → cache → ATS → fournisseurs payants). ` +
+                `Résultat dans 30s à 3min — l'utilisateur peut continuer son sourcing en attendant. ` +
+                `Le contact apparaîtra automatiquement sur la card du candidat dans la liste sourcing.`,
+          estimated_max_credits: (withEmail ? 1 : 0) + (withPhone ? 10 : 0),
+        },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error during enrichment',
+      };
+    }
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -598,6 +736,7 @@ export function registerMutatingTools(): void {
   registerTool(createMission);
   registerTool(enrollInSequence);
   registerTool(draftOutreachMessage);
+  registerTool(enrichCandidateContact);
   // schedule_interview reporté : pas de calendar branché, table events
   // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;

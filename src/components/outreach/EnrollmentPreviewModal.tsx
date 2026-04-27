@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { useEnrollmentPreview, SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
+import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -1024,10 +1025,31 @@ function SummaryMode({
           <SummaryRow icon={Mail} color="text-info-foreground" label="Avec email" count={candidateAnalysis.withEmail} />
         )}
         {candidateAnalysis.withoutEmail > 0 && emailSteps.length > 0 && (
-          <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans email (steps email skippés)" count={candidateAnalysis.withoutEmail} />
+          <div className="bg-warning/5 border border-warning/30 rounded-lg p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans email (steps email skippés)" count={candidateAnalysis.withoutEmail} />
+              <BulkEnrichButton
+                profiles={activeProfiles.filter(p => !(p.contact_info?.emails?.[0]))}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-1">
+              ⚡ Enrichissez maintenant pour que ces candidats reçoivent les emails de la séquence.
+              Sans enrichment, leurs steps email seront skippés silencieusement.
+            </p>
+          </div>
         )}
         {candidateAnalysis.withoutPhone > 0 && whatsappSteps.length > 0 && (
-          <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans téléphone (steps WhatsApp skippés)" count={candidateAnalysis.withoutPhone} />
+          <div className="bg-warning/5 border border-warning/30 rounded-lg p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans téléphone (steps WhatsApp skippés)" count={candidateAnalysis.withoutPhone} />
+              <BulkEnrichButton
+                profiles={activeProfiles.filter(p => !(p.contact_info?.phones?.[0]))}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground pl-1">
+              ⚡ Enrichissez avec téléphone (10 cr/profil) pour que les steps WhatsApp partent.
+            </p>
+          </div>
         )}
       </div>
 
