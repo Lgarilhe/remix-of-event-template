@@ -32,9 +32,29 @@ interface Experience {
   location?: string;
 }
 
-/** Résout l'URL du logo entreprise selon les variantes Unipile. */
+/** Extrait un domaine canonique d'une URL (filtre linkedin/social). */
+function extractDomain(input: string | null | undefined): string | null {
+  if (!input) return null;
+  let raw = String(input).trim();
+  if (!raw) return null;
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (/(?:^|\.)(?:linkedin|facebook|twitter|x|instagram)\.com$/.test(host)) return null;
+    if (host.length < 3 || !host.includes('.')) return null;
+    return host;
+  } catch { return null; }
+}
+
+/** Résout l'URL du logo entreprise : direct → Clearbit fallback depuis website. */
 function getCompanyLogo(exp: Experience): string | null {
-  return exp.company_logo || exp.logo_url || exp.logo || exp.company_picture_url || null;
+  const direct = exp.company_logo || exp.logo_url || exp.logo || exp.company_picture_url;
+  if (direct) return direct;
+  const websiteDomain = extractDomain((exp as any).company_website || (exp as any).website);
+  if (websiteDomain) return `https://logo.clearbit.com/${websiteDomain}`;
+  const urlDomain = extractDomain((exp as any).company_url);
+  return urlDomain ? `https://logo.clearbit.com/${urlDomain}` : null;
 }
 
 interface ProfileExperienceListProps {

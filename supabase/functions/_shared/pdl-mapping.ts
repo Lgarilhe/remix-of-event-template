@@ -701,30 +701,76 @@ function parsePdlDate(s: string | null | undefined): { year?: number; month?: nu
   return { year, month };
 }
 
+/**
+ * Extrait un domaine canonique depuis une URL ou un domaine brut.
+ * "https://www.finary.com/about" → "finary.com"
+ * "linkedin.com/company/finary" → null (on filtre les linkedin URLs)
+ */
+export function extractDomain(input: string | null | undefined): string | null {
+  if (!input) return null;
+  let raw = String(input).trim();
+  if (!raw) return null;
+
+  // Déjà un domaine sans schéma ?
+  if (!/^https?:\/\//i.test(raw)) {
+    raw = `https://${raw}`;
+  }
+
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    // Filtrer les domaines social/linkedin/etc — pas un vrai site société
+    if (/(?:^|\.)(?:linkedin|facebook|twitter|x|instagram)\.com$/.test(host)) return null;
+    if (host.length < 3 || !host.includes('.')) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Construit une URL Clearbit Logo à partir d'un domaine.
+ * Gratuit, illimité, 404 gracieux si pas de logo.
+ */
+export function clearbitLogoUrl(domain: string | null | undefined): string | null {
+  if (!domain) return null;
+  return `https://logo.clearbit.com/${domain}`;
+}
+
 function pdlExpToWorkExperience(exp: any) {
+  // PDL ne fournit pas de logo — on dérive depuis le domaine du website société
+  const website = exp.company?.website || null;
+  const domain = extractDomain(website);
+  const logoUrl = clearbitLogoUrl(domain);
+
   return {
     company: exp.company?.name || exp.company || undefined,
     company_id: exp.company?.id || undefined,
-    company_url: exp.company?.linkedin_url || exp.company?.website || undefined,
-    company_picture_url: undefined, // PDL ne fournit pas de logo
-    company_description: undefined, // idem
-    company_headcount: exp.company?.size ? null : null, // size est une string range chez PDL
+    company_url: exp.company?.linkedin_url || website || undefined,
+    company_picture_url: logoUrl, // Clearbit fallback
+    company_description: undefined, // PDL ne fournit pas de description marketing
+    company_headcount: null, // size PDL est une string range, pas un { min, max }
     industry: exp.company?.industry || undefined,
     location: exp.location_names?.[0] || undefined,
     role: exp.title?.name || exp.title || undefined,
     description: exp.summary || undefined,
     current: !exp.end_date,
-    logo: undefined,
+    logo: logoUrl, // alias, certains composants lisent .logo
     start: parsePdlDate(exp.start_date),
     end: exp.end_date ? parsePdlDate(exp.end_date) : null,
   };
 }
 
 function pdlEduToEducation(edu: any) {
+  const website = edu.school?.website || null;
+  const domain = extractDomain(website);
+  const logoUrl = clearbitLogoUrl(domain);
+
   return {
     school: edu.school?.name || edu.school || undefined,
     school_id: edu.school?.id || undefined,
-    school_url: edu.school?.linkedin_url || edu.school?.website || undefined,
+    school_url: edu.school?.linkedin_url || website || undefined,
+    school_picture_url: logoUrl, // Clearbit fallback
     degree: Array.isArray(edu.degrees) ? edu.degrees.join(', ') : edu.degrees || undefined,
     field_of_study: Array.isArray(edu.majors) ? edu.majors.join(', ') : edu.majors || undefined,
     start: parsePdlDate(edu.start_date),
@@ -733,9 +779,9 @@ function pdlEduToEducation(edu: any) {
       ? {
           name: edu.school.name,
           location: edu.school.location?.name,
-          description: undefined, // PDL ne fournit pas de description
+          description: undefined,
           url: edu.school.website,
-          logo: null,
+          logo: logoUrl, // alias dans school_details
         }
       : undefined,
   };

@@ -105,12 +105,48 @@ const SECTION_LABELS: Record<ColumnSection, string> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Extrait un domaine canonique d'une URL (ou null si linkedin/social/invalide). */
+function extractDomain(input: string | null | undefined): string | null {
+  if (!input) return null;
+  let raw = String(input).trim();
+  if (!raw) return null;
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (/(?:^|\.)(?:linkedin|facebook|twitter|x|instagram)\.com$/.test(host)) return null;
+    if (host.length < 3 || !host.includes('.')) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+/** Logo Clearbit gratuit depuis un domaine. 404 gracieux → onError dans <img>. */
+function clearbitLogo(domain: string | null): string | null {
+  return domain ? `https://logo.clearbit.com/${domain}` : null;
+}
+
 function getCompanyLogo(exp: any): string | null {
-  return exp?.company_logo || exp?.logo_url || exp?.logo || exp?.company_picture_url || null;
+  // 1. Logo direct si fourni par le provider
+  const direct = exp?.company_logo || exp?.logo_url || exp?.logo || exp?.company_picture_url;
+  if (direct) return direct;
+  // 2. Fallback : dérive depuis l'URL website ou linkedin (filtré)
+  const websiteDomain = extractDomain(exp?.company_website || exp?.website);
+  if (websiteDomain) return clearbitLogo(websiteDomain);
+  // 3. Fallback secondaire : extraire depuis company_url (peut être linkedin → null)
+  const urlDomain = extractDomain(exp?.company_url);
+  return clearbitLogo(urlDomain);
 }
 
 function getSchoolLogo(edu: any): string | null {
-  return edu?.logo || edu?.school_logo || edu?.school_details?.logo || edu?.school_picture_url || null;
+  const direct = edu?.logo || edu?.school_logo || edu?.school_details?.logo
+    || edu?.school_picture_url || edu?.school_details?.logo_url;
+  if (direct) return direct;
+  const websiteDomain = extractDomain(edu?.school_website || edu?.school_details?.url || edu?.school?.website);
+  if (websiteDomain) return clearbitLogo(websiteDomain);
+  const urlDomain = extractDomain(edu?.school_url);
+  return clearbitLogo(urlDomain);
 }
 
 function getInitials(name?: string): string {

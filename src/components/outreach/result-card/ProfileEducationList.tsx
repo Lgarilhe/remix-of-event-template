@@ -28,9 +28,29 @@ interface ProfileEducationListProps {
   defaultLimit?: number;
 }
 
-/** Résout l'URL du logo école selon les variantes Unipile. */
+/** Extrait un domaine canonique d'une URL (filtre linkedin/social). */
+function extractDomain(input: string | null | undefined): string | null {
+  if (!input) return null;
+  let raw = String(input).trim();
+  if (!raw) return null;
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (/(?:^|\.)(?:linkedin|facebook|twitter|x|instagram)\.com$/.test(host)) return null;
+    if (host.length < 3 || !host.includes('.')) return null;
+    return host;
+  } catch { return null; }
+}
+
+/** Résout l'URL du logo école : direct → Clearbit fallback depuis website. */
 function getSchoolLogo(edu: Education): string | null {
-  return edu.logo || edu.school_logo || edu.school_details?.logo || edu.school_picture_url || null;
+  const direct = edu.logo || edu.school_logo || edu.school_details?.logo || edu.school_picture_url;
+  if (direct) return direct;
+  const websiteDomain = extractDomain(edu.school_details?.url || (edu as any).school_website);
+  if (websiteDomain) return `https://logo.clearbit.com/${websiteDomain}`;
+  const urlDomain = extractDomain((edu as any).school_url);
+  return urlDomain ? `https://logo.clearbit.com/${urlDomain}` : null;
 }
 
 export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
