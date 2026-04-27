@@ -47,6 +47,11 @@ function extractDomain(input: string | null | undefined): string | null {
   } catch { return null; }
 }
 
+/** Logo via Google Favicons depuis un domaine. */
+function faviconFromDomain(domain: string | null): string | null {
+  return domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : null;
+}
+
 /** Devine un logo depuis le nom de société/école (slugify + .com fallback). */
 function guessLogoFromName(name: string | null | undefined): string | null {
   if (!name) return null;
@@ -56,17 +61,17 @@ function guessLogoFromName(name: string | null | undefined): string | null {
     .replace(/[^a-z0-9]/g, '')
     .trim();
   if (!cleaned || cleaned.length < 3) return null;
-  return `https://logo.clearbit.com/${cleaned}.com`;
+  return `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128`;
 }
 
-/** Résout l'URL du logo entreprise : direct → Clearbit website → Clearbit name. */
+/** Résout l'URL du logo entreprise : direct → favicon website → favicon nom. */
 function getCompanyLogo(exp: Experience): string | null {
   const direct = exp.company_logo || exp.logo_url || exp.logo || exp.company_picture_url;
   if (direct) return direct;
   const websiteDomain = extractDomain((exp as any).company_website || (exp as any).website);
-  if (websiteDomain) return `https://logo.clearbit.com/${websiteDomain}`;
+  if (websiteDomain) return faviconFromDomain(websiteDomain);
   const urlDomain = extractDomain((exp as any).company_url);
-  if (urlDomain) return `https://logo.clearbit.com/${urlDomain}`;
+  if (urlDomain) return faviconFromDomain(urlDomain);
   return guessLogoFromName(exp.company);
 }
 

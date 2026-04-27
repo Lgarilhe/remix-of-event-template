@@ -122,9 +122,9 @@ function extractDomain(input: string | null | undefined): string | null {
   }
 }
 
-/** Logo Clearbit gratuit depuis un domaine. 404 gracieux → onError dans <img>. */
-function clearbitLogo(domain: string | null): string | null {
-  return domain ? `https://logo.clearbit.com/${domain}` : null;
+/** Logo via Google Favicons depuis un domaine. */
+function faviconFromDomain(domain: string | null): string | null {
+  return domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : null;
 }
 
 /** Devine un logo depuis le nom de société/école (slugify + .com). */
@@ -136,7 +136,7 @@ function guessLogoFromName(name: string | null | undefined): string | null {
     .replace(/[^a-z0-9]/g, '')
     .trim();
   if (!cleaned || cleaned.length < 3) return null;
-  return `https://logo.clearbit.com/${cleaned}.com`;
+  return `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128`;
 }
 
 function getCompanyLogo(exp: any): string | null {
@@ -145,10 +145,10 @@ function getCompanyLogo(exp: any): string | null {
   if (direct) return direct;
   // 2. Fallback : dérive depuis l'URL website
   const websiteDomain = extractDomain(exp?.company_website || exp?.website);
-  if (websiteDomain) return clearbitLogo(websiteDomain);
+  if (websiteDomain) return faviconFromDomain(websiteDomain);
   // 3. Fallback secondaire : extraire depuis company_url (peut être linkedin → null)
   const urlDomain = extractDomain(exp?.company_url);
-  if (urlDomain) return clearbitLogo(urlDomain);
+  if (urlDomain) return faviconFromDomain(urlDomain);
   // 4. Dernier fallback : devine depuis le nom de la société
   return guessLogoFromName(exp?.company);
 }
@@ -158,9 +158,9 @@ function getSchoolLogo(edu: any): string | null {
     || edu?.school_picture_url || edu?.school_details?.logo_url;
   if (direct) return direct;
   const websiteDomain = extractDomain(edu?.school_website || edu?.school_details?.url || edu?.school?.website);
-  if (websiteDomain) return clearbitLogo(websiteDomain);
+  if (websiteDomain) return faviconFromDomain(websiteDomain);
   const urlDomain = extractDomain(edu?.school_url);
-  if (urlDomain) return clearbitLogo(urlDomain);
+  if (urlDomain) return faviconFromDomain(urlDomain);
   return guessLogoFromName(edu?.school || edu?.school_details?.name);
 }
 

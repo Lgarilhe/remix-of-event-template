@@ -729,27 +729,28 @@ export function extractDomain(input: string | null | undefined): string | null {
 }
 
 /**
- * Construit une URL Clearbit Logo à partir d'un domaine.
- * Gratuit, illimité, 404 gracieux si pas de logo.
+ * Construit une URL Google Favicons à partir d'un domaine.
+ *
+ * Service universel gratuit, jamais down, marche pour 99% des domaines.
+ * Note : on a tenté Clearbit Logo API avant mais le domaine est mort
+ * depuis le rachat par HubSpot en 2024 (DNS_PROBE_FINISHED_NXDOMAIN).
+ *
+ * sz=128 demande la version HD du favicon (suffisant pour des logos
+ * carrés 18-48px dans nos cards/tables).
  */
-export function clearbitLogoUrl(domain: string | null | undefined): string | null {
+export function logoUrlFromDomain(domain: string | null | undefined): string | null {
   if (!domain) return null;
-  return `https://logo.clearbit.com/${domain}`;
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+}
+
+/** @deprecated alias rétrocompatible — utiliser logoUrlFromDomain */
+export function clearbitLogoUrl(domain: string | null | undefined): string | null {
+  return logoUrlFromDomain(domain);
 }
 
 /**
- * Devine un domaine à partir du nom de société.
- * Ex: "Algolia" → "algolia.com", "Synopsys Inc" → "synopsys.com"
- *
- * Stratégie :
- *  - lowercase
- *  - retire suffixes corp ("Inc", "SA", "SAS", "SARL", "LLC", "Ltd", "GmbH", "BV", "AG")
- *  - retire ponctuation, espaces
- *  - garde les caractères alphanumériques uniquement
- *  - append ".com" (95% des sociétés tech)
- *
- * Le browser tente l'image, si 404 → onError affiche l'icône fallback.
- * Donc même si on guess mal, pas de cassure visuelle.
+ * Devine un domaine à partir du nom de société puis retourne l'URL favicon.
+ * Ex: "Algolia" → "algolia.com" → favicon Google
  */
 export function guessLogoFromName(name: string | null | undefined): string | null {
   if (!name) return null;
@@ -759,7 +760,7 @@ export function guessLogoFromName(name: string | null | undefined): string | nul
     .replace(/[^a-z0-9]/g, '')
     .trim();
   if (!cleaned || cleaned.length < 3) return null;
-  return `https://logo.clearbit.com/${cleaned}.com`;
+  return `https://www.google.com/s2/favicons?domain=${cleaned}.com&sz=128`;
 }
 
 function pdlExpToWorkExperience(exp: any) {
