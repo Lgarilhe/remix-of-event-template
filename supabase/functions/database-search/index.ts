@@ -192,7 +192,7 @@ Deno.serve(async (req) => {
       console.log(`[database-search] Quality filter: ${profiles.length}/${allProfiles.length}`);
 
       // Cache write (async, non-blocking — on retourne avant de wait l'écriture)
-      const queryHash = await sha256Hex(sqlQuery).catch(() => "");
+      const queryHash = sha256Hex(sqlQuery);
       const cacheEntries = profiles
         .filter(p => p.profile_url || p._provider === "pdl")
         .map(p => ({

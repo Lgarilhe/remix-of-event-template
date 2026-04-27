@@ -201,19 +201,99 @@ const HEADCOUNT_TO_PDL: Record<string, string> = {
 };
 
 /**
- * Extrait keywords / scope d'un RoleFilter pour PDL job_title.
- * PDL n'a pas de scope (CURRENT/PAST), on garde juste les MUST_HAVE.
+ * Parse une expression Boolean LinkedIn-style en liste de termes individuels.
+ *
+ * Exemples :
+ *   '"DevOps Engineer" OR "SRE" OR "Site Reliability"'
+ *     → ['DevOps Engineer', 'SRE', 'Site Reliability']
+ *   'data engineer AND python'
+ *     → ['data engineer python']  (AND = on garde la phrase combinée)
+ *   '"Senior" NOT "intern"'
+ *     → ['Senior']  (NOT clauses retirées)
+ *   'DevOps'
+ *     → ['DevOps']  (passthrough)
+ */
+export function parseBoolean(input: string | null | undefined): string[] {
+  if (!input) return [];
+  let cleaned = String(input).trim();
+  if (!cleaned) return [];
+
+  // 1. Retirer les clauses NOT (NOT "junior", NOT junior)
+  cleaned = cleaned.replace(/\bNOT\s+(?:"[^"]+"|\S+)/gi, ' ').trim();
+
+  // 2. Splitter sur OR (les alternatives) — case insensitive
+  const orParts = cleaned.split(/\s+OR\s+/i).map(s => s.trim()).filter(Boolean);
+
+  // 3. Pour chaque partie, retirer AND (on garde les mots ANDed dans la même phrase)
+  //    et nettoyer les quotes
+  const terms: string[] = [];
+  for (const part of orParts) {
+    const noAnd = part.replace(/\s+AND\s+/gi, ' ');
+    // Strip parentheses
+    const noParens = noAnd.replace(/[()]/g, ' ').trim();
+    // Strip quotes (déjà détectées comme phrase atomique)
+    const noQuotes = noParens.replace(/"/g, '').trim();
+    if (noQuotes && noQuotes.length >= 2) terms.push(noQuotes);
+  }
+
+  return Array.from(new Set(terms)); // dedup
+}
+
+/**
+ * Extrait keywords d'un RoleFilter[] et retourne une string CSV
+ * (lue par buildPdlSqlQuery comme alternatives OR).
+ *
+ * Garde uniquement les MUST_HAVE + parse le Boolean LinkedIn → termes plats.
+ * Les DOESNT_HAVE sont ignorés (PDL n'a pas de NOT efficient en SQL).
  */
 function rolesToJobTitle(roles?: RoleFilter[]): string | undefined {
   if (!roles || roles.length === 0) return undefined;
-  const must = roles.filter(r => r.priority === 'MUST_HAVE');
-  const items = (must.length > 0 ? must : roles)
-    .map(r => r.keywords?.trim())
-    .filter(Boolean);
-  return items.length > 0 ? items.join(', ') : undefined;
+  const usable = roles.filter(r => r.priority !== 'DOESNT_HAVE');
+  if (usable.length === 0) return undefined;
+
+  const allTerms: string[] = [];
+  for (const r of usable) {
+    allTerms.push(...parseBoolean(r.keywords));
+  }
+  const dedup = Array.from(new Set(allTerms));
+  return dedup.length > 0 ? dedup.join(', ') : undefined;
 }
 
-/** Convertit une LocationFilterItem[] en parts location_country / region / locality */
+/**
+ * Normalise un nom de ville/région LinkedIn pour PDL.
+ *
+ * - lowercase
+ * - retire accents (Île-de-France → ile-de-france)
+ * - retire préfixes administratifs ("Ville de", "Greater", "Région de", etc.)
+ * - retire les "area" / "region" suffixes anglais
+ *
+ * Exemples :
+ *   "Ville de Paris" → "paris"
+ *   "Île-de-France" → "ile-de-france"
+ *   "Greater Paris Metropolitan Area" → "paris"
+ *   "Région Auvergne-Rhône-Alpes" → "auvergne-rhone-alpes"
+ */
+export function cleanLocationPart(part: string | null | undefined): string {
+  if (!part) return '';
+  let s = String(part).trim();
+
+  // Retirer accents (NFD decompose + strip combining marks)
+  s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Retirer préfixes français/anglais administratifs
+  s = s.replace(/^(?:Ville de|Région|Region|Greater|Grand|Departement de|Commune de)\s+/i, '');
+
+  // Retirer suffixes anglais "Area", "Metropolitan Area", "Metro Area"
+  s = s.replace(/\s+(?:Metropolitan|Metro)?\s*Area$/i, '');
+
+  // Lowercase
+  return s.toLowerCase().trim();
+}
+
+/**
+ * Convertit une LocationFilterItem[] en parts location_country / region / locality.
+ * Utilise cleanLocationPart pour normaliser chaque part.
+ */
 function splitLocationParts(locations?: LocationFilterItem[]): {
   country?: string;
   region?: string;
@@ -223,11 +303,11 @@ function splitLocationParts(locations?: LocationFilterItem[]): {
   // Première location prioritaire (PDL ne supporte pas multi-location en SQL simple)
   const first = locations[0];
   if (!first?.name) return {};
-  const parts = first.name.split(',').map(s => s.trim()).filter(Boolean);
-  // Heuristique : 1 part = pays, 2 parts = ville+pays, 3 parts = ville+région+pays
-  if (parts.length === 1) return { country: parts[0].toLowerCase() };
-  if (parts.length === 2) return { locality: parts[0], country: parts[1].toLowerCase() };
-  return { locality: parts[0], region: parts[1], country: parts[parts.length - 1].toLowerCase() };
+  const parts = first.name.split(',').map(s => cleanLocationPart(s)).filter(Boolean);
+  // Heuristique : 1 part = pays, 2 parts = ville+pays, 3+ parts = ville+région+pays
+  if (parts.length === 1) return { country: parts[0] };
+  if (parts.length === 2) return { locality: parts[0], country: parts[1] };
+  return { locality: parts[0], region: parts[1], country: parts[parts.length - 1] };
 }
 
 /**
@@ -243,9 +323,11 @@ export function mapFiltersToPdl(filters: LinkedInFiltersLite, opts?: { size?: nu
     body.job_title = fromRoles;
   } else if (filters.job_title && filters.job_title.length > 0) {
     body.job_title = filters.job_title.map(t => t.name).filter(Boolean).join(', ');
-  } else if (filters.keywords && filters.keywords.length > 0 && filters.keywords.length < 100) {
-    // Si pas de role et keywords courts → considérer comme job_title
-    body.job_title = filters.keywords;
+  } else if (filters.keywords && filters.keywords.length > 0) {
+    // Si pas de role et keywords présents → parser le Boolean LinkedIn et
+    // utiliser les termes comme alternatives job_title
+    const terms = parseBoolean(filters.keywords);
+    if (terms.length > 0) body.job_title = terms.join(', ');
   }
 
   // ── Seniority
@@ -588,15 +670,21 @@ export async function writePdlCache(
 }
 
 /**
- * Hash SHA-256 d'une chaîne pour identifier une requête source.
- * Utile pour le source_query_hash du cache (debug/audit).
+ * Hash léger d'une chaîne pour identifier une requête source.
+ * Utilisé uniquement pour debug/audit (source_query_hash du cache).
+ *
+ * Implémentation 100% sync FNV-1a (32-bit) — évite crypto.subtle qui peut
+ * planter sur Supabase Edge runtime ("Deno.core.runMicrotasks() is not supported").
+ * Ce hash n'est pas cryptographique mais c'est OK pour notre usage non-sensible.
  */
-export async function sha256Hex(s: string): Promise<string> {
-  const buf = new TextEncoder().encode(s);
-  const hash = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+export function sha256Hex(s: string): string {
+  let hash = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  }
+  // Pad to 8 hex chars
+  return ('00000000' + (hash >>> 0).toString(16)).slice(-8);
 }
 
 // ─── Mapping PDL Person → LinkedInProfile ────────────────────────────────────
