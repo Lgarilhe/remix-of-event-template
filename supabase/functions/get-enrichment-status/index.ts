@@ -83,51 +83,60 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "request_id requis" }, 400);
     }
 
-    // ── Lookup en DB pour vérif ownership + status local ──
-    const { data: cached } = await serviceClient
-      .from("candidate_enrichments")
-      .select("*")
-      .eq("provider_request_id", requestId)
-      .maybeSingle();
-
-    if (!cached) {
-      return json({ success: false, error: "Enrichment introuvable" }, 404);
+    // ── Lookup en DB (best effort, fallback BC direct si absent) ──
+    let cached: any = null;
+    try {
+      const { data } = await serviceClient
+        .from("candidate_enrichments")
+        .select("*")
+        .eq("provider_request_id", requestId)
+        .maybeSingle();
+      cached = data;
+    } catch (e) {
+      // Table peut ne pas exister (migration pas appliquée) — on continue
+      console.warn("[get-enrichment-status] DB lookup error (table may not exist):", e);
     }
 
-    // Vérif ownership : user doit être membre de l'org
-    const { data: membership } = await serviceClient
-      .from("organization_members")
-      .select("user_id")
-      .eq("organization_id", cached.organization_id)
-      .eq("user_id", auth.userId)
-      .maybeSingle();
-    if (!membership) {
-      return json({ success: false, error: "Forbidden" }, 403);
-    }
+    if (cached) {
+      // Vérif ownership : user doit être membre de l'org
+      const { data: membership } = await serviceClient
+        .from("organization_members")
+        .select("user_id")
+        .eq("organization_id", cached.organization_id)
+        .eq("user_id", auth.userId)
+        .maybeSingle();
+      if (!membership) {
+        return json({ success: false, error: "Forbidden" }, 403);
+      }
 
-    // ── Si déjà terminé en DB, retour direct (pas besoin de re-call BC) ──
-    if (cached.status === "terminated") {
-      return json({
-        success: true,
-        status: "terminated",
-        contact: {
-          email: cached.contact_email,
-          email_status: cached.contact_email_status,
-          phone: cached.contact_phone,
-          phone_type: cached.contact_phone_type,
-          email_provider_source: cached.email_provider_source,
-          phone_provider_source: cached.phone_provider_source,
-        },
-        credits_consumed: cached.credits_consumed,
-      });
-    }
+      // ── Si déjà terminé en DB, retour direct (pas besoin de re-call BC) ──
+      if (cached.status === "terminated") {
+        return json({
+          success: true,
+          status: "terminated",
+          contact: {
+            email: cached.contact_email,
+            email_status: cached.contact_email_status,
+            phone: cached.contact_phone,
+            phone_type: cached.contact_phone_type,
+            email_provider_source: cached.email_provider_source,
+            phone_provider_source: cached.phone_provider_source,
+          },
+          credits_consumed: cached.credits_consumed,
+        });
+      }
 
-    if (cached.status === "error") {
-      return json({
-        success: false,
-        status: "error",
-        error: cached.error_message || "Erreur lors de l'enrichment",
-      });
+      if (cached.status === "error") {
+        return json({
+          success: false,
+          status: "error",
+          error: cached.error_message || "Erreur lors de l'enrichment",
+        });
+      }
+    } else {
+      // Pas de row en DB — fallback : on tente quand même BC direct
+      // (cas où la migration n'est pas appliquée mais l'enrichment a démarré)
+      console.warn(`[get-enrichment-status] No DB row for request_id=${requestId}, fallback BC direct`);
     }
 
     // ── Sinon, GET Better Contact pour vérifier ──
@@ -187,13 +196,21 @@ Deno.serve(async (req) => {
       completed_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await serviceClient
-      .from("candidate_enrichments")
-      .update(updatePayload)
-      .eq("id", cached.id);
+    if (cached?.id) {
+      // Update la row existante
+      const { error: updateError } = await serviceClient
+        .from("candidate_enrichments")
+        .update(updatePayload)
+        .eq("id", cached.id);
 
-    if (updateError) {
-      console.warn("[get-enrichment-status] UPDATE failed:", updateError.message);
+      if (updateError) {
+        console.warn("[get-enrichment-status] UPDATE failed:", updateError.message);
+      }
+    } else {
+      // Pas de row → on n'écrit pas en DB (le résultat est juste returné à l'user
+      // pour cette session, sans cache pour les futures requêtes). C'est dégradé
+      // mais permet de débloquer l'user le temps qu'il push la migration.
+      console.warn("[get-enrichment-status] No row to update, returning result without caching");
     }
 
     return json({

@@ -257,8 +257,18 @@ Deno.serve(async (req) => {
       }, { onConflict: "organization_id,linkedin_url" });
 
     if (insertError) {
-      console.warn("[enrich-candidate-contact] INSERT cache failed:", insertError.message);
-      // On continue quand même — l'enrichment est démarré côté BC
+      // CRITIQUE : si l'INSERT échoue, get-enrichment-status ne pourra pas
+      // retrouver la row → "Enrichment introuvable" → user bloqué.
+      // Cas typique : table candidate_enrichments pas encore créée
+      // (migration 20260427180000_candidate_enrichments.sql non appliquée).
+      console.error("[enrich-candidate-contact] CRITICAL INSERT failed:", insertError.message);
+      return json({
+        success: false,
+        error: "Service d'enrichment non initialisé. Contactez l'administrateur.",
+        // Détails techniques pour debug (pas affiché à l'user via Konekt UI mais
+        // visible dans F12 Network → Response)
+        _debug: insertError.message,
+      }, 500);
     }
 
     return json({
