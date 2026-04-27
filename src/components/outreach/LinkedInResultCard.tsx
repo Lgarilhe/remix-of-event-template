@@ -33,6 +33,9 @@ import { LinkedInResultCardProps } from './result-card/types';
 interface ExtendedResultCardProps extends LinkedInResultCardProps {
   onOpenDetail?: () => void;
   isBatchScoring?: boolean;
+  /** Mode d'affichage : 'compact' = scan rapide (cache exp/edu/skills),
+      'detailed' = mini-CV complet (default). Persisté en localStorage par le parent. */
+  viewMode?: 'compact' | 'detailed';
 }
 
 export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
@@ -53,7 +56,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   notionMatch,
   onOpenDetail,
   isBatchScoring = false,
+  viewMode = 'detailed',
 }) => {
+  const isCompactMode = viewMode === 'compact';
   const [isScoring, setIsScoring] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scoreFlash, setScoreFlash] = useState<'go' | 'maybe' | 'skip' | null>(null);
@@ -439,32 +444,36 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 (matching skills, missing, summary) reste accessible dans le sheet
                 de détail au clic sur la card. */}
 
-            {/* Row 5: Expériences pro complètes (refonte 2026-04-27) — vraie mini-fiche
-                profil avec logo entreprise + titre + dates + durée pour chaque exp.
-                Affiche 3 par défaut, "Voir N de plus" pour étendre. */}
-            {profile.work_experience && profile.work_experience.length > 0 && (
-              <ProfileExperienceList experiences={profile.work_experience} defaultLimit={3} />
-            )}
-
-            {/* Row 6: Formation / éducation — logo école + diplôme + dates */}
-            {profile.education && profile.education.length > 0 && (
-              <ProfileEducationList education={profile.education} defaultLimit={2} />
-            )}
-
-            {/* Row 7: Skills compacts — gain ~6px (mt-1.5 pt-1.5 au lieu de mt-2.5 pt-2.5) */}
-            {skills.length > 0 && (
-              <div className="flex flex-wrap gap-0.5 mt-1.5 pt-1.5 border-t border-border/40">
-                {skills.slice(0, 6).map((skill: any, index: number) => (
-                  <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground font-normal leading-none">
-                    {skill.name || skill}
-                  </Badge>
-                ))}
-                {skills.length > 6 && (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary font-medium leading-none">
-                    +{skills.length - 6}
-                  </Badge>
+            {/* Rows 5-7 cachees en mode compact (defaut detaille = mini-CV complet,
+                compact = juste header + meta pour scan rapide) */}
+            {!isCompactMode && (
+              <>
+                {/* Row 5: Expériences pro complètes — logo + titre + dates + durée */}
+                {profile.work_experience && profile.work_experience.length > 0 && (
+                  <ProfileExperienceList experiences={profile.work_experience} defaultLimit={2} />
                 )}
-              </div>
+
+                {/* Row 6: Formation — logo + diplôme + dates */}
+                {profile.education && profile.education.length > 0 && (
+                  <ProfileEducationList education={profile.education} defaultLimit={1} />
+                )}
+
+                {/* Row 7: Skills compacts */}
+                {skills.length > 0 && (
+                  <div className="flex flex-wrap gap-0.5 mt-1.5 pt-1.5 border-t border-border/40">
+                    {skills.slice(0, 6).map((skill: any, index: number) => (
+                      <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground font-normal leading-none">
+                        {skill.name || skill}
+                      </Badge>
+                    ))}
+                    {skills.length > 6 && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary font-medium leading-none">
+                        +{skills.length - 6}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Row 7: History (Airtable / Notion) */}

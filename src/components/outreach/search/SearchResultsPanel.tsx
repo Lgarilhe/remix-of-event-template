@@ -25,7 +25,8 @@ import { Progress } from '@/components/ui/progress';
 import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
-  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock
+  ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock,
+  Rows3, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -192,6 +193,21 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   // Profile detail sheet state
   const [detailProfile, setDetailProfile] = useState<LinkedInProfile | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // View mode (Compact / Detaille) — preference user persistee en localStorage
+  type ViewMode = 'compact' | 'detailed';
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem('konekt_search_view_mode');
+      return stored === 'compact' ? 'compact' : 'detailed';
+    } catch {
+      return 'detailed';
+    }
+  });
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setViewModeState(mode);
+    try { localStorage.setItem('konekt_search_view_mode', mode); } catch { /* noop */ }
+  }, []);
 
   const [enriching, setEnriching] = useState(false);
 
@@ -486,6 +502,28 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Spacer */}
           <div className="flex-1" />
 
+          {/* View mode toggle (Compact / Detaille) — preference persistee dans localStorage.
+              Compact = 1 ligne par profil (avatar + nom + headline + score + actions).
+              Detaille = card complete avec experiences/formation/skills (default actuel). */}
+          <div className="flex items-center border border-border shrink-0" role="group" aria-label="Mode d'affichage">
+            <button
+              onClick={() => setViewMode('compact')}
+              className={`p-1 ${viewMode === 'compact' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}
+              title="Vue compacte (1 ligne par profil)"
+              aria-pressed={viewMode === 'compact'}
+            >
+              <Rows3 className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            <button
+              onClick={() => setViewMode('detailed')}
+              className={`p-1 border-l border-border ${viewMode === 'detailed' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}
+              title="Vue détaillée (mini-CV complet)"
+              aria-pressed={viewMode === 'detailed'}
+            >
+              <Layers className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
+
           {/* Sort by score */}
           {Object.keys(jobScores).length > 0 && (
             <button
@@ -778,6 +816,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   selectedJob={selectedJob}
                   isSelected={selectedProfiles.has(profile.id)}
                   isBatchScoring={scoringInProgress}
+                  viewMode={viewMode}
                   onToggleSelect={() => onToggleProfileSelection(profile.id)}
                   jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
                     profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
