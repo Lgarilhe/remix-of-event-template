@@ -20,8 +20,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Mail, Phone, Loader2, Sparkles, Check, X } from 'lucide-react';
+import { Mail, Phone, Loader2, Sparkles, Check, X, AlertTriangle } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
+import { useAICredits } from '@/hooks/useAICredits';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 /** Compteur de temps écoulé qui re-render chaque seconde. */
@@ -93,6 +95,19 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const [withPhone, setWithPhone] = useState(false);
   const { enrich, status, contact, isLoading } = useCandidateEnrichment();
   const elapsed = useElapsed(isLoading);
+  const { creditsRemaining, invalidateBalance } = useAICredits();
+  const navigate = useNavigate();
+
+  // Invalidate balance cache après settle (quand BC retourne terminated avec contact trouvé)
+  useEffect(() => {
+    if (status === 'terminated' && (contact?.email || contact?.phone)) {
+      invalidateBalance();
+    }
+  }, [status, contact, invalidateBalance]);
+
+  // Coût total demandé selon les checkboxes cochées
+  const totalCost = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
+  const insufficientCredits = totalCost > creditsRemaining;
 
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
   const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
@@ -304,27 +319,53 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
             </label>
           </div>
 
-          {/* Coût estimé live */}
-          <div className="bg-muted/40 border border-border rounded-lg px-3 py-2 text-xs">
+          {/* Coût estimé + solde live */}
+          <div className={`border rounded-lg px-3 py-2 text-xs space-y-1 ${
+            insufficientCredits ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-muted/40'
+          }`}>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Coût maximum :</span>
               <span className="font-bold tabular-nums text-foreground">
-                {(withEmail ? 1 : 0) + (withPhone ? 10 : 0)} crédit{((withEmail ? 1 : 0) + (withPhone ? 10 : 0)) > 1 ? 's' : ''}
+                {totalCost} crédit{totalCost > 1 ? 's' : ''}
               </span>
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
-              ✓ Aucun crédit consommé si rien n'est trouvé
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Votre solde :</span>
+              <span className={`font-bold tabular-nums ${
+                insufficientCredits ? 'text-destructive' : 'text-foreground'
+              }`}>
+                {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
+              </span>
             </div>
+            {insufficientCredits ? (
+              <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
+                <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>Crédits insuffisants. Achetez un pack pour continuer.</span>
+              </div>
+            ) : (
+              <div className="text-[10px] text-muted-foreground">
+                ✓ Aucun crédit consommé si rien n'est trouvé
+              </div>
+            )}
           </div>
 
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirm}
-              disabled={!withEmail && !withPhone}
-            >
-              Lancer la recherche
-            </AlertDialogAction>
+            {insufficientCredits ? (
+              <AlertDialogAction
+                onClick={() => { setConfirmOpen(false); navigate('/settings?tab=credits'); }}
+                className="bg-info hover:bg-info/90"
+              >
+                Acheter des crédits
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                onClick={handleConfirm}
+                disabled={!withEmail && !withPhone}
+              >
+                Lancer la recherche
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

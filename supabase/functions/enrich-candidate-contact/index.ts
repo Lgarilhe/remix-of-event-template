@@ -18,6 +18,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
+import { ACTION_COSTS } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -156,6 +157,29 @@ Deno.serve(async (req) => {
         }, 429);
       }
     } catch { /* RPC indispo, on laisse passer */ }
+
+    // ── Pre-auth crédits Konekt : refus si solde insuffisant ──
+    // Coût max = somme des floors des actions demandées (1 cr email + 10 cr phone)
+    const emailCost = enrichEmail ? (ACTION_COSTS.enrich_contact_email?.floor ?? 1) : 0;
+    const phoneCost = enrichPhone ? (ACTION_COSTS.enrich_contact_phone?.floor ?? 10) : 0;
+    const maxCost = emailCost + phoneCost;
+
+    const { data: balance } = await serviceClient
+      .from("ai_credit_balances")
+      .select("plan_credits, topup_credits")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    const totalCredits = (balance?.plan_credits ?? 0) + (balance?.topup_credits ?? 0);
+
+    if (totalCredits < maxCost) {
+      return json({
+        success: false,
+        error: `Crédits Konekt insuffisants (${totalCredits} disponibles, ${maxCost} requis). Achetez un pack dans Paramètres > Crédits.`,
+        error_code: "INSUFFICIENT_CREDITS",
+        balance: totalCredits,
+        required: maxCost,
+      }, 402);
+    }
 
     // ── Cache lookup : si déjà enrichi récemment, retour direct ──
     const { data: cached } = await serviceClient

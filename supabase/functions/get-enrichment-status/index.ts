@@ -14,6 +14,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { settleCredits } from "../_shared/settle-credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -206,11 +207,41 @@ Deno.serve(async (req) => {
       if (updateError) {
         console.warn("[get-enrichment-status] UPDATE failed:", updateError.message);
       }
+
+      // ── SETTLE CREDITS Konekt ──
+      // Débite uniquement si :
+      //  - on n'a pas déjà settle pour cette row (credits_consumed était 0 avant)
+      //  - BC a réellement trouvé email ou phone (sinon BC ne facture rien non plus)
+      // L'idempotence est garantie par : on settle UNE FOIS par transition pending→terminated.
+      // Si l'user re-clique enrich sur ce profil dans 30j, c'est servi par le cache (pas de re-settle).
+      const alreadySettled = (cached.credits_consumed ?? 0) > 0;
+      if (!alreadySettled && cached.organization_id) {
+        if (contact.email) {
+          settleCredits(serviceClient, {
+            organizationId: cached.organization_id,
+            userId: cached.requested_by_user_id || auth.userId,
+            aiAction: "enrich_contact_email",
+            modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
+            tokensInput: 0,
+            tokensOutput: 0,
+            description: `Email enrichi via cascade — ${cached.linkedin_url}`,
+          }).catch(e => console.warn("[get-enrichment-status] settle email failed:", e));
+        }
+        if (contact.phone) {
+          settleCredits(serviceClient, {
+            organizationId: cached.organization_id,
+            userId: cached.requested_by_user_id || auth.userId,
+            aiAction: "enrich_contact_phone",
+            modelId: "claude-haiku-4-5",
+            tokensInput: 0,
+            tokensOutput: 0,
+            description: `Téléphone enrichi via cascade — ${cached.linkedin_url}`,
+          }).catch(e => console.warn("[get-enrichment-status] settle phone failed:", e));
+        }
+      }
     } else {
-      // Pas de row → on n'écrit pas en DB (le résultat est juste returné à l'user
-      // pour cette session, sans cache pour les futures requêtes). C'est dégradé
-      // mais permet de débloquer l'user le temps qu'il push la migration.
-      console.warn("[get-enrichment-status] No row to update, returning result without caching");
+      // Pas de row → on n'écrit pas en DB ni settle (dégradé, pas de cache).
+      console.warn("[get-enrichment-status] No row to update, returning result without caching/settle");
     }
 
     return json({

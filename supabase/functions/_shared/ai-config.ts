@@ -281,6 +281,26 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "qualification",
   },
+  // ─── Enrichment de contact (Better Contact) ─────────────────────────────
+  // Pas de tokens consommés (c'est un appel API externe, pas Anthropic).
+  // Le floor est le coût réel facturé à l'user, calculateTokenCredits avec
+  // tokens=0 retournera donc exactement le floor.
+  enrich_contact_email: {
+    action: "enrich_contact_email",
+    label: "Email pro candidat",
+    floor: 1,           // 1 crédit Konekt si email trouvé
+    typicalTokens: 0,
+    routingTier: "fast",
+    category: "sourcing",
+  },
+  enrich_contact_phone: {
+    action: "enrich_contact_phone",
+    label: "Téléphone mobile candidat",
+    floor: 10,          // 10 crédits Konekt si phone trouvé (plus rare et cher)
+    typicalTokens: 0,
+    routingTier: "fast",
+    category: "sourcing",
+  },
 };
 
 // ─── Routing Defaults ───────────────────────────────────────────────────────
