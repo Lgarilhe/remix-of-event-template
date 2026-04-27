@@ -90,7 +90,20 @@ Deno.serve(async (req) => {
       company,
       company_domain: providedDomain,
       organization_id: bodyOrgId,
+      with_email,
+      with_phone,
     } = body;
+
+    // Default : email seul si rien spécifié (10× moins cher que phone)
+    const enrichEmail = with_email !== false;
+    const enrichPhone = with_phone === true;
+
+    if (!enrichEmail && !enrichPhone) {
+      return json({
+        success: false,
+        error: "Au moins email ou téléphone doit être demandé",
+      }, 400);
+    }
 
     // ── Validation input ──
     if (!linkedin_url) {
@@ -197,8 +210,8 @@ Deno.serve(async (req) => {
           konekt_linkedin_url_norm: normalizedUrl,
         },
       }],
-      enrich_email_address: true,
-      enrich_phone_number: true,
+      enrich_email_address: enrichEmail,
+      enrich_phone_number: enrichPhone,
     };
 
     console.log("[enrich-candidate-contact] POST BC payload:", JSON.stringify(bcPayload).slice(0, 300));

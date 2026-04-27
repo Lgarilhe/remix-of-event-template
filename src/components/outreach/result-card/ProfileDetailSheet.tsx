@@ -24,6 +24,7 @@ import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
+import { EnrichContactButton } from './EnrichContactButton';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Loader2, Mail, Phone,
   Target, PenLine, Archive,
@@ -643,6 +644,17 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   activeProject={activeProject}
                   compact
                   onAdded={onProfileTreated}
+                />
+              )}
+
+              {/* Récupérer email/téléphone via cascade waterfall — toujours
+                  affiché en mode 'button-only' car le block CONTACT INFO
+                  au-dessus gère déjà l'affichage des contacts existants. */}
+              {profileUrl && (
+                <EnrichContactButton
+                  profile={profile}
+                  compact
+                  mode="button-only"
                 />
               )}
 

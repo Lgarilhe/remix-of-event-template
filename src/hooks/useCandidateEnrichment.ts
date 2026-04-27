@@ -32,6 +32,10 @@ export interface EnrichmentInput {
   lastName?: string;
   company?: string;
   companyDomain?: string;
+  /** Demander l'email pro (default true). 1 crédit BC si trouvé. */
+  withEmail?: boolean;
+  /** Demander le téléphone mobile (default false — coûte 10 crédits BC). */
+  withPhone?: boolean;
 }
 
 type Status = 'idle' | 'pending' | 'terminated' | 'error';
@@ -105,6 +109,8 @@ export function useCandidateEnrichment() {
       last_name: input.lastName,
       company: input.company,
       company_domain: input.companyDomain,
+      with_email: input.withEmail !== false,         // default true
+      with_phone: input.withPhone === true,          // default false (coût 10×)
     });
 
     if (edgeError) {

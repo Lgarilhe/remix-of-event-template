@@ -18,6 +18,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Mail, Phone, Loader2, Sparkles, Check, X } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
 import { toast } from 'sonner';
@@ -58,6 +60,15 @@ interface EnrichContactButtonProps {
   profile: LinkedInProfile;
   compact?: boolean;
   className?: string;
+  /**
+   * 'auto' (default) : si email/phone déjà dans contact_info, affiche les
+   * contacts en mode display avec Copy. Sinon affiche le bouton "Récupérer".
+   *
+   * 'button-only' : affiche TOUJOURS le bouton, peu importe les contacts
+   * existants. Utile dans le ProfileDetailSheet où l'affichage des contacts
+   * est déjà géré ailleurs (block CONTACT INFO).
+   */
+  mode?: 'auto' | 'button-only';
 }
 
 function getCurrentCompany(profile: LinkedInProfile): string | undefined {
@@ -70,12 +81,16 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   profile,
   compact = false,
   className = '',
+  mode = 'auto',
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
   /** True si user a cliqué "Continuer en arrière-plan" — masque le spinner mais garde le polling. */
   const [backgrounded, setBackgrounded] = useState(false);
+  /** Choix dans la modale : email seul / phone seul / les 2. Default email seul. */
+  const [withEmail, setWithEmail] = useState(true);
+  const [withPhone, setWithPhone] = useState(false);
   const { enrich, status, contact, isLoading } = useCandidateEnrichment();
   const elapsed = useElapsed(isLoading);
 
@@ -102,11 +117,17 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       toast.error('URL LinkedIn manquante pour cet enrichment');
       return;
     }
+    if (!withEmail && !withPhone) {
+      toast.error('Sélectionnez au moins email ou téléphone');
+      return;
+    }
     await enrich({
       linkedinUrl,
       firstName: profile.first_name,
       lastName: profile.last_name,
       company,
+      withEmail,
+      withPhone,
     });
   };
 
@@ -141,7 +162,9 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   };
 
   // ─── Affichage : si on a déjà email/phone (cache ou Unipile), on les montre direct
-  if (hasExisting || hasEnrichedResult) {
+  // En mode 'button-only', on saute cette branche pour TOUJOURS afficher le bouton
+  // (utile dans ProfileDetailSheet où le block CONTACT INFO gère déjà l'affichage).
+  if (mode === 'auto' && (hasExisting || hasEnrichedResult)) {
     return (
       <div className={`flex items-center gap-1.5 ${className}`}>
         {enrichedEmail && (
@@ -243,26 +266,63 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       </Button>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Récupérer le contact de {fullName} ?</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <span className="block">
-                Konekt va rechercher l'email professionnel et le numéro de téléphone
-                de ce candidat via plusieurs sources de données vérifiées.
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                💳 Coût : 1 crédit Konekt par email trouvé · 10 crédits par mobile trouvé.
-                Aucun crédit consommé si rien n'est trouvé.
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                ⏱️ La recherche peut prendre 30 secondes à 2 minutes.
-              </span>
+            <AlertDialogTitle>Récupérer le contact de {fullName}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sélectionnez les données à rechercher. La cascade de fournisseurs
+              tentera plusieurs sources jusqu'à trouver.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          {/* Choix email / phone */}
+          <div className="space-y-2 py-2">
+            <label className="flex items-center gap-3 px-3 py-2.5 border border-border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
+              <Checkbox
+                checked={withEmail}
+                onCheckedChange={(c) => setWithEmail(c === true)}
+                aria-label="Email professionnel"
+              />
+              <Mail className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground">Email professionnel</div>
+                <div className="text-[11px] text-muted-foreground">1 crédit si trouvé · ~30s à 1 min</div>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 px-3 py-2.5 border border-border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
+              <Checkbox
+                checked={withPhone}
+                onCheckedChange={(c) => setWithPhone(c === true)}
+                aria-label="Téléphone mobile"
+              />
+              <Phone className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
+                <div className="text-[11px] text-muted-foreground">10 crédits si trouvé · jusqu'à 3 min · plus rare</div>
+              </div>
+            </label>
+          </div>
+
+          {/* Coût estimé live */}
+          <div className="bg-muted/40 border border-border rounded-lg px-3 py-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Coût maximum :</span>
+              <span className="font-bold tabular-nums text-foreground">
+                {(withEmail ? 1 : 0) + (withPhone ? 10 : 0)} crédit{((withEmail ? 1 : 0) + (withPhone ? 10 : 0)) > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              ✓ Aucun crédit consommé si rien n'est trouvé
+            </div>
+          </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm}>
+            <AlertDialogAction
+              onClick={handleConfirm}
+              disabled={!withEmail && !withPhone}
+            >
               Lancer la recherche
             </AlertDialogAction>
           </AlertDialogFooter>
