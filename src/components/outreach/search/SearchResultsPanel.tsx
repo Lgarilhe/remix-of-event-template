@@ -5,6 +5,7 @@ import { NumberTicker } from '@/components/magicui/number-ticker';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
+import { CompactResultsTable } from './CompactResultsTable';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
