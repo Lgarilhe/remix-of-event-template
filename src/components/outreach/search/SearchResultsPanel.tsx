@@ -797,8 +797,27 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               )}
             </AnimatePresence>
 
-            {/* Profile cards */}
-            {displayResults.map((profile, index) => (
+            {/* Vue table compacte — quand viewMode === 'compact', on bascule
+                sur une vraie table avec colonnes critères au lieu des cards.
+                Plus dense, scan rapide, comparable + column picker. */}
+            {viewMode === 'compact' && displayResults.length > 0 && (
+              <CompactResultsTable
+                profiles={displayResults}
+                selectedJob={selectedJob}
+                jobScores={jobScores}
+                selectedProfiles={selectedProfiles}
+                treatedCandidates={treatedCandidates}
+                onToggleSelect={onToggleProfileSelection}
+                onToggleSelectAll={onToggleSelectAll}
+                allSelected={allSelectableSelected}
+                onOpenDetail={openProfileDetail}
+                onArchive={selectedJob ? onArchive : undefined}
+                storageKey={selectedJob?.id || 'no-job'}
+              />
+            )}
+
+            {/* Vue cards (mode 'detailed') — chaque profil dans sa card riche */}
+            {viewMode !== 'compact' && displayResults.map((profile, index) => (
               <motion.div
                 key={profile.id || `profile-${index}`}
                 initial={{ opacity: 0, y: 12, scale: 0.97 }}
