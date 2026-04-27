@@ -151,28 +151,42 @@ Deno.serve(async (req) => {
       const filters: LinkedInFiltersLite = body as LinkedInFiltersLite;
       const pageSize = Math.min(Number(body.limit) || 25, 100);
 
+      // ── DEBUG : log du body reçu (filtres principaux uniquement)
+      console.log("[database-search] DEBUG body keys:", Object.keys(body).slice(0, 20));
+      console.log("[database-search] DEBUG filters input:", JSON.stringify({
+        keywords: filters.keywords,
+        role: filters.role,
+        job_title: filters.job_title,
+        location: filters.location,
+        seniority: filters.seniority,
+        skills: filters.skills,
+        company_headcount: filters.company_headcount,
+      }).slice(0, 600));
+
       // Map filters → PDL body → SQL
       const pdlBody = mapFiltersToPdl(filters, { size: pageSize });
+      console.log("[database-search] DEBUG pdlBody:", JSON.stringify(pdlBody).slice(0, 600));
+
       const sqlQuery = buildPdlSqlQuery(pdlBody);
 
       if (!sqlQuery) {
+        console.warn("[database-search] No conditions generated — input filters too empty");
         return json({
           success: false,
           error: "Au moins un critère de recherche est requis.",
         }, 400);
       }
 
-      console.log("[database-search] PDL SQL:", sqlQuery.slice(0, 300));
+      console.log("[database-search] PDL SQL (full):", sqlQuery);
 
       // Pagination via scroll_token (passé en cursor par le frontend)
       const scrollToken = body.cursor && typeof body.cursor === "string" ? body.cursor : undefined;
 
-      // Appel API PDL
-      const result = await searchPdl(apiKey, sqlQuery, {
-        size: pageSize,
-        scrollToken,
-        timeoutMs: 25000,
-      });
+      // ── Appel PDL avec fallback dégradé si 0 résultat ──
+      // Strategy : essai 1 = SQL complet ; si 0, retire location_locality ;
+      // si toujours 0, retire location_region ; on garde toujours country
+      // (sinon ça serait du bruit international).
+      let result = await searchPdl(apiKey, sqlQuery, { size: pageSize, scrollToken, timeoutMs: 25000 });
 
       if (result.status >= 400) {
         console.error("[database-search] PDL API error:", result.status, result.error);
@@ -184,12 +198,40 @@ Deno.serve(async (req) => {
 
       console.log(`[database-search] PDL returned ${result.data.length} raw / ${result.total} total | scroll=${result.scroll_token ? "yes" : "no"}`);
 
+      let fallbackTier: 0 | 1 | 2 = 0;
+
+      // Fallback tier 1 : retire location_locality
+      if (result.total === 0 && pdlBody.location_locality && !scrollToken) {
+        console.warn(`[database-search] FALLBACK 1 : retire location_locality (était '${pdlBody.location_locality}')`);
+        const fallbackBody = { ...pdlBody, location_locality: undefined };
+        const fallbackSql = buildPdlSqlQuery(fallbackBody);
+        if (fallbackSql) {
+          console.log("[database-search] FALLBACK 1 SQL:", fallbackSql);
+          result = await searchPdl(apiKey, fallbackSql, { size: pageSize, timeoutMs: 25000 });
+          console.log(`[database-search] FALLBACK 1 → ${result.data.length} raw / ${result.total} total`);
+          fallbackTier = 1;
+        }
+      }
+
+      // Fallback tier 2 : retire aussi location_region
+      if (result.total === 0 && pdlBody.location_region && !scrollToken) {
+        console.warn(`[database-search] FALLBACK 2 : retire location_region (était '${pdlBody.location_region}')`);
+        const fallbackBody = { ...pdlBody, location_locality: undefined, location_region: undefined };
+        const fallbackSql = buildPdlSqlQuery(fallbackBody);
+        if (fallbackSql) {
+          console.log("[database-search] FALLBACK 2 SQL:", fallbackSql);
+          result = await searchPdl(apiKey, fallbackSql, { size: pageSize, timeoutMs: 25000 });
+          console.log(`[database-search] FALLBACK 2 → ${result.data.length} raw / ${result.total} total`);
+          fallbackTier = 2;
+        }
+      }
+
       // Map raw PDL → LinkedInProfile
       const allProfiles: LinkedInProfileLite[] = result.data.map(pdlToLinkedInProfile);
 
       // Quality filter
       const profiles = allProfiles.filter(isQualityProfile);
-      console.log(`[database-search] Quality filter: ${profiles.length}/${allProfiles.length}`);
+      console.log(`[database-search] Quality filter: ${profiles.length}/${allProfiles.length} | fallbackTier=${fallbackTier}`);
 
       // Cache write (async, non-blocking — on retourne avant de wait l'écriture)
       const queryHash = sha256Hex(sqlQuery);
@@ -217,6 +259,8 @@ Deno.serve(async (req) => {
         total: result.total,
         cursor: result.scroll_token || null,
         hasMoreResults: hasMore,
+        // Debug : expose le tier de fallback utilisé (0=exact, 1=sans locality, 2=sans region)
+        _fallbackTier: fallbackTier,
       });
     }
 
