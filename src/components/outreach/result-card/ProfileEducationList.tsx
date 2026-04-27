@@ -43,14 +43,27 @@ function extractDomain(input: string | null | undefined): string | null {
   } catch { return null; }
 }
 
-/** Résout l'URL du logo école : direct → Clearbit fallback depuis website. */
+/** Devine un logo depuis le nom de société/école (slugify + .com fallback). */
+function guessLogoFromName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const cleaned = String(name)
+    .toLowerCase()
+    .replace(/\b(?:inc|incorporated|corp|corporation|sa|sas|sarl|llc|ltd|limited|gmbh|bv|ag|co|company|kft|spa|srl)\b\.?/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+  if (!cleaned || cleaned.length < 3) return null;
+  return `https://logo.clearbit.com/${cleaned}.com`;
+}
+
+/** Résout l'URL du logo école : direct → Clearbit website → Clearbit name. */
 function getSchoolLogo(edu: Education): string | null {
   const direct = edu.logo || edu.school_logo || edu.school_details?.logo || edu.school_picture_url;
   if (direct) return direct;
   const websiteDomain = extractDomain(edu.school_details?.url || (edu as any).school_website);
   if (websiteDomain) return `https://logo.clearbit.com/${websiteDomain}`;
   const urlDomain = extractDomain((edu as any).school_url);
-  return urlDomain ? `https://logo.clearbit.com/${urlDomain}` : null;
+  if (urlDomain) return `https://logo.clearbit.com/${urlDomain}`;
+  return guessLogoFromName(edu.school || edu.school_details?.name);
 }
 
 export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({

@@ -737,40 +737,71 @@ export function clearbitLogoUrl(domain: string | null | undefined): string | nul
   return `https://logo.clearbit.com/${domain}`;
 }
 
+/**
+ * Devine un domaine à partir du nom de société.
+ * Ex: "Algolia" → "algolia.com", "Synopsys Inc" → "synopsys.com"
+ *
+ * Stratégie :
+ *  - lowercase
+ *  - retire suffixes corp ("Inc", "SA", "SAS", "SARL", "LLC", "Ltd", "GmbH", "BV", "AG")
+ *  - retire ponctuation, espaces
+ *  - garde les caractères alphanumériques uniquement
+ *  - append ".com" (95% des sociétés tech)
+ *
+ * Le browser tente l'image, si 404 → onError affiche l'icône fallback.
+ * Donc même si on guess mal, pas de cassure visuelle.
+ */
+export function guessLogoFromName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const cleaned = String(name)
+    .toLowerCase()
+    .replace(/\b(?:inc|incorporated|corp|corporation|sa|sas|sarl|llc|ltd|limited|gmbh|bv|ag|co|company|kft|spa|srl)\b\.?/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+  if (!cleaned || cleaned.length < 3) return null;
+  return `https://logo.clearbit.com/${cleaned}.com`;
+}
+
 function pdlExpToWorkExperience(exp: any) {
-  // PDL ne fournit pas de logo — on dérive depuis le domaine du website société
+  // PDL ne fournit pas de logo — on dérive depuis :
+  // 1. domaine du website société (le plus fiable)
+  // 2. fallback : nom société slugifié (ex: "Algolia" → algolia.com)
+  const companyName = exp.company?.name || (typeof exp.company === 'string' ? exp.company : undefined);
   const website = exp.company?.website || null;
   const domain = extractDomain(website);
-  const logoUrl = clearbitLogoUrl(domain);
+  const logoUrl = clearbitLogoUrl(domain) || guessLogoFromName(companyName);
 
   return {
-    company: exp.company?.name || exp.company || undefined,
+    company: companyName,
     company_id: exp.company?.id || undefined,
     company_url: exp.company?.linkedin_url || website || undefined,
-    company_picture_url: logoUrl, // Clearbit fallback
-    company_description: undefined, // PDL ne fournit pas de description marketing
-    company_headcount: null, // size PDL est une string range, pas un { min, max }
+    company_website: website || undefined,
+    company_picture_url: logoUrl, // Clearbit (avec fallback name)
+    company_description: undefined,
+    company_headcount: null,
     industry: exp.company?.industry || undefined,
     location: exp.location_names?.[0] || undefined,
     role: exp.title?.name || exp.title || undefined,
     description: exp.summary || undefined,
     current: !exp.end_date,
-    logo: logoUrl, // alias, certains composants lisent .logo
+    logo: logoUrl, // alias
     start: parsePdlDate(exp.start_date),
     end: exp.end_date ? parsePdlDate(exp.end_date) : null,
   };
 }
 
 function pdlEduToEducation(edu: any) {
+  const schoolName = edu.school?.name || (typeof edu.school === 'string' ? edu.school : undefined);
   const website = edu.school?.website || null;
   const domain = extractDomain(website);
-  const logoUrl = clearbitLogoUrl(domain);
+  const logoUrl = clearbitLogoUrl(domain) || guessLogoFromName(schoolName);
 
   return {
-    school: edu.school?.name || edu.school || undefined,
+    school: schoolName,
     school_id: edu.school?.id || undefined,
     school_url: edu.school?.linkedin_url || website || undefined,
-    school_picture_url: logoUrl, // Clearbit fallback
+    school_website: website || undefined,
+    school_picture_url: logoUrl,
     degree: Array.isArray(edu.degrees) ? edu.degrees.join(', ') : edu.degrees || undefined,
     field_of_study: Array.isArray(edu.majors) ? edu.majors.join(', ') : edu.majors || undefined,
     start: parsePdlDate(edu.start_date),
@@ -781,7 +812,7 @@ function pdlEduToEducation(edu: any) {
           location: edu.school.location?.name,
           description: undefined,
           url: edu.school.website,
-          logo: logoUrl, // alias dans school_details
+          logo: logoUrl,
         }
       : undefined,
   };

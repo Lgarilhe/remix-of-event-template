@@ -127,16 +127,30 @@ function clearbitLogo(domain: string | null): string | null {
   return domain ? `https://logo.clearbit.com/${domain}` : null;
 }
 
+/** Devine un logo depuis le nom de société/école (slugify + .com). */
+function guessLogoFromName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const cleaned = String(name)
+    .toLowerCase()
+    .replace(/\b(?:inc|incorporated|corp|corporation|sa|sas|sarl|llc|ltd|limited|gmbh|bv|ag|co|company|kft|spa|srl)\b\.?/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+  if (!cleaned || cleaned.length < 3) return null;
+  return `https://logo.clearbit.com/${cleaned}.com`;
+}
+
 function getCompanyLogo(exp: any): string | null {
   // 1. Logo direct si fourni par le provider
   const direct = exp?.company_logo || exp?.logo_url || exp?.logo || exp?.company_picture_url;
   if (direct) return direct;
-  // 2. Fallback : dérive depuis l'URL website ou linkedin (filtré)
+  // 2. Fallback : dérive depuis l'URL website
   const websiteDomain = extractDomain(exp?.company_website || exp?.website);
   if (websiteDomain) return clearbitLogo(websiteDomain);
   // 3. Fallback secondaire : extraire depuis company_url (peut être linkedin → null)
   const urlDomain = extractDomain(exp?.company_url);
-  return clearbitLogo(urlDomain);
+  if (urlDomain) return clearbitLogo(urlDomain);
+  // 4. Dernier fallback : devine depuis le nom de la société
+  return guessLogoFromName(exp?.company);
 }
 
 function getSchoolLogo(edu: any): string | null {
@@ -146,7 +160,8 @@ function getSchoolLogo(edu: any): string | null {
   const websiteDomain = extractDomain(edu?.school_website || edu?.school_details?.url || edu?.school?.website);
   if (websiteDomain) return clearbitLogo(websiteDomain);
   const urlDomain = extractDomain(edu?.school_url);
-  return clearbitLogo(urlDomain);
+  if (urlDomain) return clearbitLogo(urlDomain);
+  return guessLogoFromName(edu?.school || edu?.school_details?.name);
 }
 
 function getInitials(name?: string): string {

@@ -47,14 +47,27 @@ function extractDomain(input: string | null | undefined): string | null {
   } catch { return null; }
 }
 
-/** Résout l'URL du logo entreprise : direct → Clearbit fallback depuis website. */
+/** Devine un logo depuis le nom de société/école (slugify + .com fallback). */
+function guessLogoFromName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const cleaned = String(name)
+    .toLowerCase()
+    .replace(/\b(?:inc|incorporated|corp|corporation|sa|sas|sarl|llc|ltd|limited|gmbh|bv|ag|co|company|kft|spa|srl)\b\.?/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+  if (!cleaned || cleaned.length < 3) return null;
+  return `https://logo.clearbit.com/${cleaned}.com`;
+}
+
+/** Résout l'URL du logo entreprise : direct → Clearbit website → Clearbit name. */
 function getCompanyLogo(exp: Experience): string | null {
   const direct = exp.company_logo || exp.logo_url || exp.logo || exp.company_picture_url;
   if (direct) return direct;
   const websiteDomain = extractDomain((exp as any).company_website || (exp as any).website);
   if (websiteDomain) return `https://logo.clearbit.com/${websiteDomain}`;
   const urlDomain = extractDomain((exp as any).company_url);
-  return urlDomain ? `https://logo.clearbit.com/${urlDomain}` : null;
+  if (urlDomain) return `https://logo.clearbit.com/${urlDomain}`;
+  return guessLogoFromName(exp.company);
 }
 
 interface ProfileExperienceListProps {
