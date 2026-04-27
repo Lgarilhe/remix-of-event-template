@@ -25,6 +25,8 @@ import { classifyFromProfile } from '@/lib/companyClassification';
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
 import { CardActions } from './result-card/CardActions';
+import { ProfileExperienceList } from './result-card/ProfileExperienceList';
+import { ProfileEducationList } from './result-card/ProfileEducationList';
 import { useProfileData } from './result-card/useProfileData';
 import { LinkedInResultCardProps } from './result-card/types';
 
@@ -436,44 +438,29 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 (matching skills, missing, summary) reste accessible dans le sheet
                 de détail au clic sur la card. */}
 
-            {/* Row 5: Experience preview */}
-            {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (
-              <div className="mt-2 pt-2 border-t border-border/50">
-                <div className="space-y-1">
-                  {[...otherCurrentJobs.slice(0, 1), ...pastJobs.slice(0, 1)].map((pos: any, index: number) => (
-                    <div key={index} className="flex items-center gap-2 text-xs min-w-0">
-                      {pos.logo ? (
-                        <img src={pos.logo} alt={pos.company || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
-                      ) : (
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${index === 0 && otherCurrentJobs.length > 0 ? 'bg-success' : 'bg-primary/40'}`} />
-                      )}
-                      <span className="text-muted-foreground truncate">
-                        <span className="font-medium">{pos.role || pos.position}</span>
-                        <span className="text-muted-foreground/40"> chez </span>
-                        <span>{pos.company}</span>
-                      </span>
-                    </div>
-                  ))}
-                  {(otherCurrentJobs.length + pastJobs.length) > 2 && (
-                    <span className="text-xs text-primary font-medium">
-                      +{otherCurrentJobs.length + pastJobs.length - 2} autres
-                    </span>
-                  )}
-                </div>
-              </div>
+            {/* Row 5: Expériences pro complètes (refonte 2026-04-27) — vraie mini-fiche
+                profil avec logo entreprise + titre + dates + durée pour chaque exp.
+                Affiche 3 par défaut, "Voir N de plus" pour étendre. */}
+            {profile.work_experience && profile.work_experience.length > 0 && (
+              <ProfileExperienceList experiences={profile.work_experience} defaultLimit={3} />
             )}
 
-            {/* Row 6: Skills */}
+            {/* Row 6: Formation / éducation — logo école + diplôme + dates */}
+            {profile.education && profile.education.length > 0 && (
+              <ProfileEducationList education={profile.education} defaultLimit={2} />
+            )}
+
+            {/* Row 7: Skills — gardé pour compétences clés en bas */}
             {skills.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2 overflow-hidden">
-                {skills.slice(0, 4).map((skill: any, index: number) => (
-                  <Badge key={index} variant="secondary" className="text-xs px-1.5 py-0 bg-muted text-muted-foreground font-normal">
+              <div className="flex flex-wrap gap-1 mt-2.5 pt-2.5 border-t border-border/40">
+                {skills.slice(0, 6).map((skill: any, index: number) => (
+                  <Badge key={index} variant="secondary" className="text-xs px-1.5 py-0 bg-muted/60 text-muted-foreground font-normal">
                     {skill.name || skill}
                   </Badge>
                 ))}
-                {skills.length > 4 && (
+                {skills.length > 6 && (
                   <Badge variant="secondary" className="text-xs px-1.5 py-0 bg-primary/10 text-primary font-medium">
-                    +{skills.length - 4}
+                    +{skills.length - 6}
                   </Badge>
                 )}
               </div>
