@@ -20,6 +20,7 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+import { resolvePDLCredentials, resolveOrgIdFromUser } from '../_shared/resolve-org-credentials.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -57,12 +58,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const PDL_API_KEY = Deno.env.get('PDL_API_KEY');
-    if (!PDL_API_KEY) {
-      return new Response(JSON.stringify({ success: false, error: 'PDL_API_KEY not configured' }), {
+    // Resolve PDL credentials : per-org first, fallback to env
+    const orgId = await resolveOrgIdFromUser(user.id, sbAdmin);
+    const pdlCreds = await resolvePDLCredentials(orgId, sbAdmin);
+    if (!pdlCreds?.apiKey) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Source de données non configurée. Contactez l\'administrateur.',
+      }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const PDL_API_KEY = pdlCreds.apiKey;
 
     const body = await req.json();
     const conditions: string[] = [];
