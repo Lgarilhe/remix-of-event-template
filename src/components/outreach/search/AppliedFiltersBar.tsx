@@ -85,35 +85,9 @@ export const AppliedFiltersBar: React.FC<AppliedFiltersBarProps> = ({
     <div className="flex flex-col gap-2 mb-4">
       {/* Main bar */}
       <div className="flex items-center gap-2">
-        {/* Source toggle */}
-        {onSearchSourceChange && (
-          <div className="flex items-center border border-border rounded-lg overflow-hidden shrink-0">
-            <button
-              onClick={() => onSearchSourceChange('linkedin')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
-                searchSource === 'linkedin'
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Search className="w-3 h-3" />
-              LinkedIn
-            </button>
-            <button
-              onClick={() => onSearchSourceChange('database')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
-                searchSource === 'database'
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Database className="w-3 h-3" />
-              Base
-            </button>
-          </div>
-        )}
+        {/* Source : 100 % LinkedIn (Unipile) — toggle Base retiré 2026-04-27.
+            Cf CLAUDE.md "Sourcing strategy" : Base externe trop chère pour
+            browsing massif et viole les ToS Apollo multi-tenant. */}
 
         {/* Filters trigger button */}
         <button
