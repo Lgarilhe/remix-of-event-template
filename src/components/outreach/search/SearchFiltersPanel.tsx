@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
-import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
+import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
