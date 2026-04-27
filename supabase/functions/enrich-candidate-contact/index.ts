@@ -19,6 +19,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { ACTION_COSTS } from "../_shared/ai-config.ts";
+import { getOrFetchContact, normalizeLinkedInUrl as normalizeLinkedInUrlShared } from "../_shared/get-or-fetch-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -157,6 +158,44 @@ Deno.serve(async (req) => {
         }, 429);
       }
     } catch { /* RPC indispo, on laisse passer */ }
+
+    // ── Cascade lookup PRE-BC : check RGPD + sources gratuites avant payer ──
+    // (Unipile contact_info, candidate_enrichments cache, job_candidate_status,
+    //  airtable_candidates → si trouvé, on évite l'appel BC payant)
+    const cascade = await getOrFetchContact(serviceClient, {
+      organizationId: orgId,
+      linkedinUrl: linkedin_url,
+      contactInfoFromProfile: body.contact_info_hint || undefined,
+    });
+
+    if (cascade.gdprBlocked) {
+      console.log(`[enrich-candidate-contact] RGPD blocked for ${normalizedUrl}`);
+      return json({
+        success: false,
+        error: "Ce candidat a exercé son droit à l'effacement (RGPD). Enrichment refusé.",
+        error_code: "GDPR_ERASED",
+      }, 403);
+    }
+
+    if (cascade.email || cascade.phone) {
+      console.log(`[enrich-candidate-contact] Cascade hit (source=${cascade.source}) — pas d'appel BC, pas de débit crédit`);
+      return json({
+        success: true,
+        cached: true,
+        source: cascade.source,
+        provider_source: cascade.providerSource || null,
+        request_id: null,
+        status: "terminated",
+        contact: {
+          email: cascade.email,
+          email_status: cascade.email ? 'deliverable' : null,
+          phone: cascade.phone,
+          phone_type: cascade.phone ? 'unknown' : null,
+          email_provider_source: cascade.providerSource || cascade.source,
+          phone_provider_source: cascade.providerSource || cascade.source,
+        },
+      });
+    }
 
     // ── Pre-auth crédits Konekt : refus si solde insuffisant ──
     // Coût max = somme des floors des actions demandées (1 cr email + 10 cr phone)

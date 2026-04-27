@@ -36,6 +36,11 @@ export interface EnrichmentInput {
   withEmail?: boolean;
   /** Demander le téléphone mobile (default false — coûte 10 crédits BC). */
   withPhone?: boolean;
+  /**
+   * Hint contact_info Unipile (si déjà connu côté front, ex: depuis le LinkedInProfile).
+   * Permet au backend de skip l'appel BC si l'email/phone est déjà dans Unipile.
+   */
+  contactInfoHint?: { emails?: string[] | null; phones?: string[] | null } | null;
 }
 
 type Status = 'idle' | 'pending' | 'terminated' | 'error';
@@ -111,6 +116,7 @@ export function useCandidateEnrichment() {
       company_domain: input.companyDomain,
       with_email: input.withEmail !== false,         // default true
       with_phone: input.withPhone === true,          // default false (coût 10×)
+      contact_info_hint: input.contactInfoHint || null,
     });
 
     if (edgeError) {

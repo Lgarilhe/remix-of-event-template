@@ -9,6 +9,7 @@ import { CompactResultsTable } from './CompactResultsTable';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { BulkInMailModal } from '@/components/outreach/BulkInMailModal';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
+import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
 import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
 import { JobMatchResult, BatchScoringStats as BatchScoringStatsType } from '@/components/outreach/JobScoreDisplay';
 import { BatchScoringReport, BatchReportEntry } from '@/components/outreach/BatchScoringReport';
@@ -476,6 +477,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               <button onClick={onBatchScore} disabled={scoringInProgress} className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-40" title="Scorer">
                 {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
               </button>
+              {/* Enrichment bulk : email + phone via cascade waterfall */}
+              <BulkEnrichButton
+                profiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
+              />
               {activeProject && (
                 <button onClick={onBulkAddToProject} className="p-1 hover:bg-muted rounded-sm text-emerald-600 hover:text-emerald-700" title="Ajouter au projet">
                   <FolderPlus className="w-3.5 h-3.5" />

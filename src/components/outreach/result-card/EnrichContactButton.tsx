@@ -143,6 +143,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       company,
       withEmail,
       withPhone,
+      contactInfoHint: profile.contact_info ? {
+        emails: profile.contact_info.emails || [],
+        phones: profile.contact_info.phones || [],
+      } : null,
     });
   };
 
