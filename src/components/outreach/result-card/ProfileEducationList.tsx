@@ -11,7 +11,12 @@ import { parseDate, getYear } from '../dateUtils';
 
 interface Education {
   school?: string;
+  /** Logo école — Unipile renvoie selon les cas l'un ou l'autre.
+      Ordre de priorité observé : logo > school_logo > school_details.logo > school_picture_url. */
+  logo?: string;
+  school_logo?: string;
   school_picture_url?: string;
+  school_details?: { logo?: string | null };
   degree?: string;
   field_of_study?: string;
   start?: any;
@@ -21,6 +26,11 @@ interface Education {
 interface ProfileEducationListProps {
   education: Education[];
   defaultLimit?: number;
+}
+
+/** Résout l'URL du logo école selon les variantes Unipile. */
+function getSchoolLogo(edu: Education): string | null {
+  return edu.logo || edu.school_logo || edu.school_details?.logo || edu.school_picture_url || null;
 }
 
 export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
@@ -69,12 +79,13 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
 
           const degreeOrField = [edu.degree, edu.field_of_study].filter(Boolean).join(' · ');
 
+          const logoUrl = getSchoolLogo(edu);
           return (
             <li key={idx} className="flex items-start gap-2 text-xs min-w-0">
               {/* Logo école */}
-              {edu.school_picture_url ? (
+              {logoUrl ? (
                 <img
-                  src={edu.school_picture_url}
+                  src={logoUrl}
                   alt={edu.school || ''}
                   className="w-7 h-7 rounded object-contain bg-card border border-border/30 shrink-0 mt-0.5"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

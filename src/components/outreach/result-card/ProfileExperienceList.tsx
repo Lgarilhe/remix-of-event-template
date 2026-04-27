@@ -18,6 +18,11 @@ import { parseDate } from '../dateUtils';
 
 interface Experience {
   company?: string;
+  /** Logo entreprise — Unipile renvoie selon les cas l'un ou l'autre.
+      Ordre de priorité observé : company_logo > logo_url > logo > company_picture_url. */
+  company_logo?: string;
+  logo_url?: string;
+  logo?: string;
   company_picture_url?: string;
   role?: string;
   position?: string;
@@ -25,6 +30,11 @@ interface Experience {
   end?: any;
   current?: boolean;
   location?: string;
+}
+
+/** Résout l'URL du logo entreprise selon les variantes Unipile. */
+function getCompanyLogo(exp: Experience): string | null {
+  return exp.company_logo || exp.logo_url || exp.logo || exp.company_picture_url || null;
 }
 
 interface ProfileExperienceListProps {
@@ -100,12 +110,13 @@ export const ProfileExperienceList: React.FC<ProfileExperienceListProps> = ({
           const endStr = isCurrent ? 'Aujourd\'hui' : formatDate(exp.end);
           const duration = computeDuration(exp.start, exp.end);
 
+          const logoUrl = getCompanyLogo(exp);
           return (
             <li key={idx} className="flex items-start gap-2 text-xs min-w-0">
               {/* Logo ou fallback */}
-              {exp.company_picture_url ? (
+              {logoUrl ? (
                 <img
-                  src={exp.company_picture_url}
+                  src={logoUrl}
                   alt={exp.company || ''}
                   className="w-7 h-7 rounded object-contain bg-card border border-border/30 shrink-0 mt-0.5"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
