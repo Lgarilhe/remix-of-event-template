@@ -19,19 +19,16 @@ import {
 } from '@/components/ui/command';
 import {
   LayoutDashboard, Target, Kanban, MessageSquare, Calendar as CalendarIcon, CheckSquare,
-  Settings as SettingsIcon, Sparkles, Sun, Moon, Building2, LogOut,
+  Settings as SettingsIcon, Sparkles, Sun, Moon, LogOut,
   Plus, CreditCard, Users,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAgent } from '@/contexts/AgentContext';
-import { hasFeature } from '@/lib/featureGates';
-import { useOrganization } from '@/hooks/useOrganization';
 
 export function NavigationPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { toggleAgent } = useAgent();
-  const { orgType } = useOrganization();
 
   // Ctrl+J / Cmd+J ouvre la palette
   useEffect(() => {
@@ -74,8 +71,6 @@ export function NavigationPalette() {
     });
   }, [navigate, run]);
 
-  const hasProspection = hasFeature(orgType, 'prospection');
-
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput placeholder="Chercher une page, une action…" />
@@ -110,12 +105,6 @@ export function NavigationPalette() {
             <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
             Messages
           </CommandItem>
-          {hasProspection && (
-            <CommandItem onSelect={() => go('/prospection')}>
-              <Building2 className="mr-2 h-4 w-4" aria-hidden="true" />
-              Prospection
-            </CommandItem>
-          )}
         </CommandGroup>
 
         <CommandGroup heading="Actions">

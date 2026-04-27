@@ -28,7 +28,6 @@ import { cn } from '@/lib/utils';
 const MAIN_NAV_ITEMS: { to: string; label: string; icon: React.ComponentType<any>; badgeKey?: 'unread'; feature?: Feature }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/missions', label: 'Missions', icon: Target },
-  { to: '/prospection', label: 'Prospection', icon: Building2, feature: 'prospection' },
   { to: '/pipeline', label: 'Pipeline', icon: Kanban },
   { to: '/calendar', label: 'Calendrier', icon: CalendarDays },
   { to: '/tasks', label: 'Tâches', icon: CheckSquare },

@@ -326,6 +326,279 @@ export function mapFiltersToPdl(filters: LinkedInFiltersLite, opts?: { size?: nu
   return body;
 }
 
+// ─── Build PDL SQL query from PdlSearchBody ──────────────────────────────────
+
+/** Sanitize user input for PDL SQL queries: escape single quotes and strip dangerous chars */
+export function sanitizePdl(value: string): string {
+  return value.replace(/'/g, "''").replace(/[;\\]/g, '').slice(0, 200);
+}
+
+/**
+ * Build a PDL SQL query string from a PdlSearchBody.
+ * Returns null if no condition is generated (caller should error out).
+ */
+export function buildPdlSqlQuery(body: PdlSearchBody): string | null {
+  const conditions: string[] = [];
+
+  // ── Person / Job Title ──
+  if (body.job_title) {
+    const titles = body.job_title.split(',').map(t => t.trim()).filter(Boolean);
+    if (titles.length === 1) conditions.push(`job_title LIKE '%${sanitizePdl(titles[0])}%'`);
+    else conditions.push(`(${titles.map(t => `job_title LIKE '%${sanitizePdl(t)}%'`).join(' OR ')})`);
+  }
+  if (body.job_title_role) conditions.push(`job_title_role='${sanitizePdl(body.job_title_role)}'`);
+  if (body.job_title_sub_role) conditions.push(`job_title_sub_role='${sanitizePdl(body.job_title_sub_role)}'`);
+  if (body.job_title_class) conditions.push(`job_title_class='${sanitizePdl(body.job_title_class)}'`);
+  if (body.job_title_levels && body.job_title_levels.length > 0) {
+    if (body.job_title_levels.length === 1) conditions.push(`job_title_levels='${sanitizePdl(body.job_title_levels[0])}'`);
+    else conditions.push(`(${body.job_title_levels.map(l => `job_title_levels='${sanitizePdl(l)}'`).join(' OR ')})`);
+  }
+
+  // ── Company ──
+  if (body.job_company_name) conditions.push(`job_company_name LIKE '%${sanitizePdl(body.job_company_name)}%'`);
+  if (body.job_company_industry) conditions.push(`job_company_industry='${sanitizePdl(body.job_company_industry)}'`);
+  if (body.job_company_size && body.job_company_size !== 'all') conditions.push(`job_company_size='${sanitizePdl(body.job_company_size)}'`);
+  if (body.job_company_type) conditions.push(`job_company_type='${sanitizePdl(body.job_company_type)}'`);
+  if (body.job_company_ticker) conditions.push(`job_company_ticker='${sanitizePdl(body.job_company_ticker.toLowerCase())}'`);
+  if (body.job_company_founded) {
+    const v = sanitizePdl(body.job_company_founded.trim());
+    if (v.startsWith('>')) conditions.push(`job_company_founded>=${sanitizePdl(v.slice(1).trim())}`);
+    else if (v.startsWith('<')) conditions.push(`job_company_founded<=${sanitizePdl(v.slice(1).trim())}`);
+    else conditions.push(`job_company_founded=${sanitizePdl(v)}`);
+  }
+  if (body.job_company_inferred_revenue) conditions.push(`job_company_inferred_revenue='${sanitizePdl(body.job_company_inferred_revenue)}'`);
+  if (body.job_company_total_funding_raised_min) conditions.push(`job_company_total_funding_raised>=${body.job_company_total_funding_raised_min}`);
+  if (body.job_company_total_funding_raised_max) conditions.push(`job_company_total_funding_raised<=${body.job_company_total_funding_raised_max}`);
+
+  // ── Location ──
+  if (body.location_country) conditions.push(`location_country='${sanitizePdl(body.location_country)}'`);
+  if (body.location_continent) conditions.push(`location_continent='${sanitizePdl(body.location_continent)}'`);
+  if (body.location_region) conditions.push(`location_region LIKE '%${sanitizePdl(body.location_region)}%'`);
+  if (body.location_metro) conditions.push(`location_metro LIKE '%${sanitizePdl(body.location_metro)}%'`);
+  if (body.location_locality) conditions.push(`location_locality LIKE '%${sanitizePdl(body.location_locality)}%'`);
+
+  // ── Skills ──
+  if (body.skills && body.skills.length > 0) {
+    conditions.push(`(${body.skills.map(s => `skills LIKE '%${sanitizePdl(s)}%'`).join(' OR ')})`);
+  }
+
+  // ── Experience ──
+  if (body.years_experience) {
+    const [minStr, maxStr] = body.years_experience.split('-');
+    const min = parseInt(minStr);
+    if (!isNaN(min)) conditions.push(`inferred_years_experience>=${min}`);
+    if (maxStr && !maxStr.includes('+')) {
+      const max = parseInt(maxStr);
+      if (!isNaN(max)) conditions.push(`inferred_years_experience<=${max}`);
+    }
+  }
+  if (body.industry) conditions.push(`industry='${sanitizePdl(body.industry)}'`);
+
+  // ── Education ──
+  if (body.education_school) conditions.push(`education.school.name LIKE '%${sanitizePdl(body.education_school)}%'`);
+  if (body.education_degree) conditions.push(`education.degrees='${sanitizePdl(body.education_degree)}'`);
+  if (body.education_major) conditions.push(`education.majors LIKE '%${sanitizePdl(body.education_major)}%'`);
+
+  // ── Languages ──
+  if (body.languages) {
+    const langs = body.languages.split(',').map(l => l.trim().toLowerCase()).filter(Boolean);
+    if (langs.length > 0) conditions.push(`(${langs.map(l => `languages.name='${sanitizePdl(l)}'`).join(' OR ')})`);
+  }
+
+  // ── Certifications / Interests / Summary ──
+  if (body.certifications) conditions.push(`certifications.name LIKE '%${sanitizePdl(body.certifications)}%'`);
+  if (body.interests) {
+    const ints = body.interests.split(',').map(i => i.trim().toLowerCase()).filter(Boolean);
+    if (ints.length > 0) conditions.push(`(${ints.map(i => `interests='${sanitizePdl(i)}'`).join(' OR ')})`);
+  }
+  if (body.summary) conditions.push(`summary LIKE '%${sanitizePdl(body.summary)}%'`);
+
+  // ── Intent signals ──
+  if (body.intent_job_change) {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    conditions.push(`job_start_date>='${sixMonthsAgo.toISOString().split('T')[0]}'`);
+  }
+  if (body.recently_funded) {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    conditions.push(`job_company_funding_details.last_funding_date>='${oneYearAgo.toISOString().split('T')[0]}'`);
+  }
+
+  if (conditions.length === 0) return null;
+
+  return `SELECT * FROM person WHERE ${conditions.join(' AND ')}`;
+}
+
+// ─── Cache helpers (read/write pdl_profile_cache) ────────────────────────────
+
+const PDL_BASE = 'https://api.peopledatalabs.com/v5';
+
+export interface PdlSearchOptions {
+  size?: number;
+  scrollToken?: string;
+  /** Quel champ envoyer à PDL : 'all' (defaut, inclut historique) ou 'resume' */
+  dataset?: string;
+  /** Timeout HTTP ms */
+  timeoutMs?: number;
+}
+
+export interface PdlSearchResponse {
+  status: number;
+  data: any[];
+  total: number;
+  scroll_token?: string;
+  error?: string;
+}
+
+/** Fetch with timeout helper (Deno) */
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Appel direct à l'API PDL Person Search.
+ * Retourne { status, data, total, scroll_token, error? }
+ */
+export async function searchPdl(
+  apiKey: string,
+  sqlQuery: string,
+  options: PdlSearchOptions = {},
+): Promise<PdlSearchResponse> {
+  const searchBody: Record<string, unknown> = {
+    sql: sqlQuery,
+    size: Math.min(options.size ?? 50, 100),
+    dataset: options.dataset ?? 'all',
+  };
+  if (options.scrollToken) searchBody.scroll_token = options.scrollToken;
+
+  const response = await fetchWithTimeout(`${PDL_BASE}/person/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+    body: JSON.stringify(searchBody),
+  }, options.timeoutMs ?? 20000);
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    // 404 not_found = empty result, not an error
+    if (response.status === 404) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error?.type === 'not_found') {
+          return { status: 200, data: [], total: 0 };
+        }
+      } catch { /* fallthrough */ }
+    }
+    return { status: response.status, data: [], total: 0, error: text.slice(0, 500) };
+  }
+
+  let parsed: any;
+  try { parsed = JSON.parse(text); } catch (e) {
+    return { status: 500, data: [], total: 0, error: `Invalid JSON response: ${e}` };
+  }
+
+  return {
+    status: response.status,
+    data: Array.isArray(parsed.data) ? parsed.data : [],
+    total: Number(parsed.total ?? parsed.data?.length ?? 0),
+    scroll_token: parsed.scroll_token,
+  };
+}
+
+/**
+ * Normalise un linkedin_url pour le matching cache.
+ * Lowercase, strip trailing slash, strip query/hash.
+ */
+export function normalizeLinkedInUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return String(url)
+    .toLowerCase()
+    .replace(/[?#].*$/, '')
+    .replace(/\/$/, '')
+    .trim() || null;
+}
+
+interface SupabaseLikeClient {
+  from: (table: string) => any;
+}
+
+/**
+ * Lookup cache : retourne une Map<linkedin_url normalisé, profile_data>
+ * pour les profils trouvés et non expirés.
+ */
+export async function lookupPdlCache(
+  supabase: SupabaseLikeClient,
+  organizationId: string,
+  linkedinUrls: string[],
+): Promise<Map<string, any>> {
+  const normalized = linkedinUrls.map(normalizeLinkedInUrl).filter(Boolean) as string[];
+  if (normalized.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from('pdl_profile_cache')
+    .select('linkedin_url, profile_data, fetched_at')
+    .eq('organization_id', organizationId)
+    .in('linkedin_url', normalized)
+    .gt('expires_at', new Date().toISOString());
+
+  if (error) {
+    console.warn('[pdl-cache] lookup error:', error.message);
+    return new Map();
+  }
+
+  const map = new Map<string, any>();
+  for (const row of (data || [])) {
+    if (row.linkedin_url) map.set(row.linkedin_url, row.profile_data);
+  }
+  return map;
+}
+
+/**
+ * Write / upsert cache pour les profils enrichis.
+ * Idempotent via ON CONFLICT (organization_id, pdl_id).
+ */
+export async function writePdlCache(
+  supabase: SupabaseLikeClient,
+  organizationId: string,
+  entries: Array<{ pdl_id: string; linkedin_url: string | null; profile_data: any; source_query_hash?: string; credits_consumed?: number }>,
+): Promise<void> {
+  if (entries.length === 0) return;
+
+  const rows = entries.map(e => ({
+    organization_id: organizationId,
+    pdl_id: e.pdl_id,
+    linkedin_url: normalizeLinkedInUrl(e.linkedin_url),
+    profile_data: e.profile_data,
+    source_query_hash: e.source_query_hash || null,
+    credits_consumed: e.credits_consumed ?? 1,
+    fetched_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  }));
+
+  const { error } = await supabase
+    .from('pdl_profile_cache')
+    .upsert(rows, { onConflict: 'organization_id,pdl_id' });
+
+  if (error) {
+    console.warn('[pdl-cache] write error:', error.message);
+  }
+}
+
+/**
+ * Hash SHA-256 d'une chaîne pour identifier une requête source.
+ * Utile pour le source_query_hash du cache (debug/audit).
+ */
+export async function sha256Hex(s: string): Promise<string> {
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 // ─── Mapping PDL Person → LinkedInProfile ────────────────────────────────────
 
 /**

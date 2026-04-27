@@ -44,7 +44,6 @@ const PrivacyPage = lazy(() => import("./pages/Privacy"));
 const PrivacyExtensionPage = lazy(() => import("./pages/PrivacyExtension"));
 const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile"));
 const AgentsPage = lazy(() => import("./pages/Agents"));
-const Prospection = lazy(() => import("./pages/Prospection"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
 const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
@@ -167,7 +166,6 @@ const AppContent = () => {
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><OrganizationGuard><AppLayout><CalendarPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><OrganizationGuard><AppLayout><TasksPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-            <Route path="/prospection" element={<ProtectedRoute><OrganizationGuard><AppLayout><Prospection /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             {/* Legacy redirects */}
             <Route path="/outreach" element={<Navigate to={withPreviewAccessToken('/missions')} replace />} />
             <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
