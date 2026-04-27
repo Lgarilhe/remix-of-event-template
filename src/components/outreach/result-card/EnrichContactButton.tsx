@@ -11,16 +11,48 @@
  *   <EnrichContactButton profile={profile} compact />
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LinkedInProfile } from '../types';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Mail, Phone, Loader2, Sparkles, Copy, Check } from 'lucide-react';
+import { Mail, Phone, Loader2, Sparkles, Check, X } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
 import { toast } from 'sonner';
+
+/** Compteur de temps écoulé qui re-render chaque seconde. */
+function useElapsed(active: boolean): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setSeconds(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return seconds;
+}
+
+function formatDuration(s: number): string {
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}m${r > 0 ? ` ${r}s` : ''}`;
+}
+
+/** Message adaptatif selon la durée du polling. */
+function progressMessage(s: number): string {
+  if (s < 15) return 'Lancement de la recherche…';
+  if (s < 45) return 'Cascade des sources de données…';
+  if (s < 90) return 'Vérification des emails trouvés…';
+  if (s < 150) return 'Recherche du téléphone mobile…';
+  if (s < 240) return 'Encore un instant, presque fini…';
+  return 'La recherche prend plus de temps que prévu…';
+}
 
 interface EnrichContactButtonProps {
   profile: LinkedInProfile;
@@ -42,7 +74,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
+  /** True si user a cliqué "Continuer en arrière-plan" — masque le spinner mais garde le polling. */
+  const [backgrounded, setBackgrounded] = useState(false);
   const { enrich, status, contact, isLoading } = useCandidateEnrichment();
+  const elapsed = useElapsed(isLoading);
 
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
   const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
@@ -62,6 +97,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
 
   const handleConfirm = async () => {
     setConfirmOpen(false);
+    setBackgrounded(false);
     if (!linkedinUrl) {
       toast.error('URL LinkedIn manquante pour cet enrichment');
       return;
@@ -73,6 +109,20 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
       company,
     });
   };
+
+  // Quand l'enrichment se termine en arrière-plan, on remet le bouton visible
+  // (avec le résultat affiché). Si l'user était backgrounded, toast notification.
+  useEffect(() => {
+    if (status === 'terminated' && backgrounded) {
+      const found = contact?.email || contact?.phone;
+      if (found) {
+        toast.success(`Contact de ${fullName} récupéré`, {
+          description: contact?.email || contact?.phone || '',
+        });
+      }
+      setBackgrounded(false);
+    }
+  }, [status, backgrounded, contact, fullName]);
 
   const copy = async (value: string, type: 'email' | 'phone') => {
     try {
@@ -120,18 +170,50 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     );
   }
 
-  // ─── Affichage : pendant l'enrichment (polling)
+  // ─── Affichage : pendant l'enrichment (polling) ──
+  // Si l'user a cliqué "Continuer en arrière-plan" → on affiche le bouton initial
+  // mais avec un petit indicateur que le polling continue (pour qu'il puisse
+  // garder un œil sur le profil).
+  if (isLoading && backgrounded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setBackgrounded(false)}
+        className={`inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors ${className}`}
+        title="Recherche en arrière-plan, cliquer pour rouvrir"
+      >
+        <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+        <span>En cours · {formatDuration(elapsed)}</span>
+      </button>
+    );
+  }
+
   if (isLoading) {
     return (
-      <Button
-        variant="outline"
-        size={compact ? 'sm' : 'default'}
-        disabled
-        className={`gap-1.5 ${className}`}
-      >
-        <Loader2 className={compact ? 'w-3 h-3 animate-spin' : 'w-4 h-4 animate-spin'} aria-hidden="true" />
-        <span className="text-xs">Recherche en cours…</span>
-      </Button>
+      <div className={`inline-flex items-center gap-1.5 ${className}`}>
+        <Button
+          variant="outline"
+          size={compact ? 'sm' : 'default'}
+          disabled
+          className="gap-1.5"
+        >
+          <Loader2 className={compact ? 'w-3 h-3 animate-spin' : 'w-4 h-4 animate-spin'} aria-hidden="true" />
+          <span className="text-xs">{progressMessage(elapsed)}</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums ml-1">
+            {formatDuration(elapsed)}
+          </span>
+        </Button>
+        <Button
+          variant="ghost"
+          size={compact ? 'sm' : 'default'}
+          onClick={() => setBackgrounded(true)}
+          className="h-7 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+          title="Continuer en arrière-plan (vous pouvez fermer cette card)"
+        >
+          <X className="w-3 h-3" aria-hidden="true" />
+          Background
+        </Button>
+      </div>
     );
   }
 
