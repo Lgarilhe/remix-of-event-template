@@ -124,24 +124,12 @@ export const CardActions: React.FC<CardActionsProps> = ({
         </Button>
       )}
 
-      {/* Find Similar (kept from HEAD — new feature added after audit branch) */}
-      {onFindSimilar && !compact && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onFindSimilar}
-              className={`text-indigo-400 hover:text-indigo-300 hover:bg-brand-purple/10 ${buttonSize}`}
-            >
-              <Users className={iconSize} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Trouver des profils similaires</p>
-          </TooltipContent>
-        </Tooltip>
-      )}
+      {/* Find Similar : retiré 2026-04-27.
+          Bloc orphelin laissé par un ancien merge conflict — aucun parent ne
+          passait `onFindSimilar` ni n'importait `Users`. Causait un
+          ReferenceError "onFindSimilar is not defined" qui crashait toute la
+          page Sourcing (catché par SectionErrorBoundary). À ré-implémenter
+          proprement quand on wirera un vrai handler dans LinkedInResultCard. */}
 
       {/* Sequence enroll */}
       {accountId && jobScore?.recommendation !== 'skip' && (
