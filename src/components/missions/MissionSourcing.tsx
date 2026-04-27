@@ -60,7 +60,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
       linkedInAccount
         ? `Compte LinkedIn : ${linkedInAccount.name || linkedInAccount.identifier} (${linkedInAccount.status})${(linkedInAccount as any).subscriptions?.recruiter ? ' — Licence Recruiter' : (linkedInAccount as any).subscriptions?.sales_navigator ? ' — Licence Sales Navigator' : ' — Licence Classic'}`
         : 'Pas de compte LinkedIn connecté',
-      'Base Konekt (Apollo) : disponible',
+      'Base Konekt : disponible',
       hasFilters ? `Filtres déjà générés : oui` : 'Filtres : non générés',
     ].join('\n');
 

@@ -158,7 +158,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
       {/* Domaine entreprise */}
       <FilterGroup title="Domaine entreprise">
         <Input
-          placeholder="ex: apollo.io, microsoft.com..."
+          placeholder="ex: stripe.com, microsoft.com..."
           value={filters.db_company_domain}
           onChange={e => onChange({ ...filters, db_company_domain: e.target.value })}
           className="h-8 text-xs"

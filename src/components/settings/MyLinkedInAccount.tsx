@@ -169,7 +169,7 @@ export const MyLinkedInAccount = () => {
 
       const newAccountId = data.account_id;
       if (!newAccountId) {
-        toast.error('Unipile n\'a pas renvoyé d\'identifiant de compte. Réessayez.');
+        toast.error('Le service de connexion LinkedIn n\'a pas renvoyé d\'identifiant. Réessayez.');
         return;
       }
 
@@ -321,9 +321,9 @@ export const MyLinkedInAccount = () => {
             <div className="p-3 bg-warning/5 border border-warning/30 rounded-lg flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
               <div className="text-sm text-foreground">
-                <p className="font-medium">Compte introuvable côté Unipile</p>
+                <p className="font-medium">Compte LinkedIn introuvable</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Le mapping pointe vers <code className="text-xs bg-muted px-1">{myMapping.linkedin_account_name || myMapping.linkedin_account_id}</code> mais ce compte n'existe plus côté Unipile.
+                  Le mapping pointe vers <code className="text-xs bg-muted px-1">{myMapping.linkedin_account_name || myMapping.linkedin_account_id}</code> mais ce compte n'existe plus.
                 </p>
               </div>
             </div>
@@ -434,7 +434,7 @@ function statusLabel(status: string | null): string {
     case 'SYNC_SUCCESS':       return 'Synchronisation terminée';
     case 'ERROR':
     case 'STOPPED':            return 'Erreur — arrêté';
-    case 'DELETED':            return 'Supprimé côté Unipile';
+    case 'DELETED':            return 'Supprimé';
     case 'RATE_LIMITED':       return 'Rate limit LinkedIn (patientez)';
     case 'CAPTCHA':            return 'Captcha LinkedIn requis';
     default:                   return status;

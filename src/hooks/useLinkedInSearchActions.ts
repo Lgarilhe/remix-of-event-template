@@ -889,7 +889,7 @@ export function useLinkedInSearchActions(
         } else if (lowerErr.includes('credentials') || lowerErr.includes('expired')) {
           detail = 'Session LinkedIn expirée. Reconnectez votre compte avec un nouveau cookie li_at.';
         } else if (lowerErr.includes('not found') || lowerErr.includes('404')) {
-          detail = 'Compte LinkedIn introuvable côté Unipile. Reconnectez ou recréez le mapping.';
+          detail = 'Compte LinkedIn introuvable. Reconnectez ou recréez le mapping.';
         }
 
         toast.error(`Compte LinkedIn indisponible — ${detail}`, {

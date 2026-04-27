@@ -40,6 +40,34 @@
 - `job_details` on `sourcing_projects` stores the brief data (JobDetails type from `src/types/jobDetails.ts`)
 - The LinkedInSearch component has an internal cache (`missionSearchCache`) that can override hook state
 
+## ⚠️ Branding — vendor names NEVER user-facing
+
+**Critical rule** : the names of our backend providers must **never** appear in any UI text, toast, error message, tooltip, label, placeholder, or any string that an end-user can read.
+
+This applies to (non-exhaustive) :
+- **Unipile** (LinkedIn provider) → say "**LinkedIn**" or "service de connexion LinkedIn"
+- **People Data Labs / PDL** (database provider) → say "**Base Konekt**"
+- **Apollo / Apollo.io** (legacy database provider) → say "**Base Konekt**"
+- **Brandfetch / Clearbit / Logo.dev** (logos) → no mention, just the result
+- **Resend** (email infra) → "Konekt sender" or no mention
+- **Anthropic / Claude** → "IA Konekt" or "assistant IA"
+
+**Allowed exceptions** (legal obligation only) :
+- Pages `/privacy` and `/privacy-extension` (RGPD art. 28 — sub-processor list)
+- DPA / CGU PDFs (legal docs)
+
+**Internal uses always allowed** :
+- Variable names (`invokeUnipile`, `apolloData`)
+- Edge function names (`unipile-accounts`, `pdl-search`, `apollo-search`)
+- Type unions (`source: 'pdl' | 'apollo'`)
+- Console logs (debug only, not surfaced to UI)
+- Comments in code
+- This `CLAUDE.md` and other internal docs
+
+**Why** : (1) avoid vendor lock-in being visible to clients, (2) maintain Konekt branding, (3) keep migration freedom (we're already migrating Apollo→PDL), (4) clients shouldn't know our infra stack.
+
+**Before merging any UI change** : grep for `Unipile`, `Apollo`, `PDL`, `People Data Labs` in user-visible strings (JSX text, toast/sonner messages, tooltips, labels, placeholders).
+
 ---
 
 ## Code Map

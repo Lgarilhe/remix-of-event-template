@@ -67,7 +67,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     tenure_at_role: { supported: false, tooltip: "L'ancienneté n'est pas disponible en mode Classic" },
     open_to_work: { supported: false, tooltip: "Open to Work n'est pas disponible en mode Classic" },
     open_to: { supported: true }, // Classic supports proBono, boardMember
-    spotlight: { supported: false, tooltip: "Spotlight n'est pas supporté par l'API Unipile. Utilisez les filtres de rôle et mots-clés pour cibler les profils" },
+    spotlight: { supported: false, tooltip: "Spotlight n'est disponible qu'en mode Recruiter. Utilisez les filtres de rôle et mots-clés pour cibler les profils" },
     hiring_project: { supported: false, tooltip: "Les projets de recrutement ne sont disponibles qu'en mode Recruiter" },
     talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode Recruiter" },
     company_headcount: { supported: false, tooltip: "La taille d'entreprise n'est pas disponible en mode Classic" },
@@ -142,7 +142,7 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     tenure_at_role: { supported: false, tooltip: "L'ancienneté au poste n'est pas disponible en Sales Navigator" },
     open_to_work: { supported: false, tooltip: "Open to Work n'est pas disponible en Sales Navigator" },
     open_to: { supported: false, tooltip: "Open to n'est pas disponible en Sales Navigator" },
-    spotlight: { supported: false, tooltip: "Spotlight n'est pas supporté par l'API Unipile Sales Navigator" },
+    spotlight: { supported: false, tooltip: "Spotlight n'est disponible qu'en mode Recruiter" },
     hiring_project: { supported: false, tooltip: "Les projets de recrutement ne sont disponibles qu'en mode Recruiter" },
     talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode Recruiter" },
     company_headcount: { supported: true },

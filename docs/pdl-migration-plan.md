@@ -1,4 +1,6 @@
-# Migration Apollo → People Data Labs (PDL)
+# Migration "Base Konekt" v2 (refonte source de profils database)
+
+> ⚠️ **Naming règle** : ce doc utilise "PDL" et "Apollo" en interne. Côté UI utilisateur, **on ne mentionne JAMAIS** les noms des fournisseurs — toujours "Base Konekt". Voir `CLAUDE.md` section "Branding — vendor names NEVER user-facing".
 
 **Statut** : Réflexion / audit — pas démarré
 **Owner** : Laurent
@@ -219,7 +221,104 @@ ALTER TABLE pdl_profile_cache ENABLE ROW LEVEL SECURITY;
 
 ---
 
-## 8. Sources
+## 8. Stratégie multi-source (LinkedIn + Base Konekt)
+
+### Principe : un seul format de filtres pivot
+
+L'IA continue à générer dans `LinkedInFiltersState`. C'est le format pivot ; il ne change pas. Selon la source choisie par l'user, un mapper différent traduit vers l'API en aval :
+
+```
+IA brief analyzer
+   ▼
+LinkedInFiltersState (format pivot, IA-friendly)
+   ▼
+Choix source (UI dropdown)
+   ├── LinkedIn Recruiter      → buildSearchParams() → API LinkedIn
+   ├── LinkedIn Sales Nav      → buildSearchParams() → API LinkedIn
+   ├── LinkedIn Classic        → buildSearchParams() → API LinkedIn
+   └── Base Konekt             → mapFiltersToPdl()   → API PDL (interne)
+   ▼
+LinkedInProfile (format pivot retour, table-friendly)
+   ▼
+Table Notion identique (30+ colonnes — celles non-remplies par la source affichent "—")
+```
+
+### Matrice de capacités — qui supporte quoi
+
+| Filtre `LinkedInFiltersState` | LinkedIn Recruiter | LinkedIn Sales Nav | LinkedIn Classic | **Base Konekt** |
+|--------|:---:|:---:|:---:|:---:|
+| keywords (Boolean) | ✅ | ✅ | ✅ | ⚠️ converti en SQL LIKE |
+| job_title / role (priority+scope) | ✅ | ✅ | ⚠️ basique | ✅ |
+| seniority (10 niveaux) | ✅ | ✅ | ⚠️ | ✅ (`job_title_levels`) |
+| location (4 niveaux) | ✅ | ✅ | ✅ | ✅ |
+| company name | ✅ | ✅ | ✅ | ✅ |
+| company headcount | ✅ | ✅ | ❌ | ✅ |
+| industry | ✅ | ✅ | ✅ | ✅ |
+| **skills** | ✅ avec priorité | ❌ | ❌ | ✅ |
+| **school + degree + major** | ⚠️ school only | ❌ | ❌ | ✅ détaillé |
+| **languages parlées** | ✅ Pro | ❌ | ❌ | ✅ |
+| **certifications** | ❌ | ❌ | ❌ | ✅ |
+| years_of_experience | ⚠️ peu fiable | ❌ | ❌ | ✅ (`inferred_years_experience`) |
+| revenue / funding société | ❌ | ⚠️ | ❌ | ✅ |
+| **network_distance** (1°/2°/3°) | ✅ | ✅ | ✅ | ❌ |
+| **open_to_work** signal | ✅ | ✅ | ⚠️ | ❌ |
+| **spotlights** (Active Talent…) | ✅ | ❌ | ❌ | ❌ |
+| **hiring_project / talent_pool** | ✅ | ❌ | ❌ | ❌ |
+| **intent_signals** (job_change, funded) | ❌ | ⚠️ partiel | ❌ | ✅ unique |
+
+**Lecture** : Base Konekt gagne sur les critères "profonds" de matching candidat (skills/education/languages/certifications/years), LinkedIn Recruiter gagne sur les signaux de réceptivité (open_to_work, spotlights, network distance).
+
+### Stratégie UI — switch sans perte
+
+Dans `SearchFiltersPanel`, on garde **tous les filtres affichés** (UI stable au switch) mais on les marque visuellement :
+
+```
+┌─ Source : [Base Konekt ▾]  ────────────────────┐
+│  Sources disponibles :                          │
+│  • Base Konekt              (recommandée)       │
+│  • LinkedIn Recruiter       (signaux temps réel)│
+│  • LinkedIn Sales Navigator                     │
+│  • LinkedIn Classic                             │
+│                                                  │
+│  ✓ Skills, Education, Languages : meilleur      │
+│  ⚠ 3 filtres seront ignorés en Base Konekt     │
+│    → Network distance, Open to Work, Spotlights │
+└─────────────────────────────────────────────────┘
+
+[Filtres standards — fonctionnent partout]
+  Mots-clés, Job title, Location, Seniority, Company...
+
+[Filtres avancés]
+  ⚪ Network distance     [non-supporté en Base Konekt]
+  ⚪ Open to Work         [non-supporté en Base Konekt]
+  ⚪ Spotlight            [non-supporté en Base Konekt]
+```
+
+- **Filtres incompatibles** : grisés (pas masqués) avec tooltip "Disponible uniquement en mode LinkedIn Recruiter"
+- **Bandeau d'info** en haut : "3 filtres ignorés" → l'user comprend immédiatement
+- **Switch source** = aucun filtre perdu (les valeurs restent en mémoire), juste re-évaluation de ce qui part à l'API
+- Code à modifier : `src/components/outreach/filterApiSupport.ts` — déjà en place pour LinkedIn Recruiter/SalesNav/Classic, ajouter une `databaseFilters` map équivalente
+
+### Workflow user typique
+
+1. Création mission → IA analyse brief → remplit `LinkedInFiltersState`
+2. Arrive sur écran sourcing → dropdown "Source" affiche les 4 options + recommandation contextuelle
+3. Voit immédiatement quels filtres seront actifs/ignorés
+4. Lance recherche → table Notion identique peu importe la source
+5. **Chaînage possible** : commence par Base Konekt (gros volume, profils détaillés pour scorer), puis lance LinkedIn Recruiter sur la shortlist pour récupérer les signaux open_to_work + permettre l'envoi d'InMail
+6. Les 2 sources sont complémentaires plus que concurrentes
+
+### Rendu identique → table Notion déjà prête
+
+La table Notion v2 est conçue pour ça :
+- Mêmes 30+ colonnes peu importe la source
+- Colonnes non-remplies affichent `—` (pas de crash, pas de layout shift)
+- HoverCards société/école s'adaptent au niveau de détail dispo
+- Gaps structurels identiques chez Apollo et PDL (pas de logos, pas de descriptions société/école) → fallback icône générique, futur enrichissement via Brandfetch/Logo.dev (~$0,001/lookup)
+
+---
+
+## 9. Sources
 
 - [PDL Person Schema](https://docs.peopledatalabs.com/docs/fields)
 - [PDL Person Search API](https://docs.peopledatalabs.com/docs/reference-person-search-api)

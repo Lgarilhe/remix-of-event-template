@@ -408,8 +408,8 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
       await Promise.all([
         invokeEdgeFunction<{ prospects: ProspectProfile[] }>('pdl-search', pdl)
           .then(({ data, error }) => {
-            if (error) { errors.push(`PDL: ${error.message}`); return; }
-            if (!data?.success) { errors.push(`PDL: ${data?.error || 'Erreur'}`); return; }
+            if (error) { errors.push(`Source profils : ${error.message}`); return; }
+            if (!data?.success) { errors.push(`Source profils : ${data?.error || 'Erreur'}`); return; }
             ((data as any).prospects || []).forEach((p: any) => { p.source = 'pdl'; allProspects.push(p); });
           }),
         invokeEdgeFunction<{ prospects: ProspectProfile[] }>('apollo-search', apollo)
@@ -752,7 +752,7 @@ export function ProspectSearch({ selectedICP, onSelectICP, onResults, searching,
             </SelectContent>
           </Select>
         </FilterSection>
-        <FilterSection label="CA estimé (PDL)" icon={<BadgeDollarSign className="w-3 h-3" />}>
+        <FilterSection label="CA estimé (signaux)" icon={<BadgeDollarSign className="w-3 h-3" />}>
           <Select value={inferredRevenue || 'all'} onValueChange={v => setInferredRevenue(v === 'all' ? '' : v)}>
             <SelectTrigger className={selectTriggerClasses}><SelectValue placeholder="Tous" /></SelectTrigger>
             <SelectContent>
