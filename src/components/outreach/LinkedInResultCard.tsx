@@ -250,9 +250,10 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
           </div>
         </div>
       )}
-      {/* Main card content */}
-      <div className={`p-2.5 sm:p-4 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
-        <div className="relative flex items-start gap-2 sm:gap-4 min-w-0 w-full">
+      {/* Main card content — padding reduit (p-2 sm:p-3 au lieu de p-2.5 sm:p-4)
+          pour gagner ~8px hauteur globale par card */}
+      <div className={`p-2 sm:p-3 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
+        <div className="relative flex items-start gap-2 sm:gap-3 min-w-0 w-full">
           {/* Checkbox - top-right on mobile, left column on desktop */}
           {selectedJob && onToggleSelect && (
             <>
@@ -450,16 +451,16 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <ProfileEducationList education={profile.education} defaultLimit={2} />
             )}
 
-            {/* Row 7: Skills — gardé pour compétences clés en bas */}
+            {/* Row 7: Skills compacts — gain ~6px (mt-1.5 pt-1.5 au lieu de mt-2.5 pt-2.5) */}
             {skills.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2.5 pt-2.5 border-t border-border/40">
+              <div className="flex flex-wrap gap-0.5 mt-1.5 pt-1.5 border-t border-border/40">
                 {skills.slice(0, 6).map((skill: any, index: number) => (
-                  <Badge key={index} variant="secondary" className="text-xs px-1.5 py-0 bg-muted/60 text-muted-foreground font-normal">
+                  <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground font-normal leading-none">
                     {skill.name || skill}
                   </Badge>
                 ))}
                 {skills.length > 6 && (
-                  <Badge variant="secondary" className="text-xs px-1.5 py-0 bg-primary/10 text-primary font-medium">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary font-medium leading-none">
                     +{skills.length - 6}
                   </Badge>
                 )}
