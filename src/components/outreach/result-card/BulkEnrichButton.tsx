@@ -111,14 +111,19 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
     let cached = 0;
     let blocked = 0;
     let failed = 0;
+    let processed = 0;
+    let aborted = false; // CRITIQUE : si INSUFFICIENT_CREDITS, on stop le batch
 
-    // Toast de démarrage
-    toast.info(`Démarrage de ${targets.length} enrichments…`, { id: 'bulk-enrich' });
+    // Toast de démarrage avec progress
+    toast.loading(`0 / ${targets.length} enrichments en cours…`, { id: 'bulk-enrich' });
 
     await pMapConcurrent(targets, async (profile) => {
+      // Si INSUFFICIENT_CREDITS détecté ailleurs, on skip les workers restants
+      if (aborted) return;
+
       try {
         const linkedinUrl = profile.profile_url || profile.public_profile_url;
-        if (!linkedinUrl) return;
+        if (!linkedinUrl) { failed++; return; }
         const company = getCurrentCompany(profile);
 
         const { data } = await invokeEdgeFunction<{
@@ -141,12 +146,13 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
         });
 
         if (!data?.success) {
-          if (data?.error_code === 'INSUFFICIENT_CREDITS') {
-            // On stop la suite (futile)
+          if (data?.error_code === 'INSUFFICIENT_CREDITS' || data?.error_code === 'QUOTA_EXCEEDED') {
+            // STOP le batch entier — futile de continuer
+            aborted = true;
             blocked++;
-            throw new Error('insufficient_credits');
+            return;
           }
-          if (data?.error_code === 'GDPR_ERASED') {
+          if (data?.error_code === 'GDPR_ERASED' || data?.error_code === 'PERMISSION_DENIED') {
             blocked++;
             return;
           }
@@ -154,13 +160,16 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
           return;
         }
 
-        if (data.cached) {
-          cached++;
-        } else {
-          started++;
-        }
+        if (data.cached) cached++;
+        else started++;
       } catch {
         failed++;
+      } finally {
+        processed++;
+        // Update progress toast every 5 profils ou à la fin
+        if (processed % 5 === 0 || processed === targets.length) {
+          toast.loading(`${processed} / ${targets.length} enrichments en cours…`, { id: 'bulk-enrich' });
+        }
       }
     }, 10);
 
@@ -171,17 +180,24 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
     invalidateBalance();
     onComplete?.(started + cached);
 
-    // Toast récapitulatif
+    // Toast récapitulatif final
     const parts: string[] = [];
     if (cached > 0) parts.push(`${cached} déjà connus (gratuit)`);
     if (started > 0) parts.push(`${started} en cours (~30s à 3min)`);
-    if (blocked > 0) parts.push(`${blocked} bloqués`);
+    if (blocked > 0) parts.push(`${blocked} bloqués (crédits/quota/RGPD)`);
     if (failed > 0) parts.push(`${failed} erreurs`);
 
-    toast.success(`${started + cached} enrichments lancés`, {
-      id: 'bulk-enrich',
-      description: parts.join(' · '),
-    });
+    if (aborted) {
+      toast.error(`Batch arrêté : crédits/quota épuisés (${started + cached} traités sur ${targets.length})`, {
+        id: 'bulk-enrich',
+        description: parts.join(' · '),
+      });
+    } else {
+      toast.success(`${started + cached} enrichments lancés`, {
+        id: 'bulk-enrich',
+        description: parts.join(' · '),
+      });
+    }
   };
 
   // Si moins de 1 profil eligible, on cache le bouton

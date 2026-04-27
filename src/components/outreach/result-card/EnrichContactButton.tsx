@@ -87,6 +87,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   mode = 'auto',
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
   /** True si user a cliqué "Continuer en arrière-plan" — masque le spinner mais garde le polling. */
@@ -129,28 +130,34 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const hasEnrichedResult = status === 'terminated' && (contact?.email || contact?.phone);
 
   const handleConfirm = async () => {
+    if (submitting) return; // Guard double-clic
+    setSubmitting(true);
     setConfirmOpen(false);
     setBackgrounded(false);
-    if (!linkedinUrl) {
-      toast.error('URL LinkedIn manquante pour cet enrichment');
-      return;
+    try {
+      if (!linkedinUrl) {
+        toast.error('URL LinkedIn manquante pour cet enrichment');
+        return;
+      }
+      if (!withEmail && !withPhone) {
+        toast.error('Sélectionnez au moins email ou téléphone');
+        return;
+      }
+      await enrich({
+        linkedinUrl,
+        firstName: profile.first_name,
+        lastName: profile.last_name,
+        company,
+        withEmail,
+        withPhone,
+        contactInfoHint: profile.contact_info ? {
+          emails: profile.contact_info.emails || [],
+          phones: profile.contact_info.phones || [],
+        } : null,
+      });
+    } finally {
+      setSubmitting(false);
     }
-    if (!withEmail && !withPhone) {
-      toast.error('Sélectionnez au moins email ou téléphone');
-      return;
-    }
-    await enrich({
-      linkedinUrl,
-      firstName: profile.first_name,
-      lastName: profile.last_name,
-      company,
-      withEmail,
-      withPhone,
-      contactInfoHint: profile.contact_info ? {
-        emails: profile.contact_info.emails || [],
-        phones: profile.contact_info.phones || [],
-      } : null,
-    });
   };
 
   // Quand l'enrichment se termine en arrière-plan, on remet le bouton visible
@@ -256,7 +263,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           title="Continuer en arrière-plan (vous pouvez fermer cette card)"
         >
           <X className="w-3 h-3" aria-hidden="true" />
-          Background
+          Arrière-plan
         </Button>
       </div>
     );
@@ -308,8 +315,8 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Récupérer le contact de {fullName}</AlertDialogTitle>
             <AlertDialogDescription>
-              Sélectionnez les données à rechercher. La cascade de fournisseurs
-              tentera plusieurs sources jusqu'à trouver.
+              Sélectionnez les données à rechercher. Konekt va consulter
+              plusieurs sources de données vérifiées pour les trouver.
             </AlertDialogDescription>
           </AlertDialogHeader>
 

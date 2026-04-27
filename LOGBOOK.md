@@ -32,6 +32,36 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-04-27 — SECURITY — QA 4 personas sur feature enrichment, fix sécurité multi-tenant
+
+**Contexte** : Sprint 1+2+3 enrichment (cascade lookup + bulk + permissions + RGPD + analytics) déployés en prod sans avoir lancé `/qa` 4 personas — manquement à la skill `qa.md` "Obligatoire avant tout deploy en prod". Laurent m'a recadré → audit rétroactif lancé.
+
+**Décision / Fait** :
+- QA Théo a révélé 1 trou de sécurité CRITIQUE : `get-enrichment-status` faisait un fallback BC direct si la row n'existait pas en DB → un user pouvait brute-force des `request_id` BC valides et récupérer les emails/phones d'enrichments d'autres orgs. Fix : suppression du fallback, refus strict 404 si row absente.
+- Théo bug #2 : pas de rate limit sur `get-enrichment-status` (polled 5s). Fix : ajout `check_rate_limit` 60 req/min/user.
+- Théo bug #3 : double-clic sur `EnrichContactButton.handleConfirm` possible. Fix : `submitting` state + early return guard.
+- Guillaume bug : `INSUFFICIENT_CREDITS` ou `QUOTA_EXCEEDED` ne stoppait pas le bulk → 70 erreurs 402 inutiles. Fix : `aborted` flag + skip workers restants + toast d'erreur explicite.
+- Guillaume UX : pas de progress UI pendant le bulk. Fix : `toast.loading` updated tous les 5 profils.
+- Claire bug : "cascade de fournisseurs" + "Background" anglais visibles dans modale. Fix : "plusieurs sources de données vérifiées" + "Arrière-plan".
+- Sophie : modale `max-w-md` ok sur iPhone 13 portrait, pas de fix nécessaire.
+
+**Raison** : sécurité multi-tenant non négociable, le reste UX.
+
+**Impact** :
+- `supabase/functions/get-enrichment-status/index.ts` : refus strict no-row + rate limit
+- `src/components/outreach/result-card/EnrichContactButton.tsx` : submitting guard + textes FR
+- `src/components/outreach/result-card/BulkEnrichButton.tsx` : aborted flag + progress toast
+
+**Reste à faire** :
+- [ ] Lancer /qa systématiquement avant chaque commit prod (pas après)
+- [ ] Écrire tests unitaires pour `_shared/get-or-fetch-contact.ts`, `parseBoolean`, `cleanLocationPart`
+- [ ] UI admin Settings>Équipe pour modifier `can_enrich_contacts` + `enrichment_quota_monthly` per-user (actuellement faut SQL editor)
+- [ ] Webhook BC au lieu de polling (perf)
+
+**Refs** : commit à venir (post-fixes)
+
+---
+
 ## 2026-04-21 — SHIP — Migration Lovable → Vercel + Supabase achevée
 
 **Contexte** : bascule du backend Konekt de Lovable Cloud vers un projet Supabase self-managed (`konekt-production`, ref `crckfywoyjxkawathdff`, West EU Ireland), frontend repositionné sur Vercel (https://konekt-app-navy.vercel.app). L'onboarding était cassé en prod sur "permission denied for table organizations", 0 secrets Supabase configurés, deploy des edge functions bloqué.

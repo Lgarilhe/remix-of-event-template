@@ -84,7 +84,20 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "request_id requis" }, 400);
     }
 
-    // ── Lookup en DB (best effort, fallback BC direct si absent) ──
+    // ── Rate limit (cette fonction est polled toutes les 5s — protection brute force) ──
+    try {
+      const { data: rlAllowed } = await serviceClient.rpc("check_rate_limit", {
+        p_user_id: auth.userId,
+        p_action: "enrichment_status_poll",
+        p_max_requests: 60,
+        p_window_seconds: 60,
+      });
+      if (rlAllowed === false) {
+        return json({ success: false, error: "Trop de requêtes." }, 429);
+      }
+    } catch { /* RPC indispo, on laisse passer */ }
+
+    // ── Lookup en DB pour vérifier ownership (CRITIQUE multi-tenant) ──
     let cached: any = null;
     try {
       const { data } = await serviceClient
@@ -94,8 +107,21 @@ Deno.serve(async (req) => {
         .maybeSingle();
       cached = data;
     } catch (e) {
-      // Table peut ne pas exister (migration pas appliquée) — on continue
-      console.warn("[get-enrichment-status] DB lookup error (table may not exist):", e);
+      console.warn("[get-enrichment-status] DB lookup error:", e);
+    }
+
+    // ── SÉCURITÉ : refuser si row introuvable ──
+    // Avant on faisait un fallback BC direct mais ça permettait à un user de
+    // récupérer les contacts d'un request_id d'une autre org en brute-forçant
+    // les UUIDs BC. Maintenant on refuse strictement (la migration DOIT être
+    // appliquée — si elle ne l'est pas, l'user verra une erreur claire).
+    if (!cached) {
+      console.warn(`[get-enrichment-status] Row introuvable pour request_id=${requestId} — refus pour sécurité multi-tenant`);
+      return json({
+        success: false,
+        error: "Demande d'enrichment introuvable. La table candidate_enrichments est-elle bien créée ?",
+        error_code: "ENRICHMENT_NOT_FOUND",
+      }, 404);
     }
 
     if (cached) {
