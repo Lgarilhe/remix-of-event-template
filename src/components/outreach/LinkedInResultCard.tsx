@@ -6,7 +6,7 @@ import { computeLikelyToSwitch } from '@/hooks/linkedin/likelyToSwitch';
 import { LikelyToSwitchBadge } from './LikelyToSwitchBadge';
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
-import { JobScoreDisplay, JobMatchResult } from './JobScoreDisplay';
+import { JobMatchResult } from './JobScoreDisplay';
 
 import { Job } from '@/types/jobs';
 import { Badge } from '@/components/ui/badge';
@@ -375,14 +375,18 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               {profile.headline || currentRole || 'Profil LinkedIn'}
             </p>
 
-            {/* Row 3: Company + Location + Experience + Connections */}
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-2 sm:gap-x-4 gap-y-0.5 mt-1.5 text-xs sm:text-xs text-muted-foreground">
+            {/* Row 3: Meta — refonte 2026-04-27.
+                Avant : icônes partout, items flex séparés -> bruit visuel.
+                Après : single line wrapping avec puces • séparatrices,
+                icône uniquement sur le 1er item (Building2/logo), tabular-nums
+                sur chiffres pour alignement vertical entre cards. */}
+            <div className="flex items-center gap-x-1.5 gap-y-0.5 mt-1.5 text-xs text-muted-foreground flex-wrap min-w-0">
               {currentCompany && (
-                <span className="flex items-center gap-1.5 font-medium text-foreground/80 min-w-0">
+                <span className="flex items-center gap-1.5 font-medium text-foreground/85 min-w-0">
                   {profileData.currentJob?.logo ? (
                     <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                   ) : (
-                    <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <Building2 className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (
@@ -390,40 +394,47 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                       {companyType.label}
                     </span>
                   )}
-                  {currentJobTenure && (
-                    <span className="text-muted-foreground/40 font-normal shrink-0">• {currentJobTenure}</span>
-                  )}
                 </span>
+              )}
+              {currentJobTenure && (
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-muted-foreground/80 shrink-0">{currentJobTenure}</span>
+                </>
               )}
               {profile.location && (
-                <span className="flex items-center gap-1 min-w-0">
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  <span className="min-w-0 break-words sm:truncate">{profile.location}</span>
-                </span>
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="min-w-0 break-words sm:truncate">{profile.location.split(',')[0]}</span>
+                </>
               )}
               {totalExperience && (
-                <span className="flex items-center gap-1 text-success font-medium">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  {totalExperience}
-                </span>
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="text-success font-medium tabular-nums">{totalExperience}</span>
+                </>
               )}
               {connectionsCount && (
-                <span className="flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5" />
-                  {connectionsCount.toLocaleString()} connexions
-                </span>
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="tabular-nums">
+                    {connectionsCount >= 1000 ? `${Math.round(connectionsCount / 100) / 10}k` : connectionsCount}
+                    {' '}rel.
+                  </span>
+                </>
               )}
               {switchResult.score > 0 && (
-                <LikelyToSwitchBadge result={switchResult} />
+                <span className="ml-1">
+                  <LikelyToSwitchBadge result={switchResult} />
+                </span>
               )}
             </div>
 
-            {/* Row 4: Job Score */}
-            {jobScore && (
-              <div className="mt-1.5">
-                <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact />
-              </div>
-            )}
+            {/* Row 4 (ancien) : JobScoreDisplay — RETIRÉ.
+                Le score est maintenant promu inline dans CardStatusBadges (row 1
+                à côté du nom) pour être visible immédiatement. Le détail complet
+                (matching skills, missing, summary) reste accessible dans le sheet
+                de détail au clic sur la card. */}
 
             {/* Row 5: Experience preview */}
             {(otherCurrentJobs.length > 0 || pastJobs.length > 0) && (

@@ -68,6 +68,25 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
           )}
         </>
       )}
+      {/* Job Score promu inline (avant : row 4 séparée) — le plus important
+          quand un candidat est scoré, doit être visible IMMÉDIATEMENT près du nom */}
+      {jobScore && jobScore.match_score > 0 && (
+        <Badge
+          variant="outline"
+          className={`text-xs font-bold tabular-nums px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 ${
+            jobScore.match_score >= 70
+              ? 'border-success/40 bg-success/10 text-success'
+              : jobScore.match_score >= 40
+              ? 'border-warning/40 bg-warning/10 text-warning'
+              : 'border-destructive/40 bg-destructive/10 text-destructive'
+          }`}
+          title={`Score IA : ${jobScore.match_score}/100 — ${jobScore.recommendation || ''}`}
+        >
+          <Target className="w-3 h-3" aria-hidden="true" />
+          {jobScore.match_score}
+        </Badge>
+      )}
+
       {profile.premium && (
         <Badge variant="outline" className="text-xs px-1 sm:px-1.5 py-0 h-4 sm:h-5 text-warning border-warning/30 bg-warning/10 shrink-0">
           <Star className="w-3 h-3 mr-0.5 fill-warning" />

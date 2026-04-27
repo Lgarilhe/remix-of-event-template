@@ -4,8 +4,12 @@ import { JobMatchResult } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive, MoreHorizontal, Linkedin,
+} from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
@@ -29,6 +33,24 @@ interface CardActionsProps {
   compact?: boolean;
 }
 
+/**
+ * CardActions — refonte UX 2026-04-27.
+ *
+ * Avant : 9 boutons éparpillés (score, message, ai, inmail, link, séq, pipe, archive)
+ * → fouillis visuel, hiérarchie plate, l'user ne sait pas quoi cliquer en premier.
+ *
+ * Après : hiérarchie claire en 3 niveaux
+ *   1. PRIMARY CTA (1 bouton, contextuel selon l'état du profil)
+ *      - Pas encore scoré → "Scorer" (ShimmerButton)
+ *      - Scoré "go" → "Séquence" (SequenceEnroll)
+ *      - Scoré "maybe" → "Message"
+ *      - Scoré "skip" → rien (juste archive en menu)
+ *   2. SECONDARY (1 bouton "Pipe" pour add to project, si selectedJob)
+ *   3. OVERFLOW MENU (⋯) : LinkedIn profile, InMail, AI analysis, Archive
+ *
+ * Compact mode (mobile) : pas de séparateur, juste des icon-only buttons
+ * pour la primary + 1 menu ⋯ horizontal scroll.
+ */
 export const CardActions: React.FC<CardActionsProps> = ({
   profile,
   profileUrl,
@@ -47,92 +69,35 @@ export const CardActions: React.FC<CardActionsProps> = ({
   onProfileTreated,
   compact = false,
 }) => {
-  const buttonSize = compact ? 'h-7 w-7 p-0' : 'h-8 w-8 p-0';
   const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
+  // Détermine le CTA primaire selon l'état du profil
+  const recommendation = jobScore?.recommendation;
+  const showScore = !!selectedJob && !!onScoreProfile && !jobScore;
+  const showSequenceCTA = !!accountId && !!jobScore && recommendation !== 'skip';
+
   return (
-    <div className={`flex items-center gap-0.5 ${compact ? '' : 'gap-1'}`}>
-      {/* Score */}
-      {selectedJob && onScoreProfile && !jobScore && (
+    <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
+      {/* ═══ PRIMARY CTA — contextuel ═══ */}
+      {showScore && (
         <ShimmerButton
           onClick={onScoreProfile}
           disabled={isScoring}
-          className={compact ? 'h-7 px-2 text-xs' : 'h-8 px-3 text-xs'}
-          title={`Scorer pour ${selectedJob.title}`}
+          className={compact ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-xs gap-1.5'}
+          title={`Scorer pour ${selectedJob?.title}`}
         >
           {isScoring ? (
-            <Loader2 className={`${iconSize} animate-spin`} />
+            <Loader2 className={`${iconSize} animate-spin`} aria-hidden="true" />
           ) : (
             <>
-              <Target className={iconSize} />
-              {!compact && <span className="hidden sm:inline">Score</span>}
+              <Target className={iconSize} aria-hidden="true" />
+              <span className="font-bold">SCORE</span>
             </>
           )}
         </ShimmerButton>
       )}
 
-      {/* Message */}
-      {selectedJob && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onOpenMessage}
-          className={`text-emerald-400 hover:text-emerald-300 hover:bg-success/10 ${compact ? buttonSize : 'h-8 px-2 gap-1'}`}
-          title="Générer un message d'approche"
-        >
-          <PenLine className={iconSize} />
-          {!compact && <span className="text-xs hidden sm:inline">Message</span>}
-        </Button>
-      )}
-
-      {/* AI Analysis */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onAiAnalysis}
-        disabled={isAnalyzing}
-        className={`text-purple-400 hover:text-purple-300 hover:bg-brand-purple/10 ${buttonSize}`}
-        title="Analyse IA du profil"
-      >
-        {isAnalyzing ? <Loader2 className={`${iconSize} animate-spin`} /> : <Bot className={iconSize} />}
-      </Button>
-
-      {/* InMail */}
-      {profile.can_send_inmail && !compact && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`text-primary hover:text-primary/80 hover:bg-primary/10 ${buttonSize}`}
-          title="Envoyer InMail"
-        >
-          <Mail className={iconSize} />
-        </Button>
-      )}
-
-      {/* Profile link */}
-      {profileUrl && (
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className={`text-primary hover:text-primary/80 hover:bg-primary/10 ${buttonSize}`}
-          title="Voir le profil"
-        >
-          <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className={iconSize} />
-          </a>
-        </Button>
-      )}
-
-      {/* Find Similar : retiré 2026-04-27.
-          Bloc orphelin laissé par un ancien merge conflict — aucun parent ne
-          passait `onFindSimilar` ni n'importait `Users`. Causait un
-          ReferenceError "onFindSimilar is not defined" qui crashait toute la
-          page Sourcing (catché par SectionErrorBoundary). À ré-implémenter
-          proprement quand on wirera un vrai handler dans LinkedInResultCard. */}
-
-      {/* Sequence enroll */}
-      {accountId && jobScore?.recommendation !== 'skip' && (
+      {showSequenceCTA && (
         <SequenceEnrollButton
           selectedProfiles={[profile]}
           accountId={accountId}
@@ -144,7 +109,21 @@ export const CardActions: React.FC<CardActionsProps> = ({
         />
       )}
 
-      {/* Add to project */}
+      {/* Message rapide — si scoré et pas en séquence directe */}
+      {selectedJob && !showScore && !compact && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenMessage}
+          className="h-8 px-2.5 text-xs gap-1.5 border-border hover:bg-muted/50"
+          title="Composer un message d'approche"
+        >
+          <PenLine className={iconSize} aria-hidden="true" />
+          <span className="hidden sm:inline">Message</span>
+        </Button>
+      )}
+
+      {/* ═══ SECONDARY — Add to project ═══ */}
       {selectedJob && !compact && (
         <AddToProjectButton
           candidateId={profile.id}
@@ -161,24 +140,74 @@ export const CardActions: React.FC<CardActionsProps> = ({
         />
       )}
 
-      {/* Archive */}
-      {onArchive && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onArchive}
-              className={`text-muted-foreground hover:text-orange-400 hover:bg-warning/10 ${buttonSize}`}
+      {/* ═══ OVERFLOW MENU ⋯ ═══ */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={compact ? 'h-7 w-7' : 'h-8 w-8'}
+            aria-label={`Plus d'actions pour ${fullName}`}
+          >
+            <MoreHorizontal className={iconSize} aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          {profileUrl && (
+            <DropdownMenuItem
+              onSelect={() => window.open(profileUrl, '_blank', 'noopener,noreferrer')}
+              className="cursor-pointer"
             >
-              <Archive className={iconSize} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Archiver ce profil</p>
-          </TooltipContent>
-        </Tooltip>
-      )}
+              <Linkedin className="w-4 h-4 mr-2 text-info" aria-hidden="true" />
+              <span>Ouvrir le profil LinkedIn</span>
+              <ExternalLink className="w-3 h-3 ml-auto text-muted-foreground" aria-hidden="true" />
+            </DropdownMenuItem>
+          )}
+
+          {compact && selectedJob && !showScore && (
+            <DropdownMenuItem onSelect={onOpenMessage} className="cursor-pointer">
+              <PenLine className="w-4 h-4 mr-2" aria-hidden="true" />
+              Composer un message
+            </DropdownMenuItem>
+          )}
+
+          {profile.can_send_inmail && (
+            <DropdownMenuItem
+              onSelect={() => onOpenMessage()}
+              className="cursor-pointer"
+            >
+              <Mail className="w-4 h-4 mr-2" aria-hidden="true" />
+              Envoyer un InMail
+            </DropdownMenuItem>
+          )}
+
+          <DropdownMenuItem
+            onSelect={onAiAnalysis}
+            disabled={isAnalyzing}
+            className="cursor-pointer"
+          >
+            {isAnalyzing ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+            ) : (
+              <Bot className="w-4 h-4 mr-2 text-brand-purple" aria-hidden="true" />
+            )}
+            Analyse IA détaillée
+          </DropdownMenuItem>
+
+          {onArchive && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={onArchive}
+                className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+              >
+                <Archive className="w-4 h-4 mr-2" aria-hidden="true" />
+                Archiver
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 };
