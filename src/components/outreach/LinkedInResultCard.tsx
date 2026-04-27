@@ -60,7 +60,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 }) => {
   const isCompactMode = viewMode === 'compact';
   const [isScoring, setIsScoring] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scoreFlash, setScoreFlash] = useState<'go' | 'maybe' | 'skip' | null>(null);
   const prevScoreRef = useRef<number | undefined>(jobScore?.match_score);
 
@@ -367,10 +366,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   accountId={accountId}
                   activeProject={activeProject}
                   isScoring={isScoring}
-                  isAnalyzing={isAnalyzing}
                   onScoreProfile={onScoreProfile}
                   onOpenMessage={() => onOpenDetail?.()}
-                  onAiAnalysis={() => onOpenDetail?.()}
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
                   onProfileTreated={onProfileTreated}
@@ -494,10 +491,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 accountId={accountId}
                 activeProject={activeProject}
                 isScoring={isScoring}
-                isAnalyzing={isAnalyzing}
                 onScoreProfile={onScoreProfile}
                 onOpenMessage={() => onOpenDetail?.()}
-                onAiAnalysis={() => onOpenDetail?.()}
                 onArchive={onArchive}
                 onSequenceEnroll={onSequenceEnroll}
                 onProfileTreated={onProfileTreated}

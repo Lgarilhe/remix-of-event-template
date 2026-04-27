@@ -8,7 +8,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  ExternalLink, Mail, Target, PenLine, Bot, Loader2, Archive, MoreHorizontal, Linkedin,
+  ExternalLink, Mail, Target, PenLine, Loader2, Archive, MoreHorizontal, Linkedin,
 } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
@@ -23,10 +23,8 @@ interface CardActionsProps {
   accountId?: string;
   activeProject?: SourcingProject | null;
   isScoring: boolean;
-  isAnalyzing: boolean;
   onScoreProfile?: () => void;
   onOpenMessage: () => void;
-  onAiAnalysis: () => void;
   onArchive?: () => void;
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
@@ -46,7 +44,9 @@ interface CardActionsProps {
  *      - Scoré "maybe" → "Message"
  *      - Scoré "skip" → rien (juste archive en menu)
  *   2. SECONDARY (1 bouton "Pipe" pour add to project, si selectedJob)
- *   3. OVERFLOW MENU (⋯) : LinkedIn profile, InMail, AI analysis, Archive
+ *   3. OVERFLOW MENU (⋯) : LinkedIn profile, InMail, Archive
+ *      (l'item "Analyse IA détaillée" a été retiré 2026-04-27 — redondant avec
+ *      le scoring IA principal qui couvre déjà ce besoin)
  *
  * Compact mode (mobile) : pas de séparateur, juste des icon-only buttons
  * pour la primary + 1 menu ⋯ horizontal scroll.
@@ -60,10 +60,8 @@ export const CardActions: React.FC<CardActionsProps> = ({
   accountId,
   activeProject,
   isScoring,
-  isAnalyzing,
   onScoreProfile,
   onOpenMessage,
-  onAiAnalysis,
   onArchive,
   onSequenceEnroll,
   onProfileTreated,
@@ -180,19 +178,6 @@ export const CardActions: React.FC<CardActionsProps> = ({
               Envoyer un InMail
             </DropdownMenuItem>
           )}
-
-          <DropdownMenuItem
-            onSelect={onAiAnalysis}
-            disabled={isAnalyzing}
-            className="cursor-pointer"
-          >
-            {isAnalyzing ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
-            ) : (
-              <Bot className="w-4 h-4 mr-2 text-brand-purple" aria-hidden="true" />
-            )}
-            Analyse IA détaillée
-          </DropdownMenuItem>
 
           {onArchive && (
             <>
