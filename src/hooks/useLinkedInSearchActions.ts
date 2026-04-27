@@ -659,30 +659,14 @@ export function useLinkedInSearchActions(
           console.log('[LinkedInSearch] Search params:', params);
         }
 
-        // Call the right search backend based on source
-        let data: Record<string, unknown>;
-        const isDatabase = context.searchSource === 'database';
-
-        if (isDatabase) {
-          // Database search (Base Konekt) — uses database-search edge function
-          console.log('[LinkedInSearch] Calling database-search with params:', JSON.stringify(params).slice(0, 500));
-          const { data: dbData, error: dbError } = await invokeEdgeFunction<Record<string, unknown>>('database-search', {
-            ...params,
-            action: 'search',
-          });
-          console.log('[LinkedInSearch] database-search response:', {
-            success: dbData?.success,
-            itemsCount: Array.isArray(dbData?.items) ? (dbData.items as unknown[]).length : 0,
-            total: dbData?.total,
-            cursor: dbData?.cursor,
-            error: dbError?.message || dbData?.error,
-          });
-          data = dbData || {};
-        } else {
-          // LinkedIn search (default) — uses unipile-search edge function
-          const result = await invokeUnipile({ body: params });
-          data = result.data || {};
-        }
+        // Sourcing 100 % LinkedIn (Unipile) — décision 2026-04-27.
+        // L'option "Base Konekt" via database-search (Apollo/PDL) a été retirée :
+        // coût trop élevé en browsing (~$0.28/profil PDL ou bulk_match Apollo
+        // obligatoire) + ToS multi-user d'Apollo violés sans contrat OEM custom.
+        // Apollo/PDL restent en backend pour usage futur enrichment ciblé
+        // (récupérer email/phone d'un candidat shortlisté).
+        const result = await invokeUnipile({ body: params });
+        const data: Record<string, unknown> = result.data || {};
 
         if (!data?.success) {
           const apiError = new Error(data?.error as string || 'Erreur lors de la recherche');
@@ -691,8 +675,7 @@ export function useLinkedInSearchActions(
           throw apiError;
         }
 
-        // Normalize result format (database-search returns 'items', unipile returns 'results')
-        const batch: LinkedInProfile[] = ((isDatabase ? data.items : data.results) as LinkedInProfile[]) || [];
+        const batch: LinkedInProfile[] = (data.results as LinkedInProfile[]) || [];
         const batchCursor: string | null = (data.cursor as string) || null;
         const fetchedTotal: number | null = (data.total as number) || null;
 

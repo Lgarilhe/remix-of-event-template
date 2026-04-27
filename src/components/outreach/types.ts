@@ -203,7 +203,10 @@ export interface LinkedInFiltersState {
 
 export const INITIAL_FILTERS: LinkedInFiltersState = {
   keywords: '',
-  api: 'database',
+  // Sourcing 100 % LinkedIn (Unipile) — défaut 'recruiter' (le plus riche en filtres).
+  // Le code accepte aussi 'sales_navigator' / 'classic' selon licence du compte.
+  // 'database' reste dans le type pour rétrocompat code mort, mais n'est plus utilisé.
+  api: 'recruiter',
   category: 'people',
   location: [],
   location_within_area: null,

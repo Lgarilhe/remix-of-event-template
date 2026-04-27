@@ -143,33 +143,21 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </Alert>
       )}
 
-      {/* Source Toggle: Apollo (Base Konekt) vs LinkedIn */}
-      {onSearchSourceChange && (
-        <div className="bg-background border border-border p-2.5 sm:p-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-foreground shrink-0">
-              🔍 Source
-            </span>
-            <div className="flex items-center gap-1.5 flex-1">
-              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap", searchSource === 'database' ? 'text-foreground' : 'text-muted-foreground/40')}>
-                Base Konekt
-              </span>
-              <Switch
-                checked={searchSource === 'linkedin'}
-                onCheckedChange={(checked) => onSearchSourceChange(checked ? 'linkedin' : 'database')}
-                className="data-[state=checked]:bg-info"
-              />
-              <span className={cn("text-[10px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap", searchSource === 'linkedin' ? 'text-foreground' : 'text-muted-foreground/40')}>
-                LinkedIn
-              </span>
-            </div>
-          </div>
-          {searchSource === 'linkedin' && accounts.length === 0 && (
-            <p className="text-[10px] text-destructive mt-1.5">
-              ⚠️ Aucun compte LinkedIn connecté. Connectez-en un dans Paramètres.
-            </p>
-          )}
-        </div>
+      {/* Sourcing 100 % LinkedIn — toggle Base Konekt retiré (2026-04-27).
+          La "Base Konekt" via Apollo/PDL coûtait trop cher en browsing (~$0.28/profil
+          PDL ou bulk_match Apollo obligatoire) et violait les ToS multi-user d'Apollo.
+          Tous les concurrents (Lemlist, HeyReach, Phantombuster) utilisent le compte
+          LinkedIn de l'user en source primaire — c'est le bon design.
+          PDL/Apollo restent en place côté backend pour usage enrichment ciblé futur
+          (récupérer email/phone d'un candidat shortlisté, 1 crédit/profil actionnable). */}
+      {accounts.length === 0 && (
+        <Alert variant="destructive" className="bg-destructive/10 border-destructive/30 py-2">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <AlertTitle className="text-destructive text-xs">Aucun compte LinkedIn connecté</AlertTitle>
+          <AlertDescription className="text-destructive/80 text-[11px]">
+            Connectez votre compte LinkedIn dans Paramètres pour accéder au sourcing.
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Account selector — only visible in LinkedIn mode */}

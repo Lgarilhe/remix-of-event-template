@@ -40,6 +40,34 @@
 - `job_details` on `sourcing_projects` stores the brief data (JobDetails type from `src/types/jobDetails.ts`)
 - The LinkedInSearch component has an internal cache (`missionSearchCache`) that can override hook state
 
+## 🎯 Sourcing strategy (décision 2026-04-27, après audit Apollo+PDL+Lemlist+HeyReach)
+
+**Sourcing PRIMAIRE = LinkedIn via Unipile** (100 % du moteur). Pas de "Base Konekt" externe pour la recherche.
+
+Pourquoi :
+- Apollo `mixed_people/api_search` masque `last_name` BY-DESIGN sur tous les plans → bulk_match (1 cr/profil) obligatoire
+- Apollo viole les ToS avec une seule API key partagée multi-tenant SaaS (besoin contrat OEM custom $3K-75K/an)
+- PDL Person Search facture chaque profil retourné (~$0.28 sur Pro) → modèle "browsing payant" insoutenable côté UX user
+- LinkedIn (Unipile) = même pattern que Lemlist / HeyReach / Phantombuster : on utilise la session LinkedIn de l'user → noms visibles, skills/edu/langues complets, $0 par profil
+- Tous les recruteurs cibles ont DÉJÀ LinkedIn (Recruiter $700/mois ou Sales Nav $80/mois) — c'est la norme du métier
+
+Ce qui reste de la migration PDL :
+- `_shared/pdl-mapping.ts` : helpers `pdlToLinkedInProfile` / `mapFiltersToPdl` / `searchPdl` / cache utils — gardés pour usage enrichment ciblé futur
+- `_shared/resolve-org-credentials.ts` : `resolvePDLCredentials` toujours là
+- `pdl_profile_cache` table + RLS : prête à l'emploi
+- `PDL_API_KEY` secret Supabase : laissé en place
+- `database-search` edge function : SUPPRIMÉE (le frontend n'appelle plus que `unipile-search`)
+
+Apollo/PDL futurs cas d'usage :
+- **ENRICHMENT CIBLÉ** : récupérer email/phone d'un candidat shortlisté (1 crédit pour 1 candidat actionnable, ROI clair)
+- **JAMAIS** comme source de browsing massif
+
+Fournisseurs enrichment recommandés (ordre de préférence) :
+1. **Dropcontact** 🇫🇷 — ~$24/mois pour 1500 enrichments = $0.016/profil — RGPD natif, qualité B2B FR/EU
+2. **PDL Person Enrich** — $0.28/match groupé email+phone — déjà branché techniquement
+3. **Apollo People Match** — viable seulement avec contrat OEM (sinon ToS violés)
+- Hunter / Snov.io en options secondaires
+
 ## ⚠️ Branding — vendor names NEVER user-facing
 
 **Critical rule** : the names of our backend providers must **never** appear in any UI text, toast, error message, tooltip, label, placeholder, or any string that an end-user can read.

@@ -193,7 +193,7 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
             selectedAccount={selectedAccount}
             onAccountChange={setSelectedAccount}
             activeProject={project}
-            searchSource="database"
+            searchSource="linkedin"
           />
         </OutreachSearchProvider>
       </div>
