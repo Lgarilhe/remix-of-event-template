@@ -342,6 +342,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     notionMatch={notionMatch}
                     historyData={historyData}
                     historyLoading={historyLoading}
+                    jobScore={jobScore}
+                    isLikelyToRespond={isLikelyToRespond}
                   />
                 </div>
               </div>

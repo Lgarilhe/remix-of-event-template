@@ -1,17 +1,21 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { MessageSquare, CheckCircle2, Star, Zap, Loader2 } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Star, Zap, Loader2, Target, Archive, Sparkles } from 'lucide-react';
 import airtableLogo from '@/assets/airtable-logo.svg';
 import notionLogo from '@/assets/notion-logo.webp';
 
 interface CardStatusBadgesProps {
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null } | null;
-  profile: { open_to_work?: boolean };
+  profile: { open_to_work?: boolean; premium?: boolean };
   airtableMatch?: { airtable_id: string; source_base: string; full_name: string | null; status: string | null; match_type?: 'url' | 'fuzzy' } | null;
   notionMatch?: { id: string; name: string } | null;
   historyData?: any;
   historyLoading?: boolean;
+  /** Score IA pour ce candidat sur le job courant (si déjà scoré) */
+  jobScore?: { match_score: number } | null;
+  /** LinkedIn signal "Likely to respond" — affiché en badge "Réactif" si true */
+  isLikelyToRespond?: boolean;
 }
 
 export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
@@ -21,6 +25,8 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
   notionMatch,
   historyData,
   historyLoading,
+  jobScore,
+  isLikelyToRespond,
 }) => {
   const historyTotal = historyData
     ? historyData.placements.length + historyData.shortlists.length + historyData.notes.length + historyData.appointments.length
