@@ -494,12 +494,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       )}
 
-      {/* ═══ COMPOSER — Position absolute + bordure debug ═══════════════
-           Si tu ne vois pas cette zone avec sa bordure, c'est que le composant
-           ne se rend pas du tout (problème runtime/JS dans la chaîne de hooks).
-           La bordure debug sera retirée après confirmation visuelle. */}
+      {/* ═══ COMPOSER — Position FIXED (relatif au viewport) ════════════
+           Position fixed au lieu de absolute → s'attache au viewport, peu
+           importe la hauteur foireuse d'un parent quelconque dans la chaîne.
+           Sur md+ : left=360px pour ne pas chevaucher la sidebar.
+           Sur mobile (sidebar masquée) : left=0. */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-50 border-t-4 border-red-500"
+        className="fixed bottom-0 left-0 md:left-[360px] right-0 z-[100] border-t-4 border-red-500 bg-background shadow-2xl"
         style={{ minHeight: '140px' }}
         data-component="message-composer-wrapper"
       >
