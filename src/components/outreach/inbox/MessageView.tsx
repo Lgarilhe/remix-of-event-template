@@ -118,6 +118,29 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
   const localContainerRef = useRef<HTMLDivElement>(null);
 
+  // Mesure dynamique de la position du MessageView pour positionner le
+  // composer en fixed avec les bonnes coordonnées (évite tout chevauchement
+  // avec les sidebars en cas de bug de propagation de hauteur des parents).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [composerRect, setComposerRect] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const updateRect = () => {
+      if (!rootRef.current) return;
+      const rect = rootRef.current.getBoundingClientRect();
+      setComposerRect({ left: rect.left, width: rect.width });
+    };
+    updateRect();
+    window.addEventListener('resize', updateRect);
+    // Observer pour détecter les changements de layout (sidebar collapse, etc.)
+    const observer = new ResizeObserver(updateRect);
+    if (rootRef.current) observer.observe(rootRef.current);
+    return () => {
+      window.removeEventListener('resize', updateRect);
+      observer.disconnect();
+    };
+  }, []);
+
   // Snooze + archive
   const chatStatus = useChatStatus();
 
@@ -254,7 +277,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // s'aligne automatiquement avec la conversation, et ne chevauche RIEN.
   return (
     <div
-      className="h-full min-h-0 flex flex-col bg-background overflow-hidden"
+      ref={rootRef}
+      className="h-full min-h-0 flex flex-col bg-background overflow-hidden relative"
       data-component="message-view"
     >
       {/* ═══ HEADER (shrink-0) ═════════════════════════════════════════ */}
@@ -335,10 +359,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
       </header>
 
       {/* ═══ BODY — Messages timeline (flex-1, scrollable) ══════════════ */}
+      {/* padding-bottom 160px pour réserver l'espace du composer fixed
+          afin que les messages ne soient pas cachés derrière */}
       <div
         ref={localContainerRef}
         className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain bg-background"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        style={{ WebkitOverflowScrolling: 'touch', paddingBottom: '160px' }}
       >
         <div className="px-4 py-6 max-w-4xl mx-auto">
           {loadingMessages && messages.length === 0 ? (
@@ -477,24 +503,36 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       )}
 
-      {/* ═══ COMPOSER (shrink-0) — dans le flow normal ══════════════════
-           Plus de position: fixed/absolute. Le composer est un bloc
-           shrink-0 à la fin du flex column, donc il s'aligne naturellement
-           avec la largeur de la conversation et ne chevauche RIEN. */}
-      <div className="shrink-0">
-        <MessageComposer
-          value={newMessage}
-          onChange={onNewMessageChange}
-          onSend={onSendMessage}
-          sending={sending}
-          onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
-          hasAISuggestions={replySuggestions.length > 0}
-          aiSuggestionsCount={replySuggestions.length}
-          onScheduleCall={onScheduleCall}
-          hasCalendlyLink={!!calendlyLink}
-          channel={channel?.toUpperCase()}
-        />
-      </div>
+      {/* ═══ COMPOSER — Position fixed avec coords MESURÉES en JS ═══════
+           Plus de calc CSS bricolé : on mesure dynamiquement le rect du
+           MessageView via ref + ResizeObserver, puis on applique les
+           coords exactes en pixels au composer fixed.
+
+           Garantie : le composer est PILE aligné avec la conversation,
+           peu importe les bugs de layout/sidebars/breakpoints. */}
+      {composerRect && (
+        <div
+          className="fixed bottom-0 z-30 bg-background border-t border-border"
+          style={{
+            left: `${composerRect.left}px`,
+            width: `${composerRect.width}px`,
+          }}
+          data-component="message-composer-wrapper"
+        >
+          <MessageComposer
+            value={newMessage}
+            onChange={onNewMessageChange}
+            onSend={onSendMessage}
+            sending={sending}
+            onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
+            hasAISuggestions={replySuggestions.length > 0}
+            aiSuggestionsCount={replySuggestions.length}
+            onScheduleCall={onScheduleCall}
+            hasCalendlyLink={!!calendlyLink}
+            channel={channel?.toUpperCase()}
+          />
+        </div>
+      )}
 
       {/* ─── Delete confirmation ─────────────────────────────────────── */}
       <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
