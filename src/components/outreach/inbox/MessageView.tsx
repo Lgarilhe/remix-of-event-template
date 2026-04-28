@@ -168,18 +168,61 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   type TimelineItem =
     | { kind: 'message'; data: Message }
-    | { kind: 'event'; data: ActivityEvent };
+    | { kind: 'event'; data: ActivityEvent }
+    | { kind: 'date'; date: string; label: string };
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
     messages.forEach(m => items.push({ kind: 'message', data: m }));
     activityEvents.forEach(e => items.push({ kind: 'event', data: e }));
     items.sort((a, b) => {
-      const tA = (a.kind === 'message' ? a.data.timestamp : a.data.timestamp) || '';
-      const tB = (b.kind === 'message' ? b.data.timestamp : b.data.timestamp) || '';
+      const tA = (a.kind === 'message' ? a.data.timestamp : a.kind === 'event' ? a.data.timestamp : '') || '';
+      const tB = (b.kind === 'message' ? b.data.timestamp : b.kind === 'event' ? b.data.timestamp : '') || '';
       return tA.localeCompare(tB);
     });
-    return items;
+
+    // Insertion des date separators entre items de jours différents
+    const withSeparators: TimelineItem[] = [];
+    let lastDate: string | null = null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const formatLabel = (d: Date): string => {
+      const dStart = new Date(d);
+      dStart.setHours(0, 0, 0, 0);
+      if (dStart.getTime() === today.getTime()) return "Aujourd'hui";
+      if (dStart.getTime() === yesterday.getTime()) return 'Hier';
+      const diff = (today.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24);
+      if (diff < 7) {
+        return d.toLocaleDateString('fr-FR', { weekday: 'long' });
+      }
+      if (d.getFullYear() === today.getFullYear()) {
+        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+      }
+      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    };
+
+    for (const item of items) {
+      const ts = item.kind === 'message' ? item.data.timestamp : item.kind === 'event' ? item.data.timestamp : '';
+      if (!ts) {
+        withSeparators.push(item);
+        continue;
+      }
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) {
+        withSeparators.push(item);
+        continue;
+      }
+      const dateKey = d.toISOString().split('T')[0];
+      if (dateKey !== lastDate) {
+        withSeparators.push({ kind: 'date', date: dateKey, label: formatLabel(d) });
+        lastDate = dateKey;
+      }
+      withSeparators.push(item);
+    }
+    return withSeparators;
   }, [messages, activityEvents]);
 
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
@@ -375,6 +418,22 @@ export const MessageView: React.FC<MessageViewProps> = ({
           ) : (
             <div className="space-y-1">
               {timeline.map((item, idx) => {
+                // Date separator (sticky-like, entre groupes de jours)
+                if (item.kind === 'date') {
+                  return (
+                    <div
+                      key={`date-${item.date}`}
+                      className="flex items-center gap-3 my-6 px-2 select-none"
+                    >
+                      <div className="flex-1 h-px bg-border/60" />
+                      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 px-2">
+                        {item.label}
+                      </span>
+                      <div className="flex-1 h-px bg-border/60" />
+                    </div>
+                  );
+                }
+
                 if (item.kind === 'event') {
                   return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
                 }
@@ -382,6 +441,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 const isSender = !!msg.is_sender;
 
                 // Détection groupage : message précédent du même expéditeur ?
+                // Skip les date separators et events dans la détection.
                 const prev = idx > 0 ? timeline[idx - 1] : null;
                 const prevIsSameSender =
                   prev?.kind === 'message' && !!prev.data.is_sender === isSender;

@@ -108,15 +108,15 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       "w-full h-full flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
-      {/* Compact Header */}
-      <div className="p-2 border-b border-border space-y-1.5">
+      {/* Header sidebar moderne */}
+      <div className="px-3 pt-3 pb-2 border-b border-border space-y-2 bg-background/95 backdrop-blur-sm">
         {/* Title + refresh */}
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground uppercase tracking-wide text-xs">Messages</h3>
+          <h3 className="font-semibold text-foreground tracking-tight text-base">Messages</h3>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6"
+            className="h-7 w-7 rounded-md"
             onClick={onRefresh}
             disabled={loadingChats}
             aria-label="Rafraîchir les messages"
@@ -125,14 +125,14 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           </Button>
         </div>
 
-        {/* Search */}
+        {/* Search avec design moderne */}
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
           <Input
-            placeholder="Rechercher..."
+            placeholder="Rechercher une conversation..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-8 h-7 text-xs border-border rounded-lg"
+            className="pl-9 h-9 text-[13px] bg-muted/40 border-transparent rounded-lg focus-visible:bg-background focus-visible:border-border transition-colors"
             aria-label="Rechercher dans les messages"
           />
         </div>
