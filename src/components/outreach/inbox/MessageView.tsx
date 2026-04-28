@@ -338,7 +338,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
         className="overflow-y-auto overscroll-y-contain bg-background"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="px-5 py-6 max-w-3xl mx-auto">
+        {/* Container utilise pleine largeur avec padding latéral généreux.
+            Les bulles ont leur propre max-width en pourcentage. */}
+        <div className="px-6 py-6">
           {loadingMessages && messages.length === 0 ? (
             <div className="flex flex-col gap-4">
               {[
@@ -415,7 +417,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
                       </div>
                     )}
 
-                    <div className="relative max-w-[80%] md:max-w-[65%]">
+                    {/* Bulles : 85% sur mobile, 75% sur md+ — utilise mieux
+                        la largeur sur grand écran tout en gardant un asymétrie
+                        gauche/droite lisible. */}
+                    <div className="relative max-w-[85%] md:max-w-[75%]">
                       <div
                         className={cn(
                           'px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-shadow',
