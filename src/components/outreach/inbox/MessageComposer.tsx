@@ -298,6 +298,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 query={slashQuery}
                 onSelect={insertTemplate}
                 onClose={() => setSlashQuery(null)}
+                onCreateNew={() => {
+                  setSlashQuery(null);
+                  // Ouvre les Settings → onglet Templates dans un nouvel onglet
+                  window.open('/settings?tab=templates', '_blank');
+                }}
               />
             )}
           </div>

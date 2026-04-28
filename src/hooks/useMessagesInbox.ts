@@ -1465,7 +1465,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     return () => clearInterval(intervalId);
   }, [isReady, selectedAccount, user]);
 
-  // Load messages on chat selection & mark as read
+  // Load messages on chat selection & mark as read + auto-load AI suggestions
+  // depuis le cache (instant) ou via auto-analyze (background ~2-3s)
   useEffect(() => {
     if (selectedChat) {
       // Clear previous messages immediately to avoid stale content bleed
@@ -1475,8 +1476,59 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       fetchMessages(selectedChat.id);
       setReplySuggestions([]);
       setSuggestionsLoaded(false);
-      // Mark as read locally when opening a conversation
       markChatAsReadLocally(selectedChat.id);
+
+      // Try to load suggestions from cache instantly (Smart Replies inline)
+      const chatId = selectedChat.id;
+      const accountId = selectedChat.account_id;
+      (async () => {
+        try {
+          const { data: cached } = await supabase
+            .from('message_analysis_cache')
+            .select('analysis')
+            .eq('chat_id', chatId)
+            .eq('account_id', accountId)
+            .maybeSingle();
+          const analysis = cached?.analysis as Record<string, unknown> | null;
+          const suggestions = (analysis?.replySuggestions as Array<{ text: string; type: string }> | undefined) || [];
+          if (suggestions.length > 0) {
+            setReplySuggestions(suggestions);
+            setSuggestionsLoaded(true);
+          } else {
+            // Cache miss → trigger auto-analyze en background. Le webhook
+            // Unipile devrait déjà l'avoir fait pour les nouveaux messages,
+            // mais pour les anciens chats jamais ouverts, on déclenche ici.
+            const senderId = selectedChat.attendees?.[0]?.id || null;
+            supabase.functions.invoke('auto-analyze-message', {
+              body: {
+                chat_id: chatId,
+                account_id: accountId,
+                sender_id: senderId,
+              },
+            }).then((res) => {
+              // Re-query le cache après l'analyse pour récupérer les suggestions
+              if (res.data?.success) {
+                supabase
+                  .from('message_analysis_cache')
+                  .select('analysis')
+                  .eq('chat_id', chatId)
+                  .eq('account_id', accountId)
+                  .maybeSingle()
+                  .then(({ data: refreshed }) => {
+                    const refreshedAnalysis = refreshed?.analysis as Record<string, unknown> | null;
+                    const newSuggestions = (refreshedAnalysis?.replySuggestions as Array<{ text: string; type: string }> | undefined) || [];
+                    if (newSuggestions.length > 0) {
+                      setReplySuggestions(newSuggestions);
+                      setSuggestionsLoaded(true);
+                    }
+                  });
+              }
+            }).catch(() => {/* silent */});
+          }
+        } catch (e) {
+          console.debug('[inbox] Cache check failed:', e);
+        }
+      })();
     }
   }, [selectedChat?.id, fetchMessages]);
 

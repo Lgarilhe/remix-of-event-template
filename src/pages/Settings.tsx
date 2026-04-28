@@ -30,6 +30,7 @@ import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { EmailSignatures } from '@/components/settings/EmailSignatures';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
+import { MessageTemplatesSettings } from '@/components/settings/MessageTemplatesSettings';
 import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
 import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
 import { AgencySettings } from '@/components/settings/AgencySettings';
@@ -104,6 +105,7 @@ const Settings = () => {
     if (tab === 'billing' && isAdmin) return 'billing';
     if (tab === 'integrations' && isAdmin) return 'integrations';
     if (tab === 'account') return 'account';
+    if (tab === 'templates') return 'templates';
     if (tab === 'connectors' && !isCollaborator) return 'connectors';
     if (tab === 'team' && !isCollaborator) return 'team';
     if (tab === 'agency' && isAgency) return 'agency';
@@ -114,6 +116,7 @@ const Settings = () => {
   const tabs = [
     { value: 'general', label: 'Général', icon3d: iconBuilding3d },
     { value: 'account', label: 'Mon compte', icon3d: iconProfile3d },
+    { value: 'templates', label: 'Templates', icon3d: iconProfile3d },
     ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon3d: iconTeam3d }] : []),
     ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
     { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
@@ -344,6 +347,10 @@ const Settings = () => {
 
             {activeTab === 'credits' && (
               <AICreditsSettings />
+            )}
+
+            {activeTab === 'templates' && (
+              <MessageTemplatesSettings />
             )}
 
             {activeTab === 'connectors' && (
