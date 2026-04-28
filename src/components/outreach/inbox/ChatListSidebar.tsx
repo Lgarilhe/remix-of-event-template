@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-import { Search, MessageSquare, RefreshCw, Tag, ChevronDown, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Search, MessageSquare, RefreshCw, Tag, ChevronDown, ArrowUpRight, ArrowDownLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
@@ -76,6 +76,18 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
+  // Mode rail collapsable — sidebar 64px (juste avatars) ou 240px (full).
+  // Persisté dans localStorage pour respecter la préférence user.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('konekt_inbox_sidebar_collapsed') === '1';
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('konekt_inbox_sidebar_collapsed', collapsed ? '1' : '0');
+    } catch { /* localStorage full ou private mode */ }
+  }, [collapsed]);
+
   const classicCount = chats.filter(c => isClassicChat(c)).length;
   const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
   const unreadCount = chats.filter(c => hasUnread(c)).length;
@@ -103,43 +115,75 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      // Width sidebar : 240px sur md+ (768px), full width sur mobile.
-      // 240px choisi pour libérer maximum d'espace à la conversation
-      // même sur viewport étroit (~ tablette ou écran avec DevTools).
-      "h-full bg-background min-h-0 overflow-hidden flex flex-col",
-      "w-full md:w-[240px] md:flex-shrink-0 md:border-r md:border-border",
+      // Width sidebar adaptative :
+      //   - mobile : full width
+      //   - md+ collapsed : 64px (juste avatars)
+      //   - md+ expanded  : 240px (design complet)
+      "h-full bg-background min-h-0 overflow-hidden flex flex-col transition-[width] duration-200 ease-out",
+      collapsed ? "md:w-[64px]" : "md:w-[240px]",
+      "w-full md:flex-shrink-0 md:border-r md:border-border",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Header sidebar moderne */}
-      <div className="px-3 pt-3 pb-2 border-b border-border space-y-2 bg-background/95 backdrop-blur-sm">
-        {/* Title + refresh */}
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground tracking-tight text-base">Messages</h3>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md"
-            onClick={onRefresh}
-            disabled={loadingChats}
-            aria-label="Rafraîchir les messages"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loadingChats && "animate-spin")} aria-hidden="true" />
-          </Button>
+      <div className={cn(
+        "border-b border-border bg-background/95 backdrop-blur-sm",
+        collapsed ? "px-2 py-3 space-y-2" : "px-3 pt-3 pb-2 space-y-2",
+      )}>
+        {/* Title + actions (refresh + toggle collapse) */}
+        <div className={cn(
+          "flex items-center",
+          collapsed ? "justify-center flex-col gap-1" : "justify-between",
+        )}>
+          {!collapsed && (
+            <h3 className="font-semibold text-foreground tracking-tight text-base">Messages</h3>
+          )}
+          <div className="flex items-center gap-0.5">
+            {!collapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-md"
+                onClick={onRefresh}
+                disabled={loadingChats}
+                aria-label="Rafraîchir les messages"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", loadingChats && "animate-spin")} aria-hidden="true" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md hidden md:inline-flex"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? "Étendre la sidebar" : "Réduire la sidebar"}
+              title={collapsed ? "Étendre la sidebar" : "Réduire la sidebar"}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <PanelLeftClose className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+            </Button>
+          </div>
         </div>
 
-        {/* Search avec design moderne */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-          <Input
-            placeholder="Rechercher une conversation..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9 text-[13px] bg-muted/40 border-transparent rounded-lg focus-visible:bg-background focus-visible:border-border transition-colors"
-            aria-label="Rechercher dans les messages"
-          />
-        </div>
+        {/* Search avec design moderne (masqué en mode rail) */}
+        {!collapsed && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+            <Input
+              placeholder="Rechercher une conversation..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-9 h-9 text-[13px] bg-muted/40 border-transparent rounded-lg focus-visible:bg-background focus-visible:border-border transition-colors"
+              aria-label="Rechercher dans les messages"
+            />
+          </div>
+        )}
         
-        {/* Source filter — pills compactes */}
+        {/* Filtres — masqués en mode rail collapsed */}
+        {!collapsed && (
+          <>
         <div className="flex gap-1 overflow-hidden">
           {([
             { key: 'all' as const, label: 'Tous', count: chats.length },
@@ -309,6 +353,8 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             </button>
           </div>
         )}
+          </>
+        )}
       </div>
 
       {/* Chat List */}
@@ -359,6 +405,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 onClick={() => onChatSelect(chat)}
                 onDeleteChat={onDeleteChat}
                 isDeletingChat={isDeletingChat}
+                collapsed={collapsed}
               />
             ))}
             {hasMoreChats && searchQuery && onLoadAllChats && (

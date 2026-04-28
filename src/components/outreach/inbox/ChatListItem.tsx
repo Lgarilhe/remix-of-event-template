@@ -57,6 +57,8 @@ interface ChatListItemProps {
   onClick: () => void;
   onDeleteChat?: (chatId: string) => Promise<boolean>;
   isDeletingChat?: boolean;
+  /** Mode rail collapsed (sidebar 64px) — show only avatar + unread dot */
+  collapsed?: boolean;
 }
 
 /** Récupère le texte d'aperçu du dernier message (avec préfixe "Tu:" si is_sender) */
@@ -78,6 +80,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   onClick,
   onDeleteChat,
   isDeletingChat,
+  collapsed = false,
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
@@ -104,6 +107,41 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
     }
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
+  // ─── Mode rail compact : juste avatar + unread dot ─────────────────
+  if (collapsed) {
+    return (
+      <div className="relative group px-2">
+        <button
+          onClick={onClick}
+          title={`${displayName}${lastMsgPreview ? ` — ${lastMsgPreview}` : ''}`}
+          className={cn(
+            'w-full p-1.5 flex items-center justify-center rounded-lg transition-all duration-150',
+            isSelected ? 'bg-accent' : 'hover:bg-muted/60',
+          )}
+        >
+          <div className="relative shrink-0">
+            <Avatar className={cn(
+              'w-9 h-9 rounded-full',
+              isSelected ? 'ring-2 ring-accent-foreground/20' : 'ring-1 ring-border/40',
+            )}>
+              <AvatarImage src={avatar} className="rounded-full" />
+              <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-xs">
+                {getInitials(displayName)}
+              </AvatarFallback>
+            </Avatar>
+            {/* Unread dot indicator */}
+            {unread && (
+              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold bg-foreground text-background rounded-full ring-2 ring-background tabular-nums">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
+    );
+  }
+
+  // ─── Mode normal : avatar + nom + preview + badges ─────────────────
   return (
     <div className="relative group px-1.5">
       <button
