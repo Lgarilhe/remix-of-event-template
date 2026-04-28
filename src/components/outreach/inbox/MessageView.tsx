@@ -1,52 +1,48 @@
+/**
+ * MessageView — Conversation active avec layout CSS Grid indestructible.
+ *
+ * Architecture (refonte 2026-04-28) :
+ *
+ *   .root [grid grid-rows-[auto_1fr_auto] h-full overflow-hidden]
+ *   ├── HEADER  (row auto)        — sticky top, avatar + nom + actions
+ *   ├── BODY    (row 1fr)         — overflow-y-auto, messages timeline
+ *   └── COMPOSER (row auto)       — toujours visible, MessageComposer
+ *
+ * Pourquoi CSS Grid au lieu de flex column ?
+ *  - Les rangées `auto` ne peuvent JAMAIS être compressées sous leur contenu
+ *  - La rangée `1fr` prend exactement le reste, ni plus ni moins
+ *  - Pas de risque qu'un overflow:hidden parent cache une zone shrink
+ *  - Pas de magic flex-1 + min-h-0 + shrink-0 fragile
+ *
+ * Le composer (MessageComposer) est extrait dans son propre composant et
+ * a son propre bg-card + border-top — visuellement distinct, garanti visible.
+ */
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { InMailTextEditor } from '../InMailTextEditor';
 import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
+import { MessageComposer } from './MessageComposer';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import {
-  Sparkles,
-} from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { 
-  ChevronLeft,
-  User,
-  Loader2,
-  MessageSquare,
-  Clock,
-  CheckCheck,
-  Check,
-  Zap,
-  CalendarPlus,
-  Trash2,
+import {
+  ChevronLeft, User, Loader2, MessageSquare, Clock, CheckCheck, Check, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
-  getChatDisplayName,
-  getChatHeadline,
-  getChatSubject,
-  getChatAvatar,
-  getInitials,
-  getMessageText,
-  getChatJobInfo,
-  getAttendeeProfileId,
+  getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
+  getInitials, getMessageText, getChatJobInfo, getAttendeeProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 
@@ -93,8 +89,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
   newMessage,
   sending,
   replySuggestions,
-  loadingSuggestions,
-  suggestionsLoaded,
   enrollmentsMap,
   availableJobs,
   messagesEndRef,
@@ -106,10 +100,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onSendMessage,
   onSuggestionClick,
   onSuggestionSend,
-  onFetchSuggestions,
-  onClearSuggestions,
   onAddToPipeline,
-  onEnrollInSequence,
   onScheduleCall,
   calendlyLink,
   onAddReaction,
@@ -125,55 +116,40 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
   const localContainerRef = useRef<HTMLDivElement>(null);
 
-  // Chat status (snooze + archive) — Inbox refonte Phase 1
-  // Hook indépendant utilisé ici (état dupliqué avec useMessagesInbox.chatStatus
-  // mais cost négligeable et évite de propager 6 props supplémentaires).
+  // Snooze + archive
   const chatStatus = useChatStatus();
 
-  // Draft auto-save — restore le brouillon au mount du chat sélectionné
-  // FIX: on dédie le restore au moment où la chat selection change, pas à chaque
-  // changement de draft. Sinon on overwrite le newMessage parent à chaque tick.
+  // Draft auto-save : restore au changement de chat, jamais d'écrasement.
   const { draft, setDraft, clearDraft } = useChatDraft(selectedChat?.id);
   const lastChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = selectedChat?.id || null;
     if (id === lastChatIdRef.current) return;
     lastChatIdRef.current = id;
-    // Au changement de chat, si on a un draft sauvegardé et que l'input parent
-    // est vide, on restaure le draft. NB : useChatDraft load le draft async,
-    // donc on attend un tick pour être sûr d'avoir la valeur fraîche.
     if (id && draft && !newMessage) {
       onNewMessageChange(draft);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.id]);
 
-  // Sync : à chaque changement de newMessage côté parent, on persiste le draft.
-  // FIX: on ne persiste QUE si le user a effectivement tapé quelque chose
-  // (newMessage non vide). Sinon on évite de spammer localStorage avec des
-  // drafts vides qui delete les drafts existants au mount.
   useEffect(() => {
     if (!selectedChat?.id) return;
-    if (!newMessage) return; // ne pas écraser un draft existant avec ""
+    if (!newMessage) return;
     setDraft(newMessage);
   }, [newMessage, selectedChat?.id, setDraft]);
 
-  // Cleanup du draft après envoi réussi (sending → false + newMessage vide)
   const wasSendingRef = useRef(sending);
   useEffect(() => {
-    if (wasSendingRef.current && !sending && !newMessage) {
-      // Transition sending true→false avec input vide = envoi réussi
-      clearDraft();
-    }
+    if (wasSendingRef.current && !sending && !newMessage) clearDraft();
     wasSendingRef.current = sending;
   }, [sending, newMessage, clearDraft]);
 
-  // Scroll to bottom when messages load or change
+  // Scroll to bottom on new messages
   useEffect(() => {
     if (!loadingMessages && messages.length > 0) {
       const container = localContainerRef.current;
       if (container) {
-        const timeout = setTimeout(() => {
+        const t = setTimeout(() => {
           requestAnimationFrame(() => {
             try {
               container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
@@ -182,7 +158,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             }
           });
         }, 80);
-        return () => clearTimeout(timeout);
+        return () => clearTimeout(t);
       }
     }
   }, [messages, loadingMessages]);
@@ -192,8 +168,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const profileName = selectedChat ? getChatDisplayName(selectedChat) : null;
   const { events: activityEvents } = useProfileActivity(profileId, profileUrl, profileName);
 
-  // Merge messages and activity events into a unified timeline
-  type TimelineItem = 
+  type TimelineItem =
     | { kind: 'message'; data: Message }
     | { kind: 'event'; data: ActivityEvent };
 
@@ -209,7 +184,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return items;
   }, [messages, activityEvents]);
 
-  // Move hooks that were after the early return to before it
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const attendeeId = selectedChat?.attendees?.[0]?.id;
   const cachedPicture = attendeeId ? getPicture(attendeeId) : null;
@@ -222,14 +196,20 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
+  // ─── Empty state ──────────────────────────────────────────────────────
   if (!selectedChat) {
     return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        <div className="text-center">
-          <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
+      <div className="h-full grid place-items-center bg-background text-muted-foreground">
+        <div className="text-center max-w-xs px-6">
+          <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
             <MessageSquare className="w-6 h-6" />
           </div>
-          <p className="text-sm uppercase tracking-wide">Sélectionnez une conversation</p>
+          <p className="text-sm font-medium text-foreground/70">
+            Sélectionnez une conversation
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Vos messages LinkedIn et InMail apparaîtront ici.
+          </p>
         </div>
       </div>
     );
@@ -239,10 +219,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const headline = getChatHeadline(selectedChat);
   const subject = getChatSubject(selectedChat);
   const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
+  const channel = detectChannel(selectedChat.account_type);
 
-  const hasCandidateMessage = messages.some(m => !m.is_sender);
-
-  // Find the full job data for the current conversation's job
   const currentJobData = jobInfo?.job_id
     ? availableJobs.find(j => j.id === jobInfo.job_id)
     : undefined;
@@ -259,306 +237,273 @@ export const MessageView: React.FC<MessageViewProps> = ({
     currentJobData: currentJobData || undefined,
     profileData: {
       name: displayName,
-      headline: headline,
+      headline,
       currentRole: headline?.split(' at ')[0] || headline?.split(' chez ')[0],
       currentCompany: headline?.split(' at ')[1] || headline?.split(' chez ')[1],
       skills: headline?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
     },
-    availableJobs: availableJobs,
+    availableJobs,
     calendlyLink: calendlyLink || undefined,
   };
 
+  // ─── Layout principal — CSS Grid 4 rangées ─────────────────────────────
+  // header (auto) | messages (1fr) | AI panel optionnel (auto) | composer (auto)
+  // Le composer est TOUJOURS en row 4, garantie d'être visible.
   return (
-    <div className="flex-1 flex flex-col min-w-0 min-h-0">
-      {/* Chat Header */}
-      <div className="p-2 md:p-3 border-b border-border flex items-center gap-2 md:gap-3 bg-background shrink-0">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={onBack}
-          aria-label="Retour à la liste des messages"
-        >
-          <ChevronLeft className="w-5 h-5" aria-hidden="true" />
-        </Button>
-        <Avatar className="w-8 h-8 md:w-10 md:h-10 rounded-lg shrink-0">
-          <AvatarImage src={avatar} />
-          <AvatarFallback className="bg-foreground/10 text-foreground font-medium rounded-lg text-xs md:text-sm">
-            {getInitials(displayName)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-foreground truncate text-xs md:text-sm uppercase tracking-wide flex items-center gap-1.5">
-            <ChannelIcon channel={detectChannel(selectedChat.account_type)} size="sm" />
-            {displayName}
-          </h4>
-          {headline && (
-            <p className="text-xs md:text-xs text-muted-foreground truncate">{headline}</p>
-          )}
-          {subject && (
-            <p className="text-xs text-muted-foreground truncate flex items-center gap-1 hidden md:flex">
-              <span>📧</span> {subject}
-            </p>
+    <div
+      className="h-full min-h-0 grid bg-background overflow-hidden relative"
+      style={{ gridTemplateRows: 'auto minmax(0, 1fr) auto auto' }}
+      data-component="message-view"
+    >
+      {/* ═══ HEADER (auto) ═════════════════════════════════════════════ */}
+      <header className="border-b border-border bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 md:hidden"
+            onClick={onBack}
+            aria-label="Retour"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+
+          <Avatar className="w-10 h-10 rounded-md shrink-0">
+            <AvatarImage src={avatar} />
+            <AvatarFallback className="bg-foreground/10 text-foreground font-semibold rounded-md text-sm">
+              {getInitials(displayName)}
+            </AvatarFallback>
+          </Avatar>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <ChannelIcon channel={channel} size="sm" />
+              <h2 className="font-semibold text-foreground truncate text-sm">
+                {displayName}
+              </h2>
+              {jobInfo?.job_title && (
+                <span className="hidden md:inline text-[10px] uppercase tracking-wider text-muted-foreground border border-border px-1.5 py-0.5">
+                  {jobInfo.job_title}
+                </span>
+              )}
+            </div>
+            {headline && (
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                {headline}
+              </p>
+            )}
+            {subject && (
+              <p className="hidden md:block text-[11px] text-muted-foreground/80 truncate mt-0.5">
+                Objet : {subject}
+              </p>
+            )}
+          </div>
+
+          {/* Actions header (desktop only) */}
+          <div className="hidden md:flex items-center gap-1 shrink-0">
+            <SnoozeArchiveButtons
+              chatId={selectedChat.id}
+              accountId={selectedChat.account_id}
+              isSnoozed={chatStatus.isSnoozed(selectedChat.id)}
+              isArchived={chatStatus.isArchived(selectedChat.id)}
+              snoozedUntil={chatStatus.getSnoozedUntil(selectedChat.id)}
+              onSnooze={chatStatus.snoozeChat}
+              onArchive={chatStatus.archiveChat}
+              onRestore={chatStatus.restoreChat}
+              compact
+            />
+            <div className="w-px h-5 bg-border mx-1" aria-hidden="true" />
+            <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
+            {selectedChat.attendees?.[0]?.profile_url && (
+              <a
+                href={selectedChat.attendees[0].profile_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-7 px-2 inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                title="Voir le profil LinkedIn"
+              >
+                <User className="w-3 h-3" />
+                <span>Profil</span>
+              </a>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ═══ BODY — Messages timeline (1fr) ═══════════════════════════ */}
+      <div
+        ref={localContainerRef}
+        className="overflow-y-auto overscroll-y-contain bg-background"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        <div className="px-4 py-6 max-w-4xl mx-auto">
+          {loadingMessages && messages.length === 0 ? (
+            <div className="flex flex-col gap-3">
+              {[40, 32, 64, 40, 28].map((w, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'h-10 bg-muted/50 animate-pulse rounded-md',
+                    i % 2 === 0 ? 'self-start' : 'self-end',
+                  )}
+                  style={{ width: `${w}%`, animationDelay: `${i * 80}ms` }}
+                />
+              ))}
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="grid place-items-center min-h-[40vh] text-muted-foreground">
+              <div className="text-center max-w-xs">
+                <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-medium">Aucun message</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Démarrez la conversation depuis le composer ci-dessous.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {timeline.map((item, idx) => {
+                if (item.kind === 'event') {
+                  return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
+                }
+                const msg = item.data;
+                const isSender = !!msg.is_sender;
+                return (
+                  <div
+                    key={msg.id ?? idx}
+                    className={cn(
+                      'flex group/msg relative',
+                      isSender ? 'justify-end' : 'justify-start',
+                    )}
+                  >
+                    <div className="relative max-w-[85%] md:max-w-[70%]">
+                      <div
+                        className={cn(
+                          'px-4 py-2.5 rounded-lg text-sm leading-relaxed',
+                          isSender
+                            ? 'bg-foreground text-background rounded-br-sm'
+                            : 'bg-muted text-foreground border border-border/40 rounded-bl-sm',
+                        )}
+                      >
+                        <p className="whitespace-pre-wrap break-words">
+                          {getMessageText(msg)}
+                        </p>
+                        <div
+                          className={cn(
+                            'flex items-center gap-1 mt-1.5 text-[10px]',
+                            isSender ? 'justify-end' : 'justify-start',
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              isSender ? 'text-background/60' : 'text-muted-foreground',
+                            )}
+                          >
+                            {formatMessageTime(msg.timestamp)}
+                          </span>
+                          {isSender && (msg.read || msg.seen === 1 ? (
+                            <CheckCheck className="w-3 h-3 text-background/60" />
+                          ) : msg.delivered ? (
+                            <Check className="w-3 h-3 text-background/60" />
+                          ) : (
+                            <Clock className="w-3 h-3 text-background/40" />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Reactions (received messages) */}
+                      {!isSender && onAddReaction && msg.id != null && (
+                        <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background border border-border px-1 py-0.5 rounded-md shadow-md">
+                          {REACTION_EMOJIS.map(emoji => (
+                            <button
+                              key={emoji}
+                              disabled={isReacting && reactingMsgId === msg.id}
+                              onClick={async () => {
+                                setReactingMsgId(msg.id);
+                                await onAddReaction(msg.id, emoji);
+                                setReactingMsgId(null);
+                              }}
+                              className="h-6 w-6 grid place-items-center text-sm hover:bg-accent/50 transition-colors disabled:opacity-50 rounded-sm"
+                              aria-label={`Réagir avec ${emoji}`}
+                            >
+                              {isReacting && reactingMsgId === msg.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                emoji
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Delete button (sent messages) */}
+                      {isSender && onDeleteMessage && msg.id != null && (
+                        <button
+                          onClick={() => setDeleteMsgConfirm(msg.id)}
+                          className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 grid place-items-center bg-destructive text-destructive-foreground border border-border shadow-md hover:bg-destructive/80 rounded-sm"
+                          aria-label="Supprimer ce message"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
           )}
         </div>
-        
-        {/* Snooze + Archive buttons (Inbox refonte Phase 1) */}
-        <div className="hidden md:flex items-center gap-0.5">
-          <SnoozeArchiveButtons
+      </div>
+
+      {/* ═══ AI Panel (row 3 auto — return null si fermé) ════════════ */}
+      {/* Wrapper avec max-h-[40vh] + overflow-auto pour ne pas écraser
+          le composer même si le contenu IA est volumineux. */}
+      {aiPanelOpen && (
+        <div className="max-h-[40vh] overflow-y-auto">
+          <InlineAIPanel
+            open={aiPanelOpen}
+            onClose={() => setAiPanelOpen(false)}
+            context={aiContext}
             chatId={selectedChat.id}
             accountId={selectedChat.account_id}
-            isSnoozed={chatStatus.isSnoozed(selectedChat.id)}
-            isArchived={chatStatus.isArchived(selectedChat.id)}
-            snoozedUntil={chatStatus.getSnoozedUntil(selectedChat.id)}
-            onSnooze={chatStatus.snoozeChat}
-            onArchive={chatStatus.archiveChat}
-            onRestore={chatStatus.restoreChat}
-            compact
+            onSuggestionSelect={(text) => onSuggestionClick(text)}
+            onSuggestionSend={(text) => onSuggestionSend(text)}
+            onAddToPipeline={onAddToPipeline}
+            sending={sending}
           />
-        </div>
-
-        {/* Tone Selector - hidden on mobile to save space */}
-        <div className="hidden md:block">
-          <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
-        </div>
-
-        {/* AI Panel toggle */}
-        {messages.length > 0 && (
-          <button
-            className={cn(
-              "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border group shrink-0",
-              aiPanelOpen
-                ? "bg-accent text-foreground border-border"
-                : "bg-foreground text-background border-border"
-            )}
-            onClick={() => setAiPanelOpen(!aiPanelOpen)}
-          >
-            <span className="relative z-10 flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">IA</span>
-            </span>
-          </button>
-        )}
-
-        {/* Calendly button */}
-        <button
-          className={cn(
-            "relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border bg-background text-foreground group shrink-0 flex items-center",
-            calendlyLink ? "border-border" : "border-border opacity-70"
-          )}
-          onClick={onScheduleCall}
-          title={calendlyLink ? "Insérer le lien Calendly" : "Configurer un lien Calendly dans le projet"}
-        >
-          <span className="relative z-10 flex items-center gap-1">
-            <CalendarPlus className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">RDV</span>
-          </span>
-        </button>
-
-        {selectedChat.attendees?.[0]?.profile_url && (
-          <a
-            href={selectedChat.attendees[0].profile_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="relative overflow-hidden h-8 px-2 md:px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group shrink-0 flex items-center"
-          >
-            <span className="relative z-10 flex items-center gap-1">
-              <User className="w-3 h-3" />
-              <span className="hidden md:inline">Profil</span>
-            </span>
-          </a>
-        )}
-      </div>
-
-      {/* Messages Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-4" ref={localContainerRef} style={{ WebkitOverflowScrolling: 'touch' }}>
-        {loadingMessages && messages.length === 0 ? (
-          <div className="flex flex-col justify-end h-full gap-3 pb-2">
-            <div className="flex justify-start">
-              <div className="h-10 bg-muted rounded-2xl rounded-bl-sm w-2/5 animate-pulse" />
-            </div>
-            <div className="flex justify-end">
-              <div className="h-10 bg-primary/15 rounded-2xl rounded-br-sm w-1/3 animate-pulse" style={{ animationDelay: '100ms' }} />
-            </div>
-            <div className="flex justify-start">
-              <div className="h-16 bg-muted rounded-2xl rounded-bl-sm w-3/5 animate-pulse" style={{ animationDelay: '200ms' }} />
-            </div>
-            <div className="flex justify-end">
-              <div className="h-10 bg-primary/15 rounded-2xl rounded-br-sm w-2/5 animate-pulse" style={{ animationDelay: '300ms' }} />
-            </div>
-            <div className="flex justify-start">
-              <div className="h-10 bg-muted rounded-2xl rounded-bl-sm w-1/4 animate-pulse" style={{ animationDelay: '400ms' }} />
-            </div>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <div className="text-center">
-              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun message dans cette conversation</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {timeline.map((item, idx) => {
-              if (item.kind === 'event') {
-                return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
-              }
-              const msg = item.data;
-              return (
-                <div
-                  key={msg.id ?? idx}
-                  className={cn("flex group/msg relative", msg.is_sender ? "justify-end" : "justify-start")}
-                >
-                  <div className="relative max-w-[75%]">
-                    <div
-                      className={cn(
-                        "px-4 py-2.5",
-                        msg.is_sender
-                          ? "bg-foreground text-background"
-                          : "bg-muted text-foreground border border-border"
-                      )}
-                    >
-                      <p className="text-sm whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
-                      <div className={cn(
-                        "flex items-center gap-1 mt-1",
-                        msg.is_sender ? "justify-end" : "justify-start"
-                      )}>
-                        <span className={cn(
-                          "text-xs",
-                          msg.is_sender ? "text-background/70" : "text-muted-foreground"
-                        )}>
-                          {formatMessageTime(msg.timestamp)}
-                        </span>
-                        {!!msg.is_sender && (
-                          (msg.read || msg.seen === 1) ? (
-                            <CheckCheck className="w-3 h-3 text-background/70" />
-                          ) : msg.delivered ? (
-                            <Check className="w-3 h-3 text-background/70" />
-                          ) : (
-                            <Clock className="w-3 h-3 text-background/50" />
-                          )
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Reaction bar for received messages */}
-                    {!msg.is_sender && onAddReaction && msg.id != null && (
-                      <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background/90 backdrop-blur-sm border border-border px-1 py-0.5 shadow-md">
-                        {REACTION_EMOJIS.map(emoji => (
-                          <button
-                            key={emoji}
-                            disabled={isReacting && reactingMsgId === msg.id}
-                            onClick={async () => {
-                              setReactingMsgId(msg.id);
-                              await onAddReaction(msg.id, emoji);
-                              setReactingMsgId(null);
-                            }}
-                            className="h-6 w-6 flex items-center justify-center text-sm hover:bg-accent transition-colors disabled:opacity-50"
-                          >
-                            {isReacting && reactingMsgId === msg.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              emoji
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Delete button for sent messages */}
-                    {!!msg.is_sender && onDeleteMessage && msg.id != null && (
-                      <button
-                        onClick={() => setDeleteMsgConfirm(msg.id)}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 flex items-center justify-center bg-destructive text-destructive-foreground border border-border shadow-md hover:bg-destructive/80"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
-
-      {/* Inline AI Panel — between messages and input */}
-      <InlineAIPanel
-        open={aiPanelOpen}
-        onClose={() => setAiPanelOpen(false)}
-        context={aiContext}
-        chatId={selectedChat.id}
-        accountId={selectedChat.account_id}
-        onSuggestionSelect={(text) => { onSuggestionClick(text); }}
-        onSuggestionSend={(text) => { onSuggestionSend(text); }}
-        onAddToPipeline={onAddToPipeline}
-        sending={sending}
-      />
-
-      {/* AI suggestions badge when panel is closed */}
-      {replySuggestions.length > 0 && !aiPanelOpen && (
-        <div className="px-3 pt-2 shrink-0">
-          <button
-            onClick={() => setAiPanelOpen(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs uppercase tracking-wider font-medium border border-border bg-accent/10 hover:bg-accent/20 transition-colors"
-          >
-            <Sparkles className="w-3 h-3" />
-            {replySuggestions.length} suggestions IA
-          </button>
         </div>
       )}
 
-      {/* Separator before input */}
-      <div className="border-t border-border shrink-0" />
+      {/* ═══ COMPOSER (row 4 auto) — TOUJOURS visible ════════════════ */}
+      <MessageComposer
+        value={newMessage}
+        onChange={onNewMessageChange}
+        onSend={onSendMessage}
+        sending={sending}
+        onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
+        hasAISuggestions={replySuggestions.length > 0}
+        aiSuggestionsCount={replySuggestions.length}
+        onScheduleCall={onScheduleCall}
+        hasCalendlyLink={!!calendlyLink}
+        channel={channel?.toUpperCase()}
+      />
 
-      {/* Message Input — shrink-0 + bg-background pour garantir la visibilité */}
-      <div className="px-3 py-3 shrink-0 bg-background">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 min-w-0">
-            <InMailTextEditor
-              value={newMessage}
-              onChange={onNewMessageChange}
-              placeholder={`Écrivez un message... (${typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl'}+Entrée pour envoyer)`}
-              minHeight="60px"
-              maxHeight="200px"
-              showWordCount={false}
-              maxCharacters={1900}
-              className="text-sm"
-              onSend={onSendMessage}
-              autoResize={true}
-            />
-          </div>
-          <button
-            onClick={onSendMessage}
-            disabled={sending || !newMessage.trim()}
-            className="relative overflow-hidden h-10 w-10 bg-foreground text-background border border-border flex items-center justify-center mb-[2px] disabled:opacity-50 disabled:pointer-events-none group shrink-0"
-            aria-label="Envoyer le message"
-          >
-            {sending ? (
-              <Loader2 className="w-4 h-4 animate-spin relative z-10" />
-            ) : (
-              <svg className="w-4 h-4 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Delete message confirmation dialog */}
+      {/* ─── Delete confirmation ─────────────────────────────────────── */}
       <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer ce message ?</AlertDialogTitle>
             <AlertDialogDescription>
-              LinkedIn : la suppression n'est possible que dans les 60 premières minutes après l'envoi. Cette action est irréversible.
+              LinkedIn : la suppression n'est possible que dans les 60 premières minutes
+              après l'envoi. Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               disabled={isDeleting}
+              className="bg-destructive hover:bg-destructive/90"
               onClick={async () => {
                 if (deleteMsgConfirm && onDeleteMessage) {
                   await onDeleteMessage(deleteMsgConfirm);

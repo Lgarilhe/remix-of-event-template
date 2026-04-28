@@ -103,7 +103,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      "w-full md:w-80 border-r border-border flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
+      // Width géré par le grid parent (MessagesInbox grid-cols-[360px_1fr]) ;
+      // ici on prend juste 100% du grid cell + flex column pour le layout interne.
+      "w-full h-full flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Compact Header */}

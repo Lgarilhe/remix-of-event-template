@@ -134,8 +134,19 @@ const MessagesInboxInner: React.FC<
         </div>
       )}
 
-      {/* Desktop layout + mobile chat list */}
-      <div className={cn("flex bg-background overflow-hidden relative", fullHeight ? "h-full border-x border-t border-border" : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-border")}>
+      {/* Desktop layout + mobile chat list — CSS Grid robuste (refonte 2026-04-28) */}
+      <div
+        className={cn(
+          "bg-background overflow-hidden relative grid",
+          // Mobile : sidebar full width (le MessageView est en overlay fixed)
+          // Desktop md+ : 2 colonnes — sidebar 360px + reste
+          "grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)]",
+          fullHeight
+            ? "h-full min-h-0 border border-border rounded-md"
+            : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-border rounded-md"
+        )}
+        data-component="messages-inbox-grid"
+      >
         {/* Chat List Sidebar */}
         <ChatListSidebar
           chats={inbox.chats}
@@ -169,8 +180,8 @@ const MessagesInboxInner: React.FC<
           isDeletingChat={isDeleting}
         />
 
-        {/* Desktop Message View */}
-        <div className="hidden md:flex flex-1 min-w-0 min-h-0 h-full">
+        {/* Desktop Message View — grid cell, hauteur garantie par grid */}
+        <div className="hidden md:block h-full min-w-0 min-h-0 overflow-hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
