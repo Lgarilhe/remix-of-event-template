@@ -123,7 +123,10 @@ Deno.serve(async (req) => {
         if (invError.code === "23505") {
           throw new Error("Une invitation est déjà en cours pour cet email");
         }
-        throw invError;
+        // CRITIQUE : invError est un PostgresError, pas un Error JS standard.
+        // Sans wrapping, le catch principal voit error instanceof Error === false
+        // → renvoie "Unknown error" générique au frontend. Wrapping forcé :
+        throw new Error(`DB insert failed: ${invError.message || invError.code || JSON.stringify(invError)}`);
       }
 
       invitationId = invitation.id;
@@ -177,8 +180,18 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("send-team-invitation failed:", message, error);
+    // Extraction défensive du message — on couvre Error standard, PostgresError
+    // (avec .message + .code + .details), et tout objet avec une propriété message.
+    let message = "Erreur inconnue lors de l'envoi de l'invitation";
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (error && typeof error === "object") {
+      const errObj = error as Record<string, unknown>;
+      message = String(errObj.message || errObj.error || errObj.code || JSON.stringify(error));
+    } else if (typeof error === "string") {
+      message = error;
+    }
+    console.error("[send-team-invitation] FAILED:", message, "| raw:", error);
 
     return new Response(JSON.stringify({ success: false, error: message }), {
       status: 400,
