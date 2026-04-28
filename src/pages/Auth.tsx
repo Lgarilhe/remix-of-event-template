@@ -8,6 +8,7 @@ import { SEOHead } from '@/components/SEOHead';
 import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
+import { markWelcomePending } from '@/components/onboarding/WelcomeOnboardingModal';
 import { getValidatedSession } from '@/lib/authSession';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 
@@ -118,6 +119,8 @@ const Auth = () => {
           title: 'Invitation acceptée',
           description: 'Vous avez bien rejoint votre équipe.',
         });
+        // Trigger l'onboarding modale 3 étapes au prochain mount AppLayout
+        markWelcomePending();
         navigate(withPreviewAccessToken('/settings'), { replace: true });
         return;
       }
