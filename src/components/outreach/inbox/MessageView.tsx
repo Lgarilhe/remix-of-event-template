@@ -283,6 +283,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     },
     availableJobs,
     calendlyLink: calendlyLink || undefined,
+    tone: currentTone, // Passe le tone choisi par l'user au prompt Claude
   };
 
   // ─── LAYOUT — CSS Grid 3 rangées (auto / 1fr / auto) ─────────────────

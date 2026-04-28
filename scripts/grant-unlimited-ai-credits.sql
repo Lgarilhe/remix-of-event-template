@@ -38,10 +38,16 @@ BEGIN
     RAISE EXCEPTION 'Aucune organisation trouvée pour Laurent (user_id %)', v_user_id;
   END IF;
 
-  -- Upsert la balance avec 999M crédits
+  -- Upsert la balance avec 999M crédits sur TOUTES les colonnes :
+  --   credits_remaining : legacy (compat ancien code)
+  --   plan_credits      : ce que lit l'edge function ai-credits/get_balance
+  --   topup_credits     : crédits supplémentaires achetés
+  --   credits_total     : pour calculer le pourcentage utilisé
   INSERT INTO public.ai_credit_balances (
     organization_id,
     credits_remaining,
+    plan_credits,
+    topup_credits,
     credits_total,
     period_start,
     period_end,
@@ -51,12 +57,16 @@ BEGIN
     v_org_id,
     v_unlimited,
     v_unlimited,
+    0,
+    v_unlimited,
     now(),
     now() + interval '100 years',
     now()
   )
   ON CONFLICT (organization_id) DO UPDATE SET
     credits_remaining = v_unlimited,
+    plan_credits = v_unlimited,
+    topup_credits = 0,
     credits_total = v_unlimited,
     period_end = now() + interval '100 years',
     updated_at = now();

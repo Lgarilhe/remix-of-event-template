@@ -64,6 +64,9 @@ interface AnalysisContext {
   profileData?: ProfileData;
   availableJobs?: JobData[];
   currentJobData?: JobData;
+  /** Tone choisi par l'user (formal/casual/direct/empathetic). Utilisé
+      dans le user prompt pour adapter le style des suggestions. */
+  tone?: 'formal' | 'casual' | 'direct' | 'empathetic';
 }
 
 interface JobMatch {
@@ -361,6 +364,22 @@ FORMAT DE SORTIE JSON:
   ]
 }`;
 
+    // Tone instructions selon le choix de l'user (formal/casual/direct/empathetic)
+    const toneInstructions = (() => {
+      switch (context.tone) {
+        case 'formal':
+          return `\nTON CHOISI: Formel et professionnel\n- Vouvoiement systématique\n- Structure claire et organisée\n- Vocabulaire précis et technique si pertinent\n- Formules de politesse appropriées`;
+        case 'casual':
+          return `\nTON CHOISI: Décontracté et friendly\n- Tutoiement naturel\n- Style conversationnel et léger\n- Emojis modérés autorisés (1 max)\n- Ambiance startup / tech`;
+        case 'direct':
+          return `\nTON CHOISI: Direct et efficace\n- Phrases courtes et impactantes\n- Aller droit au but\n- Éviter les formules superflues\n- Focus sur l'action et les prochaines étapes`;
+        case 'empathetic':
+          return `\nTON CHOISI: Empathique et chaleureux\n- Montrer de l'intérêt pour la personne\n- Reconnaître ses préoccupations\n- Proposer du support et de l'accompagnement\n- Créer un lien humain avant le business`;
+        default:
+          return '';
+      }
+    })();
+
     // Dynamic user prompt with only variable data
     const userPrompt = `CONTEXTE CONVERSATION:
 - Candidat: ${context.recipientName}${context.recipientHeadline ? ` (${context.recipientHeadline})` : ''}
@@ -373,7 +392,7 @@ DERNIER MESSAGE DU CANDIDAT:
 "${lastCandidateMessage.text.slice(0, 500)}"
 
 LANGUE: ${detectedLanguage === 'fr' ? 'Français' : 'English'}
-${infoToCollect.length > 0 ? `INFOS MANQUANTES À COLLECTER: ${infoToCollect.join(', ')}` : ''}
+${infoToCollect.length > 0 ? `INFOS MANQUANTES À COLLECTER: ${infoToCollect.join(', ')}` : ''}${toneInstructions}
 ${jobMatchingPrompt}
 
 Analyse cette conversation et retourne le JSON.`;
@@ -383,7 +402,9 @@ Analyse cette conversation et retourne le JSON.`;
     let content = "";
     try {
       const result = await callClaudeCompat({
-        max_tokens: 4096,
+        // 2048 tokens suffisent largement (5 suggestions + intent + 3 jobMatches),
+        // était à 4096 = overkill et augmentait la latence inutilement.
+        max_tokens: 2048,
         temperature: 0.2,
         messages: [
           { role: "system", content: systemPrompt },

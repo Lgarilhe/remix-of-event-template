@@ -40,6 +40,9 @@ interface AnalysisContext {
   };
   availableJobs?: JobData[];
   calendlyLink?: string;
+  /** Tone choisi par l'user (formal / casual / direct / empathetic) — passé
+      au prompt Claude pour adapter le style des suggestions. */
+  tone?: 'formal' | 'casual' | 'direct' | 'empathetic';
 }
 
 interface ReplySuggestion {
