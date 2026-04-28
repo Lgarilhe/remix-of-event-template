@@ -108,6 +108,10 @@ Deno.serve(async (req) => {
     let invitationToken = existingInvitation?.token;
 
     if (!invitationId) {
+      // expires_at explicit (7 jours) au cas où le default DB n'est pas défini
+      // ou que la migration de la table n'a pas créé la default value.
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
       const { data: invitation, error: invError } = await supabase
         .from("organization_invitations")
         .insert({
@@ -115,6 +119,8 @@ Deno.serve(async (req) => {
           email: normalizedEmail,
           role: normalizedRole,
           invited_by: user.id,
+          expires_at: expiresAt,
+          status: "pending",
         })
         .select("id, token")
         .single();
