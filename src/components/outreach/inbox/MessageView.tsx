@@ -248,18 +248,18 @@ export const MessageView: React.FC<MessageViewProps> = ({
     calendlyLink: calendlyLink || undefined,
   };
 
-  // ─── Layout principal — POSITION ABSOLUTE ────────────────────────────
-  // Le composer est rendu en absolute bottom-0 → impossible à cacher,
-  // peu importe le bug que pourrait avoir un parent flex/grid.
-  // Le header est en absolute top-0, les messages en absolute middle.
+  // ─── Layout principal — FLEX COLUMN propre ───────────────────────────
+  // Header (shrink-0) | Messages (flex-1 min-h-0 overflow-y-auto) | Composer (shrink-0)
+  // Plus de fixed/absolute hacks : le composer est dans le flow naturel,
+  // s'aligne automatiquement avec la conversation, et ne chevauche RIEN.
   return (
     <div
-      className="h-full min-h-0 relative bg-background overflow-hidden"
+      className="h-full min-h-0 flex flex-col bg-background overflow-hidden"
       data-component="message-view"
     >
-      {/* ═══ HEADER (absolute top) ═════════════════════════════════════ */}
+      {/* ═══ HEADER (shrink-0) ═════════════════════════════════════════ */}
       <header
-        className="absolute top-0 left-0 right-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm"
+        className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm"
       >
         <div className="flex items-center gap-3 px-4 py-3">
           <Button
@@ -334,18 +334,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </header>
 
-      {/* ═══ BODY — Messages timeline (absolute middle, scrollable) ════
-           top-[72px] = sous le header (~72px de hauteur typique)
-           bottom-[148px] = au-dessus du composer + AI panel space
-           Tailwind ne supporte pas les arbitrary values < 80, on utilise style. */}
+      {/* ═══ BODY — Messages timeline (flex-1, scrollable) ══════════════ */}
       <div
         ref={localContainerRef}
-        className="absolute left-0 right-0 overflow-y-auto overscroll-y-contain bg-background"
-        style={{
-          top: '72px',
-          bottom: aiPanelOpen ? '40vh' : '140px',
-          WebkitOverflowScrolling: 'touch',
-        }}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain bg-background"
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <div className="px-4 py-6 max-w-4xl mx-auto">
           {loadingMessages && messages.length === 0 ? (
@@ -467,14 +460,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* ═══ AI Panel (absolute, juste au-dessus du composer) ═══════════
-           Quand ouvert, il pousse l'espace du body messages via le bottom
-           dynamique du container messages (cf style ci-dessus). */}
+      {/* ═══ AI Panel (shrink-0, conditionnel) ══════════════════════════ */}
       {aiPanelOpen && (
-        <div
-          className="absolute left-0 right-0 z-10 max-h-[calc(40vh-140px)] overflow-y-auto bg-background border-t border-border"
-          style={{ bottom: '140px' }}
-        >
+        <div className="shrink-0 max-h-[40vh] overflow-y-auto bg-background border-t border-border">
           <InlineAIPanel
             open={aiPanelOpen}
             onClose={() => setAiPanelOpen(false)}
@@ -489,21 +477,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       )}
 
-      {/* ═══ COMPOSER — Position FIXED avec offset CSS var ══════════════
-           Position fixed → garantie de visibilité (le bug de propagation
-           de hauteur des parents place le composer absolute hors viewport).
-
-           Offset gauche sur md+ :
-             AppSidebar Konekt = var(--sidebar-width, 16rem) ≈ 256px
-           + Chats list sidebar (Inbox grid) = 360px
-           = ~616px du bord gauche du viewport
-
-           Mobile : sidebar Konekt cachée + chats list cachée si chat
-           sélectionné → left=0 (composer plein écran). */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-30 bg-background md:[left:calc(var(--sidebar-width,16rem)_+_360px)]"
-        data-component="message-composer-wrapper"
-      >
+      {/* ═══ COMPOSER (shrink-0) — dans le flow normal ══════════════════
+           Plus de position: fixed/absolute. Le composer est un bloc
+           shrink-0 à la fin du flex column, donc il s'aligne naturellement
+           avec la largeur de la conversation et ne chevauche RIEN. */}
+      <div className="shrink-0">
         <MessageComposer
           value={newMessage}
           onChange={onNewMessageChange}
