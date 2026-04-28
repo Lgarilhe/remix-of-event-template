@@ -117,9 +117,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       // Width sidebar adaptative :
       //   - mobile : full width
       //   - md+ collapsed : 64px (juste avatars)
-      //   - md+ expanded  : 240px (design complet)
+      //   - md+ expanded  : 300px (design complet, lisible)
       "h-full bg-background min-h-0 overflow-hidden flex flex-col transition-[width] duration-200 ease-out",
-      collapsed ? "md:w-[64px]" : "md:w-[240px]",
+      collapsed ? "md:w-[64px]" : "md:w-[300px]",
       "w-full md:flex-shrink-0 md:border-r md:border-border",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
