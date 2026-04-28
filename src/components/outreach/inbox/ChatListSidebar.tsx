@@ -103,12 +103,12 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      // Width fixe : 280px sur lg+ (1024px), full width en dessous.
-      // Sur < lg, sidebar prend tout l'écran et MessageView est en
-      // overlay fixed quand un chat est sélectionné (cf MessagesInbox).
+      // Width sidebar : 240px sur md+ (768px), full width sur mobile.
+      // 240px choisi pour libérer maximum d'espace à la conversation
+      // même sur viewport étroit (~ tablette ou écran avec DevTools).
       "h-full bg-background min-h-0 overflow-hidden flex flex-col",
-      "w-full lg:w-[280px] lg:flex-shrink-0 lg:border-r lg:border-border",
-      selectedChat ? "hidden lg:flex" : "flex"
+      "w-full md:w-[240px] md:flex-shrink-0 md:border-r md:border-border",
+      selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Header sidebar moderne */}
       <div className="px-3 pt-3 pb-2 border-b border-border space-y-2 bg-background/95 backdrop-blur-sm">

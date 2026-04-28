@@ -120,9 +120,9 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
       <PreloadAttendeePictures chats={inbox.chats} />
 
-      {/* Mobile/tablette fullscreen vue conversation (< lg / 1024px) */}
+      {/* Mobile fullscreen vue conversation (< md / 768px) */}
       {inbox.selectedChat && (
-        <div className="fixed inset-0 z-[2100] bg-background lg:hidden">
+        <div className="fixed inset-0 z-[2100] bg-background md:hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
@@ -203,8 +203,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           isDeletingChat={isDeleting}
         />
 
-        {/* Vue conversation desktop (cachée < lg, flex-1 sur lg+) */}
-        <div className="hidden lg:block lg:flex-1 lg:min-w-0 h-full overflow-hidden">
+        {/* Vue conversation desktop (cachée < md, flex-1 sur md+) */}
+        <div className="hidden md:block md:flex-1 md:min-w-0 h-full overflow-hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
