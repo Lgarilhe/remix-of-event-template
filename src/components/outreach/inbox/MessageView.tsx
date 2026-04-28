@@ -505,6 +505,36 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         <p className="whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
                       </div>
 
+                      {/* Réactions sur le message — affichées juste sous la
+                          bulle, groupées par emoji avec count si > 1 */}
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div className={cn(
+                          "flex gap-1 mt-1 flex-wrap",
+                          isSender ? "justify-end" : "justify-start",
+                        )}>
+                          {Object.entries(
+                            msg.reactions.reduce<Record<string, number>>((acc, r) => {
+                              const emoji = r.value || r.reaction || '';
+                              if (!emoji) return acc;
+                              acc[emoji] = (acc[emoji] || 0) + 1;
+                              return acc;
+                            }, {})
+                          ).map(([emoji, count]) => (
+                            <span
+                              key={emoji}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-background border border-border rounded-full shadow-sm"
+                            >
+                              <span>{emoji}</span>
+                              {count > 1 && (
+                                <span className="text-[10px] text-muted-foreground tabular-nums font-medium">
+                                  {count}
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Timestamp + read receipts UNIQUEMENT sur le last of group */}
                       {isLastOfGroup && (
                         <div

@@ -65,6 +65,17 @@ export interface Chat {
   _mergedChatIds?: string[];
 }
 
+export interface MessageReaction {
+  /** Emoji unicode (ex: "👍", "❤️") */
+  value?: string;
+  /** Format alternatif que Unipile peut utiliser */
+  reaction?: string;
+  /** Auteur de la réaction */
+  sender_id?: string;
+  /** Booléen indiquant si c'est notre user qui a réagi */
+  is_sender?: boolean;
+}
+
 export interface Message {
   id: string;
   text?: string;
@@ -79,6 +90,8 @@ export interface Message {
   read?: boolean;
   seen?: number;
   delivered?: boolean;
+  /** Réactions sur le message (format Unipile : Array<{ value, sender_id }>). */
+  reactions?: MessageReaction[];
 }
 
 export interface SequenceEnrollmentInfo {
