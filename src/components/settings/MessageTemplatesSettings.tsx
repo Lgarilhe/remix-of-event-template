@@ -22,62 +22,97 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  FileText, Plus, Pencil, Trash2, Sparkles, Loader2,
+  FileText, Plus, Pencil, Trash2, Sparkles, Loader2, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PLACEHOLDERS_CATALOG } from '@/lib/templatePlaceholders';
 
 // Templates pré-remplis suggérés au premier usage
+// Les placeholders sont AUTOMATIQUEMENT remplacés à l'insertion
+// (cf src/lib/templatePlaceholders.ts pour la liste complète)
 const SUGGESTED_TEMPLATES: CreateTemplateInput[] = [
   {
     name: 'Intro générale',
     shortcut: '/intro',
     emoji: '👋',
     category: 'Intro',
-    content: `Bonjour {{prénom}},
+    content: `Bonjour {{prenom}},
 
-J'ai vu votre profil et votre parcours chez {{entreprise actuelle}} m'a vraiment marqué.
+J'ai vu votre profil et votre parcours {{poste_actuel}} chez {{entreprise_actuelle}} m'a vraiment marqué.
 
-Nous accompagnons actuellement {{client}} sur la recherche d'un {{poste}} et je pense que ça pourrait vous intéresser.
+Nous accompagnons actuellement {{client}} sur la recherche d'un {{poste_recherche}} et je pense que ça pourrait vous intéresser.
 
 Seriez-vous ouvert(e) à 15 min d'échange cette semaine ?
 
-Bonne journée,`,
+Bonne journée,
+{{mon_prenom}}`,
   },
   {
     name: 'Relance J+3',
     shortcut: '/relance',
     emoji: '⏰',
     category: 'Relance',
-    content: `Bonjour {{prénom}},
+    content: `Bonjour {{prenom}},
 
 Je me permets de revenir vers vous suite à mon précédent message.
 
 Je sais que les inbox sont chargées — un simple "intéressé" / "pas pour moi" suffit !
 
-Bonne journée,`,
+Bonne journée,
+{{mon_prenom}}`,
   },
   {
     name: 'Lien Calendly',
     shortcut: '/calendly',
     emoji: '📅',
     category: 'Calendly',
-    content: `Parfait ! Voici mon lien pour caler 15 min :
+    content: `Parfait {{prenom}} ! Voici mon lien pour caler 15 min :
 
-{{lien Calendly}}
+{{lien_calendly}}
 
-Choisissez le créneau qui vous arrange. À très bientôt !`,
+Choisissez le créneau qui vous arrange. À très bientôt !
+
+{{mon_prenom}}`,
   },
   {
     name: 'Remerciement',
     shortcut: '/merci',
     emoji: '🙏',
     category: 'Closing',
-    content: `Merci beaucoup pour votre retour {{prénom}} !
+    content: `Merci beaucoup pour votre retour {{prenom}} !
 
 Je vous tiens au courant des prochaines étapes très vite.
 
-Excellente journée,`,
+Excellente journée,
+{{mon_prenom}}`,
+  },
+  {
+    name: 'Présentation poste',
+    shortcut: '/poste',
+    emoji: '💼',
+    category: 'Présentation',
+    content: `Bonjour {{prenom}},
+
+Pour résumer le poste : {{client}} recherche un {{poste_recherche}}.
+
+Le contexte est intéressant et l'équipe vraiment top. Je peux vous envoyer la fiche complète si vous voulez en savoir plus !
+
+{{mon_prenom}}`,
+  },
+  {
+    name: 'Demande disponibilité',
+    shortcut: '/dispo',
+    emoji: '🗓',
+    category: 'Coordination',
+    content: `Bonjour {{prenom}},
+
+Quelles seraient vos disponibilités cette semaine ou la semaine prochaine pour un échange de 15 min ?
+
+Le matin entre 10h et 12h ou en fin d'après-midi entre 16h et 18h fonctionne en général bien de mon côté.
+
+À votre écoute,
+{{mon_prenom}}`,
   },
 ];
 
@@ -269,6 +304,53 @@ export const MessageTemplatesSettings: React.FC = () => {
   );
 };
 
+// ─── Placeholders Panel (cliquable pour insérer) ─────────────────────
+
+interface PlaceholdersPanelProps {
+  onInsert: (placeholder: string) => void;
+}
+
+const PLACEHOLDER_CATEGORIES = [
+  { key: 'contact', label: 'Contact', emoji: '👤' },
+  { key: 'mission', label: 'Mission', emoji: '🎯' },
+  { key: 'sender', label: 'Vous', emoji: '✍️' },
+  { key: 'date', label: 'Date', emoji: '📅' },
+] as const;
+
+const PlaceholdersPanel: React.FC<PlaceholdersPanelProps> = ({ onInsert }) => {
+  return (
+    <div className="space-y-2">
+      {PLACEHOLDER_CATEGORIES.map((cat) => {
+        const items = PLACEHOLDERS_CATALOG.filter(p => p.category === cat.key);
+        if (items.length === 0) return null;
+        return (
+          <div key={cat.key}>
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-[10px]">{cat.emoji}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {cat.label}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {items.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => onInsert(p.key)}
+                  title={`${p.description}${p.example ? ` (ex: ${p.example})` : ''}`}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded-md bg-background border border-border hover:bg-foreground hover:text-background transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ─── Form Dialog (Create / Edit) ──────────────────────────────────────
 
 interface TemplateFormDialogProps {
@@ -325,6 +407,26 @@ const TemplateFormDialog: React.FC<TemplateFormDialogProps> = ({
       content: form.content.trim(),
       emoji: form.emoji?.trim() || null,
       category: form.category?.trim() || null,
+    });
+  };
+
+  /** Insère un placeholder dans la textarea content à la position du curseur */
+  const contentRef = React.useRef<HTMLTextAreaElement>(null);
+  const insertPlaceholder = (placeholder: string) => {
+    const ta = contentRef.current;
+    const tag = `{{${placeholder}}}`;
+    if (!ta) {
+      setForm({ ...form, content: form.content + tag });
+      return;
+    }
+    const start = ta.selectionStart ?? form.content.length;
+    const end = ta.selectionEnd ?? form.content.length;
+    const newContent = form.content.slice(0, start) + tag + form.content.slice(end);
+    setForm({ ...form, content: newContent });
+    requestAnimationFrame(() => {
+      ta.focus();
+      const newPos = start + tag.length;
+      ta.setSelectionRange(newPos, newPos);
     });
   };
 
@@ -390,17 +492,30 @@ const TemplateFormDialog: React.FC<TemplateFormDialogProps> = ({
                 Contenu <span className="text-destructive">*</span>
               </label>
               <Textarea
+                ref={contentRef}
                 value={form.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
-                placeholder="Bonjour {{prénom}}..."
+                placeholder="Bonjour {{prenom}}..."
                 required
                 rows={8}
                 className="text-sm leading-relaxed font-mono"
               />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Astuce : utilisez <code className="bg-muted px-1 rounded">{'{{prénom}}'}</code> pour
-                des placeholders à remplacer manuellement.
-              </p>
+
+              {/* Panneau placeholders — chaque pill est cliquable pour insérer */}
+              <div className="mt-2 p-3 rounded-md bg-muted/30 border border-border/50">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Info className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Placeholders dynamiques · cliquez pour insérer
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground/80 mb-2 leading-relaxed">
+                  Ces variables sont remplacées automatiquement à l'insertion du template par les
+                  vraies données du contact / mission / vous. Si une donnée manque, le placeholder
+                  reste visible pour que vous le complétiez à la main.
+                </p>
+                <PlaceholdersPanel onInsert={insertPlaceholder} />
+              </div>
             </div>
           </div>
           <DialogFooter>

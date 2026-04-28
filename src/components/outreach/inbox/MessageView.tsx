@@ -27,6 +27,8 @@ import { ActivityEventCard } from './ActivityEventCard';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
 import { MessageComposer } from './MessageComposer';
 import { SmartReplies } from './SmartReplies';
+import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
@@ -225,6 +227,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }
     return withSeparators;
   }, [messages, activityEvents]);
+
+  // User connecté pour les placeholders {{mon_prenom}} etc.
+  const { user } = useAuthReady();
 
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const attendeeId = selectedChat?.attendees?.[0]?.id;
@@ -656,6 +661,17 @@ export const MessageView: React.FC<MessageViewProps> = ({
           onScheduleCall={onScheduleCall}
           hasCalendlyLink={!!calendlyLink}
           channel={channel?.toUpperCase()}
+          placeholderContext={buildPlaceholderContext({
+            chat: selectedChat,
+            currentJob: currentJobData,
+            user: user ? {
+              email: user.email,
+              full_name: user.user_metadata?.full_name,
+              first_name: user.user_metadata?.first_name,
+              last_name: user.user_metadata?.last_name,
+            } : undefined,
+            calendlyLink,
+          })}
         />
       </div>
 

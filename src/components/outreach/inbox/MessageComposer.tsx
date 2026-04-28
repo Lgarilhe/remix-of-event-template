@@ -27,6 +27,11 @@ import {
 import { toggleBold, toggleItalic, toBulletList, toNumberedList, insertLink } from './textFormat';
 import { TemplatesPicker } from './TemplatesPicker';
 import { useMessageTemplates, MessageTemplate } from '@/hooks/useMessageTemplates';
+import {
+  buildPlaceholderContext,
+  interpolatePlaceholders,
+  type PlaceholderContext,
+} from '@/lib/templatePlaceholders';
 
 const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
 
@@ -42,6 +47,9 @@ export interface MessageComposerProps {
   onScheduleCall?: () => void;
   hasCalendlyLink?: boolean;
   channel?: string;
+  /** Context pour les placeholders templates (prénom, entreprise, etc.).
+      Peut être pré-construit via buildPlaceholderContext() depuis le parent. */
+  placeholderContext?: PlaceholderContext;
 }
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
@@ -56,6 +64,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   onScheduleCall,
   hasCalendlyLink,
   channel,
+  placeholderContext,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
@@ -88,15 +97,20 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     }
   };
 
-  /** Insère un template à la place du slash command */
+  /** Insère un template à la place du slash command, avec interpolation
+      des placeholders ({{prenom}}, {{client}}, {{aujourd_hui}}, etc.) */
   const insertTemplate = (template: MessageTemplate) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const cursor = ta.selectionStart ?? value.length;
     const before = value.slice(0, cursor);
     const after = value.slice(cursor);
-    // Remplace le "/xxx" par le content du template
-    const replaced = before.replace(/(^|\s)\/(\S*)$/, '$1' + template.content);
+    // Interpole les placeholders avec le context (si fourni)
+    const interpolatedContent = placeholderContext
+      ? interpolatePlaceholders(template.content, placeholderContext)
+      : template.content;
+    // Remplace le "/xxx" par le content du template (interpolé)
+    const replaced = before.replace(/(^|\s)\/(\S*)$/, '$1' + interpolatedContent);
     const newValue = replaced + after;
     onChange(newValue);
     setSlashQuery(null);
