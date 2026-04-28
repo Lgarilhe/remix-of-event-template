@@ -103,9 +103,10 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      // Width géré par le grid parent (MessagesInbox grid-cols-[360px_1fr]).
-      // overflow-hidden + min-w-0 pour que rien ne déborde du grid cell.
-      "w-full h-full min-w-0 flex flex-col flex-shrink-0 bg-background min-h-0 overflow-hidden",
+      // Width fixe : 280px sur md+, full width sur mobile (caché par
+      // le `hidden md:flex` quand un chat est sélectionné sur mobile).
+      "h-full bg-background min-h-0 overflow-hidden flex flex-col",
+      "w-full md:w-[280px] md:flex-shrink-0 md:border-r md:border-border",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Header sidebar moderne */}

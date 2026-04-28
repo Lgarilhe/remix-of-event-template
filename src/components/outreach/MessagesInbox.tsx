@@ -162,12 +162,11 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
         </div>
       )}
 
-      {/* Desktop : grid 2 colonnes (sidebar 280px | conversation 1fr).
-          Sidebar réduite à 280px pour maximiser l'espace conversation.
-          Sur mobile (< md) : single col (sidebar full width — la conversation
-          est en overlay fixed quand un chat est sélectionné, cf bloc précédent). */}
+      {/* Layout flex pur (plus de grid/breakpoints fragiles).
+          Sidebar : 280px fixe sur md+, full width sur mobile.
+          Conversation : flex-1, prend tout le reste. */}
       <div
-        className="h-full bg-background overflow-hidden grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]"
+        className="h-full bg-background overflow-hidden flex"
         data-component="messages-inbox-grid"
       >
         {/* Sidebar de chats */}
@@ -203,8 +202,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           isDeletingChat={isDeleting}
         />
 
-        {/* Vue conversation desktop (cachée sur mobile) */}
-        <div className="hidden md:block h-full overflow-hidden border-l border-border">
+        {/* Vue conversation desktop (cachée sur mobile, flex-1 sur md+) */}
+        <div className="hidden md:block md:flex-1 md:min-w-0 h-full overflow-hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
