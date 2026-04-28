@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PLACEHOLDERS_CATALOG } from '@/lib/templatePlaceholders';
 import { CustomVariablesSettings } from './CustomVariablesSettings';
+import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 
 // Templates pré-remplis suggérés au premier usage
 // Les placeholders sont AUTOMATIQUEMENT remplacés à l'insertion
@@ -321,42 +322,139 @@ interface PlaceholdersPanelProps {
 }
 
 const PLACEHOLDER_CATEGORIES = [
-  { key: 'contact', label: 'Contact', emoji: '👤' },
-  { key: 'mission', label: 'Mission', emoji: '🎯' },
-  { key: 'sender', label: 'Vous', emoji: '✍️' },
-  { key: 'date', label: 'Date', emoji: '📅' },
+  { key: 'contact', label: 'Contact', emoji: '👤', description: 'Données du contact' },
+  { key: 'enriched', label: 'Données enrichies', emoji: '✨', description: 'Calculées depuis le profil' },
+  { key: 'mission', label: 'Mission', emoji: '🎯', description: 'Job en cours de sourcing' },
+  { key: 'sender', label: 'Vous (sender)', emoji: '✍️', description: 'Vos infos personnelles' },
+  { key: 'date', label: 'Date & contexte', emoji: '📅', description: 'Salutation, jour, etc.' },
+  { key: 'conv', label: 'Conversation', emoji: '💬', description: 'Sujet, nb messages' },
 ] as const;
 
 const PlaceholdersPanel: React.FC<PlaceholdersPanelProps> = ({ onInsert }) => {
+  const [search, setSearch] = useState('');
+  const { variables: customVars } = useUserTemplateVariables();
+
+  // Filtre placeholders builtin par recherche
+  const filteredCatalog = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return PLACEHOLDERS_CATALOG;
+    return PLACEHOLDERS_CATALOG.filter(p =>
+      p.key.toLowerCase().includes(q) ||
+      p.label.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q)
+    );
+  }, [search]);
+
+  // Filtre custom variables par recherche
+  const filteredCustom = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return customVars;
+    return customVars.filter(v =>
+      v.key.toLowerCase().includes(q) ||
+      v.value.toLowerCase().includes(q) ||
+      (v.description || '').toLowerCase().includes(q)
+    );
+  }, [search, customVars]);
+
   return (
-    <div className="space-y-2">
-      {PLACEHOLDER_CATEGORIES.map((cat) => {
-        const items = PLACEHOLDERS_CATALOG.filter(p => p.category === cat.key);
-        if (items.length === 0) return null;
-        return (
-          <div key={cat.key}>
-            <div className="flex items-center gap-1 mb-1">
-              <span className="text-[10px]">{cat.emoji}</span>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {cat.label}
+    <div className="flex flex-col h-full">
+      {/* Header sticky avec recherche */}
+      <div className="px-4 py-3 border-b border-border bg-background sticky top-0 z-10">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Info className="w-3 h-3 text-muted-foreground" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Variables disponibles
+          </span>
+        </div>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher (prenom, client, lien...)"
+          className="h-8 text-xs"
+        />
+        <p className="text-[10px] text-muted-foreground/80 mt-1.5 leading-relaxed">
+          Cliquez pour insérer · Le placeholder sera remplacé automatiquement
+        </p>
+      </div>
+
+      {/* Sections de placeholders */}
+      <div className="px-4 py-3 space-y-3">
+        {PLACEHOLDER_CATEGORIES.map((cat) => {
+          const items = filteredCatalog.filter(p => p.category === cat.key);
+          if (items.length === 0) return null;
+          return (
+            <div key={cat.key}>
+              <div className="flex items-center gap-1.5 mb-1.5 sticky top-0">
+                <span className="text-xs">{cat.emoji}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                  {cat.label}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  · {items.length}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {items.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => onInsert(p.key)}
+                    title={`${p.description}${p.example ? ` — ex: ${p.example}` : ''}`}
+                    className="inline-flex items-center px-2 py-1 text-[10px] font-mono rounded-md bg-background border border-border hover:bg-foreground hover:text-background hover:border-foreground transition-all"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Section variables custom user */}
+        {filteredCustom.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Variable className="w-3 h-3 text-foreground" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                Mes variables custom
+              </span>
+              <span className="text-[10px] text-muted-foreground/60">
+                · {filteredCustom.length}
               </span>
             </div>
             <div className="flex flex-wrap gap-1">
-              {items.map((p) => (
+              {filteredCustom.map((v) => (
                 <button
-                  key={p.key}
+                  key={v.id}
                   type="button"
-                  onClick={() => onInsert(p.key)}
-                  title={`${p.description}${p.example ? ` (ex: ${p.example})` : ''}`}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded-md bg-background border border-border hover:bg-foreground hover:text-background transition-colors"
+                  onClick={() => onInsert(v.key)}
+                  title={`${v.description || 'Variable custom'} — ${v.value.slice(0, 60)}${v.value.length > 60 ? '…' : ''}`}
+                  className="inline-flex items-center px-2 py-1 text-[10px] font-mono rounded-md bg-background border border-foreground/30 hover:bg-foreground hover:text-background transition-all"
                 >
-                  {p.label}
+                  {`{{${v.key}}}`}
                 </button>
               ))}
             </div>
           </div>
-        );
-      })}
+        )}
+
+        {filteredCatalog.length === 0 && filteredCustom.length === 0 && (
+          <div className="text-center py-6 text-xs text-muted-foreground">
+            Aucune variable trouvée pour "{search}"
+          </div>
+        )}
+
+        {/* Astuce filtres */}
+        <div className="mt-4 p-2 rounded-md bg-background/60 border border-border/50">
+          <p className="text-[10px] font-semibold text-foreground/80 mb-1">💡 Filtres avancés</p>
+          <ul className="text-[10px] text-muted-foreground space-y-0.5 leading-relaxed">
+            <li><code className="bg-muted px-1 rounded">{'{{prenom | upper}}'}</code> — MAJ</li>
+            <li><code className="bg-muted px-1 rounded">{'{{prenom | capitalize}}'}</code> — Prénom</li>
+            <li><code className="bg-muted px-1 rounded">{'{{client | fallback:"votre boîte"}}'}</code></li>
+            <li><code className="bg-muted px-1 rounded">{'{{headline | truncate:50}}'}</code></li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 };
@@ -442,93 +540,96 @@ const TemplateFormDialog: React.FC<TemplateFormDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      {/* Modal large + scrollable avec layout 2 colonnes : form gauche,
+          panel placeholders droite. max-h-[90vh] + overflow-hidden + flex
+          column pour que le footer reste sticky bottom. */}
+      <DialogContent className="max-w-5xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b border-border shrink-0">
           <DialogTitle>{template ? 'Modifier le template' : 'Nouveau template'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="md:col-span-2">
-              <label className="text-xs font-medium text-foreground mb-1 block">
-                Nom <span className="text-destructive">*</span>
-              </label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ex: Intro générale"
-                required
-                className="h-9 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground mb-1 block">
-                Raccourci
-              </label>
-              <Input
-                value={form.shortcut || ''}
-                onChange={(e) => setForm({ ...form, shortcut: e.target.value })}
-                placeholder="/intro"
-                className="h-9 text-sm font-mono"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Tapez "/" + raccourci dans le composer
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-foreground mb-1 block">
-                Emoji
-              </label>
-              <Input
-                value={form.emoji || ''}
-                onChange={(e) => setForm({ ...form, emoji: e.target.value })}
-                placeholder="👋"
-                maxLength={4}
-                className="h-9 text-sm"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="text-xs font-medium text-foreground mb-1 block">
-                Catégorie
-              </label>
-              <Input
-                value={form.category || ''}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="Intro, Relance, Closing..."
-                className="h-9 text-sm"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="text-xs font-medium text-foreground mb-1 block">
-                Contenu <span className="text-destructive">*</span>
-              </label>
-              <Textarea
-                ref={contentRef}
-                value={form.content}
-                onChange={(e) => setForm({ ...form, content: e.target.value })}
-                placeholder="Bonjour {{prenom}}..."
-                required
-                rows={8}
-                className="text-sm leading-relaxed font-mono"
-              />
-
-              {/* Panneau placeholders — chaque pill est cliquable pour insérer */}
-              <div className="mt-2 p-3 rounded-md bg-muted/30 border border-border/50">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Info className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Placeholders dynamiques · cliquez pour insérer
-                  </span>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Body en 2 colonnes — scrollable indépendamment */}
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] flex-1 min-h-0 overflow-hidden">
+            {/* COLONNE GAUCHE — form + content */}
+            <div className="overflow-y-auto p-6 space-y-4 min-w-0">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-3">
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Nom <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="Ex: Intro générale"
+                    required
+                    className="h-9 text-sm"
+                  />
                 </div>
-                <p className="text-[10px] text-muted-foreground/80 mb-2 leading-relaxed">
-                  Ces variables sont remplacées automatiquement à l'insertion du template par les
-                  vraies données du contact / mission / vous. Si une donnée manque, le placeholder
-                  reste visible pour que vous le complétiez à la main.
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Raccourci
+                  </label>
+                  <Input
+                    value={form.shortcut || ''}
+                    onChange={(e) => setForm({ ...form, shortcut: e.target.value })}
+                    placeholder="/intro"
+                    className="h-9 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Emoji
+                  </label>
+                  <Input
+                    value={form.emoji || ''}
+                    onChange={(e) => setForm({ ...form, emoji: e.target.value })}
+                    placeholder="👋"
+                    maxLength={4}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Catégorie
+                  </label>
+                  <Input
+                    value={form.category || ''}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    placeholder="Intro, Relance..."
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-foreground mb-1 block">
+                  Contenu <span className="text-destructive">*</span>
+                </label>
+                <Textarea
+                  ref={contentRef}
+                  value={form.content}
+                  onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  placeholder="Bonjour {{prenom}}, ..."
+                  required
+                  rows={12}
+                  className="text-sm leading-relaxed font-mono resize-y"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  💡 Cliquez sur une variable à droite pour l'insérer · Astuce : utilisez
+                  <code className="bg-muted px-1 mx-0.5 rounded">{'{{client | fallback:"votre boîte"}}'}</code>
+                  pour gérer les valeurs manquantes
                 </p>
-                <PlaceholdersPanel onInsert={insertPlaceholder} />
               </div>
             </div>
+
+            {/* COLONNE DROITE — placeholders avec recherche + sections */}
+            <div className="border-l border-border bg-muted/20 overflow-y-auto min-w-0">
+              <PlaceholdersPanel onInsert={insertPlaceholder} />
+            </div>
           </div>
-          <DialogFooter>
+
+          {/* Footer sticky bottom */}
+          <DialogFooter className="px-6 py-4 border-t border-border shrink-0 bg-background">
             <Button type="button" variant="ghost" onClick={onClose}>
               Annuler
             </Button>
