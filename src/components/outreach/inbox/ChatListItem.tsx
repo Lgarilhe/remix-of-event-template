@@ -27,6 +27,7 @@ import {
   getMessageSourceType,
   formatChatTime,
 } from '@/hooks/useMessagesInboxHelpers';
+import { IntentInfo, INTENT_META } from '@/hooks/useChatIntents';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +60,8 @@ interface ChatListItemProps {
   isDeletingChat?: boolean;
   /** Mode rail collapsed (sidebar 64px) — show only avatar + unread dot */
   collapsed?: boolean;
+  /** Intent IA détecté pour ce chat (depuis message_analysis_cache) */
+  intent?: IntentInfo;
 }
 
 /** Récupère le texte d'aperçu du dernier message (avec préfixe "Tu:" si is_sender) */
@@ -81,7 +84,9 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   onDeleteChat,
   isDeletingChat,
   collapsed = false,
+  intent,
 }) => {
+  const intentMeta = intent ? INTENT_META[intent.intent] : null;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const displayName = getChatDisplayName(chat);
@@ -216,9 +221,22 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </p>
           ) : null}
 
-          {/* Ligne 3 : badges (source type, catégorie, status, unread count)
+          {/* Ligne 3 : badges (intent IA, source type, catégorie, status, unread count)
               flex-wrap pour éviter le débordement, gap réduit. */}
           <div className="flex items-center gap-1 mt-1 flex-wrap min-w-0">
+            {/* Intent IA — placé en premier pour visibilité maximale */}
+            {intentMeta && (
+              <span
+                className={cn(
+                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md',
+                  intentMeta.color,
+                )}
+                title={intent?.summary || intentMeta.label}
+              >
+                <span>{intentMeta.emoji}</span>
+                <span>{intentMeta.label}</span>
+              </span>
+            )}
             {sourceType && (
               <span
                 className={cn(

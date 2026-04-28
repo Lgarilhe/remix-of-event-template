@@ -26,6 +26,7 @@ import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
 import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
 import { MessageComposer } from './MessageComposer';
+import { SmartReplies } from './SmartReplies';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
@@ -606,7 +607,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* ROW 3 — COMPOSER + AI panel optionnel */}
+      {/* ROW 3 — COMPOSER + Smart Replies + AI panel optionnel */}
       <div>
         {aiPanelOpen && (
           <div className="max-h-[40vh] overflow-y-auto border-t border-border">
@@ -622,6 +623,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
               sending={sending}
             />
           </div>
+        )}
+        {/* Smart Replies — quick suggestions style Gmail. Affiché si on a
+            des suggestions ET que le panel n'est pas déjà ouvert (pour
+            éviter la redondance). */}
+        {!aiPanelOpen && replySuggestions.length > 0 && (
+          <SmartReplies
+            suggestions={replySuggestions}
+            onPick={(text) => onSuggestionClick(text)}
+            onSeeMore={() => setAiPanelOpen(true)}
+          />
         )}
         <MessageComposer
           value={newMessage}

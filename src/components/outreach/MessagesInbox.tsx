@@ -12,6 +12,7 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
 import { useMessageActions } from '@/hooks/useMessageActions';
+import { useEdgeFunctionWarmup } from '@/hooks/useEdgeFunctionWarmup';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
@@ -73,6 +74,9 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   initialChatId,
   onChatChange,
 }) => {
+  // Warm-up des edge functions IA pour éviter les cold starts
+  useEdgeFunctionWarmup(true);
+
   const inbox = useMessagesInbox({
     selectedAccount,
     onUnreadCountChange,

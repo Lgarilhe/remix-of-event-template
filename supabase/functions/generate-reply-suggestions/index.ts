@@ -379,7 +379,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const _body = await req.json() as { context: ChatContext };
+    const _body = await req.json() as { context: ChatContext; warmup?: boolean };
+
+    // Warmup ping — short-circuit
+    if (_body?.warmup === true) {
+      return new Response(
+        JSON.stringify({ success: true, warmed: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { context } = _body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "reply_suggestion", modelId: "claude-sonnet-4-6", description: null,

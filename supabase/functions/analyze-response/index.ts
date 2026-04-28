@@ -133,8 +133,17 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { context } = await req.json() as { context: AnalysisContext };
-    
+    const body = await req.json();
+
+    // Warmup ping — short-circuit pour éviter cold start sans consommer de crédits
+    if (body?.warmup === true) {
+      return new Response(
+        JSON.stringify({ success: true, warmed: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { context } = body as { context: AnalysisContext };
 
     if (!context || !context.messages || context.messages.length === 0) {
       throw new Error("Conversation context is required");

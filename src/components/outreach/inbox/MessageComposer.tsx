@@ -17,6 +17,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import {
   Loader2, Send, Sparkles, CalendarPlus, Smile,
   Bold, Italic, List, ListOrdered, Link as LinkIcon,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -24,6 +25,8 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { toggleBold, toggleItalic, toBulletList, toNumberedList, insertLink } from './textFormat';
+import { TemplatesPicker } from './TemplatesPicker';
+import { useMessageTemplates, MessageTemplate } from '@/hooks/useMessageTemplates';
 
 const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
 
@@ -57,6 +60,53 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
   const isSendable = value.trim().length > 0 && !sending && !disabled;
+
+  // Slash commands : si l'user tape "/" en début de ligne, on ouvre le picker
+  // de templates. Le query est ce qui suit le "/" jusqu'au prochain espace.
+  const { markUsed } = useMessageTemplates();
+  const [slashQuery, setSlashQuery] = useState<string | null>(null);
+
+  /** Détecte un slash command actif dans la valeur courante.
+      Retourne la query (sans /) ou null si pas de slash actif. */
+  const detectSlashCommand = (val: string, cursor: number): string | null => {
+    // On regarde le segment juste avant le curseur pour voir si on est
+    // dans un slash command non-terminé.
+    const before = val.slice(0, cursor);
+    // Match "/xxx" en fin (sans espace)
+    const match = before.match(/(^|\s)\/(\S*)$/);
+    if (match) return match[2]; // segment après le "/"
+    return null;
+  };
+
+  const handleTextChange = (newValue: string) => {
+    onChange(newValue);
+    const ta = textareaRef.current;
+    if (ta) {
+      const cursor = ta.selectionStart ?? newValue.length;
+      const slash = detectSlashCommand(newValue, cursor);
+      setSlashQuery(slash);
+    }
+  };
+
+  /** Insère un template à la place du slash command */
+  const insertTemplate = (template: MessageTemplate) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursor = ta.selectionStart ?? value.length;
+    const before = value.slice(0, cursor);
+    const after = value.slice(cursor);
+    // Remplace le "/xxx" par le content du template
+    const replaced = before.replace(/(^|\s)\/(\S*)$/, '$1' + template.content);
+    const newValue = replaced + after;
+    onChange(newValue);
+    setSlashQuery(null);
+    markUsed(template.id);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const newPos = replaced.length;
+      ta.setSelectionRange(newPos, newPos);
+    });
+  };
 
   const isMac =
     typeof navigator !== 'undefined' &&
@@ -220,23 +270,37 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           </div>
 
           {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder="Écrivez votre message..."
-            disabled={disabled}
-            rows={1}
-            className={cn(
-              'w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50',
-              'resize-none border-0 outline-none focus:ring-0 focus:outline-none',
-              'leading-relaxed px-4 py-2.5',
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setFocused(true)}
+              onBlur={() => {
+                setFocused(false);
+                // Délai pour permettre le click sur picker avant de fermer
+                setTimeout(() => setSlashQuery(null), 200);
+              }}
+              placeholder='Écrivez votre message... (tapez "/" pour insérer un template)'
+              disabled={disabled}
+              rows={1}
+              className={cn(
+                'w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50',
+                'resize-none border-0 outline-none focus:ring-0 focus:outline-none',
+                'leading-relaxed px-4 py-2.5',
+              )}
+              style={{ minHeight: '24px', maxHeight: '160px' }}
+            />
+            {/* Slash command templates picker */}
+            {slashQuery !== null && (
+              <TemplatesPicker
+                query={slashQuery}
+                onSelect={insertTemplate}
+                onClose={() => setSlashQuery(null)}
+              />
             )}
-            style={{ minHeight: '24px', maxHeight: '160px' }}
-          />
+          </div>
 
           {/* Action row (bas de la card) */}
           <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1 border-t border-border/50">

@@ -8,6 +8,7 @@ import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
 import { isRecruiterChat, isClassicChat, hasUnread } from '@/hooks/useMessagesInboxHelpers';
 import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
+import { useChatIntents } from '@/hooks/useChatIntents';
 
 interface ChatListSidebarProps {
   chats: Chat[];
@@ -86,6 +87,11 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       localStorage.setItem('konekt_inbox_sidebar_collapsed', collapsed ? '1' : '0');
     } catch { /* localStorage full ou private mode */ }
   }, [collapsed]);
+
+  // Charge les intents IA des chats visibles (depuis message_analysis_cache)
+  const visibleAccountId = filteredChats[0]?.account_id || chats[0]?.account_id || null;
+  const visibleChatIds = filteredChats.map(c => c.id);
+  const { data: intentsMap } = useChatIntents(visibleChatIds, visibleAccountId);
 
   const classicCount = chats.filter(c => isClassicChat(c)).length;
   const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
@@ -407,6 +413,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 onDeleteChat={onDeleteChat}
                 isDeletingChat={isDeletingChat}
                 collapsed={collapsed}
+                intent={intentsMap?.get(chat.id)}
               />
             ))}
             {hasMoreChats && searchQuery && onLoadAllChats && (
