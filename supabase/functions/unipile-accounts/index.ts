@@ -147,15 +147,15 @@ Deno.serve(async (req) => {
         // include_org_accounts : si true, retourne TOUS les LinkedIn accounts
         // de la clé Unipile org (mappés OU pas), permettant à l'user de
         // CLAIMER son compte fraîchement créé. Indispensable pour les nouveaux
-        // members invités dont le webhook account_connected a foiré (UI permet
-        // alors de cliquer "Lier ce compte").
-        // Default false pour préserver la sécurité cross-tenant historique.
+        // members invités dont le webhook account_connected a foiré.
+        //
+        // 🔒 SÉCURITÉ MULTI-TENANT : même en mode include_org_accounts=true,
+        // on EXCLUT les accounts déjà mappés à une AUTRE org. Sinon un user
+        // d'org A pourrait voir et claim le LinkedIn d'un user d'org B (cas
+        // critique quand plusieurs orgs partagent la même clé Unipile globale).
         const includeOrgAccounts = params?.include_org_accounts === true;
 
-        // Résoudre d'abord les account_ids LinkedIn associés à l'org courante
-        // dans member_linkedin_accounts. Le filter par défaut empêche la fuite
-        // cross-tenant quand plusieurs clients utiliseraient la même clé
-        // Unipile platform (cas legacy avant resolveUnipileCredentials per-org).
+        // 1. account_ids mappés à l'ORG COURANTE (légitimes à voir)
         const { data: memberAccounts, error: memberAccountsError } = await adminClient
           .from('member_linkedin_accounts')
           .select('linkedin_account_id')
@@ -171,7 +171,22 @@ Deno.serve(async (req) => {
             .filter((id: any): id is string => typeof id === 'string' && id.length > 0),
         );
 
-        // List all connected accounts from Unipile
+        // 2. account_ids mappés à des AUTRES orgs (interdits à voir/claim)
+        let foreignAccountIds = new Set<string>();
+        if (includeOrgAccounts) {
+          const { data: foreignAccounts } = await adminClient
+            .from('member_linkedin_accounts')
+            .select('linkedin_account_id')
+            .neq('organization_id', organizationId);
+          foreignAccountIds = new Set(
+            (foreignAccounts ?? [])
+              .map((r: any) => r?.linkedin_account_id)
+              .filter((id: any): id is string => typeof id === 'string' && id.length > 0),
+          );
+          console.log(`[unipile-accounts] include_org_accounts=true | own=${allowedAccountIds.size} | foreign blocked=${foreignAccountIds.size}`);
+        }
+
+        // 3. List all connected accounts from Unipile
         const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
           headers: {
             'X-API-KEY': apiKey,
@@ -180,12 +195,18 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
-        // Filter LinkedIn accounts. Si includeOrgAccounts=true, on relax
-        // le filter sur allowedAccountIds (pour permettre le claim manuel).
+        // Filter : type LINKEDIN + (mappé à mon org OR orphelin) + JAMAIS mappé à autre org
         const linkedinAccounts = await Promise.all((data.items || [])
-          .filter((acc: { type: string; id: string }) =>
-            acc.type === 'LINKEDIN' && (includeOrgAccounts || allowedAccountIds.has(acc.id))
-          )
+          .filter((acc: { type: string; id: string }) => {
+            if (acc.type !== 'LINKEDIN') return false;
+            if (includeOrgAccounts) {
+              // Mode claim : OK si mappé à mon org OU orphelin (jamais d'autre org)
+              if (foreignAccountIds.has(acc.id)) return false; // 🔒 sécu cross-tenant
+              return allowedAccountIds.has(acc.id) || !foreignAccountIds.has(acc.id);
+            }
+            // Mode default : strict — uniquement mappé à mon org
+            return allowedAccountIds.has(acc.id);
+          })
           .map(async (acc: { 
             id: string; 
             name: string; 

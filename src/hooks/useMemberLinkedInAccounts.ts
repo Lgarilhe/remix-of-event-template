@@ -61,10 +61,15 @@ export function useMemberLinkedInAccounts() {
       toast.success('Compte LinkedIn associé');
     },
     onError: (err: Error) => {
-      if (err.message?.includes('duplicate') || err.message?.includes('unique')) {
+      const msg = err.message || '';
+      if (msg.includes('CROSS_TENANT_VIOLATION') || msg.includes('already mapped to another organization')) {
+        toast.error('Ce compte LinkedIn appartient à une autre organisation', {
+          description: 'Pour des raisons de sécurité, un compte LinkedIn ne peut être associé qu\'à une seule organisation Konekt. Contactez le support si nécessaire.',
+        });
+      } else if (msg.includes('duplicate') || msg.includes('unique')) {
         toast.error('Ce compte LinkedIn est déjà associé à un autre membre');
       } else {
-        toast.error('Erreur lors de l\'association');
+        toast.error('Erreur lors de l\'association', { description: msg });
       }
     },
   });
