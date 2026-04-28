@@ -29,6 +29,8 @@ import { MessageComposer } from './MessageComposer';
 import { SmartReplies } from './SmartReplies';
 import { buildPlaceholderContext } from '@/lib/templatePlaceholders';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
+import { useOrganization } from '@/hooks/useOrganization';
 import { useChatStatus } from '@/hooks/useChatStatus';
 import { useChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
@@ -228,8 +230,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return withSeparators;
   }, [messages, activityEvents]);
 
-  // User connecté pour les placeholders {{mon_prenom}} etc.
+  // User connecté + org + variables custom pour les placeholders templates
   const { user } = useAuthReady();
+  const { organization } = useOrganization();
+  const { asMap: customVariablesMap } = useUserTemplateVariables();
 
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const attendeeId = selectedChat?.attendees?.[0]?.id;
@@ -663,14 +667,18 @@ export const MessageView: React.FC<MessageViewProps> = ({
           channel={channel?.toUpperCase()}
           placeholderContext={buildPlaceholderContext({
             chat: selectedChat,
+            messages,
             currentJob: currentJobData,
             user: user ? {
               email: user.email,
               full_name: user.user_metadata?.full_name,
               first_name: user.user_metadata?.first_name,
               last_name: user.user_metadata?.last_name,
+              job_title: user.user_metadata?.job_title,
             } : undefined,
+            organizationName: organization?.name,
             calendlyLink,
+            customVariables: customVariablesMap(),
           })}
         />
       </div>

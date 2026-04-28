@@ -22,11 +22,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  FileText, Plus, Pencil, Trash2, Sparkles, Loader2, Info,
+  FileText, Plus, Pencil, Trash2, Sparkles, Loader2, Info, Variable, Settings as SettingsIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PLACEHOLDERS_CATALOG } from '@/lib/templatePlaceholders';
+import { CustomVariablesSettings } from './CustomVariablesSettings';
 
 // Templates pré-remplis suggérés au premier usage
 // Les placeholders sont AUTOMATIQUEMENT remplacés à l'insertion
@@ -117,6 +118,15 @@ Le matin entre 10h et 12h ou en fin d'après-midi entre 16h et 18h fonctionne en
 ];
 
 export const MessageTemplatesSettings: React.FC = () => {
+  return (
+    <div className="space-y-6">
+      <TemplatesSection />
+      <CustomVariablesSettings />
+    </div>
+  );
+};
+
+const TemplatesSection: React.FC = () => {
   const { templates, isLoading, create, update, remove } = useMessageTemplates();
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
   const [creating, setCreating] = useState(false);
