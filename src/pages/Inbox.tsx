@@ -12,21 +12,30 @@ import { AnimatedChatBubble } from '@/components/ui/AnimatedChatBubble';
 
 export default function Inbox() {
   const { accounts: rawAccounts, loading: accountsLoading } = useLinkedInAccounts();
-  const { isAdmin, isOwner, isCollaborator, organizationId } = useOrganization();
+  const { organizationId } = useOrganization();
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const { user } = useAuthReady();
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
 
+  // SECURITY FIX (BUG cross-membre data leak — 2026-04-28) :
+  // Avant : un admin/owner recevait TOUS les comptes LinkedIn de l'org →
+  // setSelectedAccount(accounts[0]) prenait le premier de la liste qui était
+  // souvent le compte d'un autre membre (ex: Laurent admin voyait les messages
+  // de Guillaume collaborateur). C'est une fuite data inacceptable.
+  //
+  // Maintenant : tous les rôles (admin / owner / collaborator) ne voient que
+  // leur PROPRE compte LinkedIn dans l'inbox. Pour superviser un autre membre,
+  // il faudra passer par un futur mode "supervision" explicite (P2 backlog).
   const accounts = useMemo(() => {
     if (!rawAccounts) return [];
     const mapped = rawAccounts.map(a => applySubscriptionOverrides(a as LinkedInAccount));
-    if ((isAdmin || isOwner) && !isCollaborator) return mapped;
     const currentUserId = user?.id ?? null;
     if (!currentUserId) return [];
     const linkedId = getUserLinkedAccountId(currentUserId);
     if (!linkedId) return [];
+    // Filtre strict par compte personnel — JAMAIS de fallback vers accounts[0]
     return mapped.filter(a => a.id === linkedId);
-  }, [rawAccounts, isAdmin, isOwner, isCollaborator, user?.id, getUserLinkedAccountId]);
+  }, [rawAccounts, user?.id, getUserLinkedAccountId]);
 
   useEffect(() => {
     if (!selectedAccount && accounts.length > 0) {

@@ -18,10 +18,19 @@ export const OrganizationGuard = ({ children }: { children: React.ReactNode }) =
     return <Navigate to={withPreviewAccessToken('/onboarding')} replace />;
   }
 
+  // FIX layout (BUG zone de saisie inbox invisible — 2026-04-28) :
+  // Le LowCreditBanner (~40px) et children sont rendus dans <main> qui est un
+  // flex container (cf AppLayout). Le banner garde sa hauteur intrinsèque
+  // (shrink-0) et children prend le reste avec flex-1 + min-h-0 pour pouvoir
+  // imbriquer des layouts h-full sans déborder.
   return (
     <>
-      <LowCreditBanner />
-      {children}
+      <div className="shrink-0">
+        <LowCreditBanner />
+      </div>
+      <div className="flex-1 min-h-0">
+        {children}
+      </div>
     </>
   );
 };
