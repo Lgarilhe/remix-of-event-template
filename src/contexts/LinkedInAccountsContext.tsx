@@ -13,7 +13,7 @@ interface LinkedInAccount {
 interface LinkedInAccountsContextType {
   accounts: LinkedInAccount[];
   loading: boolean;
-  reload: () => Promise<void>;
+  reload: (includeOrgAccounts?: boolean) => Promise<void>;
   clear: () => void;
 }
 
@@ -33,10 +33,17 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
   const { isReady, user } = useAuthReady();
   const prevUserIdRef = React.useRef<string | null>(null);
 
-  const reload = useCallback(async () => {
+  /**
+   * @param includeOrgAccounts si true, retourne aussi les comptes Unipile org
+   * non encore mappés à un user (utile pour le claim manuel après webhook foiré)
+   */
+  const reload = useCallback(async (includeOrgAccounts = false) => {
     setLoading(true);
     try {
-      const { data, error } = await invokeEdgeFunction('unipile-accounts', { action: 'list' });
+      const { data, error } = await invokeEdgeFunction('unipile-accounts', {
+        action: 'list',
+        include_org_accounts: includeOrgAccounts,
+      });
       if (error || !data?.success) {
         setAccounts([]);
         return;

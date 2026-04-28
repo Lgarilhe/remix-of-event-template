@@ -145,12 +145,26 @@ export const MyLinkedInAccount = () => {
     if (!currentUserId) return;
     setLinking(true);
     try {
-      await reloadAccounts();
+      // include_org_accounts: true → on récupère AUSSI les comptes Unipile org
+      // non mappés à un user (cas typique : webhook account_connected a foiré
+      // pour un nouvel invité, son compte existe chez Unipile mais pas en DB).
+      // Permet à l'user de voir son compte dans la section "Comptes disponibles"
+      // et de cliquer "Lier" pour créer le mapping manuellement.
+      await reloadAccounts(true);
       await new Promise(r => setTimeout(r, 500));
     } finally {
       setLinking(false);
     }
   }, [currentUserId, reloadAccounts]);
+
+  // Auto-reload en mode include_org_accounts si l'user n'a pas de mapping.
+  // Cas typique : invité fraîchement connecté à Unipile, mais webhook foiré.
+  // Sans ça, accounts=[] et il ne peut jamais voir/claim son propre compte.
+  useEffect(() => {
+    if (!myAccount && currentUserId && accounts.length === 0) {
+      reloadAccounts(true).catch(() => {});
+    }
+  }, [myAccount, currentUserId, accounts.length, reloadAccounts]);
 
   const unlinkedAccounts = accounts.filter(acc => !getMappingForAccount(acc.id));
 

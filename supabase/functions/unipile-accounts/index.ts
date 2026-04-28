@@ -144,10 +144,18 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'list': {
+        // include_org_accounts : si true, retourne TOUS les LinkedIn accounts
+        // de la clé Unipile org (mappés OU pas), permettant à l'user de
+        // CLAIMER son compte fraîchement créé. Indispensable pour les nouveaux
+        // members invités dont le webhook account_connected a foiré (UI permet
+        // alors de cliquer "Lier ce compte").
+        // Default false pour préserver la sécurité cross-tenant historique.
+        const includeOrgAccounts = params?.include_org_accounts === true;
+
         // Résoudre d'abord les account_ids LinkedIn associés à l'org courante
-        // dans member_linkedin_accounts. Sans ce filtre, on renverrait TOUS les
-        // comptes Unipile du tenant partagé (fuite cross-tenant quand plusieurs
-        // clients utilisent la même Unipile platform key).
+        // dans member_linkedin_accounts. Le filter par défaut empêche la fuite
+        // cross-tenant quand plusieurs clients utiliseraient la même clé
+        // Unipile platform (cas legacy avant resolveUnipileCredentials per-org).
         const { data: memberAccounts, error: memberAccountsError } = await adminClient
           .from('member_linkedin_accounts')
           .select('linkedin_account_id')
@@ -172,9 +180,12 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
-        // Filter only LinkedIn accounts owned by this org
+        // Filter LinkedIn accounts. Si includeOrgAccounts=true, on relax
+        // le filter sur allowedAccountIds (pour permettre le claim manuel).
         const linkedinAccounts = await Promise.all((data.items || [])
-          .filter((acc: { type: string; id: string }) => acc.type === 'LINKEDIN' && allowedAccountIds.has(acc.id))
+          .filter((acc: { type: string; id: string }) =>
+            acc.type === 'LINKEDIN' && (includeOrgAccounts || allowedAccountIds.has(acc.id))
+          )
           .map(async (acc: { 
             id: string; 
             name: string; 
