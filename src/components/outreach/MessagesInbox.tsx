@@ -212,8 +212,10 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           isDeletingChat={isDeleting}
         />
 
-        {/* Vue conversation desktop (cachée < md, flex-1 sur md+) */}
-        <div className="hidden md:block md:flex-1 md:min-w-0 h-full overflow-hidden">
+        {/* Vue conversation desktop (cachée < md, flex-1 sur md+).
+            min-w-0 + overflow-hidden pour empêcher tout débordement
+            horizontal venant des bulles ou du panel IA. */}
+        <div className="hidden md:block md:flex-1 md:min-w-0 h-full max-w-full overflow-hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}

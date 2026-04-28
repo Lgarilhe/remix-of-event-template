@@ -290,10 +290,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // ─── LAYOUT — CSS Grid 3 rangées (auto / 1fr / auto) ─────────────────
   return (
     <div
-      className="h-full bg-background overflow-hidden"
+      className="h-full min-w-0 bg-background overflow-hidden"
       style={{
         display: 'grid',
         gridTemplateRows: 'auto minmax(0, 1fr) auto',
+        gridTemplateColumns: 'minmax(0, 1fr)',
       }}
       data-component="message-view"
     >
@@ -377,15 +378,17 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </header>
 
-      {/* ROW 2 — MESSAGES (scrollable, design moderne avec grouping) */}
+      {/* ROW 2 — MESSAGES (scrollable, design moderne avec grouping)
+          overflow-x-hidden + min-w-0 pour empêcher tout débordement
+          horizontal (ex: long URL non-coupable dans un message) */}
       <div
         ref={messagesScrollRef}
-        className="overflow-y-auto overscroll-y-contain bg-background"
+        className="overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background min-w-0"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {/* Container utilise pleine largeur avec padding latéral généreux.
             Les bulles ont leur propre max-width en pourcentage. */}
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 min-w-0 max-w-full">
           {loadingMessages && messages.length === 0 ? (
             <div className="flex flex-col gap-4">
               {[
@@ -481,12 +484,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
                     {/* Bulles : 85% sur mobile, 75% sur md+ — utilise mieux
                         la largeur sur grand écran tout en gardant un asymétrie
-                        gauche/droite lisible. */}
-                    <div className="relative max-w-[85%] md:max-w-[75%]">
+                        gauche/droite lisible. min-w-0 pour permettre le shrink. */}
+                    <div className="relative max-w-[85%] md:max-w-[75%] min-w-0">
                       <div
                         className={cn(
                           'px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-shadow',
-                          'group-hover/msg:shadow-md',
+                          'group-hover/msg:shadow-md min-w-0 overflow-hidden',
                           isSender
                             ? 'bg-foreground text-background'
                             : 'bg-muted text-foreground',
@@ -504,7 +507,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
                               ),
                         )}
                       >
-                        <p className="whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
+                        {/* overflow-wrap:anywhere force le wrap même pour les
+                            URLs/strings longs sans espace. break-words seul
+                            ne suffit pas pour les URLs ultra-longues. */}
+                        <p
+                          className="whitespace-pre-wrap break-words text-pretty"
+                          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                        >
+                          {getMessageText(msg)}
+                        </p>
                       </div>
 
                       {/* Réactions sur le message — affichées juste sous la
