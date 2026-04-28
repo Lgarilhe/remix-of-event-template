@@ -162,12 +162,12 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
         </div>
       )}
 
-      {/* Desktop : grid 2 colonnes (sidebar 320px | conversation 1fr).
+      {/* Desktop : grid 2 colonnes (sidebar 280px | conversation 1fr).
+          Sidebar réduite à 280px pour maximiser l'espace conversation.
           Sur mobile (< md) : single col (sidebar full width — la conversation
-          est en overlay fixed quand un chat est sélectionné, cf bloc précédent).
-          Tailwind responsive classes uniquement (pas d'inline style). */}
+          est en overlay fixed quand un chat est sélectionné, cf bloc précédent). */}
       <div
-        className="h-full bg-background overflow-hidden grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]"
+        className="h-full bg-background overflow-hidden grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]"
         data-component="messages-inbox-grid"
       >
         {/* Sidebar de chats */}

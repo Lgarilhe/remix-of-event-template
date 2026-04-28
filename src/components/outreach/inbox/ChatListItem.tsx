@@ -105,29 +105,29 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
   return (
-    <div className="relative group px-2">
+    <div className="relative group px-1.5">
       <button
         onClick={onClick}
         className={cn(
-          'w-full px-3 py-2.5 flex items-start gap-3 text-left rounded-lg transition-all duration-150',
+          'w-full px-2.5 py-2 flex items-start gap-2.5 text-left rounded-lg transition-all duration-150',
           isSelected
             ? 'bg-accent text-accent-foreground'
             : 'hover:bg-muted/60',
         )}
       >
         {/* Avatar circulaire avec badge channel */}
-        <div className="relative shrink-0 mt-0.5">
+        <div className="relative shrink-0">
           <Avatar className={cn(
-            'w-11 h-11 rounded-full',
+            'w-10 h-10 rounded-full',
             isSelected ? 'ring-2 ring-accent-foreground/10' : 'ring-1 ring-border/40',
           )}>
             <AvatarImage src={avatar} className="rounded-full" />
-            <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-sm">
+            <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-[13px]">
               {getInitials(displayName)}
             </AvatarFallback>
           </Avatar>
           {/* Badge channel en bas-right */}
-          <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background grid place-items-center ring-1 ring-border">
+          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-background grid place-items-center ring-1 ring-border">
             <ChannelIcon channel={channel} size="xs" />
           </span>
         </div>
