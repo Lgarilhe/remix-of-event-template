@@ -74,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_candidate_enrichments_expires
 ALTER TABLE public.candidate_enrichments ENABLE ROW LEVEL SECURITY;
 
 -- SELECT : membres de l'org peuvent voir leurs enrichments
+DROP POLICY IF EXISTS candidate_enrichments_select ON public.candidate_enrichments;
 CREATE POLICY candidate_enrichments_select
   ON public.candidate_enrichments
   FOR SELECT
