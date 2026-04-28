@@ -20,22 +20,37 @@ const getPublicAppOrigin = () => {
 };
 
 const Auth = () => {
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+
+  // Détecte si l'user arrive via une invitation (depuis l'email).
+  // Si oui → mode SIGN UP par défaut (l'user n'a probablement pas encore de compte).
+  // Sinon → mode SIGN IN par défaut (comportement classique).
+  const invitationTokenFromUrl = useMemo(
+    () => new URLSearchParams(location.search).get('invitation'),
+    [location.search]
+  );
+  const emailFromUrl = useMemo(
+    () => new URLSearchParams(location.search).get('email'),
+    [location.search]
+  );
+  const orgNameFromUrl = useMemo(
+    () => new URLSearchParams(location.search).get('org'),
+    [location.search]
+  );
+  const arrivingViaInvitation = !!invitationTokenFromUrl;
+
+  const [email, setEmail] = useState(emailFromUrl || '');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
+  // Default : Sign Up si arrivée via invitation, Sign In sinon
+  const [isLogin, setIsLogin] = useState(!arrivingViaInvitation);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [collaboratorWelcome, setCollaboratorWelcome] = useState<{ orgName: string } | null>(null);
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
   const from = (location.state as any)?.from || '/missions';
-  const invitationTokenFromUrl = useMemo(
-    () => new URLSearchParams(location.search).get('invitation'),
-    [location.search]
-  );
   const invitationTokenRef = useRef<string | null>(null);
   const handledAccessTokenRef = useRef<string | null>(null);
   const [pendingAuthAccessToken, setPendingAuthAccessToken] = useState<string | null>(null);
@@ -268,6 +283,22 @@ const Auth = () => {
         description={isLogin ? 'Connectez-vous à Skalr pour gérer vos recrutements' : 'Créez votre compte Skalr pour piloter vos recrutements'}
       />
       <div className="w-full max-w-md space-y-8">
+        {/* Banner contextuel : invité via email d'invitation */}
+        {arrivingViaInvitation && !isResettingPassword && !isForgotPassword && (
+          <div className="bg-info/10 border border-info/30 rounded-lg p-4 text-sm">
+            <div className="font-medium text-foreground mb-0.5">
+              {orgNameFromUrl
+                ? `Vous êtes invité·e à rejoindre ${orgNameFromUrl}`
+                : 'Vous avez été invité·e à rejoindre une équipe'}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {isLogin
+                ? 'Vous avez déjà un compte ? Connectez-vous pour accepter l\'invitation.'
+                : 'Créez votre compte ci-dessous pour rejoindre l\'équipe.'}
+            </div>
+          </div>
+        )}
+
         <div>
           <h2 className="text-2xl sm:text-4xl font-normal text-foreground uppercase">
             {isResettingPassword ? 'Nouveau mot de passe' : isForgotPassword ? 'Mot de passe oublié' : isLogin ? 'Connexion' : 'Inscription'}
@@ -275,7 +306,7 @@ const Auth = () => {
           <p className="mt-2 text-sm text-muted-foreground">
             {isResettingPassword
               ? 'Entrez votre nouveau mot de passe'
-              : isForgotPassword 
+              : isForgotPassword
                 ? 'Entrez votre email pour recevoir un lien de réinitialisation'
                 : isLogin ? 'Connectez-vous pour accéder à votre espace recrutement' : 'Créez votre compte pour commencer à recruter'}
           </p>

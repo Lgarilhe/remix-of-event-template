@@ -148,7 +148,13 @@ Deno.serve(async (req) => {
     }
 
     const origin = resolveAppOrigin(req);
-    const inviteUrl = `${origin}/auth?invitation=${invitationId}`;
+    // Inclut email + org name dans l'URL pour :
+    // 1. Pré-remplir le champ email côté front (UX)
+    // 2. Permettre au front d'afficher Sign Up par défaut (au lieu de Sign In)
+    //    car l'invité n'a probablement pas encore de compte Konekt
+    // 3. Afficher un message contextuel "Vous êtes invité à rejoindre {orgName}"
+    const orgNameParam = org?.name ? `&org=${encodeURIComponent(org.name)}` : '';
+    const inviteUrl = `${origin}/auth?invitation=${invitationId}&email=${encodeURIComponent(normalizedEmail)}${orgNameParam}`;
     const idempotencyKey = isResend
       ? `team-invite-resend-${invitationId}-${Date.now()}`
       : `team-invite-${invitationId}`;
