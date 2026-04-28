@@ -13,6 +13,7 @@ import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
 import { useMessageActions } from '@/hooks/useMessageActions';
 import { useEdgeFunctionWarmup } from '@/hooks/useEdgeFunctionWarmup';
+import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
@@ -83,6 +84,10 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     initialChatId,
     onChatChange,
   });
+
+  // Pré-chargement en background des analyses IA pour les chats récents.
+  // Comme ça quand l'user ouvre un chat, l'analyse est déjà en cache → instantané.
+  useAutoPrefetchAnalyses({ chats: inbox.chats, enabled: true });
 
   const { addReaction, deleteMessage, deleteChat, isReacting, isDeleting } = useMessageActions(
     inbox.organizationId ?? null,

@@ -309,6 +309,15 @@ Deno.serve(async (req) => {
     }
 
     const _body = await req.json();
+
+    // Warmup ping — short-circuit pour éviter cold start sans consommer de crédits
+    if (_body?.warmup === true) {
+      return new Response(
+        JSON.stringify({ success: true, warmed: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { chat_id, account_id, sender_id, organization_id } = _body;
 
     // Verify org membership (skip for service_role — used by webhooks)
