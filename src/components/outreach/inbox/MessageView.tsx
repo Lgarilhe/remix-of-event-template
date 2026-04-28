@@ -88,7 +88,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   loadingMessages,
   newMessage,
   sending,
-  replySuggestions,
+  replySuggestions: replySuggestionsRaw,
   enrollmentsMap,
   availableJobs,
   messagesEndRef,
@@ -108,6 +108,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
   isReacting,
   isDeleting,
 }) => {
+  // Safety : s'assurer que replySuggestions est TOUJOURS un array (jamais undefined)
+  const replySuggestions = Array.isArray(replySuggestionsRaw) ? replySuggestionsRaw : [];
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
   const handleToneChange = onToneChange || setLocalTone;
@@ -255,6 +257,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
       className="h-full min-h-0 relative bg-background overflow-hidden"
       data-component="message-view"
     >
+      {/* DEBUG marker visible — indique la version déployée */}
+      <div className="absolute top-0 right-0 z-[60] bg-red-500 text-white text-[9px] px-1 py-0.5 font-mono pointer-events-none">
+        v0563668-debug
+      </div>
+
       {/* ═══ HEADER (absolute top) ═════════════════════════════════════ */}
       <header
         className="absolute top-0 left-0 right-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm"
@@ -487,10 +494,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       )}
 
-      {/* ═══ COMPOSER (absolute bottom-0) — INDESTRUCTIBLE ══════════════
-           Position absolute → ne dépend ni du parent flex/grid, ni du
-           contenu des messages. Toujours visible en bas, garantie CSS. */}
-      <div className="absolute bottom-0 left-0 right-0 z-20" style={{ minHeight: '140px' }}>
+      {/* ═══ COMPOSER — Position absolute + bordure debug ═══════════════
+           Si tu ne vois pas cette zone avec sa bordure, c'est que le composant
+           ne se rend pas du tout (problème runtime/JS dans la chaîne de hooks).
+           La bordure debug sera retirée après confirmation visuelle. */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-50 border-t-4 border-red-500"
+        style={{ minHeight: '140px' }}
+        data-component="message-composer-wrapper"
+      >
         <MessageComposer
           value={newMessage}
           onChange={onNewMessageChange}
