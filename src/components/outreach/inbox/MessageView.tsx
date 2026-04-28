@@ -246,17 +246,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
     calendlyLink: calendlyLink || undefined,
   };
 
-  // ─── Layout principal — CSS Grid 4 rangées ─────────────────────────────
-  // header (auto) | messages (1fr) | AI panel optionnel (auto) | composer (auto)
-  // Le composer est TOUJOURS en row 4, garantie d'être visible.
+  // ─── Layout principal — POSITION ABSOLUTE ────────────────────────────
+  // Le composer est rendu en absolute bottom-0 → impossible à cacher,
+  // peu importe le bug que pourrait avoir un parent flex/grid.
+  // Le header est en absolute top-0, les messages en absolute middle.
   return (
     <div
-      className="h-full min-h-0 grid bg-background overflow-hidden relative"
-      style={{ gridTemplateRows: 'auto minmax(0, 1fr) auto auto' }}
+      className="h-full min-h-0 relative bg-background overflow-hidden"
       data-component="message-view"
     >
-      {/* ═══ HEADER (auto) ═════════════════════════════════════════════ */}
-      <header className="border-b border-border bg-background/95 backdrop-blur-sm">
+      {/* ═══ HEADER (absolute top) ═════════════════════════════════════ */}
+      <header
+        className="absolute top-0 left-0 right-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm"
+      >
         <div className="flex items-center gap-3 px-4 py-3">
           <Button
             variant="ghost"
@@ -330,11 +332,18 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </header>
 
-      {/* ═══ BODY — Messages timeline (1fr) ═══════════════════════════ */}
+      {/* ═══ BODY — Messages timeline (absolute middle, scrollable) ════
+           top-[72px] = sous le header (~72px de hauteur typique)
+           bottom-[148px] = au-dessus du composer + AI panel space
+           Tailwind ne supporte pas les arbitrary values < 80, on utilise style. */}
       <div
         ref={localContainerRef}
-        className="overflow-y-auto overscroll-y-contain bg-background"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        className="absolute left-0 right-0 overflow-y-auto overscroll-y-contain bg-background"
+        style={{
+          top: '72px',
+          bottom: aiPanelOpen ? '40vh' : '140px',
+          WebkitOverflowScrolling: 'touch',
+        }}
       >
         <div className="px-4 py-6 max-w-4xl mx-auto">
           {loadingMessages && messages.length === 0 ? (
@@ -456,11 +465,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* ═══ AI Panel (row 3 auto — return null si fermé) ════════════ */}
-      {/* Wrapper avec max-h-[40vh] + overflow-auto pour ne pas écraser
-          le composer même si le contenu IA est volumineux. */}
+      {/* ═══ AI Panel (absolute, juste au-dessus du composer) ═══════════
+           Quand ouvert, il pousse l'espace du body messages via le bottom
+           dynamique du container messages (cf style ci-dessus). */}
       {aiPanelOpen && (
-        <div className="max-h-[40vh] overflow-y-auto">
+        <div
+          className="absolute left-0 right-0 z-10 max-h-[calc(40vh-140px)] overflow-y-auto bg-background border-t border-border"
+          style={{ bottom: '140px' }}
+        >
           <InlineAIPanel
             open={aiPanelOpen}
             onClose={() => setAiPanelOpen(false)}
@@ -475,19 +487,23 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       )}
 
-      {/* ═══ COMPOSER (row 4 auto) — TOUJOURS visible ════════════════ */}
-      <MessageComposer
-        value={newMessage}
-        onChange={onNewMessageChange}
-        onSend={onSendMessage}
-        sending={sending}
-        onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
-        hasAISuggestions={replySuggestions.length > 0}
-        aiSuggestionsCount={replySuggestions.length}
-        onScheduleCall={onScheduleCall}
-        hasCalendlyLink={!!calendlyLink}
-        channel={channel?.toUpperCase()}
-      />
+      {/* ═══ COMPOSER (absolute bottom-0) — INDESTRUCTIBLE ══════════════
+           Position absolute → ne dépend ni du parent flex/grid, ni du
+           contenu des messages. Toujours visible en bas, garantie CSS. */}
+      <div className="absolute bottom-0 left-0 right-0 z-20" style={{ minHeight: '140px' }}>
+        <MessageComposer
+          value={newMessage}
+          onChange={onNewMessageChange}
+          onSend={onSendMessage}
+          sending={sending}
+          onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
+          hasAISuggestions={replySuggestions.length > 0}
+          aiSuggestionsCount={replySuggestions.length}
+          onScheduleCall={onScheduleCall}
+          hasCalendlyLink={!!calendlyLink}
+          channel={channel?.toUpperCase()}
+        />
+      </div>
 
       {/* ─── Delete confirmation ─────────────────────────────────────── */}
       <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
