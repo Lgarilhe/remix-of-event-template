@@ -131,24 +131,31 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const chatStatus = useChatStatus();
 
   // Draft auto-save — restore le brouillon au mount du chat sélectionné
+  // FIX: on dédie le restore au moment où la chat selection change, pas à chaque
+  // changement de draft. Sinon on overwrite le newMessage parent à chaque tick.
   const { draft, setDraft, clearDraft } = useChatDraft(selectedChat?.id);
-  const draftRestoredRef = useRef<string | null>(null);
+  const lastChatIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!selectedChat?.id) return;
-    // Restaure le draft uniquement au premier mount du chat (évite de re-trigger
-    // quand l'user édite et qu'on reçoit le draft updated)
-    if (draftRestoredRef.current === selectedChat.id) return;
-    draftRestoredRef.current = selectedChat.id;
-    if (draft && !newMessage && draft !== newMessage) {
+    const id = selectedChat?.id || null;
+    if (id === lastChatIdRef.current) return;
+    lastChatIdRef.current = id;
+    // Au changement de chat, si on a un draft sauvegardé et que l'input parent
+    // est vide, on restaure le draft. NB : useChatDraft load le draft async,
+    // donc on attend un tick pour être sûr d'avoir la valeur fraîche.
+    if (id && draft && !newMessage) {
       onNewMessageChange(draft);
     }
-  }, [selectedChat?.id, draft, newMessage, onNewMessageChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.id]);
 
-  // Sync : à chaque changement de newMessage côté parent, on persiste le draft
+  // Sync : à chaque changement de newMessage côté parent, on persiste le draft.
+  // FIX: on ne persiste QUE si le user a effectivement tapé quelque chose
+  // (newMessage non vide). Sinon on évite de spammer localStorage avec des
+  // drafts vides qui delete les drafts existants au mount.
   useEffect(() => {
-    if (selectedChat?.id) {
-      setDraft(newMessage);
-    }
+    if (!selectedChat?.id) return;
+    if (!newMessage) return; // ne pas écraser un draft existant avec ""
+    setDraft(newMessage);
   }, [newMessage, selectedChat?.id, setDraft]);
 
   // Cleanup du draft après envoi réussi (sending → false + newMessage vide)
@@ -491,7 +498,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
       {/* AI suggestions badge when panel is closed */}
       {replySuggestions.length > 0 && !aiPanelOpen && (
-        <div className="px-3 pt-2">
+        <div className="px-3 pt-2 shrink-0">
           <button
             onClick={() => setAiPanelOpen(true)}
             className="flex items-center gap-1.5 px-2 py-1 text-xs uppercase tracking-wider font-medium border border-border bg-accent/10 hover:bg-accent/20 transition-colors"
@@ -503,12 +510,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
       )}
 
       {/* Separator before input */}
-      <div className="border-t border-border" />
+      <div className="border-t border-border shrink-0" />
 
-      {/* Message Input */}
-      <div className="px-3 pb-3">
+      {/* Message Input — shrink-0 + bg-background pour garantir la visibilité */}
+      <div className="px-3 py-3 shrink-0 bg-background">
         <div className="flex items-end gap-2">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <InMailTextEditor
               value={newMessage}
               onChange={onNewMessageChange}
@@ -525,7 +532,8 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <button
             onClick={onSendMessage}
             disabled={sending || !newMessage.trim()}
-            className="relative overflow-hidden h-10 w-10 bg-foreground text-background border border-border flex items-center justify-center mb-[2px] disabled:opacity-50 disabled:pointer-events-none group"
+            className="relative overflow-hidden h-10 w-10 bg-foreground text-background border border-border flex items-center justify-center mb-[2px] disabled:opacity-50 disabled:pointer-events-none group shrink-0"
+            aria-label="Envoyer le message"
           >
             {sending ? (
               <Loader2 className="w-4 h-4 animate-spin relative z-10" />

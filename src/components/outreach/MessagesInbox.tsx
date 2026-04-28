@@ -170,7 +170,7 @@ const MessagesInboxInner: React.FC<
         />
 
         {/* Desktop Message View */}
-        <div className="hidden md:flex flex-1 min-w-0">
+        <div className="hidden md:flex flex-1 min-w-0 min-h-0 h-full">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
