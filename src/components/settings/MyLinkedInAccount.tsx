@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +41,18 @@ export const MyLinkedInAccount = () => {
   const { mappings, linkAccount, unlinkAccount, getMappingForUser, getMappingForAccount } = useMemberLinkedInAccounts();
   const { organization } = useOrganization();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  /** Ref pour stocker l'interval de polling LinkedIn auto-detect, qu'on puisse cleanup au unmount */
+  const linkedinPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cleanup polling au démontage du composant (navigation React Router)
+  useEffect(() => {
+    return () => {
+      if (linkedinPollRef.current) {
+        clearInterval(linkedinPollRef.current);
+        linkedinPollRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -63,6 +75,19 @@ export const MyLinkedInAccount = () => {
     }
   }, [myAccount, isAccountHealthy, reconnectOpen]);
 
+  // Détecte quand le compte LinkedIn apparait pendant le polling auto
+  // (= webhook account_connected a fini son boulot) → stop polling + toast success
+  useEffect(() => {
+    if (myAccount && isAccountHealthy && linkedinPollRef.current) {
+      clearInterval(linkedinPollRef.current);
+      linkedinPollRef.current = null;
+      toast.success('Compte LinkedIn connecté avec succès !', {
+        description: 'Vous pouvez maintenant lancer votre première recherche dans une mission.',
+        duration: 6000,
+      });
+    }
+  }, [myAccount, isAccountHealthy]);
+
   const handleConnect = async () => {
     setGenerating(true);
     try {
@@ -76,7 +101,36 @@ export const MyLinkedInAccount = () => {
 
       if (data?.success && (data as any).url) {
         window.open((data as any).url, '_blank', 'noopener,noreferrer');
-        toast.info('Une fenêtre LinkedIn s\'est ouverte. Une fois connecté, revenez ici et cliquez sur "Rafraîchir les comptes".');
+        toast.info('Une fenêtre LinkedIn s\'est ouverte. La connexion sera détectée automatiquement.', {
+          duration: 5000,
+        });
+
+        // Auto-poll : check toutes les 5s pendant 3 min si le mapping member_linkedin_accounts
+        // a été créé (via webhook account_connected). Stop dès que détecté + toast success.
+        // Cleanup automatique au unmount via linkedinPollRef.
+        if (linkedinPollRef.current) clearInterval(linkedinPollRef.current);
+        const startedAt = Date.now();
+        const POLL_INTERVAL_MS = 5000;
+        const MAX_POLL_DURATION_MS = 3 * 60 * 1000;
+
+        linkedinPollRef.current = setInterval(async () => {
+          if (Date.now() - startedAt > MAX_POLL_DURATION_MS) {
+            if (linkedinPollRef.current) clearInterval(linkedinPollRef.current);
+            linkedinPollRef.current = null;
+            toast.message('Connexion LinkedIn non détectée', {
+              description: 'Si vous avez bien connecté votre compte, cliquez sur "Rafraîchir les comptes".',
+            });
+            return;
+          }
+          try {
+            await reloadAccounts();
+            // Le hook reloadAccounts updates via React Query → si nouveau compte
+            // détecté côté webhook, le composant re-render avec myAccount défini.
+            // Le useEffect surveillant myAccount déclenchera le toast success.
+          } catch {
+            // ignore polling errors transitoires
+          }
+        }, POLL_INTERVAL_MS);
       } else {
         throw new Error((data as any)?.error || 'Erreur lors de la génération du lien');
       }
