@@ -185,67 +185,80 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
   const qualQuestions = analysis?.qualificationQuestions || [];
 
   return (
-    <div className="border-t-2 border-border bg-background">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-border">
-        <button
-          onClick={() => setActiveSection('suggestions')}
-          className={cn(
-            "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
-            activeSection === 'suggestions'
-              ? "border-border text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          Réponses
-          {positive.length + negative.length > 0 && (
-            <Badge variant="outline" className="text-xs rounded-full h-4 px-1 ml-0.5">
-              {positive.length + negative.length}
-            </Badge>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveSection('jobs')}
-          className={cn(
-            "flex items-center gap-1.5 px-4 py-2 text-xs font-medium uppercase tracking-wide border-b-2 -mb-px transition-colors",
-            activeSection === 'jobs'
-              ? "border-border text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Search className="w-3.5 h-3.5" />
-          Postes
-          {jobMatches.length > 0 && (
-            <Badge variant="outline" className="text-xs rounded-full h-4 px-1 ml-0.5">
-              {jobMatches.length}
-            </Badge>
-          )}
-        </button>
+    <div className="border-t border-border bg-background" data-component="inline-ai-panel">
+      {/* Header moderne avec tabs pills + actions */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-border bg-muted/20">
+        {/* Title + sparkles */}
+        <div className="flex items-center gap-1.5 mr-2">
+          <Sparkles className="w-3.5 h-3.5 text-foreground" />
+          <span className="text-xs font-semibold text-foreground">Assistant IA</span>
+        </div>
+
+        {/* Tabs pills */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveSection('suggestions')}
+            className={cn(
+              "h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px] font-medium transition-colors",
+              activeSection === 'suggestions'
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <span>Réponses</span>
+            {positive.length + negative.length > 0 && (
+              <span className={cn(
+                "tabular-nums text-[10px]",
+                activeSection === 'suggestions' ? "opacity-70" : "opacity-50",
+              )}>
+                {positive.length + negative.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveSection('jobs')}
+            className={cn(
+              "h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px] font-medium transition-colors",
+              activeSection === 'jobs'
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <span>Postes</span>
+            {jobMatches.length > 0 && (
+              <span className={cn(
+                "tabular-nums text-[10px]",
+                activeSection === 'jobs' ? "opacity-70" : "opacity-50",
+              )}>
+                {jobMatches.length}
+              </span>
+            )}
+          </button>
+        </div>
 
         <div className="flex-1" />
 
+        {/* Actions droite */}
         <ModelPicker actionId="analyze_response" value={selectedModel} onChange={setSelectedModel} compact />
 
         {analysis && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 mr-1"
+          <button
             onClick={() => { setAnalysis(null); analyze(true); }}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             title="Relancer l'analyse"
+            aria-label="Relancer l'analyse"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
+          </button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0 mr-1"
+        <button
           onClick={onClose}
+          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          title="Fermer"
+          aria-label="Fermer"
         >
           <X className="w-3.5 h-3.5" />
-        </Button>
+        </button>
       </div>
 
       {/* Content */}
@@ -395,26 +408,35 @@ const SuggestionItem: React.FC<{
 }> = ({ suggestion, variant, onSelect, onSend, onClose, sending }) => (
   <div
     className={cn(
-      "group flex items-start gap-2 p-2.5 border transition-colors cursor-pointer",
+      "group flex items-start gap-2 p-3 rounded-lg border transition-all cursor-pointer",
       variant === 'positive'
-        ? "border-emerald-500/30 hover:bg-emerald-500/5 hover:border-emerald-500/50"
-        : "border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50"
+        ? "border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/40"
+        : "border-destructive/20 bg-destructive/5 hover:bg-destructive/10 hover:border-destructive/40"
     )}
     onClick={() => { onSelect(suggestion.text); onClose(); }}
   >
     <div className="flex-1 min-w-0">
-      <p className="text-xs leading-relaxed">{suggestion.text}</p>
-      <p className="text-xs text-muted-foreground mt-0.5">{suggestion.intent_match}</p>
+      <p className="text-[13px] leading-relaxed text-foreground">{suggestion.text}</p>
+      {suggestion.intent_match && (
+        <p className="text-[11px] text-muted-foreground mt-1 italic">{suggestion.intent_match}</p>
+      )}
     </div>
-    <Button
-      variant="ghost"
-      size="sm"
-      className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+    <button
+      type="button"
+      className={cn(
+        "h-7 w-7 inline-flex items-center justify-center rounded-md shrink-0 transition-all",
+        "opacity-0 group-hover:opacity-100",
+        variant === 'positive'
+          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+          : "bg-destructive text-destructive-foreground hover:opacity-90",
+        "active:scale-95",
+      )}
       onClick={(e) => { e.stopPropagation(); onSend(suggestion.text); onClose(); }}
       disabled={sending}
       title="Envoyer directement"
+      aria-label="Envoyer directement cette suggestion"
     >
-      {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-    </Button>
+      {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3 h-3" />}
+    </button>
   </div>
 );
