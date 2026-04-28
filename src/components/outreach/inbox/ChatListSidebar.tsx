@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -358,7 +357,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
       </div>
 
       {/* Chat List */}
-      <ScrollArea className="flex-1 min-h-0">
+      {/* Liste scrollable — div natif pour éviter le `display: table` du
+          Radix ScrollArea qui faisait dépasser les items en horizontal. */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
         {loadingChats ? (
           <div className="p-2 space-y-1">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -440,7 +441,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             )}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 };

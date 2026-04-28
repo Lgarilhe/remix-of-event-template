@@ -143,11 +143,11 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
 
   // ─── Mode normal : avatar + nom + preview + badges ─────────────────
   return (
-    <div className="relative group px-1.5">
+    <div className="relative group px-1.5 max-w-full overflow-hidden">
       <button
         onClick={onClick}
         className={cn(
-          'w-full px-2.5 py-2 flex items-start gap-2.5 text-left rounded-lg transition-all duration-150',
+          'w-full max-w-full min-w-0 px-2.5 py-2 flex items-start gap-2.5 text-left rounded-lg transition-all duration-150 overflow-hidden',
           isSelected
             ? 'bg-accent text-accent-foreground'
             : 'hover:bg-muted/60',
