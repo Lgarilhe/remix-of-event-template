@@ -103,9 +103,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
 
   return (
     <div className={cn(
-      // Width géré par le grid parent (MessagesInbox grid-cols-[360px_1fr]) ;
-      // ici on prend juste 100% du grid cell + flex column pour le layout interne.
-      "w-full h-full flex flex-col flex-shrink-0 bg-background min-h-0 overflow-x-hidden",
+      // Width géré par le grid parent (MessagesInbox grid-cols-[360px_1fr]).
+      // overflow-hidden + min-w-0 pour que rien ne déborde du grid cell.
+      "w-full h-full min-w-0 flex flex-col flex-shrink-0 bg-background min-h-0 overflow-hidden",
       selectedChat ? "hidden md:flex" : "flex"
     )}>
       {/* Header sidebar moderne */}
@@ -137,49 +137,57 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           />
         </div>
         
-        {/* Source filter — always visible, compact */}
-        <div className="flex gap-0">
+        {/* Source filter — pills compactes */}
+        <div className="flex gap-1 overflow-hidden">
           {([
-            { key: 'all' as const, label: `Tous (${chats.length})` },
-            { key: 'classic' as const, label: `Classic (${classicCount})` },
-            { key: 'recruiter' as const, label: `Recruiter (${recruiterCount})` },
-          ]).map((tab, index) => (
+            { key: 'all' as const, label: 'Tous', count: chats.length },
+            { key: 'classic' as const, label: 'Classic', count: classicCount },
+            { key: 'recruiter' as const, label: 'Recruiter', count: recruiterCount },
+          ]).map((tab) => (
             <button
               key={tab.key}
               onClick={() => onSourceFilterChange(tab.key)}
               className={cn(
-                "flex-1 h-6 text-xs font-medium uppercase tracking-wider border border-border transition-colors",
-                index > 0 && "border-l-0",
+                "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden",
                 sourceFilter === tab.key
                   ? "bg-foreground text-background"
-                  : "bg-background text-foreground hover:bg-accent"
+                  : "bg-muted/40 text-foreground hover:bg-muted"
               )}
             >
-              {tab.label}
+              <span className="truncate">{tab.label}</span>
+              <span className={cn(
+                "tabular-nums text-[10px]",
+                sourceFilter === tab.key ? "opacity-70" : "opacity-50",
+              )}>{tab.count}</span>
             </button>
           ))}
         </div>
 
-        {/* Quick response filter — always visible */}
-        <div className="flex gap-0">
+        {/* Quick response filter — pills compactes */}
+        <div className="flex gap-1 overflow-hidden">
           {([
-            { key: 'all' as const, label: 'Tous' },
-            { key: 'waiting_candidate' as const, label: `Att. cand. (${waitingCandidateCount})`, icon: <ArrowUpRight className="w-2.5 h-2.5" /> },
-            { key: 'waiting_me' as const, label: `Att. moi (${waitingMeCount})`, icon: <ArrowDownLeft className="w-2.5 h-2.5" /> },
-          ]).map((tab, index) => (
+            { key: 'all' as const, label: 'Tous', count: null, icon: null },
+            { key: 'waiting_candidate' as const, label: 'Att. cand.', count: waitingCandidateCount, icon: <ArrowUpRight className="w-3 h-3" /> },
+            { key: 'waiting_me' as const, label: 'Att. moi', count: waitingMeCount, icon: <ArrowDownLeft className="w-3 h-3" /> },
+          ]).map((tab) => (
             <button
               key={tab.key}
               onClick={() => onResponseFilterChange(tab.key)}
               className={cn(
-                "flex-1 h-6 text-xs font-medium uppercase tracking-wider border border-border transition-colors flex items-center justify-center gap-0.5",
-                index > 0 && "border-l-0",
+                "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden",
                 responseFilter === tab.key
                   ? "bg-foreground text-background"
-                  : "bg-background text-foreground hover:bg-accent"
+                  : "bg-muted/40 text-foreground hover:bg-muted"
               )}
             >
               {tab.icon}
-              <span>{tab.label}</span>
+              <span className="truncate">{tab.label}</span>
+              {tab.count != null && (
+                <span className={cn(
+                  "tabular-nums text-[10px]",
+                  responseFilter === tab.key ? "opacity-70" : "opacity-50",
+                )}>{tab.count}</span>
+              )}
             </button>
           ))}
         </div>
@@ -187,11 +195,11 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
         {/* Collapsible extra filters toggle */}
         <button
           onClick={() => setFiltersExpanded(!filtersExpanded)}
-          className="w-full flex items-center justify-center gap-1 h-5 text-xs text-muted-foreground hover:text-foreground transition-colors uppercase tracking-wider"
+          className="w-full flex items-center justify-center gap-1 h-6 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          <Tag className="w-2.5 h-2.5" />
+          <Tag className="w-3 h-3" />
           <span>Tags & filtres{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
-          <ChevronDown className={cn("w-2.5 h-2.5 transition-transform", filtersExpanded && "rotate-180")} />
+          <ChevronDown className={cn("w-3 h-3 transition-transform", filtersExpanded && "rotate-180")} />
         </button>
 
         {/* Collapsible section */}

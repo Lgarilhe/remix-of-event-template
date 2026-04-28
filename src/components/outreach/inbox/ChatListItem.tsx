@@ -178,8 +178,9 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </p>
           ) : null}
 
-          {/* Ligne 3 : badges (source type, catégorie, status, unread count) */}
-          <div className="flex items-center gap-1.5 mt-1.5 overflow-hidden min-w-0">
+          {/* Ligne 3 : badges (source type, catégorie, status, unread count)
+              flex-wrap pour éviter le débordement, gap réduit. */}
+          <div className="flex items-center gap-1 mt-1 flex-wrap min-w-0">
             {sourceType && (
               <span
                 className={cn(
@@ -193,15 +194,15 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {categoryInfo && (
               <span
                 className={cn(
-                  'shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded',
+                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded',
                   categoryInfo.color,
                 )}
               >
                 <span>{categoryInfo.emoji}</span>
-                <span>{categoryInfo.label}</span>
+                <span className="truncate max-w-[80px]">{categoryInfo.label}</span>
               </span>
             )}
-            {statusInfo && (
+            {statusInfo && !sourceType && !categoryInfo && (
               <p
                 className={cn(
                   'text-[11px] truncate flex items-center gap-1 min-w-0 leading-tight',
@@ -212,7 +213,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
                 <span className="truncate">{statusInfo.text}</span>
               </p>
             )}
-            {/* Unread dot indicator (au lieu d'un gros badge rouge) */}
+            {/* Unread badge — toujours à droite, avec ml-auto */}
             {unread && (
               <span className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold bg-foreground text-background rounded-full tabular-nums">
                 {unreadCount > 99 ? '99+' : unreadCount}
