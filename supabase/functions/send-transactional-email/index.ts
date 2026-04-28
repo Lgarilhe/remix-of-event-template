@@ -199,27 +199,41 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (tokenLookupError) {
-    console.error('Token lookup failed', {
-      error: tokenLookupError,
-      email: normalizedEmail,
-    })
-    const { error: tokenLookupLogError } = await supabase.from('email_send_log').insert({
-      message_id: messageId,
-      template_name: templateName,
-      recipient_email: effectiveRecipient,
-      status: 'failed',
-      error_message: 'Failed to look up unsubscribe token',
-    })
-    if (tokenLookupLogError) {
-      console.error('Failed to log token lookup failure', { error: tokenLookupLogError, messageId })
+    // Si la table email_unsubscribe_tokens n'existe pas (migration manquante)
+    // on dégrade gracieusement : on continue l'envoi sans lien d'unsubscribe
+    // au lieu de bloquer toute l'app de communication.
+    const errCode = (tokenLookupError as { code?: string })?.code
+    const errMessage = (tokenLookupError as { message?: string })?.message || ''
+    const tableMissing = errCode === '42P01' || /does not exist|relation.*does not exist/i.test(errMessage)
+
+    if (tableMissing) {
+      console.warn('[send-transactional-email] Table email_unsubscribe_tokens absente — envoi sans lien unsubscribe (dégradé)')
+      unsubscribeToken = '' // pas de token — template doit gérer le cas
+    } else {
+      console.error('Token lookup failed', {
+        error: tokenLookupError,
+        email: normalizedEmail,
+      })
+      try {
+        await supabase.from('email_send_log').insert({
+          message_id: messageId,
+          template_name: templateName,
+          recipient_email: effectiveRecipient,
+          status: 'failed',
+          error_message: `Failed to look up unsubscribe token: ${errMessage}`,
+        })
+      } catch { /* noop */ }
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to prepare email',
+          details: errMessage || errCode || 'token lookup failed',
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
     }
-    return new Response(
-      JSON.stringify({ error: 'Failed to prepare email' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
   }
 
   if (existingToken && !existingToken.used_at) {
@@ -250,7 +264,12 @@ Deno.serve(async (req) => {
         console.error('Failed to log token creation failure', { error: tokenCreateLogError, messageId })
       }
       return new Response(
-        JSON.stringify({ error: 'Failed to prepare email' }),
+        JSON.stringify({
+          error: 'Failed to prepare email',
+          details: (tokenError as { message?: string })?.message
+            || (reReadError as { message?: string })?.message
+            || 'unknown',
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -282,7 +301,12 @@ Deno.serve(async (req) => {
         console.error('Failed to log token confirmation failure', { error: tokenConfirmLogError, messageId })
       }
       return new Response(
-        JSON.stringify({ error: 'Failed to prepare email' }),
+        JSON.stringify({
+          error: 'Failed to prepare email',
+          details: (tokenError as { message?: string })?.message
+            || (reReadError as { message?: string })?.message
+            || 'unknown',
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

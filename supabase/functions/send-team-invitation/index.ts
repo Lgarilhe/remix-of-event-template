@@ -178,7 +178,10 @@ Deno.serve(async (req) => {
     if (!emailResponse.ok) {
       try {
         const payload = await emailResponse.clone().json();
-        emailError = payload?.error || payload?.message || `HTTP ${emailResponse.status}`;
+        // payload = { error: 'Failed to prepare email', details: 'real cause' }
+        const baseErr = payload?.error || payload?.message || `HTTP ${emailResponse.status}`;
+        const details = payload?.details ? ` (${payload.details})` : '';
+        emailError = `${baseErr}${details}`;
       } catch {
         const text = await emailResponse.text();
         emailError = text || `HTTP ${emailResponse.status}`;
