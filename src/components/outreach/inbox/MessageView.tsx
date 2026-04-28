@@ -257,11 +257,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
       className="h-full min-h-0 relative bg-background overflow-hidden"
       data-component="message-view"
     >
-      {/* DEBUG marker visible — indique la version déployée */}
-      <div className="absolute top-0 right-0 z-[60] bg-red-500 text-white text-[9px] px-1 py-0.5 font-mono pointer-events-none">
-        v0563668-debug
-      </div>
-
       {/* ═══ HEADER (absolute top) ═════════════════════════════════════ */}
       <header
         className="absolute top-0 left-0 right-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm"
@@ -495,13 +490,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
       )}
 
       {/* ═══ COMPOSER — Position FIXED (relatif au viewport) ════════════
-           Position fixed au lieu de absolute → s'attache au viewport, peu
-           importe la hauteur foireuse d'un parent quelconque dans la chaîne.
+           Position fixed → s'attache au viewport, garantie de visibilité
+           peu importe la propagation de hauteur des parents.
            Sur md+ : left=360px pour ne pas chevaucher la sidebar.
            Sur mobile (sidebar masquée) : left=0. */}
       <div
-        className="fixed bottom-0 left-0 md:left-[360px] right-0 z-[100] border-t-4 border-red-500 bg-background shadow-2xl"
-        style={{ minHeight: '140px' }}
+        className="fixed bottom-0 left-0 md:left-[360px] right-0 z-30 bg-background"
         data-component="message-composer-wrapper"
       >
         <MessageComposer
