@@ -147,6 +147,9 @@ const MessagesInboxInner: React.FC<
           sourceFilter={inbox.sourceFilter}
           categoryFilter={inbox.chatCategories.categoryFilter}
           responseFilter={inbox.responseFilter}
+          statusFilter={inbox.chatStatus.statusFilter}
+          statusCounts={inbox.chatStatus.getStatusCounts(inbox.chats.map(c => c.id))}
+          onStatusFilterChange={inbox.chatStatus.setStatusFilter}
           enrollmentsMap={inbox.enrollmentsMap}
           categoriesMap={inbox.chatCategories.categoriesMap}
           onSearchChange={inbox.setSearchQuery}

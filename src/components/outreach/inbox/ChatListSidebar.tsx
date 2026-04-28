@@ -20,6 +20,10 @@ interface ChatListSidebarProps {
   sourceFilter: 'all' | 'classic' | 'recruiter';
   categoryFilter: ChatCategory | 'all';
   responseFilter: 'all' | 'waiting_candidate' | 'waiting_me';
+  /** Inbox refonte Phase 1 — filter par status snooze/archive */
+  statusFilter?: 'active' | 'snoozed' | 'archived' | 'all';
+  statusCounts?: { active: number; snoozed: number; archived: number };
+  onStatusFilterChange?: (filter: 'active' | 'snoozed' | 'archived' | 'all') => void;
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   categoriesMap: Map<string, ChatCategory>;
   onSearchChange: (query: string) => void;
@@ -49,6 +53,9 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   sourceFilter,
   categoryFilter,
   responseFilter,
+  statusFilter = 'active',
+  statusCounts = { active: 0, snoozed: 0, archived: 0 },
+  onStatusFilterChange,
   enrollmentsMap,
   categoriesMap,
   onSearchChange,
@@ -188,6 +195,38 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
         {/* Collapsible section */}
         {filtersExpanded && (
           <div className="space-y-1.5 pt-0.5">
+            {/* Status filter (Active / Snoozed / Archived) — Inbox refonte Phase 1 */}
+            {onStatusFilterChange && (
+              <div className="flex gap-0">
+                {([
+                  { key: 'active' as const, label: 'Actives', emoji: '💬' },
+                  { key: 'snoozed' as const, label: 'En sommeil', emoji: '⏰' },
+                  { key: 'archived' as const, label: 'Archivées', emoji: '📦' },
+                  { key: 'all' as const, label: 'Toutes', emoji: '∗' },
+                ]).map((opt, idx) => {
+                  const count = opt.key === 'all'
+                    ? statusCounts.active + statusCounts.snoozed + statusCounts.archived
+                    : statusCounts[opt.key];
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => onStatusFilterChange(opt.key)}
+                      title={opt.label}
+                      className={cn(
+                        "flex-1 h-6 px-1.5 text-xs font-medium uppercase tracking-wider border transition-colors",
+                        idx > 0 && "border-l-0",
+                        statusFilter === opt.key
+                          ? "bg-foreground text-background border-border"
+                          : "bg-background text-foreground border-border hover:bg-accent"
+                      )}
+                    >
+                      {opt.emoji} {count}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Category filter pills */}
             <div className="flex gap-0">
               <button

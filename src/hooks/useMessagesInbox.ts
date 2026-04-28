@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useChatCategories } from './useChatCategories';
+import { useChatStatus, getEffectiveStatus } from './useChatStatus';
 import {
   getChatDisplayName,
   getChatHeadline,
@@ -488,6 +489,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
   // Chat categories
   const chatCategories = useChatCategories();
+
+  // Chat status (snooze + archive) — Inbox refonte Phase 1
+  const chatStatus = useChatStatus();
 
   // Fetch sequence enrollments
   const fetchEnrollments = useCallback(async () => {
@@ -1354,6 +1358,16 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       result = result.filter(chat => chatCategories.categoriesMap.get(chat.id) === chatCategories.categoryFilter);
     }
 
+    // Status filter (snooze + archive) — Inbox refonte Phase 1
+    // - 'active' (default) : pas snooze actif + pas archivé
+    // - 'snoozed' : snoozed_until > now()
+    // - 'archived' : archived_at IS NOT NULL
+    // - 'all' : aucun filtre
+    if (chatStatus.statusFilter !== 'all') {
+      const now = Date.now();
+      result = result.filter(chat => getEffectiveStatus(chatStatus.statusMap.get(chat.id), now) === chatStatus.statusFilter);
+    }
+
     // Response status filter: based on who sent the last message
     if (responseFilter === 'waiting_candidate') {
       // I sent the last message → candidate hasn't replied yet
@@ -1362,14 +1376,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Candidate sent the last message → I need to respond
       result = result.filter(chat => chat.last_message?.is_sender === false);
     }
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(chat => buildChatSearchText(chat).includes(query));
     }
-    
+
     setFilteredChats(result);
-  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, chatCategories.categoryFilter, chatCategories.categoriesMap]);
+  }, [searchQuery, chats, showUnreadOnly, sourceFilter, responseFilter, chatCategories.categoryFilter, chatCategories.categoriesMap, chatStatus.statusFilter, chatStatus.statusMap]);
 
   // Unread count effect
   useEffect(() => {
@@ -1554,6 +1568,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     
     // Categories
     chatCategories,
+
+    // Status (snooze + archive) — Inbox refonte Phase 1
+    chatStatus,
     
     // Context data
     enrollmentsMap,

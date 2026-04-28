@@ -6,6 +6,9 @@ import { InMailTextEditor } from '../InMailTextEditor';
 import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
 import { ActivityEventCard } from './ActivityEventCard';
+import { SnoozeArchiveButtons } from './SnoozeArchiveButtons';
+import { useChatStatus } from '@/hooks/useChatStatus';
+import { useChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import {
   Sparkles,
@@ -121,6 +124,42 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
   const localContainerRef = useRef<HTMLDivElement>(null);
+
+  // Chat status (snooze + archive) — Inbox refonte Phase 1
+  // Hook indépendant utilisé ici (état dupliqué avec useMessagesInbox.chatStatus
+  // mais cost négligeable et évite de propager 6 props supplémentaires).
+  const chatStatus = useChatStatus();
+
+  // Draft auto-save — restore le brouillon au mount du chat sélectionné
+  const { draft, setDraft, clearDraft } = useChatDraft(selectedChat?.id);
+  const draftRestoredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedChat?.id) return;
+    // Restaure le draft uniquement au premier mount du chat (évite de re-trigger
+    // quand l'user édite et qu'on reçoit le draft updated)
+    if (draftRestoredRef.current === selectedChat.id) return;
+    draftRestoredRef.current = selectedChat.id;
+    if (draft && !newMessage && draft !== newMessage) {
+      onNewMessageChange(draft);
+    }
+  }, [selectedChat?.id, draft, newMessage, onNewMessageChange]);
+
+  // Sync : à chaque changement de newMessage côté parent, on persiste le draft
+  useEffect(() => {
+    if (selectedChat?.id) {
+      setDraft(newMessage);
+    }
+  }, [newMessage, selectedChat?.id, setDraft]);
+
+  // Cleanup du draft après envoi réussi (sending → false + newMessage vide)
+  const wasSendingRef = useRef(sending);
+  useEffect(() => {
+    if (wasSendingRef.current && !sending && !newMessage) {
+      // Transition sending true→false avec input vide = envoi réussi
+      clearDraft();
+    }
+    wasSendingRef.current = sending;
+  }, [sending, newMessage, clearDraft]);
 
   // Scroll to bottom when messages load or change
   useEffect(() => {
@@ -256,6 +295,21 @@ export const MessageView: React.FC<MessageViewProps> = ({
           )}
         </div>
         
+        {/* Snooze + Archive buttons (Inbox refonte Phase 1) */}
+        <div className="hidden md:flex items-center gap-0.5">
+          <SnoozeArchiveButtons
+            chatId={selectedChat.id}
+            accountId={selectedChat.account_id}
+            isSnoozed={chatStatus.isSnoozed(selectedChat.id)}
+            isArchived={chatStatus.isArchived(selectedChat.id)}
+            snoozedUntil={chatStatus.getSnoozedUntil(selectedChat.id)}
+            onSnooze={chatStatus.snoozeChat}
+            onArchive={chatStatus.archiveChat}
+            onRestore={chatStatus.restoreChat}
+            compact
+          />
+        </div>
+
         {/* Tone Selector - hidden on mobile to save space */}
         <div className="hidden md:block">
           <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
