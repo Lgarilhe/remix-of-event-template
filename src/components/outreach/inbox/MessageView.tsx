@@ -1,26 +1,25 @@
 /**
- * MessageView — Conversation active avec layout CSS Grid indestructible.
+ * MessageView — Vue d'une conversation (header + messages + composer).
  *
- * Architecture (refonte 2026-04-28) :
+ * Architecture CSS Grid avec rangées explicites :
  *
- *   .root [grid grid-rows-[auto_1fr_auto] h-full overflow-hidden]
- *   ├── HEADER  (row auto)        — sticky top, avatar + nom + actions
- *   ├── BODY    (row 1fr)         — overflow-y-auto, messages timeline
- *   └── COMPOSER (row auto)       — toujours visible, MessageComposer
+ *   .root [grid h-full overflow-hidden]
+ *     gridTemplateRows: 'auto 1fr auto'
+ *   ├── HEADER   (auto)  ← hauteur intrinsèque
+ *   ├── MESSAGES (1fr)   ← prend le reste, scrollable
+ *   └── COMPOSER (auto)  ← hauteur intrinsèque, TOUJOURS visible
  *
- * Pourquoi CSS Grid au lieu de flex column ?
- *  - Les rangées `auto` ne peuvent JAMAIS être compressées sous leur contenu
- *  - La rangée `1fr` prend exactement le reste, ni plus ni moins
- *  - Pas de risque qu'un overflow:hidden parent cache une zone shrink
+ * Pourquoi grid avec template-rows explicite ?
+ *  - Les rangées `auto` ont leur hauteur intrinsèque (jamais 0)
+ *  - La rangée `1fr` prend exactement le reste
  *  - Pas de magic flex-1 + min-h-0 + shrink-0 fragile
+ *  - Pas de position fixed/absolute hacky
  *
- * Le composer (MessageComposer) est extrait dans son propre composant et
- * a son propre bg-card + border-top — visuellement distinct, garanti visible.
+ * Refonte from scratch — 2026-04-28.
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ToneSelector, AITone } from './ToneSelector';
 import { InlineAIPanel } from './InlineAIPanel';
@@ -34,6 +33,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import {
   ChevronLeft, User, Loader2, MessageSquare, Clock, CheckCheck, Check, Trash2,
 } from 'lucide-react';
@@ -92,7 +92,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
   enrollmentsMap,
   availableJobs,
   messagesEndRef,
-  messagesContainerRef,
   selectedTone = 'casual',
   onToneChange,
   onBack,
@@ -108,7 +107,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
   isReacting,
   isDeleting,
 }) => {
-  // Safety : s'assurer que replySuggestions est TOUJOURS un array (jamais undefined)
   const replySuggestions = Array.isArray(replySuggestionsRaw) ? replySuggestionsRaw : [];
   const [localTone, setLocalTone] = useState<AITone>(selectedTone);
   const currentTone = onToneChange ? selectedTone : localTone;
@@ -116,44 +114,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null);
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState<string | null>(null);
-  const localContainerRef = useRef<HTMLDivElement>(null);
-
-  // Mesure dynamique de la position du MessageView pour positionner le
-  // composer en fixed avec les bonnes coordonnées (évite tout chevauchement
-  // avec les sidebars en cas de bug de propagation de hauteur des parents).
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [composerRect, setComposerRect] = useState<{ left: number; width: number } | null>(null);
-
-  useEffect(() => {
-    const updateRect = () => {
-      if (!rootRef.current) return;
-      const rect = rootRef.current.getBoundingClientRect();
-      setComposerRect({ left: rect.left, width: rect.width });
-    };
-    updateRect();
-    window.addEventListener('resize', updateRect);
-    // Observer pour détecter les changements de layout (sidebar collapse, etc.)
-    const observer = new ResizeObserver(updateRect);
-    if (rootRef.current) observer.observe(rootRef.current);
-    return () => {
-      window.removeEventListener('resize', updateRect);
-      observer.disconnect();
-    };
-  }, []);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
 
   // Snooze + archive
   const chatStatus = useChatStatus();
 
-  // Draft auto-save : restore au changement de chat, jamais d'écrasement.
+  // Draft auto-save : restore au changement de chat
   const { draft, setDraft, clearDraft } = useChatDraft(selectedChat?.id);
   const lastChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = selectedChat?.id || null;
     if (id === lastChatIdRef.current) return;
     lastChatIdRef.current = id;
-    if (id && draft && !newMessage) {
-      onNewMessageChange(draft);
-    }
+    if (id && draft && !newMessage) onNewMessageChange(draft);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.id]);
 
@@ -169,10 +142,10 @@ export const MessageView: React.FC<MessageViewProps> = ({
     wasSendingRef.current = sending;
   }, [sending, newMessage, clearDraft]);
 
-  // Scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (!loadingMessages && messages.length > 0) {
-      const container = localContainerRef.current;
+      const container = messagesScrollRef.current;
       if (container) {
         const t = setTimeout(() => {
           requestAnimationFrame(() => {
@@ -221,7 +194,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
-  // ─── Empty state ──────────────────────────────────────────────────────
+  // Empty state
   if (!selectedChat) {
     return (
       <div className="h-full grid place-items-center bg-background text-muted-foreground">
@@ -229,9 +202,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
             <MessageSquare className="w-6 h-6" />
           </div>
-          <p className="text-sm font-medium text-foreground/70">
-            Sélectionnez une conversation
-          </p>
+          <p className="text-sm font-medium text-foreground/70">Sélectionnez une conversation</p>
           <p className="text-xs text-muted-foreground mt-1">
             Vos messages LinkedIn et InMail apparaîtront ici.
           </p>
@@ -271,20 +242,18 @@ export const MessageView: React.FC<MessageViewProps> = ({
     calendlyLink: calendlyLink || undefined,
   };
 
-  // ─── Layout principal — FLEX COLUMN propre ───────────────────────────
-  // Header (shrink-0) | Messages (flex-1 min-h-0 overflow-y-auto) | Composer (shrink-0)
-  // Plus de fixed/absolute hacks : le composer est dans le flow naturel,
-  // s'aligne automatiquement avec la conversation, et ne chevauche RIEN.
+  // ─── LAYOUT — CSS Grid 3 rangées (auto / 1fr / auto) ─────────────────
   return (
     <div
-      ref={rootRef}
-      className="h-full min-h-0 flex flex-col bg-background overflow-hidden relative"
+      className="h-full bg-background overflow-hidden"
+      style={{
+        display: 'grid',
+        gridTemplateRows: 'auto minmax(0, 1fr) auto',
+      }}
       data-component="message-view"
     >
-      {/* ═══ HEADER (shrink-0) ═════════════════════════════════════════ */}
-      <header
-        className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm"
-      >
+      {/* ROW 1 — HEADER */}
+      <header className="border-b border-border bg-background">
         <div className="flex items-center gap-3 px-4 py-3">
           <Button
             variant="ghost"
@@ -306,19 +275,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <ChannelIcon channel={channel} size="sm" />
-              <h2 className="font-semibold text-foreground truncate text-sm">
-                {displayName}
-              </h2>
+              <h2 className="font-semibold text-foreground truncate text-sm">{displayName}</h2>
               {jobInfo?.job_title && (
-                <span className="hidden md:inline text-[10px] uppercase tracking-wider text-muted-foreground border border-border px-1.5 py-0.5">
+                <span className="hidden md:inline text-[10px] uppercase tracking-wider text-muted-foreground border border-border px-1.5 py-0.5 rounded">
                   {jobInfo.job_title}
                 </span>
               )}
             </div>
             {headline && (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                {headline}
-              </p>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">{headline}</p>
             )}
             {subject && (
               <p className="hidden md:block text-[11px] text-muted-foreground/80 truncate mt-0.5">
@@ -327,7 +292,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
             )}
           </div>
 
-          {/* Actions header (desktop only) */}
           <div className="hidden md:flex items-center gap-1 shrink-0">
             <SnoozeArchiveButtons
               chatId={selectedChat.id}
@@ -347,7 +311,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 href={selectedChat.attendees[0].profile_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="h-7 px-2 inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                className="h-7 px-2 inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider border border-border rounded text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
                 title="Voir le profil LinkedIn"
               >
                 <User className="w-3 h-3" />
@@ -358,13 +322,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </header>
 
-      {/* ═══ BODY — Messages timeline (flex-1, scrollable) ══════════════ */}
-      {/* padding-bottom 160px pour réserver l'espace du composer fixed
-          afin que les messages ne soient pas cachés derrière */}
+      {/* ROW 2 — MESSAGES (overflow-y-auto) */}
       <div
-        ref={localContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain bg-background"
-        style={{ WebkitOverflowScrolling: 'touch', paddingBottom: '160px' }}
+        ref={messagesScrollRef}
+        className="overflow-y-auto overscroll-y-contain bg-background"
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <div className="px-4 py-6 max-w-4xl mx-auto">
           {loadingMessages && messages.length === 0 ? (
@@ -415,20 +377,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
                             : 'bg-muted text-foreground border border-border/40 rounded-bl-sm',
                         )}
                       >
-                        <p className="whitespace-pre-wrap break-words">
-                          {getMessageText(msg)}
-                        </p>
+                        <p className="whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
                         <div
                           className={cn(
                             'flex items-center gap-1 mt-1.5 text-[10px]',
                             isSender ? 'justify-end' : 'justify-start',
                           )}
                         >
-                          <span
-                            className={cn(
-                              isSender ? 'text-background/60' : 'text-muted-foreground',
-                            )}
-                          >
+                          <span className={cn(isSender ? 'text-background/60' : 'text-muted-foreground')}>
                             {formatMessageTime(msg.timestamp)}
                           </span>
                           {isSender && (msg.read || msg.seen === 1 ? (
@@ -441,7 +397,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Reactions (received messages) */}
                       {!isSender && onAddReaction && msg.id != null && (
                         <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background border border-border px-1 py-0.5 rounded-md shadow-md">
                           {REACTION_EMOJIS.map(emoji => (
@@ -466,7 +421,6 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         </div>
                       )}
 
-                      {/* Delete button (sent messages) */}
                       {isSender && onDeleteMessage && msg.id != null && (
                         <button
                           onClick={() => setDeleteMsgConfirm(msg.id)}
@@ -486,55 +440,38 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </div>
 
-      {/* ═══ AI Panel (shrink-0, conditionnel) ══════════════════════════ */}
-      {aiPanelOpen && (
-        <div className="shrink-0 max-h-[40vh] overflow-y-auto bg-background border-t border-border">
-          <InlineAIPanel
-            open={aiPanelOpen}
-            onClose={() => setAiPanelOpen(false)}
-            context={aiContext}
-            chatId={selectedChat.id}
-            accountId={selectedChat.account_id}
-            onSuggestionSelect={(text) => onSuggestionClick(text)}
-            onSuggestionSend={(text) => onSuggestionSend(text)}
-            onAddToPipeline={onAddToPipeline}
-            sending={sending}
-          />
-        </div>
-      )}
+      {/* ROW 3 — COMPOSER + AI panel optionnel */}
+      <div>
+        {aiPanelOpen && (
+          <div className="max-h-[40vh] overflow-y-auto border-t border-border">
+            <InlineAIPanel
+              open={aiPanelOpen}
+              onClose={() => setAiPanelOpen(false)}
+              context={aiContext}
+              chatId={selectedChat.id}
+              accountId={selectedChat.account_id}
+              onSuggestionSelect={(text) => onSuggestionClick(text)}
+              onSuggestionSend={(text) => onSuggestionSend(text)}
+              onAddToPipeline={onAddToPipeline}
+              sending={sending}
+            />
+          </div>
+        )}
+        <MessageComposer
+          value={newMessage}
+          onChange={onNewMessageChange}
+          onSend={onSendMessage}
+          sending={sending}
+          onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
+          hasAISuggestions={replySuggestions.length > 0}
+          aiSuggestionsCount={replySuggestions.length}
+          onScheduleCall={onScheduleCall}
+          hasCalendlyLink={!!calendlyLink}
+          channel={channel?.toUpperCase()}
+        />
+      </div>
 
-      {/* ═══ COMPOSER — Position fixed avec coords MESURÉES en JS ═══════
-           Plus de calc CSS bricolé : on mesure dynamiquement le rect du
-           MessageView via ref + ResizeObserver, puis on applique les
-           coords exactes en pixels au composer fixed.
-
-           Garantie : le composer est PILE aligné avec la conversation,
-           peu importe les bugs de layout/sidebars/breakpoints. */}
-      {composerRect && (
-        <div
-          className="fixed bottom-0 z-30 bg-background border-t border-border"
-          style={{
-            left: `${composerRect.left}px`,
-            width: `${composerRect.width}px`,
-          }}
-          data-component="message-composer-wrapper"
-        >
-          <MessageComposer
-            value={newMessage}
-            onChange={onNewMessageChange}
-            onSend={onSendMessage}
-            sending={sending}
-            onOpenAI={() => setAiPanelOpen(!aiPanelOpen)}
-            hasAISuggestions={replySuggestions.length > 0}
-            aiSuggestionsCount={replySuggestions.length}
-            onScheduleCall={onScheduleCall}
-            hasCalendlyLink={!!calendlyLink}
-            channel={channel?.toUpperCase()}
-          />
-        </div>
-      )}
-
-      {/* ─── Delete confirmation ─────────────────────────────────────── */}
+      {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteMsgConfirm} onOpenChange={(open) => !open && setDeleteMsgConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

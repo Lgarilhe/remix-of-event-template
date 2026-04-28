@@ -1,3 +1,12 @@
+/**
+ * MessagesInbox — Container avec sidebar de chats + vue conversation.
+ *
+ * Refonte from scratch — 2026-04-28.
+ *
+ * Layout : CSS Grid 2 colonnes (sidebar 360px | conversation 1fr).
+ * La hauteur est imposée par le parent (Inbox.tsx fixe via calc(100dvh)).
+ */
+
 import React, { useEffect } from 'react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { MessageSquare } from 'lucide-react';
@@ -9,7 +18,6 @@ import { AddToPipelineModal } from './AddToPipelineModal';
 import { getCurrentCandidateProfile, getChatAvatar } from '@/hooks/useMessagesInboxHelpers';
 import { Button } from '@/components/ui/button';
 import { GitBranch, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 
 interface MessagesInboxProps {
@@ -24,26 +32,33 @@ interface MessagesInboxProps {
 }
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
-  const { selectedAccount } = props;
+  const { selectedAccount, loading } = props;
 
+  // Loading / no account selected
   if (!selectedAccount) {
-    if (props.loading) {
-      return (
-         <div className="flex items-center justify-center h-full text-muted-foreground bg-background">
-          <div className="text-center">
-            <div className="w-5 h-5 border border-border border-t-foreground rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">Chargement des comptes...</p>
-          </div>
-        </div>
-      );
-    }
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground bg-background">
-        <div className="text-center">
-          <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <p className="text-sm uppercase tracking-wide">Sélectionnez un compte LinkedIn pour voir vos messages</p>
+      <div className="h-full grid place-items-center bg-background text-muted-foreground">
+        <div className="text-center max-w-md px-6">
+          {loading ? (
+            <>
+              <div className="w-6 h-6 border-2 border-border border-t-foreground rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                Chargement de votre compte LinkedIn...
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <p className="text-sm font-medium text-foreground/70">
+                Aucun compte LinkedIn connecté
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Connectez votre LinkedIn dans les paramètres pour voir vos messages.
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -52,9 +67,12 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
   return <MessagesInboxInner {...props} selectedAccount={selectedAccount} />;
 };
 
-const MessagesInboxInner: React.FC<
-  MessagesInboxProps & { selectedAccount: string }
-> = ({ selectedAccount, onUnreadCountChange, initialChatId, onChatChange, fullHeight }) => {
+const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: string }> = ({
+  selectedAccount,
+  onUnreadCountChange,
+  initialChatId,
+  onChatChange,
+}) => {
   const inbox = useMessagesInbox({
     selectedAccount,
     onUnreadCountChange,
@@ -63,7 +81,7 @@ const MessagesInboxInner: React.FC<
   });
 
   const { addReaction, deleteMessage, deleteChat, isReacting, isDeleting } = useMessageActions(
-    inbox.organizationId ?? null
+    inbox.organizationId ?? null,
   );
 
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
@@ -81,20 +99,17 @@ const MessagesInboxInner: React.FC<
 
   const handleDeleteMessage = async (messageId: string) => {
     const success = await deleteMessage(messageId);
-    if (success) {
-      // Refresh messages
-      inbox.fetchChats(false);
-    }
+    if (success) inbox.fetchChats(false);
     return success;
   };
 
   return (
     <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
       <PreloadAttendeePictures chats={inbox.chats} />
-      <>
-      {/* Mobile fullscreen message view */}
+
+      {/* Mobile fullscreen vue conversation */}
       {inbox.selectedChat && (
-        <div className="fixed inset-0 z-[2100] bg-background flex flex-col min-h-0 overflow-hidden md:hidden">
+        <div className="fixed inset-0 z-[2100] bg-background md:hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
@@ -134,96 +149,99 @@ const MessagesInboxInner: React.FC<
         </div>
       )}
 
-      {/* Desktop layout + mobile chat list — CSS Grid robuste (refonte 2026-04-28) */}
+      {/* Desktop : grid 2 colonnes (sidebar 360px | conversation 1fr).
+          Sur mobile, single col (sidebar full width — la conversation est en
+          overlay fixed quand un chat est sélectionné, cf bloc précédent). */}
       <div
-        className={cn(
-          "bg-background overflow-hidden relative grid",
-          // Mobile : sidebar full width (le MessageView est en overlay fixed)
-          // Desktop md+ : 2 colonnes — sidebar 360px + reste
-          "grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)]",
-          fullHeight
-            ? "h-full min-h-0 border border-border rounded-md"
-            : "h-[calc(100dvh-160px)] md:h-[calc(100dvh-280px)] min-h-[300px] md:min-h-[500px] border border-border rounded-md"
-        )}
-        data-component="messages-inbox-grid"
+        className="h-full bg-background overflow-hidden"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr)',
+        }}
       >
-        {/* Chat List Sidebar */}
-        <ChatListSidebar
-          chats={inbox.chats}
-          filteredChats={inbox.filteredChats}
-          selectedChat={inbox.selectedChat}
-          loadingChats={inbox.loadingChats}
-          searchQuery={inbox.searchQuery}
-          showUnreadOnly={inbox.showUnreadOnly}
-          sourceFilter={inbox.sourceFilter}
-          categoryFilter={inbox.chatCategories.categoryFilter}
-          responseFilter={inbox.responseFilter}
-          statusFilter={inbox.chatStatus.statusFilter}
-          statusCounts={inbox.chatStatus.getStatusCounts(inbox.chats.map(c => c.id))}
-          onStatusFilterChange={inbox.chatStatus.setStatusFilter}
-          enrollmentsMap={inbox.enrollmentsMap}
-          categoriesMap={inbox.chatCategories.categoriesMap}
-          onSearchChange={inbox.setSearchQuery}
-          onShowUnreadOnlyChange={inbox.setShowUnreadOnly}
-          onSourceFilterChange={inbox.setSourceFilter}
-          onCategoryFilterChange={inbox.chatCategories.setCategoryFilter}
-          onResponseFilterChange={inbox.setResponseFilter}
-          onSetCategory={inbox.chatCategories.setCategory}
-          onChatSelect={inbox.setSelectedChat}
-          onRefresh={() => inbox.fetchChats(true)}
-          hasMoreChats={inbox.hasMoreChats}
-          loadingMoreChats={inbox.loadingMoreChats}
-          loadingAllChats={inbox.loadingAllChats}
-          onLoadMoreChats={inbox.loadMoreChats}
-          onLoadAllChats={inbox.loadAllChats}
-          onDeleteChat={handleDeleteChat}
-          isDeletingChat={isDeleting}
-        />
-
-        {/* Desktop Message View — grid cell, hauteur garantie par grid */}
-        <div className="hidden md:block h-full min-w-0 min-h-0 overflow-hidden">
-          <MessageView
+        <div
+          className="h-full overflow-hidden md:grid"
+          style={{ gridTemplateColumns: 'minmax(0, 360px) minmax(0, 1fr)' }}
+          data-component="messages-inbox-grid"
+        >
+          {/* Sidebar de chats */}
+          <ChatListSidebar
+            chats={inbox.chats}
+            filteredChats={inbox.filteredChats}
             selectedChat={inbox.selectedChat}
-            messages={inbox.messages}
-            loadingMessages={inbox.loadingMessages}
-            newMessage={inbox.newMessage}
-            sending={inbox.sending}
-            replySuggestions={inbox.replySuggestions}
-            loadingSuggestions={inbox.loadingSuggestions}
-            suggestionsLoaded={inbox.suggestionsLoaded}
+            loadingChats={inbox.loadingChats}
+            searchQuery={inbox.searchQuery}
+            showUnreadOnly={inbox.showUnreadOnly}
+            sourceFilter={inbox.sourceFilter}
+            categoryFilter={inbox.chatCategories.categoryFilter}
+            responseFilter={inbox.responseFilter}
+            statusFilter={inbox.chatStatus.statusFilter}
+            statusCounts={inbox.chatStatus.getStatusCounts(inbox.chats.map((c) => c.id))}
+            onStatusFilterChange={inbox.chatStatus.setStatusFilter}
             enrollmentsMap={inbox.enrollmentsMap}
-            availableJobs={inbox.availableJobs}
-            messagesEndRef={inbox.messagesEndRef}
-            messagesContainerRef={inbox.messagesContainerRef}
-            analysisData={inbox.analysisData}
-            loadingAnalysis={inbox.loadingAnalysis}
-            selectedTone={inbox.selectedTone}
-            onToneChange={inbox.setSelectedTone}
-            onBack={() => inbox.setSelectedChat(null)}
-            onNewMessageChange={inbox.setNewMessage}
-            onSendMessage={inbox.sendMessage}
-            onSuggestionClick={inbox.handleSuggestionClick}
-            onSuggestionSend={inbox.handleSuggestionSend}
-            onFetchSuggestions={inbox.fetchReplySuggestions}
-            onClearSuggestions={() => {
-              inbox.setReplySuggestions([]);
-              inbox.setSuggestionsLoaded(false);
-            }}
-            onAddToPipeline={inbox.handleAddToPipeline}
-            onEnrollInSequence={inbox.handleEnrollInSequence}
-            onScheduleCall={inbox.handleScheduleCall}
-            calendlyLink={inbox.calendlyLink}
-            onAddReaction={addReaction}
-            onDeleteMessage={handleDeleteMessage}
-            isReacting={isReacting}
-            isDeleting={isDeleting}
+            categoriesMap={inbox.chatCategories.categoriesMap}
+            onSearchChange={inbox.setSearchQuery}
+            onShowUnreadOnlyChange={inbox.setShowUnreadOnly}
+            onSourceFilterChange={inbox.setSourceFilter}
+            onCategoryFilterChange={inbox.chatCategories.setCategoryFilter}
+            onResponseFilterChange={inbox.setResponseFilter}
+            onSetCategory={inbox.chatCategories.setCategory}
+            onChatSelect={inbox.setSelectedChat}
+            onRefresh={() => inbox.fetchChats(true)}
+            hasMoreChats={inbox.hasMoreChats}
+            loadingMoreChats={inbox.loadingMoreChats}
+            loadingAllChats={inbox.loadingAllChats}
+            onLoadMoreChats={inbox.loadMoreChats}
+            onLoadAllChats={inbox.loadAllChats}
+            onDeleteChat={handleDeleteChat}
+            isDeletingChat={isDeleting}
           />
+
+          {/* Vue conversation desktop (cachée sur mobile) */}
+          <div className="hidden md:block h-full overflow-hidden border-l border-border">
+            <MessageView
+              selectedChat={inbox.selectedChat}
+              messages={inbox.messages}
+              loadingMessages={inbox.loadingMessages}
+              newMessage={inbox.newMessage}
+              sending={inbox.sending}
+              replySuggestions={inbox.replySuggestions}
+              loadingSuggestions={inbox.loadingSuggestions}
+              suggestionsLoaded={inbox.suggestionsLoaded}
+              enrollmentsMap={inbox.enrollmentsMap}
+              availableJobs={inbox.availableJobs}
+              messagesEndRef={inbox.messagesEndRef}
+              messagesContainerRef={inbox.messagesContainerRef}
+              analysisData={inbox.analysisData}
+              loadingAnalysis={inbox.loadingAnalysis}
+              selectedTone={inbox.selectedTone}
+              onToneChange={inbox.setSelectedTone}
+              onBack={() => inbox.setSelectedChat(null)}
+              onNewMessageChange={inbox.setNewMessage}
+              onSendMessage={inbox.sendMessage}
+              onSuggestionClick={inbox.handleSuggestionClick}
+              onSuggestionSend={inbox.handleSuggestionSend}
+              onFetchSuggestions={inbox.fetchReplySuggestions}
+              onClearSuggestions={() => {
+                inbox.setReplySuggestions([]);
+                inbox.setSuggestionsLoaded(false);
+              }}
+              onAddToPipeline={inbox.handleAddToPipeline}
+              onEnrollInSequence={inbox.handleEnrollInSequence}
+              onScheduleCall={inbox.handleScheduleCall}
+              calendlyLink={inbox.calendlyLink}
+              onAddReaction={addReaction}
+              onDeleteMessage={handleDeleteMessage}
+              isReacting={isReacting}
+              isDeleting={isDeleting}
+            />
+          </div>
         </div>
 
-        {/* Sequence Selection Modal */}
+        {/* Modal sélection séquence */}
         {inbox.showSequenceSelect && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-background border border-border p-4 max-w-sm w-full mx-4 shadow-xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-background border border-border rounded-md p-4 max-w-sm w-full shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold uppercase tracking-wide text-sm">Choisir une séquence</h3>
                 <Button
@@ -240,7 +258,7 @@ const MessagesInboxInner: React.FC<
                   <button
                     key={sequence.id}
                     onClick={() => inbox.enrollInSequence(sequence)}
-                    className="w-full p-3 text-left border border-border hover:bg-accent/20 transition-colors"
+                    className="w-full p-3 text-left border border-border rounded hover:bg-accent/20 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <GitBranch className="w-4 h-4 text-foreground" />
@@ -256,7 +274,6 @@ const MessagesInboxInner: React.FC<
           </div>
         )}
 
-        {/* Add to Pipeline Modal */}
         {inbox.showPipelineModal && candidateProfile && (
           <AddToPipelineModal
             open={inbox.showPipelineModal}
@@ -266,25 +283,19 @@ const MessagesInboxInner: React.FC<
           />
         )}
       </div>
-      </>
     </AttendeePicturesProvider>
   );
 };
 
-/** Preloads attendee pictures for visible chats that lack a static avatar */
 const PreloadAttendeePictures: React.FC<{ chats: import('@/hooks/useMessagesInbox').Chat[] }> = ({ chats }) => {
   const { preloadPictures } = useAttendeePicturesContext();
-
   useEffect(() => {
     const ids = chats
       .filter((c) => !getChatAvatar(c) && c.attendees?.[0]?.id)
       .map((c) => c.attendees?.[0]?.id)
       .filter((id): id is string => !!id)
       .slice(0, 20);
-    if (ids.length > 0) {
-      preloadPictures(ids);
-    }
+    if (ids.length > 0) preloadPictures(ids);
   }, [chats, preloadPictures]);
-
   return null;
 };
