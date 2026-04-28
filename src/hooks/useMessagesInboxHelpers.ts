@@ -171,12 +171,12 @@ export const getMessageSourceType = (chat: Chat): { label: string; color: string
   
   if (chat.content_type === 'inmail') {
     return hasRecruiter
-      ? { label: 'InMail Recruiter', color: 'bg-brand-purple/10 text-brand-purple border-brand-purple/30' }
-      : { label: 'InMail', color: 'bg-brand-purple/10 text-brand-purple border-brand-purple/30' };
+      ? { label: 'InMail Recruiter', color: 'bg-brand-purple/10 text-brand-purple' }
+      : { label: 'InMail', color: 'bg-brand-purple/10 text-brand-purple' };
   }
 
   if (hasRecruiter) {
-    return { label: 'Recruiter', color: 'bg-warning/10 text-warning border-warning/30' };
+    return { label: 'Recruiter', color: 'bg-warning/10 text-warning' };
   }
 
   const hasSalesNav = folders.some(f =>
@@ -184,7 +184,7 @@ export const getMessageSourceType = (chat: Chat): { label: string; color: string
     f.toLowerCase().includes('navigator')
   );
   if (hasSalesNav) {
-    return { label: 'Sales Nav', color: 'bg-info/10 text-info border-info/30' };
+    return { label: 'Sales Nav', color: 'bg-info/10 text-info' };
   }
 
   const hasClassic = folders.some(f =>
@@ -192,7 +192,7 @@ export const getMessageSourceType = (chat: Chat): { label: string; color: string
     f.toLowerCase().includes('inbox')
   );
   if (hasClassic || folders.length > 0) {
-    return { label: 'Classic', color: 'bg-muted text-muted-foreground border-border' };
+    return { label: 'Classic', color: 'bg-muted/60 text-muted-foreground' };
   }
   
   return null;

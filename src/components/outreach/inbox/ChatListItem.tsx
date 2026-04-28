@@ -184,7 +184,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {sourceType && (
               <span
                 className={cn(
-                  'shrink-0 inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider rounded',
+                  'shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-md',
                   sourceType.color,
                 )}
               >

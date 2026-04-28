@@ -202,35 +202,41 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           <ChevronDown className={cn("w-3 h-3 transition-transform", filtersExpanded && "rotate-180")} />
         </button>
 
-        {/* Collapsible section */}
+        {/* Collapsible section — pills modernes cohérentes */}
         {filtersExpanded && (
           <div className="space-y-1.5 pt-0.5">
-            {/* Status filter (Active / Snoozed / Archived) — Inbox refonte Phase 1 */}
+            {/* Status filter (Active / Snoozed / Archived) */}
             {onStatusFilterChange && (
-              <div className="flex gap-0">
+              <div className="flex gap-1 overflow-hidden">
                 {([
                   { key: 'active' as const, label: 'Actives', emoji: '💬' },
                   { key: 'snoozed' as const, label: 'En sommeil', emoji: '⏰' },
                   { key: 'archived' as const, label: 'Archivées', emoji: '📦' },
                   { key: 'all' as const, label: 'Toutes', emoji: '∗' },
-                ]).map((opt, idx) => {
+                ]).map((opt) => {
                   const count = opt.key === 'all'
                     ? statusCounts.active + statusCounts.snoozed + statusCounts.archived
                     : statusCounts[opt.key];
+                  const isActive = statusFilter === opt.key;
                   return (
                     <button
                       key={opt.key}
                       onClick={() => onStatusFilterChange(opt.key)}
                       title={opt.label}
                       className={cn(
-                        "flex-1 h-6 px-1.5 text-xs font-medium uppercase tracking-wider border transition-colors",
-                        idx > 0 && "border-l-0",
-                        statusFilter === opt.key
-                          ? "bg-foreground text-background border-border"
-                          : "bg-background text-foreground border-border hover:bg-accent"
+                        "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap",
+                        isActive
+                          ? "bg-foreground text-background"
+                          : "bg-muted/40 text-foreground hover:bg-muted",
                       )}
                     >
-                      {opt.emoji} {count}
+                      <span>{opt.emoji}</span>
+                      <span className={cn(
+                        "tabular-nums text-[10px]",
+                        isActive ? "opacity-70" : "opacity-50",
+                      )}>
+                        {count}
+                      </span>
                     </button>
                   );
                 })}
@@ -238,51 +244,62 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             )}
 
             {/* Category filter pills */}
-            <div className="flex gap-0">
+            <div className="flex gap-1 overflow-hidden flex-wrap">
               <button
                 onClick={() => onCategoryFilterChange('all')}
                 className={cn(
-                  "flex-1 h-6 px-1.5 text-xs font-medium uppercase tracking-wider border transition-colors",
+                  "min-w-0 h-7 px-2.5 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center",
                   categoryFilter === 'all'
-                    ? "bg-foreground text-background border-border"
-                    : "bg-background text-foreground border-border hover:border-border"
+                    ? "bg-foreground text-background"
+                    : "bg-muted/40 text-foreground hover:bg-muted",
                 )}
               >
                 Tous
               </button>
-              {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info], index) => (
-                <button
-                  key={key}
-                  onClick={() => onCategoryFilterChange(categoryFilter === key ? 'all' : key)}
-                  className={cn(
-                    "flex-1 h-6 px-1.5 text-xs font-medium border border-l-0 transition-colors",
-                    categoryFilter === key
-                      ? cn("border-border", info.color)
-                      : "bg-background text-foreground border-border hover:border-border"
-                  )}
-                >
-                  {info.emoji} {categoryCounts[key] || 0}
-                </button>
-              ))}
+              {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info]) => {
+                const isActive = categoryFilter === key;
+                const count = categoryCounts[key] || 0;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => onCategoryFilterChange(isActive ? 'all' : key)}
+                    title={info.label}
+                    className={cn(
+                      "min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap",
+                      isActive
+                        ? "bg-foreground text-background"
+                        : "bg-muted/40 text-foreground hover:bg-muted",
+                    )}
+                  >
+                    <span>{info.emoji}</span>
+                    <span className={cn(
+                      "tabular-nums text-[10px]",
+                      isActive ? "opacity-70" : "opacity-50",
+                    )}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            
-            {/* Unread filter */}
+
+            {/* Unread filter — switch moderne */}
             <button
               onClick={() => onShowUnreadOnlyChange(!showUnreadOnly)}
               className={cn(
-                "w-full h-5 text-xs font-medium uppercase tracking-wider border border-border flex items-center justify-center gap-1 transition-colors",
+                "w-full h-7 px-3 text-[11px] font-medium rounded-md inline-flex items-center justify-center gap-1.5 transition-colors",
                 showUnreadOnly
                   ? "bg-foreground text-background"
-                  : "bg-background text-foreground hover:bg-accent"
+                  : "bg-muted/40 text-foreground hover:bg-muted",
               )}
             >
               <span>Non lus uniquement</span>
               {unreadCount > 0 && (
                 <span className={cn(
-                  "px-1 text-[8px] font-bold min-w-[14px] text-center",
-                  showUnreadOnly 
-                    ? "bg-background/20 text-background" 
-                    : "bg-destructive text-destructive-foreground rounded-full"
+                  "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full tabular-nums",
+                  showUnreadOnly
+                    ? "bg-background/20 text-background"
+                    : "bg-foreground text-background",
                 )}>
                   {unreadCount}
                 </span>
@@ -317,18 +334,18 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
               <button
                 onClick={onLoadAllChats}
                 disabled={loadingAllChats}
-                className="mt-3 w-full h-7 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="mt-3 w-full h-8 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {loadingAllChats ? (
                   <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
                 ) : (
-                  <><Search className="w-3 h-3" />Rechercher dans tout l'inbox</>
+                  <><Search className="w-3 h-3" />Rechercher partout</>
                 )}
               </button>
             )}
           </div>
         ) : (
-          <div className="divide-y divide-foreground/5">
+          <div className="py-1 space-y-0.5">
             {filteredChats.map(chat => (
               <ChatListItem
                 key={chat.id}
@@ -347,12 +364,12 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 <button
                   onClick={onLoadAllChats}
                   disabled={loadingAllChats}
-                  className="w-full h-7 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full h-8 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loadingAllChats ? (
                     <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
                   ) : (
-                    <><Search className="w-3 h-3" />Rechercher dans tout l'inbox</>
+                    <><Search className="w-3 h-3" />Rechercher partout</>
                   )}
                 </button>
               </div>
@@ -362,12 +379,12 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                 <button
                   onClick={onLoadMoreChats}
                   disabled={loadingMoreChats}
-                  className="w-full h-7 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:bg-foreground hover:text-background transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full h-8 text-xs font-medium rounded-md bg-muted/40 text-foreground hover:bg-muted transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loadingMoreChats ? (
                     <><RefreshCw className="w-3 h-3 animate-spin" />Chargement...</>
                   ) : (
-                    <>Charger plus de conversations</>
+                    <>Charger plus</>
                   )}
                 </button>
               </div>
