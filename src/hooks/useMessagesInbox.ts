@@ -1467,7 +1467,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   }, [selectedChat?.id, fetchMessages]);
 
-  // Auto-poll messages every 5s when a chat is selected
+  // Auto-poll messages every 20s when a chat is selected (était 5s, trop agressif)
+  // Skip si l'onglet n'est pas visible (économie de quota Unipile + UX moins
+  // saccadée). 20s suffit largement pour la latence acceptable des messages LI.
   useEffect(() => {
     if (!isReady || !user || !selectedChat || !selectedAccount) return;
 
@@ -1476,6 +1478,10 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
     const poll = async () => {
       if (!active) return;
+      // Skip si onglet pas visible (browser background tab)
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       try {
         const { data } = await invokeUnipile({
           body: {
@@ -1520,7 +1526,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       }
     };
 
-    const intervalId = setInterval(poll, 5000);
+    const intervalId = setInterval(poll, 20_000);
 
     return () => {
       active = false;
