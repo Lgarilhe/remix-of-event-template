@@ -108,9 +108,16 @@ Deno.serve(async (req) => {
     let invitationToken = existingInvitation?.token;
 
     if (!invitationId) {
-      // expires_at explicit (7 jours) au cas où le default DB n'est pas défini
-      // ou que la migration de la table n'a pas créé la default value.
+      // expires_at + token + status explicits car la table organization_invitations
+      // a une contrainte NOT NULL sur "token" sans default value en BDD.
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Token random hex 64 chars (256 bits entropy) — safe pour URL, non-guessable
+      const tokenBytes = new Uint8Array(32);
+      crypto.getRandomValues(tokenBytes);
+      const token = Array.from(tokenBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
 
       const { data: invitation, error: invError } = await supabase
         .from("organization_invitations")
@@ -121,6 +128,7 @@ Deno.serve(async (req) => {
           invited_by: user.id,
           expires_at: expiresAt,
           status: "pending",
+          token,
         })
         .select("id, token")
         .single();
