@@ -252,41 +252,51 @@ export const MessageView: React.FC<MessageViewProps> = ({
       }}
       data-component="message-view"
     >
-      {/* ROW 1 — HEADER */}
-      <header className="border-b border-border bg-background">
-        <div className="flex items-center gap-3 px-4 py-3">
+      {/* ROW 1 — HEADER moderne avec backdrop blur */}
+      <header className="border-b border-border bg-background/95 backdrop-blur-md">
+        <div className="flex items-center gap-3 px-5 py-3.5">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 md:hidden"
+            className="h-9 w-9 shrink-0 md:hidden rounded-full"
             onClick={onBack}
             aria-label="Retour"
           >
             <ChevronLeft className="w-5 h-5" />
           </Button>
 
-          <Avatar className="w-10 h-10 rounded-md shrink-0">
-            <AvatarImage src={avatar} />
-            <AvatarFallback className="bg-foreground/10 text-foreground font-semibold rounded-md text-sm">
-              {getInitials(displayName)}
-            </AvatarFallback>
-          </Avatar>
+          {/* Avatar circulaire avec ring subtil + badge channel */}
+          <div className="relative shrink-0">
+            <Avatar className="w-11 h-11 rounded-full ring-2 ring-background">
+              <AvatarImage src={avatar} className="rounded-full" />
+              <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-sm">
+                {getInitials(displayName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background grid place-items-center ring-1 ring-border">
+              <ChannelIcon channel={channel} size="sm" />
+            </div>
+          </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <ChannelIcon channel={channel} size="sm" />
-              <h2 className="font-semibold text-foreground truncate text-sm">{displayName}</h2>
+              <h2 className="font-semibold text-foreground truncate text-[15px] tracking-tight">
+                {displayName}
+              </h2>
               {jobInfo?.job_title && (
-                <span className="hidden md:inline text-[10px] uppercase tracking-wider text-muted-foreground border border-border px-1.5 py-0.5 rounded">
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full">
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
                   {jobInfo.job_title}
                 </span>
               )}
             </div>
             {headline && (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">{headline}</p>
+              <p className="text-[13px] text-muted-foreground truncate mt-0.5 leading-tight">
+                {headline}
+              </p>
             )}
             {subject && (
-              <p className="hidden md:block text-[11px] text-muted-foreground/80 truncate mt-0.5">
+              <p className="hidden md:block text-xs text-muted-foreground/70 truncate mt-1 italic">
                 Objet : {subject}
               </p>
             )}
@@ -304,17 +314,17 @@ export const MessageView: React.FC<MessageViewProps> = ({
               onRestore={chatStatus.restoreChat}
               compact
             />
-            <div className="w-px h-5 bg-border mx-1" aria-hidden="true" />
+            <div className="w-px h-5 bg-border mx-1.5" aria-hidden="true" />
             <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
             {selectedChat.attendees?.[0]?.profile_url && (
               <a
                 href={selectedChat.attendees[0].profile_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="h-7 px-2 inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider border border-border rounded text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                className="h-8 px-3 inline-flex items-center gap-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 title="Voir le profil LinkedIn"
               >
-                <User className="w-3 h-3" />
+                <User className="w-3.5 h-3.5" />
                 <span>Profil</span>
               </a>
             )}
@@ -322,83 +332,142 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       </header>
 
-      {/* ROW 2 — MESSAGES (overflow-y-auto) */}
+      {/* ROW 2 — MESSAGES (scrollable, design moderne avec grouping) */}
       <div
         ref={messagesScrollRef}
         className="overflow-y-auto overscroll-y-contain bg-background"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        <div className="px-4 py-6 max-w-4xl mx-auto">
+        <div className="px-5 py-6 max-w-3xl mx-auto">
           {loadingMessages && messages.length === 0 ? (
-            <div className="flex flex-col gap-3">
-              {[40, 32, 64, 40, 28].map((w, i) => (
+            <div className="flex flex-col gap-4">
+              {[
+                { width: 40, side: 'left' },
+                { width: 28, side: 'right' },
+                { width: 56, side: 'left' },
+                { width: 36, side: 'right' },
+                { width: 32, side: 'left' },
+              ].map((s, i) => (
                 <div
                   key={i}
                   className={cn(
-                    'h-10 bg-muted/50 animate-pulse rounded-md',
-                    i % 2 === 0 ? 'self-start' : 'self-end',
+                    'h-12 bg-muted/40 animate-pulse rounded-2xl',
+                    s.side === 'left' ? 'self-start rounded-bl-sm' : 'self-end rounded-br-sm',
                   )}
-                  style={{ width: `${w}%`, animationDelay: `${i * 80}ms` }}
+                  style={{ width: `${s.width}%`, animationDelay: `${i * 80}ms` }}
                 />
               ))}
             </div>
           ) : messages.length === 0 ? (
             <div className="grid place-items-center min-h-[40vh] text-muted-foreground">
               <div className="text-center max-w-xs">
-                <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">Aucun message</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  Démarrez la conversation depuis le composer ci-dessous.
+                <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-muted to-muted/40 grid place-items-center">
+                  <MessageSquare className="w-7 h-7 opacity-40" />
+                </div>
+                <p className="text-base font-medium text-foreground/80">Aucun message</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">
+                  Démarrez la conversation ci-dessous.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-1">
               {timeline.map((item, idx) => {
                 if (item.kind === 'event') {
                   return <ActivityEventCard key={`evt-${item.data.id}`} event={item.data} />;
                 }
                 const msg = item.data;
                 const isSender = !!msg.is_sender;
+
+                // Détection groupage : message précédent du même expéditeur ?
+                const prev = idx > 0 ? timeline[idx - 1] : null;
+                const prevIsSameSender =
+                  prev?.kind === 'message' && !!prev.data.is_sender === isSender;
+                const next = idx < timeline.length - 1 ? timeline[idx + 1] : null;
+                const nextIsSameSender =
+                  next?.kind === 'message' && !!next.data.is_sender === isSender;
+
+                // Border-radius modulaire selon position dans le groupe
+                const isFirstOfGroup = !prevIsSameSender;
+                const isLastOfGroup = !nextIsSameSender;
+
                 return (
                   <div
                     key={msg.id ?? idx}
                     className={cn(
                       'flex group/msg relative',
                       isSender ? 'justify-end' : 'justify-start',
+                      // Espacement plus large entre groupes différents
+                      isFirstOfGroup && idx > 0 && 'mt-4',
                     )}
                   >
-                    <div className="relative max-w-[85%] md:max-w-[70%]">
+                    {/* Avatar à gauche pour messages reçus, uniquement sur le LAST of group */}
+                    {!isSender && (
+                      <div className="w-8 h-8 mr-2 shrink-0">
+                        {isLastOfGroup && (
+                          <Avatar className="w-8 h-8 rounded-full ring-1 ring-border">
+                            <AvatarImage src={avatar} className="rounded-full" />
+                            <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground text-[10px] font-semibold rounded-full">
+                              {getInitials(displayName)}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="relative max-w-[80%] md:max-w-[65%]">
                       <div
                         className={cn(
-                          'px-4 py-2.5 rounded-lg text-sm leading-relaxed',
+                          'px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-shadow',
+                          'group-hover/msg:shadow-md',
                           isSender
-                            ? 'bg-foreground text-background rounded-br-sm'
-                            : 'bg-muted text-foreground border border-border/40 rounded-bl-sm',
+                            ? 'bg-foreground text-background'
+                            : 'bg-muted text-foreground',
+                          // Border radius modulaire selon group position
+                          isSender
+                            ? cn(
+                                'rounded-2xl',
+                                isFirstOfGroup && 'rounded-tr-md',
+                                isLastOfGroup && 'rounded-br-md',
+                              )
+                            : cn(
+                                'rounded-2xl',
+                                isFirstOfGroup && 'rounded-tl-md',
+                                isLastOfGroup && 'rounded-bl-md',
+                              ),
                         )}
                       >
                         <p className="whitespace-pre-wrap break-words">{getMessageText(msg)}</p>
+                      </div>
+
+                      {/* Timestamp + read receipts UNIQUEMENT sur le last of group */}
+                      {isLastOfGroup && (
                         <div
                           className={cn(
-                            'flex items-center gap-1 mt-1.5 text-[10px]',
+                            'flex items-center gap-1 mt-1 px-1 text-[10.5px] text-muted-foreground/80',
                             isSender ? 'justify-end' : 'justify-start',
                           )}
                         >
-                          <span className={cn(isSender ? 'text-background/60' : 'text-muted-foreground')}>
-                            {formatMessageTime(msg.timestamp)}
-                          </span>
+                          <span className="tabular-nums">{formatMessageTime(msg.timestamp)}</span>
                           {isSender && (msg.read || msg.seen === 1 ? (
-                            <CheckCheck className="w-3 h-3 text-background/60" />
+                            <CheckCheck className="w-3 h-3 text-foreground/70" />
                           ) : msg.delivered ? (
-                            <Check className="w-3 h-3 text-background/60" />
+                            <Check className="w-3 h-3 text-muted-foreground/60" />
                           ) : (
-                            <Clock className="w-3 h-3 text-background/40" />
+                            <Clock className="w-3 h-3 text-muted-foreground/40" />
                           ))}
                         </div>
-                      </div>
+                      )}
 
+                      {/* Reactions au hover (received only) */}
                       {!isSender && onAddReaction && msg.id != null && (
-                        <div className="absolute -bottom-3 left-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 flex gap-0.5 bg-background border border-border px-1 py-0.5 rounded-md shadow-md">
+                        <div
+                          className={cn(
+                            'absolute opacity-0 group-hover/msg:opacity-100 transition-opacity z-10',
+                            'flex gap-0.5 bg-background border border-border px-1 py-0.5 rounded-full shadow-md',
+                            '-bottom-3 left-2',
+                          )}
+                        >
                           {REACTION_EMOJIS.map(emoji => (
                             <button
                               key={emoji}
@@ -408,7 +477,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                                 await onAddReaction(msg.id, emoji);
                                 setReactingMsgId(null);
                               }}
-                              className="h-6 w-6 grid place-items-center text-sm hover:bg-accent/50 transition-colors disabled:opacity-50 rounded-sm"
+                              className="h-7 w-7 grid place-items-center text-base hover:bg-accent rounded-full transition-colors disabled:opacity-50"
                               aria-label={`Réagir avec ${emoji}`}
                             >
                               {isReacting && reactingMsgId === msg.id ? (
@@ -421,10 +490,11 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         </div>
                       )}
 
+                      {/* Delete (sent only) au hover */}
                       {isSender && onDeleteMessage && msg.id != null && (
                         <button
                           onClick={() => setDeleteMsgConfirm(msg.id)}
-                          className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 grid place-items-center bg-destructive text-destructive-foreground border border-border shadow-md hover:bg-destructive/80 rounded-sm"
+                          className="absolute -top-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 h-6 w-6 grid place-items-center bg-destructive text-destructive-foreground shadow-md hover:bg-destructive/80 rounded-full"
                           aria-label="Supprimer ce message"
                         >
                           <Trash2 className="w-3 h-3" />

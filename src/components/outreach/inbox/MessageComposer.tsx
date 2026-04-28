@@ -1,17 +1,20 @@
 /**
- * MessageComposer — Zone de saisie minimaliste.
+ * MessageComposer — Zone de saisie moderne, inspirée Linear / Slack / Front.
  *
- * Architecture ultra-simple : un textarea autosize + une row d'actions.
- * Pas de magic CSS, pas de position absolute/fixed/sticky. Juste un
- * composant flex column qui rend son contenu intrinsèquement.
+ * Design choices :
+ *  - Card élevée avec border subtile + ring focus à l'état actif
+ *  - Textarea autosize, padding généreux, typographie soignée
+ *  - Boutons d'action avec icônes lucide cohérentes, hover states fluides
+ *  - Bouton send avec micro-animation (active:scale-95) + gradient subtil
+ *  - Hint clavier discret en uppercase tracking-wider
  */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Loader2, Send, Sparkles, CalendarPlus, Smile } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡'];
+const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
 
 export interface MessageComposerProps {
   value: string;
@@ -41,6 +44,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   channel,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [focused, setFocused] = useState(false);
   const isSendable = value.trim().length > 0 && !sending && !disabled;
 
   const isMac =
@@ -54,7 +58,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     if (!ta) return;
     ta.style.height = '0px';
     const newHeight = Math.min(ta.scrollHeight, 160);
-    ta.style.height = `${Math.max(newHeight, 40)}px`;
+    ta.style.height = `${Math.max(newHeight, 24)}px`;
   }, [value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -83,112 +87,134 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   return (
     <div className="border-t border-border bg-background px-4 py-3" data-component="message-composer">
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Écrivez votre message..."
-        disabled={disabled}
-        rows={1}
+      {/* Composer card avec ring focus */}
+      <div
         className={cn(
-          'w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60',
-          'resize-none border-0 outline-none focus:ring-0 focus:outline-none',
-          'leading-relaxed py-1',
+          'rounded-xl border bg-card transition-all duration-150',
+          focused
+            ? 'border-foreground/20 ring-2 ring-foreground/10 shadow-sm'
+            : 'border-border hover:border-foreground/15',
         )}
-        style={{ minHeight: '40px', maxHeight: '160px' }}
-      />
+      >
+        {/* Textarea */}
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="Écrivez votre message..."
+          disabled={disabled}
+          rows={1}
+          className={cn(
+            'w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50',
+            'resize-none border-0 outline-none focus:ring-0 focus:outline-none',
+            'leading-relaxed px-4 pt-3 pb-1',
+          )}
+          style={{ minHeight: '24px', maxHeight: '160px' }}
+        />
 
-      <div className="flex items-center justify-between mt-2 gap-2">
-        <div className="flex items-center gap-1">
-          {onOpenAI && (
-            <button
-              type="button"
-              onClick={onOpenAI}
-              className={cn(
-                'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium transition-colors',
-                hasAISuggestions
-                  ? 'bg-foreground text-background hover:bg-foreground/90'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
-              title="Suggestions IA"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>IA</span>
-              {hasAISuggestions && aiSuggestionsCount ? (
-                <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[10px] bg-background text-foreground rounded-full">
-                  {aiSuggestionsCount}
-                </span>
-              ) : null}
-            </button>
-          )}
-          {onScheduleCall && (
-            <button
-              type="button"
-              onClick={onScheduleCall}
-              disabled={!hasCalendlyLink}
-              className={cn(
-                'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium transition-colors',
-                hasCalendlyLink
-                  ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  : 'text-muted-foreground/40 cursor-not-allowed',
-              )}
-              title={hasCalendlyLink ? 'Insérer un lien de RDV' : 'Configurez un Calendly dans le projet'}
-            >
-              <CalendarPlus className="w-3.5 h-3.5" />
-              <span>RDV</span>
-            </button>
-          )}
-          <Popover>
-            <PopoverTrigger asChild>
+        {/* Action row */}
+        <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
+          {/* Actions gauche */}
+          <div className="flex items-center gap-0.5">
+            {onOpenAI && (
               <button
                 type="button"
-                className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                aria-label="Insérer un emoji"
+                onClick={onOpenAI}
+                className={cn(
+                  'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium transition-all',
+                  hasAISuggestions
+                    ? 'bg-foreground text-background hover:opacity-90 active:scale-95'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+                title="Suggestions IA"
               >
-                <Smile className="w-4 h-4" />
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>IA</span>
+                {hasAISuggestions && aiSuggestionsCount ? (
+                  <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold bg-background text-foreground rounded-full">
+                    {aiSuggestionsCount}
+                  </span>
+                ) : null}
               </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-2" side="top" align="start">
-              <div className="grid grid-cols-5 gap-1">
-                {QUICK_EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => insertEmoji(emoji)}
-                    className="h-8 w-8 inline-flex items-center justify-center text-lg rounded-md hover:bg-accent transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+            )}
+            {onScheduleCall && (
+              <button
+                type="button"
+                onClick={onScheduleCall}
+                disabled={!hasCalendlyLink}
+                className={cn(
+                  'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
+                  hasCalendlyLink
+                    ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    : 'text-muted-foreground/40 cursor-not-allowed',
+                )}
+                title={hasCalendlyLink ? 'Insérer un lien de RDV' : 'Configurez un Calendly dans le projet'}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span>RDV</span>
+              </button>
+            )}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  aria-label="Insérer un emoji"
+                >
+                  <Smile className="w-4 h-4" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2" side="top" align="start">
+                <div className="grid grid-cols-5 gap-1">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => insertEmoji(emoji)}
+                      className="h-9 w-9 inline-flex items-center justify-center text-lg rounded-md hover:bg-accent transition-colors"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <span className="hidden md:inline text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">
-            {channel ? `${channel} · ` : ''}
-            {sendShortcut}+↵
-          </span>
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={!isSendable}
-            aria-label="Envoyer le message"
-            className={cn(
-              'h-8 w-8 inline-flex items-center justify-center rounded-md transition-all',
-              isSendable
-                ? 'bg-foreground text-background hover:opacity-90 active:scale-95'
-                : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
-            )}
-          >
-            {sending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-3.5 h-3.5" />
-            )}
-          </button>
+          {/* Actions droite */}
+          <div className="flex items-center gap-2.5">
+            <kbd className="hidden md:inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">
+              {channel ? <span>{channel} ·</span> : null}
+              <span className="px-1 py-0.5 rounded border border-border/60">{sendShortcut}+↵</span>
+            </kbd>
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={!isSendable}
+              aria-label="Envoyer le message"
+              className={cn(
+                'h-8 px-3 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium transition-all',
+                isSendable
+                  ? 'bg-foreground text-background hover:opacity-90 active:scale-95 shadow-sm'
+                  : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
+              )}
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Envoi...</span>
+                </>
+              ) : (
+                <>
+                  <span>Envoyer</span>
+                  <Send className="w-3 h-3" />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
