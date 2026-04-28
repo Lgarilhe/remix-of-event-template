@@ -76,8 +76,8 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
 
   const handleConnectLinkedIn = () => {
     handleClose();
-    // Settings > Connecteurs (où se trouve MyLinkedInAccount)
-    navigate('/settings?tab=connectors');
+    // Settings > Mon compte (où se trouve MyLinkedInAccount)
+    navigate('/settings?tab=account');
   };
 
   const handleGoToMissions = () => {
