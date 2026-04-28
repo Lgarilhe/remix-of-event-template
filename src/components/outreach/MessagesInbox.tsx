@@ -120,9 +120,9 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
       <PreloadAttendeePictures chats={inbox.chats} />
 
-      {/* Mobile fullscreen vue conversation */}
+      {/* Mobile/tablette fullscreen vue conversation (< lg / 1024px) */}
       {inbox.selectedChat && (
-        <div className="fixed inset-0 z-[2100] bg-background md:hidden">
+        <div className="fixed inset-0 z-[2100] bg-background lg:hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
@@ -162,9 +162,10 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
         </div>
       )}
 
-      {/* Layout flex pur (plus de grid/breakpoints fragiles).
-          Sidebar : 280px fixe sur md+, full width sur mobile.
-          Conversation : flex-1, prend tout le reste. */}
+      {/* Layout flex pur. Breakpoint à `lg` (1024px) au lieu de `md` (768px)
+          pour éviter le 2-cols cramped quand le viewport effectif est petit
+          (l'AppSidebar Konekt prend 256px du viewport, donc < 1024px de
+          viewport effectif l'inbox manque de place). */}
       <div
         className="h-full bg-background overflow-hidden flex"
         data-component="messages-inbox-grid"
@@ -202,8 +203,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           isDeletingChat={isDeleting}
         />
 
-        {/* Vue conversation desktop (cachée sur mobile, flex-1 sur md+) */}
-        <div className="hidden md:block md:flex-1 md:min-w-0 h-full overflow-hidden">
+        {/* Vue conversation desktop (cachée < lg, flex-1 sur lg+) */}
+        <div className="hidden lg:block lg:flex-1 lg:min-w-0 h-full overflow-hidden">
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
