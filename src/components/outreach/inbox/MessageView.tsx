@@ -489,13 +489,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </div>
       )}
 
-      {/* ═══ COMPOSER — Position FIXED (relatif au viewport) ════════════
-           Position fixed → s'attache au viewport, garantie de visibilité
-           peu importe la propagation de hauteur des parents.
-           Sur md+ : left=360px pour ne pas chevaucher la sidebar.
-           Sur mobile (sidebar masquée) : left=0. */}
+      {/* ═══ COMPOSER — Position FIXED avec offset CSS var ══════════════
+           Position fixed → garantie de visibilité (le bug de propagation
+           de hauteur des parents place le composer absolute hors viewport).
+
+           Offset gauche sur md+ :
+             AppSidebar Konekt = var(--sidebar-width, 16rem) ≈ 256px
+           + Chats list sidebar (Inbox grid) = 360px
+           = ~616px du bord gauche du viewport
+
+           Mobile : sidebar Konekt cachée + chats list cachée si chat
+           sélectionné → left=0 (composer plein écran). */}
       <div
-        className="fixed bottom-0 left-0 md:left-[360px] right-0 z-30 bg-background"
+        className="fixed bottom-0 left-0 right-0 z-30 bg-background md:[left:calc(var(--sidebar-width,16rem)_+_360px)]"
         data-component="message-composer-wrapper"
       >
         <MessageComposer
