@@ -44,6 +44,7 @@ import {
   FileText, ChevronDown, ArrowRight,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
@@ -78,8 +79,9 @@ interface MessageViewProps {
   onSuggestionClick: (text: string) => void;
   onSuggestionSend: (text: string) => void;
   onFetchSuggestions: () => void;
-  /** Re-fetch les messages du chat actuel (utilisé par le bouton "Recharger") */
-  onRefetchMessages?: () => void;
+  /** Re-fetch les messages du chat actuel (utilisé par le bouton "Recharger").
+      Retourne le nombre de messages fetchés (0 = vide → toast info). */
+  onRefetchMessages?: () => Promise<number> | void;
   onClearSuggestions: () => void;
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
   onEnrollInSequence: () => void;
@@ -278,6 +280,30 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const { summarize, summarizeLoading } = useTextActions();
   const [summary, setSummary] = useState<SummarizeResult | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
+
+  /** Wrapper du re-fetch qui toaste selon le résultat.
+      Si la 1ère tentative (fetch normal) renvoie 0, le parent enchaîne
+      automatiquement avec un sync_chat_history (peut prendre 10-30s). */
+  const handleRefetch = async () => {
+    if (!onRefetchMessages) return;
+    toast.info('Synchronisation en cours...', {
+      description: 'Si l\'historique n\'est pas en cache, on force une resync (~10-30s)',
+      duration: 4000,
+    });
+    const result = await onRefetchMessages();
+    if (typeof result === 'number' && result === 0) {
+      toast.warning(
+        "LinkedIn n'a pas pu récupérer les messages",
+        {
+          description:
+            'Cette conversation a été supprimée côté LinkedIn ou son historique n\'est plus accessible.',
+          duration: 6000,
+        }
+      );
+    } else if (typeof result === 'number' && result > 0) {
+      toast.success(`${result} message${result > 1 ? 's' : ''} chargé${result > 1 ? 's' : ''}`);
+    }
+  };
 
   const handleSummarize = async () => {
     if (messages.length === 0) return;
@@ -584,7 +610,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onRefetchMessages?.()}
+                      onClick={handleRefetch}
                       disabled={loadingMessages}
                       className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
@@ -603,7 +629,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     {onRefetchMessages && (
                       <button
                         type="button"
-                        onClick={() => onRefetchMessages()}
+                        onClick={handleRefetch}
                         disabled={loadingMessages}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
                       >

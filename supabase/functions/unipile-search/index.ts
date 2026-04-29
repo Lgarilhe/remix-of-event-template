@@ -245,6 +245,10 @@ Deno.serve(async (req) => {
         return await handleGetMessages(baseUrl, apiKey, account_id, params);
       }
 
+      case 'sync_chat_history': {
+        return await handleSyncChatHistory(baseUrl, apiKey, params);
+      }
+
       case 'send_message': {
         return await handleSendMessage(baseUrl, apiKey, account_id, params);
       }
@@ -1600,6 +1604,74 @@ async function handleSendMessage(
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
+}
+
+/**
+ * Force la re-synchronisation de l'historique d'une conversation depuis
+ * le début (utile pour les vieilles conv où Unipile a perdu le cache).
+ *
+ * GET /api/v1/chats/{chat_id}/sync
+ * API Docs: https://developer.unipile.com/reference/chatscontroller_syncchathistory
+ *
+ * Comportement :
+ * - 1er appel → démarre le sync (status: SYNC_STARTED)
+ * - Polls suivants → SYNC_RUNNING → SYNC_DONE / SYNC_ERROR
+ * - Côté frontend : on poll toutes les 2-3s jusqu'à SYNC_DONE puis on
+ *   re-fetch get_messages pour avoir l'historique complet.
+ *
+ * Réponse: { object: "ChatHistorySync", chat_id, status: "SYNC_STARTED"|"SYNC_RUNNING"|"SYNC_DONE"|"SYNC_ERROR"|"CHAT_DELETED" }
+ */
+async function handleSyncChatHistory(
+  baseUrl: string,
+  apiKey: string,
+  params: Record<string, unknown>
+): Promise<Response> {
+  const { chat_id } = params;
+  if (!chat_id) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'chat_id is required' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const url = `${baseUrl}/api/v1/chats/${encodeURIComponent(String(chat_id))}/sync`;
+  console.log(`[unipile-search] sync_chat_history → ${url}`);
+
+  try {
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'GET',
+        headers: {
+          'X-API-KEY': apiKey,
+          'Accept': 'application/json',
+        },
+      },
+      15000
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('[unipile-search] sync_chat_history error:', response.status, data);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: data?.title || data?.detail || `Sync failed (${response.status})`,
+          status: data?.status,
+        }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(
+      JSON.stringify({ success: true, ...data }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return new Response(
+      JSON.stringify({ success: false, error: msg }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 }
 
 /**

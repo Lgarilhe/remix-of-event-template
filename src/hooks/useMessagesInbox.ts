@@ -771,8 +771,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const cursorRef = useRef<string | null>(null);
   cursorRef.current = cursor;
   
-  const fetchMessages = useCallback(async (chatId: string, loadMore = false) => {
-    if (!selectedAccount) return;
+  const fetchMessages = useCallback(async (chatId: string, loadMore = false): Promise<number> => {
+    if (!selectedAccount) return 0;
 
     // Resolve merged IDs from current chats state (avoid stale selectedChat closure)
     const chat = chatsRef.current.find(c => c.id === chatId || c._mergedChatIds?.includes(chatId));
@@ -818,6 +818,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setCursor(primaryCursor);
         setHasMore(!!primaryCursor);
         setLoadingMessages(false);
+        const totalMessagesFetched = primaryMessages.length;
         
         // Backfill secondary threads in background (non-blocking)
         const secondaryChatIds = chatIds.slice(1);
@@ -852,15 +853,92 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             }
           });
         }
-        return; // Skip the finally setLoadingMessages since we already set it
+        return totalMessagesFetched; // Skip the finally setLoadingMessages since we already set it
       }
+      return 0;
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('Erreur lors du chargement des messages');
+      return 0;
     } finally {
       setLoadingMessages(false);
     }
   }, [selectedAccount]);
+
+  /**
+   * Force la re-synchronisation de l'historique d'un chat depuis le début
+   * (utile quand Unipile a perdu le cache des vieilles conversations).
+   *
+   * Flow :
+   * 1. POST sync → démarre le sync (status SYNC_STARTED)
+   * 2. Polling toutes les 2.5s du même endpoint pour suivre le status
+   * 3. Quand SYNC_DONE → re-fetch les messages (qui devraient maintenant
+   *    être dispo)
+   * 4. Si SYNC_ERROR ou timeout 60s → retourne false
+   *
+   * Retourne le nombre de messages fetchés après sync (0 si échec).
+   */
+  const syncChatHistory = useCallback(async (chatId: string): Promise<number> => {
+    if (!selectedAccount) return 0;
+    setLoadingMessages(true);
+
+    try {
+      // Étape 1 : démarre le sync
+      const start = await invokeUnipile({
+        body: { action: 'sync_chat_history', account_id: selectedAccount, chat_id: chatId },
+      });
+      if (!start.data?.success) {
+        toast.error('Impossible de synchroniser', { description: (start.data?.error as string) || 'Erreur inconnue' });
+        return 0;
+      }
+
+      let status = (start.data as { status?: string }).status;
+      // Si déjà DONE ou ERROR au 1er appel → pas besoin de polling
+      if (status === 'CHAT_DELETED') {
+        toast.error('Conversation supprimée côté LinkedIn');
+        return 0;
+      }
+
+      // Étape 2 : polling jusqu'à SYNC_DONE / SYNC_ERROR
+      const POLL_INTERVAL_MS = 2500;
+      const MAX_DURATION_MS = 60_000;
+      const startedAt = Date.now();
+
+      while (status !== 'SYNC_DONE' && status !== 'SYNC_ERROR') {
+        if (Date.now() - startedAt > MAX_DURATION_MS) {
+          toast.warning('Synchronisation trop longue, arrêt', {
+            description: 'Réessayez dans quelques minutes.',
+          });
+          return 0;
+        }
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        const poll = await invokeUnipile({
+          body: { action: 'sync_chat_history', account_id: selectedAccount, chat_id: chatId },
+        });
+        if (!poll.data?.success) {
+          toast.error('Erreur pendant la synchronisation');
+          return 0;
+        }
+        status = (poll.data as { status?: string }).status;
+      }
+
+      if (status === 'SYNC_ERROR') {
+        toast.error('LinkedIn n\'a pas pu synchroniser cette conversation');
+        return 0;
+      }
+
+      // Étape 3 : SYNC_DONE — on re-fetch les messages
+      // (cette fois Unipile devrait avoir l'historique en cache)
+      const count = await fetchMessages(chatId, false);
+      return count;
+    } catch (e) {
+      console.error('[syncChatHistory] error:', e);
+      toast.error('Erreur lors de la synchronisation');
+      return 0;
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [selectedAccount, fetchMessages]);
 
   // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
   const syncAfterInboxSend = useCallback(async (chat: Chat) => {
@@ -1694,6 +1772,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     loadingMoreChats,
     loadingAllChats,
     fetchMessages,
+    syncChatHistory,
     sendMessage,
     handleSuggestionClick,
     handleSuggestionSend,

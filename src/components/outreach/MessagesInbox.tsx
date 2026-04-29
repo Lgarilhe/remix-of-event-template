@@ -164,7 +164,14 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
             onAddReaction={handleAddReaction}
-            onRefetchMessages={() => inbox.selectedChat && inbox.fetchMessages(inbox.selectedChat.id)}
+            onRefetchMessages={async () => {
+              if (!inbox.selectedChat) return 0;
+              // 1er essai : fetch normal (cache Unipile, rapide ~500ms)
+              const count = await inbox.fetchMessages(inbox.selectedChat.id);
+              if (count > 0) return count;
+              // Fallback : si 0 messages, force un sync history complet (~10-30s)
+              return await inbox.syncChatHistory(inbox.selectedChat.id);
+            }}
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}
@@ -249,7 +256,14 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
             onAddReaction={handleAddReaction}
-            onRefetchMessages={() => inbox.selectedChat && inbox.fetchMessages(inbox.selectedChat.id)}
+            onRefetchMessages={async () => {
+              if (!inbox.selectedChat) return 0;
+              // 1er essai : fetch normal (cache Unipile, rapide ~500ms)
+              const count = await inbox.fetchMessages(inbox.selectedChat.id);
+              if (count > 0) return count;
+              // Fallback : si 0 messages, force un sync history complet (~10-30s)
+              return await inbox.syncChatHistory(inbox.selectedChat.id);
+            }}
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}
