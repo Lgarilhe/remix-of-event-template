@@ -22,6 +22,9 @@ import {
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
+import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { toggleBold, toggleItalic, toBulletList, toNumberedList, insertLink } from './textFormat';
@@ -306,64 +309,32 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             />
             <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
 
-            {/* Reformuler — popover qui affiche les variantes IA */}
-            <Popover open={rewritePopoverOpen} onOpenChange={setRewritePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handleRewrite}
-                      disabled={rewriteLoading || !value.trim()}
-                      className={cn(
-                        'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
-                        rewriteLoading
-                          ? 'text-muted-foreground cursor-wait'
-                          : value.trim()
-                          ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          : 'text-muted-foreground/40 cursor-not-allowed',
-                      )}
-                    >
-                      {rewriteLoading ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-3 h-3" />
-                      )}
-                      <span>Reformuler</span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Reformule le texte sélectionné (ou tout) en 3 variantes</TooltipContent>
-                </Tooltip>
-              </PopoverTrigger>
-              <PopoverContent className="w-96 p-2" side="top" align="start">
-                <div className="px-2 py-1.5 mb-1">
-                  <p className="text-xs font-semibold text-foreground">Choisissez une variante</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Click pour remplacer le texte
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  {rewriteVariants?.map((v, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => applyRewriteVariant(v)}
-                      className="w-full text-left p-2.5 rounded-md border border-border hover:border-foreground/30 hover:bg-accent/30 transition-colors group"
-                    >
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
-                          {v.label}
-                        </span>
-                        <Check className="w-3 h-3 text-muted-foreground/40 group-hover:text-foreground transition-colors ml-auto" />
-                      </div>
-                      <p className="text-[12px] text-foreground/80 leading-relaxed line-clamp-4">
-                        {v.text}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+            {/* Reformuler — bouton simple, ouvre un Dialog modal après succès */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleRewrite}
+                  disabled={rewriteLoading || !value.trim()}
+                  className={cn(
+                    'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
+                    rewriteLoading
+                      ? 'text-muted-foreground cursor-wait'
+                      : value.trim()
+                      ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      : 'text-muted-foreground/40 cursor-not-allowed',
+                  )}
+                >
+                  {rewriteLoading ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3 h-3" />
+                  )}
+                  <span>Reformuler</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Reformule le texte (sélectionné ou tout) en 3 variantes</TooltipContent>
+            </Tooltip>
 
             {/* Traduire FR ↔ EN */}
             <Tooltip>
@@ -553,6 +524,49 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Dialog Reformuler — affiche les variantes IA, click = remplace */}
+      <Dialog open={rewritePopoverOpen} onOpenChange={setRewritePopoverOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-4 h-4" />
+              Choisissez une reformulation
+            </DialogTitle>
+            <DialogDescription>
+              Click sur une variante pour remplacer votre texte. Vous pourrez encore l'éditer après.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 mt-2 max-h-[60vh] overflow-y-auto">
+            {rewriteVariants?.map((v, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => applyRewriteVariant(v)}
+                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-accent/30 transition-all group"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground bg-foreground/10 px-2 py-0.5 rounded">
+                    {v.label}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {v.text.length} caractères
+                  </span>
+                  <Check className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-foreground transition-colors ml-auto" />
+                </div>
+                <p className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                  {v.text}
+                </p>
+              </button>
+            ))}
+            {rewriteVariants && rewriteVariants.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                Aucune variante générée
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 };
