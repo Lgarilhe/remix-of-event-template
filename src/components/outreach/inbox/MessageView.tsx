@@ -149,24 +149,60 @@ export const MessageView: React.FC<MessageViewProps> = ({
     wasSendingRef.current = sending;
   }, [sending, newMessage, clearDraft]);
 
-  // Auto-scroll to bottom on new messages
+  // ─── Auto-scroll intelligent (style Slack/iMessage) ─────────────────
+  // Scroll en bas UNIQUEMENT si :
+  //   1. C'est l'ouverture initiale du chat (premier rendu de messages)
+  //   2. OU l'user était déjà près du bas (< 150px) ET un NOUVEAU message arrive
+  // Sinon (user en train de lire en haut/milieu) → pas de scroll (sinon
+  // le poll auto le ramènerait en bas toutes les 20s — chiant).
+  const lastMessageCountRef = useRef(0);
+  const lastChatIdForScrollRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef(true);
+
+  // Track scroll position pour détecter si l'user est en bas
   useEffect(() => {
-    if (!loadingMessages && messages.length > 0) {
-      const container = messagesScrollRef.current;
-      if (container) {
-        const t = setTimeout(() => {
-          requestAnimationFrame(() => {
-            try {
-              container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
-            } catch {
-              container.scrollTop = container.scrollHeight;
-            }
+    const container = messagesScrollRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      isNearBottomRef.current = distFromBottom < 150;
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [selectedChat?.id]);
+
+  // Scroll conditionnel
+  useEffect(() => {
+    if (loadingMessages || messages.length === 0) return;
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    const chatChanged = lastChatIdForScrollRef.current !== selectedChat?.id;
+    const newMessagesCount = messages.length;
+    const hasNewMessage = newMessagesCount > lastMessageCountRef.current;
+
+    lastChatIdForScrollRef.current = selectedChat?.id || null;
+    lastMessageCountRef.current = newMessagesCount;
+
+    // Premier rendu du chat OU user en bas + nouveau message → scroll
+    const shouldScroll = chatChanged || (hasNewMessage && isNearBottomRef.current);
+    if (!shouldScroll) return;
+
+    const t = setTimeout(() => {
+      requestAnimationFrame(() => {
+        try {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: chatChanged ? 'auto' : 'smooth',
           });
-        }, 80);
-        return () => clearTimeout(t);
-      }
-    }
-  }, [messages, loadingMessages]);
+          isNearBottomRef.current = true;
+        } catch {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [messages, loadingMessages, selectedChat?.id]);
 
   const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
   const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;

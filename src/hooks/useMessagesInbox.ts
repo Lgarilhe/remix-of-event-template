@@ -1591,7 +1591,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       }
     };
 
-    const intervalId = setInterval(poll, 20_000);
+    // Poll à 30s (était 20s avant, encore plus avant à 5s) — la plupart des
+    // chats LinkedIn ne reçoivent pas de message dans la minute, et ce poll
+    // est doublé par le webhook Unipile qui pousse les nouveaux messages
+    // en temps réel quand ils arrivent.
+    const intervalId = setInterval(poll, 30_000);
 
     return () => {
       active = false;
