@@ -244,56 +244,57 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
           ))}
         </div>
 
-        {/* Collapsible extra filters toggle */}
+        {/* Status filter (Active / Snoozed / Archived) — TOUJOURS VISIBLE
+            pour que l'user retrouve facilement les chats snoozés/archivés */}
+        {onStatusFilterChange && (
+          <div className="flex gap-1 overflow-hidden">
+            {([
+              { key: 'active' as const, label: 'Actives', emoji: '💬' },
+              { key: 'snoozed' as const, label: 'Sommeil', emoji: '⏰' },
+              { key: 'archived' as const, label: 'Archivées', emoji: '📦' },
+              { key: 'all' as const, label: 'Toutes', emoji: '∗' },
+            ]).map((opt) => {
+              const count = opt.key === 'all'
+                ? statusCounts.active + statusCounts.snoozed + statusCounts.archived
+                : statusCounts[opt.key];
+              const isActive = statusFilter === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => onStatusFilterChange(opt.key)}
+                  title={opt.label}
+                  className={cn(
+                    "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden",
+                    isActive
+                      ? "bg-foreground text-background"
+                      : "bg-muted/40 text-foreground hover:bg-muted",
+                  )}
+                >
+                  <span>{opt.emoji}</span>
+                  <span className={cn(
+                    "tabular-nums text-[10px]",
+                    isActive ? "opacity-70" : "opacity-50",
+                  )}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Collapsible : tags catégories + non lus */}
         <button
           onClick={() => setFiltersExpanded(!filtersExpanded)}
           className="w-full flex items-center justify-center gap-1 h-6 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           <Tag className="w-3 h-3" />
-          <span>Tags & filtres{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+          <span>Tags{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
           <ChevronDown className={cn("w-3 h-3 transition-transform", filtersExpanded && "rotate-180")} />
         </button>
 
-        {/* Collapsible section — pills modernes cohérentes */}
         {filtersExpanded && (
-          <div className="space-y-1.5 pt-0.5">
-            {/* Status filter (Active / Snoozed / Archived) */}
-            {onStatusFilterChange && (
-              <div className="flex gap-1 overflow-hidden">
-                {([
-                  { key: 'active' as const, label: 'Actives', emoji: '💬' },
-                  { key: 'snoozed' as const, label: 'En sommeil', emoji: '⏰' },
-                  { key: 'archived' as const, label: 'Archivées', emoji: '📦' },
-                  { key: 'all' as const, label: 'Toutes', emoji: '∗' },
-                ]).map((opt) => {
-                  const count = opt.key === 'all'
-                    ? statusCounts.active + statusCounts.snoozed + statusCounts.archived
-                    : statusCounts[opt.key];
-                  const isActive = statusFilter === opt.key;
-                  return (
-                    <button
-                      key={opt.key}
-                      onClick={() => onStatusFilterChange(opt.key)}
-                      title={opt.label}
-                      className={cn(
-                        "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap",
-                        isActive
-                          ? "bg-foreground text-background"
-                          : "bg-muted/40 text-foreground hover:bg-muted",
-                      )}
-                    >
-                      <span>{opt.emoji}</span>
-                      <span className={cn(
-                        "tabular-nums text-[10px]",
-                        isActive ? "opacity-70" : "opacity-50",
-                      )}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          <div className="space-y-1.5 pt-0.5">{/* status filter sorti du collapse, dispo en haut */}
 
             {/* Category filter pills */}
             <div className="flex gap-1 overflow-hidden flex-wrap">

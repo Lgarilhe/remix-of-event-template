@@ -28,6 +28,7 @@ import {
   formatChatTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { IntentInfo, INTENT_META } from '@/hooks/useChatIntents';
+import { useChatStatus } from '@/hooks/useChatStatus';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,6 +88,47 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   intent,
 }) => {
   const intentMeta = intent ? INTENT_META[intent.intent] : null;
+
+  // Récupère info snooze/archive pour afficher des badges contextuels
+  const { getSnoozedUntil, getArchivedAt } = useChatStatus();
+  const snoozedUntil = getSnoozedUntil(chat.id);
+  const archivedAt = getArchivedAt(chat.id);
+
+  /** Format relatif : "dans 2h", "demain 9h", "vendredi 9h", "5 mai" */
+  const formatSnoozeUntil = (date: Date): string => {
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffMin = Math.round(diffMs / 60000);
+    const diffHours = Math.round(diffMs / 3600000);
+    const diffDays = Math.round(diffMs / 86400000);
+
+    if (diffMin < 60) return `dans ${diffMin}min`;
+    if (diffHours < 24) {
+      const sameDay = date.getDate() === now.getDate();
+      if (sameDay) return `${date.getHours()}h${date.getMinutes() ? date.getMinutes().toString().padStart(2, '0') : ''}`;
+      return `dans ${diffHours}h`;
+    }
+    if (diffDays === 1) {
+      return `demain ${date.getHours()}h${date.getMinutes() ? date.getMinutes().toString().padStart(2, '0') : ''}`;
+    }
+    if (diffDays < 7) {
+      const day = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+      return `${day} ${date.getHours()}h${date.getMinutes() ? date.getMinutes().toString().padStart(2, '0') : ''}`;
+    }
+    // > 7 jours : date courte
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  };
+
+  /** Format date d'archivage : "il y a 2j", "il y a 3 sem", "5 mars" */
+  const formatArchivedAt = (date: Date): string => {
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
+    if (diffDays === 0) return "aujourd'hui";
+    if (diffDays === 1) return 'hier';
+    if (diffDays < 7) return `il y a ${diffDays}j`;
+    if (diffDays < 30) return `il y a ${Math.floor(diffDays / 7)} sem`;
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  };
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const displayName = getChatDisplayName(chat);
@@ -221,11 +263,31 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </p>
           ) : null}
 
-          {/* Ligne 3 : badges (intent IA, source type, catégorie, status, unread count)
+          {/* Ligne 3 : badges (snooze, archive, intent IA, source type, catégorie, unread count)
               flex-wrap pour éviter le débordement, gap réduit. */}
           <div className="flex items-center gap-1 mt-1 flex-wrap min-w-0">
+            {/* Badge Snooze — priorité haute, super visible */}
+            {snoozedUntil && (
+              <span
+                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                title={`En sommeil jusqu'au ${snoozedUntil.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+              >
+                <span>⏰</span>
+                <span>Réveil {formatSnoozeUntil(snoozedUntil)}</span>
+              </span>
+            )}
+            {/* Badge Archive */}
+            {archivedAt && !snoozedUntil && (
+              <span
+                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-gray-500/10 text-gray-600 dark:text-gray-400"
+                title={`Archivée le ${archivedAt.toLocaleDateString('fr-FR')}`}
+              >
+                <span>📦</span>
+                <span>Archivée {formatArchivedAt(archivedAt)}</span>
+              </span>
+            )}
             {/* Intent IA — placé en premier pour visibilité maximale */}
-            {intentMeta && (
+            {intentMeta && !snoozedUntil && !archivedAt && (
               <span
                 className={cn(
                   'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md',

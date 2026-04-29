@@ -1,23 +1,19 @@
 /**
  * useChatStatus — Hook pour snooze + archive d'une conversation Inbox.
  *
- * Utilise la table chat_categories (étendue par migration 20260428140000)
- * avec les colonnes snoozed_until + archived_at. On partage la table avec
- * useChatCategories (sentiment) plutôt que créer une nouvelle table → un
- * seul SELECT pour récupérer toutes les métadonnées d'un chat.
+ * Refactor 2026-04-29 : utilise React Query pour avoir un cache PARTAGÉ
+ * entre toutes les instances du hook (sidebar + MessageView). Quand
+ * l'user snooze depuis le header chat, la sidebar se met à jour
+ * instantanément via cache invalidation.
  *
- * UPSERT pattern : on n'écrit QUE les colonnes snoozed_until/archived_at,
- * la colonne `category` reste intacte si déjà set (Supabase ON CONFLICT
- * UPDATE n'affecte que les colonnes passées dans le INSERT).
- *
- * Filtrage côté frontend :
- *   - 'active' (default) : pas snoozée OR snooze expirée, pas archivée
- *   - 'snoozed' : snoozed_until > now()
- *   - 'archived' : archived_at IS NOT NULL
- *   - 'all' : tout
+ * Source : table chat_categories (étendue par migration 20260428140000)
+ * avec colonnes snoozed_until + archived_at. La colonne `category` est
+ * nullable (cf 20260429100000) — une row peut servir uniquement pour
+ * snooze/archive sans avoir de catégorie.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -42,30 +38,27 @@ export function getEffectiveStatus(info: ChatStatusInfo | undefined, now = Date.
 }
 
 export function useChatStatus() {
-  const [statusMap, setStatusMap] = useState<Map<string, ChatStatusInfo>>(new Map());
   const [statusFilter, setStatusFilter] = useState<ChatStatusFilter>('active');
-  const [loading, setLoading] = useState(false);
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
+  const queryClient = useQueryClient();
 
-  const fetchStatus = useCallback(async () => {
-    if (!isReady || !user) {
-      setStatusMap(new Map());
-      return;
-    }
+  const queryKey = ['chat-status', user?.id];
 
-    try {
-      setLoading(true);
+  const { data: statusMap = new Map<string, ChatStatusInfo>(), isLoading: loading } = useQuery({
+    queryKey,
+    queryFn: async (): Promise<Map<string, ChatStatusInfo>> => {
+      if (!isReady || !user) return new Map();
       const { data, error } = await supabase
         .from('chat_categories')
         .select('chat_id, snoozed_until, archived_at')
         .eq('created_by', user.id);
-
-      if (error) throw error;
-
+      if (error) {
+        console.error('[useChatStatus] fetch error:', error);
+        return new Map();
+      }
       const map = new Map<string, ChatStatusInfo>();
-      for (const row of (data || [])) {
-        // Ne garder que les rows qui ont au moins un statut défini
+      for (const row of data || []) {
         const r = row as { chat_id: string; snoozed_until: string | null; archived_at: string | null };
         if (r.snoozed_until || r.archived_at) {
           map.set(r.chat_id, {
@@ -74,30 +67,30 @@ export function useChatStatus() {
           });
         }
       }
-      setStatusMap(map);
-    } catch (error) {
-      console.error('[useChatStatus] fetch error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [isReady, user]);
+      return map;
+    },
+    enabled: isReady && !!user,
+    staleTime: 60 * 1000,
+  });
 
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+  // ─── Mutation helpers (optimistic updates pour UI instantané) ──────
 
-  /** Met une conversation en sommeil jusqu'à une date donnée */
-  const snoozeChat = useCallback(async (chatId: string, accountId: string, until: Date) => {
-    if (!user) {
-      toast.error('Utilisateur non authentifié');
-      return;
-    }
-    if (!organizationId) {
-      toast.error('Organisation non chargée — réessayez dans 2s');
-      return;
-    }
+  const optimisticUpdate = useCallback(
+    (chatId: string, info: ChatStatusInfo | null) => {
+      queryClient.setQueryData<Map<string, ChatStatusInfo>>(queryKey, (prev) => {
+        const next = new Map(prev || new Map());
+        if (info) next.set(chatId, info);
+        else next.delete(chatId);
+        return next;
+      });
+    },
+    [queryClient, queryKey]
+  );
 
-    try {
+  const snoozeMutation = useMutation({
+    mutationFn: async ({ chatId, accountId, until }: { chatId: string; accountId: string; until: Date }) => {
+      if (!user) throw new Error('Utilisateur non authentifié');
+      if (!organizationId) throw new Error('Organisation non chargée');
       const isoUntil = until.toISOString();
       const { error } = await supabase
         .from('chat_categories')
@@ -107,38 +100,32 @@ export function useChatStatus() {
           created_by: user.id,
           organization_id: organizationId,
           snoozed_until: isoUntil,
-          archived_at: null, // unarchive si snooze
+          archived_at: null,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'chat_id,created_by' });
-
       if (error) throw error;
-
-      setStatusMap(prev => {
-        const next = new Map(prev);
-        next.set(chatId, { snoozedUntil: isoUntil, archivedAt: null });
-        return next;
-      });
-
+      return { chatId, isoUntil, until };
+    },
+    onMutate: async ({ chatId, until }) => {
+      // Optimistic update : update UI immédiatement
+      optimisticUpdate(chatId, { snoozedUntil: until.toISOString(), archivedAt: null });
+    },
+    onSuccess: ({ until }) => {
       const formatted = until.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      toast.success(`Conversation en sommeil jusqu'au ${formatted}`);
-    } catch (e: any) {
-      console.error('[useChatStatus] snooze error:', e);
-      toast.error('Impossible de mettre en sommeil', { description: e?.message });
-    }
-  }, [user, organizationId]);
+      toast.success(`En sommeil jusqu'au ${formatted}`);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: Error, vars) => {
+      // Revert optimistic update
+      queryClient.invalidateQueries({ queryKey });
+      toast.error('Impossible de mettre en sommeil', { description: err.message });
+    },
+  });
 
-  /** Archive une conversation (masquée du filter par défaut) */
-  const archiveChat = useCallback(async (chatId: string, accountId: string) => {
-    if (!user) {
-      toast.error('Utilisateur non authentifié');
-      return;
-    }
-    if (!organizationId) {
-      toast.error('Organisation non chargée — réessayez dans 2s');
-      return;
-    }
-
-    try {
+  const archiveMutation = useMutation({
+    mutationFn: async ({ chatId, accountId }: { chatId: string; accountId: string }) => {
+      if (!user) throw new Error('Utilisateur non authentifié');
+      if (!organizationId) throw new Error('Organisation non chargée');
       const isoNow = new Date().toISOString();
       const { error } = await supabase
         .from('chat_categories')
@@ -148,37 +135,29 @@ export function useChatStatus() {
           created_by: user.id,
           organization_id: organizationId,
           archived_at: isoNow,
-          snoozed_until: null, // un-snooze si archivée
+          snoozed_until: null,
           updated_at: isoNow,
         }, { onConflict: 'chat_id,created_by' });
-
       if (error) throw error;
-
-      setStatusMap(prev => {
-        const next = new Map(prev);
-        next.set(chatId, { snoozedUntil: null, archivedAt: isoNow });
-        return next;
-      });
-
+      return { chatId, isoNow };
+    },
+    onMutate: async ({ chatId }) => {
+      optimisticUpdate(chatId, { snoozedUntil: null, archivedAt: new Date().toISOString() });
+    },
+    onSuccess: () => {
       toast.success('Conversation archivée');
-    } catch (e: any) {
-      console.error('[useChatStatus] archive error:', e);
-      toast.error('Impossible d\'archiver', { description: e?.message });
-    }
-  }, [user, organizationId]);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: Error) => {
+      queryClient.invalidateQueries({ queryKey });
+      toast.error('Impossible d\'archiver', { description: err.message });
+    },
+  });
 
-  /** Restaure une conversation (annule snooze + archive) */
-  const restoreChat = useCallback(async (chatId: string, accountId: string) => {
-    if (!user) {
-      toast.error('Utilisateur non authentifié');
-      return;
-    }
-    if (!organizationId) {
-      toast.error('Organisation non chargée — réessayez dans 2s');
-      return;
-    }
-
-    try {
+  const restoreMutation = useMutation({
+    mutationFn: async ({ chatId, accountId }: { chatId: string; accountId: string }) => {
+      if (!user) throw new Error('Utilisateur non authentifié');
+      if (!organizationId) throw new Error('Organisation non chargée');
       const { error } = await supabase
         .from('chat_categories')
         .upsert({
@@ -190,23 +169,47 @@ export function useChatStatus() {
           archived_at: null,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'chat_id,created_by' });
-
       if (error) throw error;
-
-      setStatusMap(prev => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-
+      return { chatId };
+    },
+    onMutate: async ({ chatId }) => {
+      optimisticUpdate(chatId, null);
+    },
+    onSuccess: () => {
       toast.success('Conversation restaurée');
-    } catch (e: any) {
-      console.error('[useChatStatus] restore error:', e);
-      toast.error('Impossible de restaurer', { description: e?.message });
-    }
-  }, [user, organizationId]);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: Error) => {
+      queryClient.invalidateQueries({ queryKey });
+      toast.error('Impossible de restaurer', { description: err.message });
+    },
+  });
 
-  /** Helpers de lecture */
+  // ─── Public API (signature compatible avec ancienne version) ──────
+
+  const snoozeChat = useCallback(
+    (chatId: string, accountId: string, until: Date) => {
+      snoozeMutation.mutate({ chatId, accountId, until });
+    },
+    [snoozeMutation]
+  );
+
+  const archiveChat = useCallback(
+    (chatId: string, accountId: string) => {
+      archiveMutation.mutate({ chatId, accountId });
+    },
+    [archiveMutation]
+  );
+
+  const restoreChat = useCallback(
+    (chatId: string, accountId: string) => {
+      restoreMutation.mutate({ chatId, accountId });
+    },
+    [restoreMutation]
+  );
+
+  // ─── Helpers de lecture ──
+
   const isSnoozed = useCallback((chatId: string): boolean => {
     return getEffectiveStatus(statusMap.get(chatId)) === 'snoozed';
   }, [statusMap]);
@@ -222,7 +225,12 @@ export function useChatStatus() {
     return d.getTime() > Date.now() ? d : null;
   }, [statusMap]);
 
-  /** Compte par statut sur une liste de chat IDs */
+  const getArchivedAt = useCallback((chatId: string): Date | null => {
+    const info = statusMap.get(chatId);
+    if (!info?.archivedAt) return null;
+    return new Date(info.archivedAt);
+  }, [statusMap]);
+
   const getStatusCounts = useCallback((chatIds: string[]) => {
     const counts = { active: 0, snoozed: 0, archived: 0 };
     const now = Date.now();
@@ -244,8 +252,9 @@ export function useChatStatus() {
     isSnoozed,
     isArchived,
     getSnoozedUntil,
+    getArchivedAt,
     getStatusCounts,
-    refetch: fetchStatus,
+    refetch: () => queryClient.invalidateQueries({ queryKey }),
   };
 }
 
