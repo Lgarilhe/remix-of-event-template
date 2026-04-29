@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
@@ -84,6 +85,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [rewriteVariants, setRewriteVariants] = useState<RewriteVariant[] | null>(null);
   const [rewritePopoverOpen, setRewritePopoverOpen] = useState(false);
 
+  // Translate dialog
+  const [translateDialogOpen, setTranslateDialogOpen] = useState(false);
+  const [translateOriginal, setTranslateOriginal] = useState<string>('');
+  const [translateResult, setTranslateResult] = useState<string>('');
+  const [translateTargetLang, setTranslateTargetLang] = useState<'fr' | 'en'>('en');
+
   /** Reformule la sélection (ou tout le contenu si pas de sélection) */
   const handleRewrite = async () => {
     const ta = textareaRef.current;
@@ -124,13 +131,21 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setRewriteVariants(null);
   };
 
-  /** Traduit le contenu */
-  const handleTranslate = async () => {
+  /** Traduit le contenu — affiche modal preview avant/après */
+  const handleTranslate = async (targetLang?: 'fr' | 'en') => {
     if (!value.trim()) return;
-    const translated = await translate(value);
+    const translated = await translate(value, targetLang);
     if (translated) {
-      onChange(translated);
+      setTranslateOriginal(value);
+      setTranslateResult(translated);
+      setTranslateTargetLang(targetLang || 'en');
+      setTranslateDialogOpen(true);
     }
+  };
+
+  const applyTranslation = () => {
+    onChange(translateResult);
+    setTranslateDialogOpen(false);
   };
 
   /** Détecte un slash command actif dans la valeur courante.
@@ -336,12 +351,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               <TooltipContent side="top">Reformule le texte (sélectionné ou tout) en 3 variantes</TooltipContent>
             </Tooltip>
 
-            {/* Traduire FR ↔ EN */}
-            <Tooltip>
-              <TooltipTrigger asChild>
+            {/* Traduire FR ↔ EN — popover avec choix de langue */}
+            <Popover>
+              <PopoverTrigger asChild>
                 <button
                   type="button"
-                  onClick={handleTranslate}
                   disabled={translateLoading || !value.trim()}
                   className={cn(
                     'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
@@ -351,6 +365,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                       ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
                       : 'text-muted-foreground/40 cursor-not-allowed',
                   )}
+                  title="Traduire le message"
                 >
                   {translateLoading ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -359,9 +374,29 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   )}
                   <span>Traduire</span>
                 </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Traduit le texte FR ↔ EN automatiquement</TooltipContent>
-            </Tooltip>
+              </PopoverTrigger>
+              <PopoverContent className="w-44 p-1" side="top" align="start">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+                  Traduire vers
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleTranslate('en')}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors"
+                >
+                  <span className="text-base">🇬🇧</span>
+                  <span>Anglais</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTranslate('fr')}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors"
+                >
+                  <span className="text-base">🇫🇷</span>
+                  <span>Français</span>
+                </button>
+              </PopoverContent>
+            </Popover>
 
             <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
 
@@ -524,6 +559,48 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Dialog Traduire — preview avant/après + bouton Appliquer */}
+      <Dialog open={translateDialogOpen} onOpenChange={setTranslateDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Languages className="w-4 h-4" />
+              Traduction en {translateTargetLang === 'en' ? '🇬🇧 Anglais' : '🇫🇷 Français'}
+            </DialogTitle>
+            <DialogDescription>
+              Vérifiez la traduction et cliquez sur Appliquer pour remplacer votre texte.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Original
+              </p>
+              <div className="p-3 rounded-lg border border-border bg-muted/20 text-[13px] leading-relaxed whitespace-pre-wrap">
+                {translateOriginal}
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-foreground font-semibold mb-1">
+                Traduction
+              </p>
+              <div className="p-3 rounded-lg border-2 border-foreground/20 bg-foreground/5 text-[13px] leading-relaxed whitespace-pre-wrap">
+                {translateResult}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={() => setTranslateDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={applyTranslation} className="gap-1.5">
+              <Check className="w-3.5 h-3.5" />
+              Appliquer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog Reformuler — affiche les variantes IA, click = remplace */}
       <Dialog open={rewritePopoverOpen} onOpenChange={setRewritePopoverOpen}>
