@@ -273,6 +273,16 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "outreach",
   },
+  cta_reply: {
+    action: "cta_reply",
+    label: "Suggérer une réponse + CTA",
+    floor: 1,
+    // CTA "job_details" peut générer ~2k tokens (message long + JSON wrap),
+    // les autres CTA sont autour de 800-1200 tokens. On part sur 1.5k typique.
+    typicalTokens: 1_500,
+    routingTier: "fast",
+    category: "outreach",
+  },
   auto_analyze_message: {
     action: "auto_analyze_message",
     label: "Classification message",

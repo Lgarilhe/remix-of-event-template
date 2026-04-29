@@ -224,11 +224,30 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // Pas de toast, juste un petit indicateur "Synchronisation…" dans
   // l'écran vide pour montrer que ça travaille.
   //
-  // Guard via Set de chat_ids déjà tentés (par session) pour éviter les
-  // boucles si le sync échoue, retourne 0, ou si le chat est vraiment
-  // vide (nouveau lead jamais contacté). Coût d'un sync sur conv vide :
-  // ~3-5s, gratuit côté Unipile.
-  const autoSyncedRef = useRef<Set<string>>(new Set());
+  // Guard via Set de chat_ids déjà tentés, persisté dans sessionStorage
+  // pour résister aux remounts (route change /inbox → /missions → /inbox).
+  // Sans ce persist, on retentait inlassablement les mêmes chats vides à
+  // chaque navigation → quota Unipile gaspillé sur des conv vraiment
+  // vides (ex: leads froids avec un seul InMail sans réponse).
+  const SESSION_KEY = 'inbox.autoSyncedChats';
+  const loadSyncedSet = (): Set<string> => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
+    }
+  };
+  const persistSyncedSet = (set: Set<string>) => {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify([...set]));
+    } catch {
+      // Quota dépassé ou storage désactivé → on continue en mémoire seule
+    }
+  };
+  const autoSyncedRef = useRef<Set<string>>(loadSyncedSet());
   const [autoSyncing, setAutoSyncing] = useState(false);
   useEffect(() => {
     if (!onAutoSyncIfEmpty) return;
@@ -238,6 +257,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     if (autoSyncedRef.current.has(selectedChat.id)) return;
     const chatId = selectedChat.id;
     autoSyncedRef.current.add(chatId);
+    persistSyncedSet(autoSyncedRef.current);
     setAutoSyncing(true);
     onAutoSyncIfEmpty(chatId)
       .catch(() => {
@@ -437,6 +457,32 @@ export const MessageView: React.FC<MessageViewProps> = ({
     calendlyLink: calendlyLink || undefined,
     tone: currentTone, // Passe le tone choisi par l'user au prompt Claude
   };
+
+  // Données mémoïsées pour le bouton "Réponse + CTA". Sans memo, ces
+  // structures sont recalculées à chaque render (poll auto 20s,
+  // keystroke dans le composer) → MessageComposer et CtaReplyButton
+  // re-renderent pour rien.
+  const ctaChatHistory = useMemo(() => (
+    messages
+      .filter(m => getMessageText(m).trim().length > 0)
+      .slice(-12)
+      .map(m => ({
+        text: getMessageText(m),
+        is_sender: !!m.is_sender,
+        timestamp: m.timestamp,
+      }))
+  ), [messages]);
+
+  const ctaJobBrief = useMemo(
+    () => jobDataToBrief(currentJobData),
+    [currentJobData],
+  );
+
+  const ctaRecruiterName = useMemo(() => (
+    user?.user_metadata?.full_name
+    || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+    || undefined
+  ), [user?.user_metadata?.full_name, user?.user_metadata?.first_name, user?.user_metadata?.last_name]);
 
   // ─── LAYOUT — CSS Grid 3 rangées (auto / 1fr / auto) ─────────────────
   return (
@@ -679,6 +725,19 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     <p className="text-sm text-muted-foreground/70 mt-1 mb-3">
                       LinkedIn récupère les messages de cette conversation. Ça peut prendre quelques secondes.
                     </p>
+                    {/* Escape hatch : si le sync prend trop de temps,
+                        l'user peut forcer un refetch manuel (avec toast
+                        d'erreur explicite si fail). */}
+                    {onRefetchMessages && (
+                      <button
+                        type="button"
+                        onClick={handleRefetch}
+                        disabled={loadingMessages}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                      >
+                        <span>Forcer le rechargement</span>
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -959,23 +1018,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
             calendlyLink,
             customVariables: customVariablesMap(),
           })}
-          // Données pour le bouton "Réponse + CTA"
-          ctaChatHistory={messages
-            .filter(m => getMessageText(m).trim().length > 0)
-            .slice(-12)
-            .map(m => ({
-              text: getMessageText(m),
-              is_sender: !!m.is_sender,
-              timestamp: m.timestamp,
-            }))}
+          // Données pour le bouton "Réponse + CTA" (mémoïsées plus haut
+          // pour éviter les re-renders du composer à chaque keystroke).
+          ctaChatHistory={ctaChatHistory}
           ctaCandidateName={selectedChat ? getChatDisplayName(selectedChat) : undefined}
-          ctaRecruiterName={
-            user?.user_metadata?.full_name
-            || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
-            || undefined
-          }
+          ctaRecruiterName={ctaRecruiterName}
           ctaJobTitle={currentJobData?.title}
-          ctaJobBrief={jobDataToBrief(currentJobData)}
+          ctaJobBrief={ctaJobBrief}
           ctaCalendlyLink={calendlyLink || undefined}
           ctaTone={currentTone}
         />

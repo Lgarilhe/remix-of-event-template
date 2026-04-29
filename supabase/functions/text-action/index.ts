@@ -85,10 +85,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Auth
-    const auth = await requireAuth(req, corsHeaders);
-    if (auth instanceof Response) return auth;
-    const { userId } = auth;
+    // Auth — requireAuth throw une Response si auth fail, le catch outer
+    // la propage tel quel (cf catch en bas).
+    const { userId } = await requireAuth(req, corsHeaders);
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SERVICE_KEY = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -120,11 +119,13 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    if (action === 'cta_reply' && (!body.chat_history || body.chat_history.length === 0)) {
-      return new Response(
-        JSON.stringify({ error: 'Missing chat_history for cta_reply' }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (action === 'cta_reply') {
+      if (!Array.isArray(body.chat_history) || body.chat_history.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Missing or invalid chat_history for cta_reply (must be a non-empty array)' }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Build prompt selon l'action
@@ -391,9 +392,12 @@ Génère maintenant la réponse JSON.`;
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e: any) {
+    // requireAuth lance des Response (401/403) directement — on les
+    // propage tel quel sinon les 401 ressortent en 500 confus côté UI.
+    if (e instanceof Response) return e;
     console.error('[text-action] error:', e);
     return new Response(
-      JSON.stringify({ error: e.message || 'Internal error' }),
+      JSON.stringify({ error: e?.message || 'Internal error' }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
