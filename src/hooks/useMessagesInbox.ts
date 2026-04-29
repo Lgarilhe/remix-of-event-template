@@ -1561,13 +1561,24 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         if (!data?.success) return;
 
         const freshMessages: Message[] = ((data.messages as Message[]) || []);
+
+        // SAFETY : si Unipile renvoie un tableau vide alors qu'on avait
+        // des messages, c'est probablement une erreur transitoire (rate
+        // limit, network glitch, conv archivée, etc.). On NE doit PAS
+        // overrider les messages existants → l'user verrait "Aucun message"
+        // alors qu'il en avait tout à l'heure.
+        if (freshMessages.length === 0) {
+          // Garde l'état précédent
+          return;
+        }
+
         // Sort chronologically
         freshMessages.sort((a, b) => {
           const tA = new Date(a.timestamp || '').getTime() || 0;
           const tB = new Date(b.timestamp || '').getTime() || 0;
           return tA - tB;
         });
-        
+
         setMessages(prev => {
           // Merge fresh messages with existing (preserves backfilled secondary thread messages)
           const existingIds = new Set(freshMessages.map(m => m.id));

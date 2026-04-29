@@ -549,14 +549,52 @@ export const MessageView: React.FC<MessageViewProps> = ({
             </div>
           ) : messages.length === 0 ? (
             <div className="grid place-items-center min-h-[40vh] text-muted-foreground">
-              <div className="text-center max-w-xs">
+              <div className="text-center max-w-md px-4">
                 <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-muted to-muted/40 grid place-items-center">
                   <MessageSquare className="w-7 h-7 opacity-40" />
                 </div>
-                <p className="text-base font-medium text-foreground/80">Aucun message</p>
-                <p className="text-sm text-muted-foreground/70 mt-1">
-                  Démarrez la conversation ci-dessous.
-                </p>
+                {selectedChat.last_message?.text ? (
+                  <>
+                    {/* On a un last_message en DB mais Unipile ne renvoie pas l'historique
+                        (conv ancienne, archivée, ou rate limit) — on l'affiche au moins */}
+                    <p className="text-base font-medium text-foreground/80">
+                      Historique indisponible
+                    </p>
+                    <p className="text-sm text-muted-foreground/70 mt-1 mb-4">
+                      LinkedIn n'a pas renvoyé les messages de cette conversation.
+                      Voici le dernier message connu :
+                    </p>
+                    <div className={cn(
+                      "px-4 py-3 rounded-2xl text-sm leading-relaxed text-left mt-4 inline-block max-w-full",
+                      selectedChat.last_message.is_sender
+                        ? "bg-foreground text-background rounded-br-sm"
+                        : "bg-muted text-foreground rounded-bl-sm"
+                    )}>
+                      <p className="whitespace-pre-wrap break-words">
+                        {selectedChat.last_message.text || selectedChat.last_message.text_content}
+                      </p>
+                      {selectedChat.last_message.timestamp && (
+                        <p className="text-[10px] text-muted-foreground/70 mt-1">
+                          {formatMessageTime(selectedChat.last_message.timestamp)}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.location.reload()}
+                      className="mt-4 text-xs text-muted-foreground hover:text-foreground underline"
+                    >
+                      Rafraîchir
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base font-medium text-foreground/80">Aucun message</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">
+                      Démarrez la conversation ci-dessous.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           ) : (
