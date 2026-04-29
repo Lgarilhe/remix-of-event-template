@@ -878,9 +878,16 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
    *
    * Retourne le nombre de messages fetchés après sync (0 si échec).
    */
-  const syncChatHistory = useCallback(async (chatId: string): Promise<number> => {
+  const syncChatHistory = useCallback(async (
+    chatId: string,
+    options?: { silent?: boolean },
+  ): Promise<number> => {
     if (!selectedAccount) return 0;
-    setLoadingMessages(true);
+    const silent = options?.silent === true;
+    // En mode silent (auto-sync arrière-plan) on ne montre PAS le spinner
+    // global pour ne pas faire flasher l'UI ; le re-fetch final met à jour
+    // les messages quand prêts.
+    if (!silent) setLoadingMessages(true);
 
     try {
       // Étape 1 : démarre le sync
@@ -888,14 +895,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         body: { action: 'sync_chat_history', account_id: selectedAccount, chat_id: chatId },
       });
       if (!start.data?.success) {
-        toast.error('Impossible de synchroniser', { description: (start.data?.error as string) || 'Erreur inconnue' });
+        if (!silent) toast.error('Impossible de synchroniser', { description: (start.data?.error as string) || 'Erreur inconnue' });
         return 0;
       }
 
       let status = (start.data as { status?: string }).status;
       // Si déjà DONE ou ERROR au 1er appel → pas besoin de polling
       if (status === 'CHAT_DELETED') {
-        toast.error('Conversation supprimée côté LinkedIn');
+        if (!silent) toast.error('Conversation supprimée côté LinkedIn');
         return 0;
       }
 
@@ -906,7 +913,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
       while (status !== 'SYNC_DONE' && status !== 'SYNC_ERROR') {
         if (Date.now() - startedAt > MAX_DURATION_MS) {
-          toast.warning('Synchronisation trop longue, arrêt', {
+          if (!silent) toast.warning('Synchronisation trop longue, arrêt', {
             description: 'Réessayez dans quelques minutes.',
           });
           return 0;
@@ -916,14 +923,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           body: { action: 'sync_chat_history', account_id: selectedAccount, chat_id: chatId },
         });
         if (!poll.data?.success) {
-          toast.error('Erreur pendant la synchronisation');
+          if (!silent) toast.error('Erreur pendant la synchronisation');
           return 0;
         }
         status = (poll.data as { status?: string }).status;
       }
 
       if (status === 'SYNC_ERROR') {
-        toast.error('LinkedIn n\'a pas pu synchroniser cette conversation');
+        if (!silent) toast.error('LinkedIn n\'a pas pu synchroniser cette conversation');
         return 0;
       }
 
@@ -933,10 +940,10 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       return count;
     } catch (e) {
       console.error('[syncChatHistory] error:', e);
-      toast.error('Erreur lors de la synchronisation');
+      if (!silent) toast.error('Erreur lors de la synchronisation');
       return 0;
     } finally {
-      setLoadingMessages(false);
+      if (!silent) setLoadingMessages(false);
     }
   }, [selectedAccount, fetchMessages]);
 

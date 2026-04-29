@@ -172,6 +172,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
               // Fallback : si 0 messages, force un sync history complet (~10-30s)
               return await inbox.syncChatHistory(inbox.selectedChat.id);
             }}
+            onAutoSyncIfEmpty={(chatId) => inbox.syncChatHistory(chatId, { silent: true })}
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}
@@ -264,6 +265,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
               // Fallback : si 0 messages, force un sync history complet (~10-30s)
               return await inbox.syncChatHistory(inbox.selectedChat.id);
             }}
+            onAutoSyncIfEmpty={(chatId) => inbox.syncChatHistory(chatId, { silent: true })}
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}

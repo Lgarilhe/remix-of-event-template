@@ -82,6 +82,11 @@ interface MessageViewProps {
   /** Re-fetch les messages du chat actuel (utilisé par le bouton "Recharger").
       Retourne le nombre de messages fetchés (0 = vide → toast info). */
   onRefetchMessages?: () => Promise<number> | void;
+  /** Auto-sync silencieux quand un chat s'ouvre vide. Pas de toast, pas de
+      spinner, juste un sync en arrière-plan qui re-fetch quand prêt.
+      Appelé avec le chat_id concerné. Retourne le nombre de messages
+      finalement chargés (0 = échec silencieux). */
+  onAutoSyncIfEmpty?: (chatId: string) => Promise<number>;
   onClearSuggestions: () => void;
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
   onEnrollInSequence: () => void;
@@ -116,6 +121,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onAddReaction,
   onDeleteMessage,
   onRefetchMessages,
+  onAutoSyncIfEmpty,
   isReacting,
   isDeleting,
 }) => {
@@ -208,6 +214,41 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }, 80);
     return () => clearTimeout(t);
   }, [messages, loadingMessages, selectedChat?.id]);
+
+  // ─── Auto-sync silencieux à l'ouverture d'un chat vide ──────────────
+  // Quand on ouvre un chat dont le fetch normal renvoie 0 messages, on
+  // déclenche automatiquement sync_chat_history en arrière-plan. Le sync
+  // poll Unipile pendant 5-30s puis re-fetch les messages quand prêt.
+  // Pas de toast, juste un petit indicateur "Synchronisation…" dans
+  // l'écran vide pour montrer que ça travaille.
+  //
+  // Guard via Set de chat_ids déjà tentés (par session) pour éviter les
+  // boucles si le sync échoue, retourne 0, ou si le chat est vraiment
+  // vide (nouveau lead jamais contacté). Coût d'un sync sur conv vide :
+  // ~3-5s, gratuit côté Unipile.
+  const autoSyncedRef = useRef<Set<string>>(new Set());
+  const [autoSyncing, setAutoSyncing] = useState(false);
+  useEffect(() => {
+    if (!onAutoSyncIfEmpty) return;
+    if (!selectedChat?.id) return;
+    if (loadingMessages) return;
+    if (messages.length > 0) return;
+    if (autoSyncedRef.current.has(selectedChat.id)) return;
+    const chatId = selectedChat.id;
+    autoSyncedRef.current.add(chatId);
+    setAutoSyncing(true);
+    onAutoSyncIfEmpty(chatId)
+      .catch(() => {
+        // Silencieux : si le sync échoue (chat supprimé, timeout, etc.)
+        // l'utilisateur peut toujours cliquer sur "Recharger" pour avoir
+        // un message d'erreur explicite.
+      })
+      .finally(() => {
+        // Ne décroche que si on est encore sur ce chat (l'user a peut-
+        // être switché entre temps).
+        if (selectedChat?.id === chatId) setAutoSyncing(false);
+      });
+  }, [selectedChat?.id, messages.length, loadingMessages, onAutoSyncIfEmpty]);
 
   const profileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
   const profileUrl = selectedChat?.attendees?.[0]?.profile_url || null;
@@ -619,6 +660,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
                       ) : null}
                       <span>Recharger les messages</span>
                     </button>
+                  </>
+                ) : autoSyncing ? (
+                  <>
+                    <p className="text-base font-medium text-foreground/80 inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Synchronisation de l'historique…
+                    </p>
+                    <p className="text-sm text-muted-foreground/70 mt-1 mb-3">
+                      LinkedIn récupère les messages de cette conversation. Ça peut prendre quelques secondes.
+                    </p>
                   </>
                 ) : (
                   <>

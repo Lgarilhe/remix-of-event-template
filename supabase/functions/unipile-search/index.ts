@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
       }
 
       case 'sync_chat_history': {
-        return await handleSyncChatHistory(baseUrl, apiKey, params);
+        return await handleSyncChatHistory(baseUrl, apiKey, account_id, params);
       }
 
       case 'send_message': {
@@ -1624,6 +1624,7 @@ async function handleSendMessage(
 async function handleSyncChatHistory(
   baseUrl: string,
   apiKey: string,
+  accountId: string | undefined,
   params: Record<string, unknown>
 ): Promise<Response> {
   const { chat_id } = params;
@@ -1634,7 +1635,13 @@ async function handleSyncChatHistory(
     );
   }
 
-  const url = `${baseUrl}/api/v1/chats/${encodeURIComponent(String(chat_id))}/sync`;
+  // Per Unipile docs: account_id is mandatory if chat_id is a provider_id
+  // (i.e. LinkedIn's native chat ID rather than Unipile's internal ID).
+  // We pass it whenever we have it for safety — Unipile ignores it if the
+  // chat_id is already an internal one.
+  const qs = accountId ? `?account_id=${encodeURIComponent(String(accountId))}` : '';
+  // baseUrl already includes /api/v1 — don't double-prefix.
+  const url = `${baseUrl}/chats/${encodeURIComponent(String(chat_id))}/sync${qs}`;
   console.log(`[unipile-search] sync_chat_history → ${url}`);
 
   try {
