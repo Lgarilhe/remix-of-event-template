@@ -958,6 +958,24 @@ export const MessageView: React.FC<MessageViewProps> = ({
             calendlyLink,
             customVariables: customVariablesMap(),
           })}
+          // Données pour le bouton "Réponse + CTA"
+          ctaChatHistory={messages
+            .filter(m => getMessageText(m).trim().length > 0)
+            .slice(-12)
+            .map(m => ({
+              text: getMessageText(m),
+              is_sender: !!m.is_sender,
+              timestamp: m.timestamp,
+            }))}
+          ctaCandidateName={selectedChat ? getChatDisplayName(selectedChat) : undefined}
+          ctaRecruiterName={
+            user?.user_metadata?.full_name
+            || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
+            || undefined
+          }
+          ctaJobTitle={currentJobData?.title}
+          ctaCalendlyLink={calendlyLink || undefined}
+          ctaTone={currentTone}
         />
       </div>
 

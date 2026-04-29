@@ -1,8 +1,9 @@
 /**
- * useTextActions — Hook pour appeler les 3 actions IA contextuelles :
+ * useTextActions — Hook pour appeler les actions IA contextuelles :
  *  - rewrite : reformule un texte → 3 variantes (court/standard/élaboré)
  *  - translate : traduit un texte FR ↔ EN auto
  *  - summarize : résume une conversation
+ *  - ctaReply : génère une réponse intégrant un CTA (RDV, CV, etc.)
  *
  * Toutes utilisent l'edge function `text-action` (1 seule fonction pour
  * réduire les cold starts).
@@ -32,6 +33,39 @@ export interface SummarizeResult {
   summary: string;
   key_points: string[];
   next_action: string;
+}
+
+export type CtaType =
+  | 'auto'
+  | 'rdv'
+  | 'call'
+  | 'cv'
+  | 'job_details'
+  | 'check_interest'
+  | 'referral'
+  | 'close';
+
+export interface CtaChatMessage {
+  text: string;
+  is_sender: boolean;
+  timestamp?: string;
+}
+
+export interface CtaReplyInput {
+  cta_type?: CtaType;
+  chat_history: CtaChatMessage[];
+  candidate_name?: string;
+  recruiter_name?: string;
+  job_title?: string;
+  calendly_link?: string;
+  tone?: string;
+}
+
+export interface CtaReplyResult {
+  success: boolean;
+  message: string;
+  cta_used: CtaType;
+  reason?: string;
 }
 
 export function useTextActions() {
@@ -120,12 +154,54 @@ export function useTextActions() {
     []
   );
 
+  /**
+   * Génère une réponse intégrant un CTA précis (ou auto-détecté) selon
+   * le contexte de la conversation. Retourne le message + le CTA utilisé
+   * + une raison courte (utile en mode auto).
+   */
+  const [ctaReplyLoading, setCtaReplyLoading] = useState(false);
+  const ctaReply = useCallback(
+    async (input: CtaReplyInput): Promise<CtaReplyResult | null> => {
+      if (!input.chat_history || input.chat_history.length === 0) {
+        toast.error('Aucun historique de conversation');
+        return null;
+      }
+      setCtaReplyLoading(true);
+      try {
+        const res = await invokeWithCredits<CtaReplyResult>('text-action', 'cta_reply', {
+          action: 'cta_reply',
+          cta_type: input.cta_type || 'auto',
+          chat_history: input.chat_history,
+          candidate_name: input.candidate_name,
+          recruiter_name: input.recruiter_name,
+          job_title: input.job_title,
+          calendly_link: input.calendly_link,
+          tone: input.tone,
+        });
+        if (res.error) {
+          toast.error('Suggestion IA échouée', { description: res.error.message });
+          return null;
+        }
+        if (!res.data?.success || !res.data.message) {
+          toast.error('Réponse IA invalide');
+          return null;
+        }
+        return res.data;
+      } finally {
+        setCtaReplyLoading(false);
+      }
+    },
+    []
+  );
+
   return {
     rewrite,
     translate,
     summarize,
+    ctaReply,
     rewriteLoading,
     translateLoading,
     summarizeLoading,
+    ctaReplyLoading,
   };
 }

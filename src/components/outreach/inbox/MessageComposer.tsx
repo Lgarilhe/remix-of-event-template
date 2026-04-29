@@ -36,7 +36,8 @@ import {
   interpolatePlaceholders,
   type PlaceholderContext,
 } from '@/lib/templatePlaceholders';
-import { useTextActions, type RewriteVariant } from '@/hooks/useTextActions';
+import { useTextActions, type RewriteVariant, type CtaChatMessage } from '@/hooks/useTextActions';
+import { CtaReplyButton } from './CtaReplyButton';
 
 const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
 
@@ -55,6 +56,19 @@ export interface MessageComposerProps {
   /** Context pour les placeholders templates (prénom, entreprise, etc.).
       Peut être pré-construit via buildPlaceholderContext() depuis le parent. */
   placeholderContext?: PlaceholderContext;
+  /** Historique du chat pour le bouton "Réponse + CTA". Si vide, le
+      bouton est désactivé. */
+  ctaChatHistory?: CtaChatMessage[];
+  /** Nom du candidat (display name) pour le prompt CTA. */
+  ctaCandidateName?: string;
+  /** Nom du recruteur (toi) pour le prompt CTA. */
+  ctaRecruiterName?: string;
+  /** Titre de la mission liée pour le prompt CTA. */
+  ctaJobTitle?: string;
+  /** Lien Calendly pour le CTA "rdv". */
+  ctaCalendlyLink?: string;
+  /** Ton sélectionné pour le prompt CTA. */
+  ctaTone?: string;
 }
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
@@ -70,6 +84,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   hasCalendlyLink,
   channel,
   placeholderContext,
+  ctaChatHistory,
+  ctaCandidateName,
+  ctaRecruiterName,
+  ctaJobTitle,
+  ctaCalendlyLink,
+  ctaTone,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
@@ -397,6 +417,33 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 </button>
               </PopoverContent>
             </Popover>
+
+            {/* Réponse + CTA — Popover de choix de CTA puis Dialog avec
+                preview du message généré par l'IA. */}
+            <CtaReplyButton
+              chatHistory={ctaChatHistory || []}
+              candidateName={ctaCandidateName}
+              recruiterName={ctaRecruiterName}
+              jobTitle={ctaJobTitle}
+              calendlyLink={ctaCalendlyLink}
+              tone={ctaTone}
+              disabled={disabled}
+              onInsert={(msg) => {
+                // Insertion intelligente : si le composer est vide, on
+                // remplace ; sinon on append à la fin avec un séparateur.
+                const next = value.trim() ? `${value.trimEnd()}\n\n${msg}` : msg;
+                onChange(next);
+                // Focus + scroll à la fin du textarea pour que l'user voie
+                // le message inséré et puisse l'éditer.
+                requestAnimationFrame(() => {
+                  const ta = textareaRef.current;
+                  if (!ta) return;
+                  ta.focus();
+                  ta.setSelectionRange(next.length, next.length);
+                  ta.scrollTop = ta.scrollHeight;
+                });
+              }}
+            />
 
             <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
 
