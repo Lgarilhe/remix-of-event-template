@@ -409,54 +409,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
-  // Empty state
-  if (!selectedChat) {
-    return (
-      <div className="h-full grid place-items-center bg-background text-muted-foreground">
-        <div className="text-center max-w-xs px-6">
-          <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <p className="text-sm font-medium text-foreground/70">Sélectionnez une conversation</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Vos messages LinkedIn et InMail apparaîtront ici.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const displayName = getChatDisplayName(selectedChat);
-  const headline = getChatHeadline(selectedChat);
-  const subject = getChatSubject(selectedChat);
-  const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
-  const channel = detectChannel(selectedChat.account_type);
-
+  // ─── Calculs hoisted AVANT le early return ────────────────────────
+  // Tous les hooks (useMemo / useEffect / useState) doivent être appelés
+  // dans le même ordre à chaque render, donc PAS après un return
+  // conditionnel. On hoist aussi les const dépendantes pour que les
+  // useMemo aient leurs deps disponibles.
+  const jobInfo = selectedChat ? getChatJobInfo(selectedChat, enrollmentsMap) : null;
   const currentJobData = jobInfo?.job_id
     ? availableJobs.find(j => j.id === jobInfo.job_id)
     : undefined;
-
-  const aiContext = {
-    recipientName: displayName,
-    recipientHeadline: headline,
-    messages: messages.map(m => ({
-      text: getMessageText(m),
-      is_sender: !!m.is_sender,
-      timestamp: m.timestamp,
-    })),
-    jobContext: jobInfo ? { title: jobInfo.job_title || 'Poste non spécifié' } : undefined,
-    currentJobData: currentJobData || undefined,
-    profileData: {
-      name: displayName,
-      headline,
-      currentRole: headline?.split(' at ')[0] || headline?.split(' chez ')[0],
-      currentCompany: headline?.split(' at ')[1] || headline?.split(' chez ')[1],
-      skills: headline?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
-    },
-    availableJobs,
-    calendlyLink: calendlyLink || undefined,
-    tone: currentTone, // Passe le tone choisi par l'user au prompt Claude
-  };
 
   // Données mémoïsées pour le bouton "Réponse + CTA". Sans memo, ces
   // structures sont recalculées à chaque render (poll auto 20s,
@@ -483,6 +444,50 @@ export const MessageView: React.FC<MessageViewProps> = ({
     || [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ')
     || undefined
   ), [user?.user_metadata?.full_name, user?.user_metadata?.first_name, user?.user_metadata?.last_name]);
+
+  // Empty state
+  if (!selectedChat) {
+    return (
+      <div className="h-full grid place-items-center bg-background text-muted-foreground">
+        <div className="text-center max-w-xs px-6">
+          <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
+            <MessageSquare className="w-6 h-6" />
+          </div>
+          <p className="text-sm font-medium text-foreground/70">Sélectionnez une conversation</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Vos messages LinkedIn et InMail apparaîtront ici.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = getChatDisplayName(selectedChat);
+  const headline = getChatHeadline(selectedChat);
+  const subject = getChatSubject(selectedChat);
+  const channel = detectChannel(selectedChat.account_type);
+
+  const aiContext = {
+    recipientName: displayName,
+    recipientHeadline: headline,
+    messages: messages.map(m => ({
+      text: getMessageText(m),
+      is_sender: !!m.is_sender,
+      timestamp: m.timestamp,
+    })),
+    jobContext: jobInfo ? { title: jobInfo.job_title || 'Poste non spécifié' } : undefined,
+    currentJobData: currentJobData || undefined,
+    profileData: {
+      name: displayName,
+      headline,
+      currentRole: headline?.split(' at ')[0] || headline?.split(' chez ')[0],
+      currentCompany: headline?.split(' at ')[1] || headline?.split(' chez ')[1],
+      skills: headline?.split(/[|,·]/).map(s => s.trim()).filter(Boolean) || [],
+    },
+    availableJobs,
+    calendlyLink: calendlyLink || undefined,
+    tone: currentTone, // Passe le tone choisi par l'user au prompt Claude
+  };
 
   // ─── LAYOUT — CSS Grid 3 rangées (auto / 1fr / auto) ─────────────────
   return (
