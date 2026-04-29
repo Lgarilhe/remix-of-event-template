@@ -88,7 +88,14 @@ export function useChatStatus() {
 
   /** Met une conversation en sommeil jusqu'à une date donnée */
   const snoozeChat = useCallback(async (chatId: string, accountId: string, until: Date) => {
-    if (!user) return;
+    if (!user) {
+      toast.error('Utilisateur non authentifié');
+      return;
+    }
+    if (!organizationId) {
+      toast.error('Organisation non chargée — réessayez dans 2s');
+      return;
+    }
 
     try {
       const isoUntil = until.toISOString();
@@ -122,7 +129,14 @@ export function useChatStatus() {
 
   /** Archive une conversation (masquée du filter par défaut) */
   const archiveChat = useCallback(async (chatId: string, accountId: string) => {
-    if (!user) return;
+    if (!user) {
+      toast.error('Utilisateur non authentifié');
+      return;
+    }
+    if (!organizationId) {
+      toast.error('Organisation non chargée — réessayez dans 2s');
+      return;
+    }
 
     try {
       const isoNow = new Date().toISOString();
@@ -155,7 +169,14 @@ export function useChatStatus() {
 
   /** Restaure une conversation (annule snooze + archive) */
   const restoreChat = useCallback(async (chatId: string, accountId: string) => {
-    if (!user) return;
+    if (!user) {
+      toast.error('Utilisateur non authentifié');
+      return;
+    }
+    if (!organizationId) {
+      toast.error('Organisation non chargée — réessayez dans 2s');
+      return;
+    }
 
     try {
       const { error } = await supabase
