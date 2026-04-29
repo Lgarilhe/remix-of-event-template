@@ -57,6 +57,13 @@ export function useChatCategories() {
 
   const setCategory = useCallback(async (chatId: string, accountId: string, category: ChatCategory | null) => {
     if (!user) return;
+    // Guard : organizationId requis pour passer le RLS check sur INSERT.
+    // Sinon les nouvelles rows seraient orphelines (org_id null) et l'UPDATE
+    // ultérieur (ex: archive) violerait la policy USING.
+    if (category !== null && !organizationId) {
+      console.warn('[useChatCategories] setCategory skipped — organizationId not loaded yet');
+      return;
+    }
 
     try {
       if (category === null) {
