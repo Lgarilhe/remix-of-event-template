@@ -125,6 +125,36 @@ export const getMessageText = (msg: Message): string => {
   return msg.text || msg.text_content || '';
 };
 
+/**
+ * True si le message a un contenu affichable (texte, pièce jointe, ou
+ * subject InMail). Sinon c'est une bulle vide qu'on devrait skip côté
+ * rendu (typiquement : message supprimé sans flag, payload Unipile
+ * partiel, GIF/sticker non typé).
+ */
+export const hasDisplayableContent = (msg: Message): boolean => {
+  if ((msg.text && msg.text.trim()) || (msg.text_content && msg.text_content.trim())) return true;
+  if (Array.isArray(msg.attachments) && msg.attachments.length > 0) return true;
+  if (msg.subject && msg.subject.trim()) return true;
+  if (msg.is_deleted) return true; // on affiche un placeholder "supprimé"
+  return false;
+};
+
+/**
+ * Texte affiché dans la bulle. Si pas de texte mais pièce jointe →
+ * placeholder. Si supprimé → placeholder explicite.
+ */
+export const getMessageDisplayText = (msg: Message): string => {
+  const t = getMessageText(msg);
+  if (t) return t;
+  if (msg.is_deleted) return '— Message supprimé —';
+  if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+    const count = msg.attachments.length;
+    return count > 1 ? `📎 ${count} pièces jointes` : '📎 Pièce jointe';
+  }
+  if (msg.subject && msg.subject.trim()) return msg.subject;
+  return '';
+};
+
 // Get profile ID from chat attendee
 export const getChatProfileId = (chat: Chat): string | null => {
   const attendee = chat.attendees?.[0];

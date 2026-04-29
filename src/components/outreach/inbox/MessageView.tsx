@@ -50,7 +50,8 @@ import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessa
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
   getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
-  getInitials, getMessageText, getChatJobInfo, getAttendeeProfileId,
+  getInitials, getMessageText, getMessageDisplayText, hasDisplayableContent,
+  getChatJobInfo, getAttendeeProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 
@@ -262,7 +263,14 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
-    messages.forEach(m => items.push({ kind: 'message', data: m }));
+    // Skip les messages sans contenu affichable (Unipile remonte parfois
+    // des messages "fantômes" sans texte ni attachment — ex. anciennes
+    // réactions désynchro, payloads partiels). Sinon ils créent des
+    // bulles vides chelou dans le thread.
+    messages.forEach(m => {
+      if (!hasDisplayableContent(m) && (!m.reactions || m.reactions.length === 0)) return;
+      items.push({ kind: 'message', data: m });
+    });
     activityEvents.forEach(e => items.push({ kind: 'event', data: e }));
     items.sort((a, b) => {
       const tA = (a.kind === 'message' ? a.data.timestamp : a.kind === 'event' ? a.data.timestamp : '') || '';
@@ -785,10 +793,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
                             URLs/strings longs sans espace. break-words seul
                             ne suffit pas pour les URLs ultra-longues. */}
                         <p
-                          className="whitespace-pre-wrap break-words text-pretty"
+                          className={cn(
+                            "whitespace-pre-wrap break-words text-pretty",
+                            // Italic + dim pour les placeholders (pièce jointe,
+                            // message supprimé) pour les distinguer du texte réel.
+                            !getMessageText(msg) && "italic opacity-75",
+                          )}
                           style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                         >
-                          {getMessageText(msg)}
+                          {getMessageDisplayText(msg)}
                         </p>
                       </div>
 

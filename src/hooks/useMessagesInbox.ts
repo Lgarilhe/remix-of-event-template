@@ -92,6 +92,15 @@ export interface Message {
   delivered?: boolean;
   /** Réactions sur le message (format Unipile : Array<{ value, sender_id }>). */
   reactions?: MessageReaction[];
+  /** Pièces jointes — Unipile remonte type, url, filename, mimetype, size.
+      On garde le typage souple car Unipile change les détails selon le type. */
+  attachments?: Array<Record<string, unknown>>;
+  /** True si le message a été supprimé côté LinkedIn. */
+  is_deleted?: boolean;
+  /** Subject (utilisé pour les InMails). */
+  subject?: string;
+  /** Type Unipile : MESSAGE | INMAIL | etc. */
+  message_type?: string;
 }
 
 export interface SequenceEnrollmentInfo {
