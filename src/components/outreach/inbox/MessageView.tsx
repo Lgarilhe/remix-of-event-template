@@ -78,6 +78,8 @@ interface MessageViewProps {
   onSuggestionClick: (text: string) => void;
   onSuggestionSend: (text: string) => void;
   onFetchSuggestions: () => void;
+  /** Re-fetch les messages du chat actuel (utilisé par le bouton "Recharger") */
+  onRefetchMessages?: () => void;
   onClearSuggestions: () => void;
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
   onEnrollInSequence: () => void;
@@ -111,6 +113,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   calendlyLink,
   onAddReaction,
   onDeleteMessage,
+  onRefetchMessages,
   isReacting,
   isDeleting,
 }) => {
@@ -581,18 +584,35 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     </div>
                     <button
                       type="button"
-                      onClick={() => window.location.reload()}
-                      className="mt-4 text-xs text-muted-foreground hover:text-foreground underline"
+                      onClick={() => onRefetchMessages?.()}
+                      disabled={loadingMessages}
+                      className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
-                      Rafraîchir
+                      {loadingMessages ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : null}
+                      <span>Recharger les messages</span>
                     </button>
                   </>
                 ) : (
                   <>
                     <p className="text-base font-medium text-foreground/80">Aucun message</p>
-                    <p className="text-sm text-muted-foreground/70 mt-1">
-                      Démarrez la conversation ci-dessous.
+                    <p className="text-sm text-muted-foreground/70 mt-1 mb-3">
+                      Cette conversation est vide ou LinkedIn n'a pas encore renvoyé l'historique.
                     </p>
+                    {onRefetchMessages && (
+                      <button
+                        type="button"
+                        onClick={() => onRefetchMessages()}
+                        disabled={loadingMessages}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {loadingMessages ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : null}
+                        <span>Recharger les messages</span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>

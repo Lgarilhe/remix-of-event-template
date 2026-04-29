@@ -164,6 +164,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
             onAddReaction={handleAddReaction}
+            onRefetchMessages={() => inbox.selectedChat && inbox.fetchMessages(inbox.selectedChat.id)}
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}
@@ -248,6 +249,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
             onAddReaction={handleAddReaction}
+            onRefetchMessages={() => inbox.selectedChat && inbox.fetchMessages(inbox.selectedChat.id)}
             onDeleteMessage={handleDeleteMessage}
             isReacting={isReacting}
             isDeleting={isDeleting}
