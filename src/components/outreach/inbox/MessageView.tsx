@@ -41,7 +41,9 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft, User, Loader2, MessageSquare, Clock, CheckCheck, Check, Trash2,
+  FileText, ChevronDown, ArrowRight,
 } from 'lucide-react';
+import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { cn } from '@/lib/utils';
 import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
@@ -232,6 +234,31 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   // User connecté + org + variables custom pour les placeholders templates
   const { user } = useAuthReady();
+
+  // Action IA : Résumer la conversation
+  const { summarize, summarizeLoading } = useTextActions();
+  const [summary, setSummary] = useState<SummarizeResult | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+
+  const handleSummarize = async () => {
+    if (messages.length === 0) return;
+    // Build conversation text
+    const convText = messages
+      .slice(-30) // 30 derniers max
+      .map(m => `${m.is_sender ? 'RECRUTEUR' : (selectedChat ? getChatDisplayName(selectedChat) : 'CANDIDAT')}: ${getMessageText(m)}`)
+      .join('\n');
+    const result = await summarize(convText);
+    if (result) {
+      setSummary(result);
+      setSummaryOpen(true);
+    }
+  };
+
+  // Reset le résumé quand on change de chat
+  useEffect(() => {
+    setSummary(null);
+    setSummaryOpen(false);
+  }, [selectedChat?.id]);
   const { organization } = useOrganization();
   const { asMap: customVariablesMap } = useUserTemplateVariables();
 
@@ -371,6 +398,28 @@ export const MessageView: React.FC<MessageViewProps> = ({
             />
             <div className="w-px h-5 bg-border mx-1.5" aria-hidden="true" />
             <ToneSelector selectedTone={currentTone} onToneChange={handleToneChange} />
+            {/* Bouton Résumer (visible si conv >= 4 messages) */}
+            {messages.length >= 4 && (
+              <button
+                type="button"
+                onClick={handleSummarize}
+                disabled={summarizeLoading}
+                className={cn(
+                  'h-8 px-3 inline-flex items-center gap-1.5 text-xs font-medium rounded-lg transition-colors',
+                  summarizeLoading
+                    ? 'text-muted-foreground cursor-wait'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                )}
+                title="Générer un résumé de la conversation"
+              >
+                {summarizeLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5" />
+                )}
+                <span>Résumer</span>
+              </button>
+            )}
             {selectedChat.attendees?.[0]?.profile_url && (
               <a
                 href={selectedChat.attendees[0].profile_url}
@@ -385,6 +434,51 @@ export const MessageView: React.FC<MessageViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Panneau Résumé — affiché juste sous le header quand summary dispo */}
+        {summary && summaryOpen && (
+          <div className="border-t border-border bg-gradient-to-br from-foreground/5 to-foreground/[0.02] px-5 py-3">
+            <div className="flex items-start gap-3">
+              <div className="h-8 w-8 rounded-md bg-foreground/10 grid place-items-center shrink-0">
+                <FileText className="w-4 h-4 text-foreground/70" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                    Résumé IA
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryOpen(false)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    Fermer
+                  </button>
+                </div>
+                <p className="text-[13px] text-foreground/80 leading-relaxed">
+                  {summary.summary}
+                </p>
+                {summary.key_points && summary.key_points.length > 0 && (
+                  <ul className="mt-2 space-y-0.5">
+                    {summary.key_points.map((p, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-[12px] text-muted-foreground">
+                        <span className="mt-1.5 h-1 w-1 rounded-full bg-muted-foreground/50 shrink-0" />
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {summary.next_action && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-foreground/5 text-[11px] text-foreground/80">
+                    <ArrowRight className="w-3 h-3 text-foreground/50" />
+                    <span className="font-medium">Prochaine étape :</span>
+                    <span>{summary.next_action}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* ROW 2 — MESSAGES (scrollable, design moderne avec grouping)

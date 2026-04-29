@@ -17,7 +17,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import {
   Loader2, Send, Sparkles, CalendarPlus, Smile,
   Bold, Italic, List, ListOrdered, Link as LinkIcon,
-  FileText,
+  FileText, Wand2, Languages, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -32,6 +32,7 @@ import {
   interpolatePlaceholders,
   type PlaceholderContext,
 } from '@/lib/templatePlaceholders';
+import { useTextActions, type RewriteVariant } from '@/hooks/useTextActions';
 
 const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
 
@@ -74,6 +75,60 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   // de templates. Le query est ce qui suit le "/" jusqu'au prochain espace.
   const { markUsed } = useMessageTemplates();
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
+
+  // Actions IA contextuelles (Reformuler / Traduire)
+  const { rewrite, translate, rewriteLoading, translateLoading } = useTextActions();
+  const [rewriteVariants, setRewriteVariants] = useState<RewriteVariant[] | null>(null);
+  const [rewritePopoverOpen, setRewritePopoverOpen] = useState(false);
+
+  /** Reformule la sélection (ou tout le contenu si pas de sélection) */
+  const handleRewrite = async () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? value.length;
+    const hasSelection = start !== end;
+    const sourceText = hasSelection ? value.slice(start, end) : value;
+    if (!sourceText.trim()) {
+      return;
+    }
+    const variants = await rewrite(sourceText);
+    if (variants && variants.length > 0) {
+      setRewriteVariants(variants);
+      setRewritePopoverOpen(true);
+    }
+  };
+
+  /** Applique une variante (remplace la sélection ou tout le contenu) */
+  const applyRewriteVariant = (variant: RewriteVariant) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? value.length;
+    const hasSelection = start !== end;
+    if (hasSelection) {
+      const newValue = value.slice(0, start) + variant.text + value.slice(end);
+      onChange(newValue);
+      requestAnimationFrame(() => {
+        ta.focus();
+        const newPos = start + variant.text.length;
+        ta.setSelectionRange(newPos, newPos);
+      });
+    } else {
+      onChange(variant.text);
+    }
+    setRewritePopoverOpen(false);
+    setRewriteVariants(null);
+  };
+
+  /** Traduit le contenu */
+  const handleTranslate = async () => {
+    if (!value.trim()) return;
+    const translated = await translate(value);
+    if (translated) {
+      onChange(translated);
+    }
+  };
 
   /** Détecte un slash command actif dans la valeur courante.
       Retourne la query (sans /) ou null si pas de slash actif. */
@@ -250,6 +305,95 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               onClick={handleNumberedList}
             />
             <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
+
+            {/* Reformuler — popover qui affiche les variantes IA */}
+            <Popover open={rewritePopoverOpen} onOpenChange={setRewritePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handleRewrite}
+                      disabled={rewriteLoading || !value.trim()}
+                      className={cn(
+                        'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
+                        rewriteLoading
+                          ? 'text-muted-foreground cursor-wait'
+                          : value.trim()
+                          ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          : 'text-muted-foreground/40 cursor-not-allowed',
+                      )}
+                    >
+                      {rewriteLoading ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-3 h-3" />
+                      )}
+                      <span>Reformuler</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Reformule le texte sélectionné (ou tout) en 3 variantes</TooltipContent>
+                </Tooltip>
+              </PopoverTrigger>
+              <PopoverContent className="w-96 p-2" side="top" align="start">
+                <div className="px-2 py-1.5 mb-1">
+                  <p className="text-xs font-semibold text-foreground">Choisissez une variante</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Click pour remplacer le texte
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  {rewriteVariants?.map((v, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => applyRewriteVariant(v)}
+                      className="w-full text-left p-2.5 rounded-md border border-border hover:border-foreground/30 hover:bg-accent/30 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+                          {v.label}
+                        </span>
+                        <Check className="w-3 h-3 text-muted-foreground/40 group-hover:text-foreground transition-colors ml-auto" />
+                      </div>
+                      <p className="text-[12px] text-foreground/80 leading-relaxed line-clamp-4">
+                        {v.text}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Traduire FR ↔ EN */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleTranslate}
+                  disabled={translateLoading || !value.trim()}
+                  className={cn(
+                    'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
+                    translateLoading
+                      ? 'text-muted-foreground cursor-wait'
+                      : value.trim()
+                      ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      : 'text-muted-foreground/40 cursor-not-allowed',
+                  )}
+                >
+                  {translateLoading ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Languages className="w-3 h-3" />
+                  )}
+                  <span>Traduire</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Traduit le texte FR ↔ EN automatiquement</TooltipContent>
+            </Tooltip>
+
+            <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
+
             <Popover>
               <PopoverTrigger asChild>
                 <button
