@@ -60,6 +60,11 @@ interface ReqBody {
   recruiter_name?: string;
   /** Pour cta_reply : titre de la mission liée (si connu) */
   job_title?: string;
+  /** Pour cta_reply : brief structuré du poste (titre, salaire, lieu,
+      missions, compétences, etc.) — utilisé pour générer un message
+      détaillé quand le CTA est "job_details", ou pour contextualiser
+      les autres CTA. Format : voir buildJobBriefForCta côté frontend. */
+  job_brief?: Record<string, unknown>;
   /** Pour cta_reply : lien Calendly (si CTA rdv) */
   calendly_link?: string;
   organization_id?: string;
@@ -172,23 +177,94 @@ Format strict :
       const recruiterName = body.recruiter_name || '';
       const jobTitle = body.job_title || '';
       const calendlyLink = body.calendly_link || '';
+      const jobBrief = body.job_brief;
       const toneInstruction = body.tone ? toneToInstruction(body.tone) : '';
 
-      // Format historique pour le LLM (du plus ancien au plus récent)
-      const historyFormatted = body.chat_history!
-        .slice(-12) // les 12 derniers messages suffisent pour comprendre le contexte
+      // Format historique pour le LLM (du plus ancien au plus récent).
+      // On utilise des marqueurs directionnels TRÈS explicites pour éviter
+      // que le LLM confonde les deux interlocuteurs :
+      //   → TOI : messages envoyés PAR le recruteur (toi)
+      //   ← XXX : messages envoyés PAR le candidat
+      // L'index numérique aide à savoir si c'est le dernier message.
+      const lastTwelve = body.chat_history!.slice(-12);
+      const historyFormatted = lastTwelve
         .map((m, i) => {
-          const who = m.is_sender ? 'TOI (recruteur)' : candidateName.toUpperCase();
-          return `[${i + 1}] ${who}: ${(m.text || '').slice(0, 800)}`;
+          const isRecruiter = !!m.is_sender;
+          const arrow = isRecruiter ? '→ TOI (recruteur)' : `← ${candidateName.toUpperCase()} (candidat)`;
+          return `[${i + 1}] ${arrow}: ${(m.text || '').slice(0, 800)}`;
         })
         .join('\n');
+
+      // Détermine si le dernier message vient du recruteur ou du candidat.
+      // Cas critique : si le dernier message est du recruteur, ça veut dire
+      // que le candidat n'a pas encore répondu — c'est une RELANCE, pas
+      // une réponse. Le LLM doit s'adapter (ne pas faire comme si on
+      // venait de recevoir un message).
+      const lastMsg = lastTwelve[lastTwelve.length - 1];
+      const lastFromRecruiter = !!lastMsg?.is_sender;
+      const flowContext = lastFromRecruiter
+        ? `IMPORTANT — SITUATION ACTUELLE :
+Le DERNIER message est de TOI (le recruteur). Le candidat n'a PAS encore répondu à ton dernier message.
+Donc le message que tu vas générer N'EST PAS une réponse à un message du candidat — c'est une RELANCE / un follow-up.
+Adapte ton ton en conséquence : court, soft, sans pression. Évite de répéter ce que tu viens déjà de dire.
+Le CTA doit servir à relancer la conversation, pas à enchaîner sur quelque chose que le candidat aurait dit (puisqu'il n'a rien dit depuis).`
+        : `IMPORTANT — SITUATION ACTUELLE :
+Le DERNIER message vient du CANDIDAT. Tu dois RÉPONDRE à ce message.
+Lis attentivement ce qu'il a écrit pour comprendre son intent (intéressé, hésitant, décline, demande des infos, etc.) et choisis ton CTA en fonction.
+Ne réponds JAMAIS à tes propres messages précédents : tu réponds UNIQUEMENT au dernier message marqué "← ${candidateName.toUpperCase()} (candidat)".`;
+
+      // Format du brief poste — affiche les fields non-vides en bullet points
+      let jobBriefSection = '';
+      if (jobBrief && typeof jobBrief === 'object') {
+        const lines: string[] = [];
+        const labelMap: Record<string, string> = {
+          title: 'Titre',
+          contract_type: 'Type de contrat',
+          client_name: 'Client',
+          client_sector: 'Secteur',
+          client_size: 'Taille entreprise',
+          location: 'Lieu',
+          remote_policy: 'Télétravail',
+          remote_days: 'Jours télétravail/semaine',
+          mission_description: 'Mission',
+          context: 'Contexte',
+          seniority: 'Séniorité',
+          experience_min: 'Expérience min (années)',
+          experience_max: 'Expérience max (années)',
+          skills_must_have: 'Compétences indispensables',
+          skills_should_have: 'Compétences souhaitées',
+          salary_range: 'Salaire',
+          benefits: 'Avantages',
+          equity: 'Equity / BSPCE',
+          start_date: 'Date de début',
+          team_size: "Taille de l'équipe",
+          manages: "Personnes managées",
+          reports_to: 'Rattachement',
+        };
+        for (const [key, label] of Object.entries(labelMap)) {
+          const v = (jobBrief as Record<string, unknown>)[key];
+          if (v === undefined || v === null) continue;
+          if (Array.isArray(v)) {
+            if (v.length === 0) continue;
+            lines.push(`- ${label} : ${v.join(', ')}`);
+          } else if (typeof v === 'string') {
+            if (v.trim().length === 0) continue;
+            lines.push(`- ${label} : ${v}`);
+          } else {
+            lines.push(`- ${label} : ${String(v)}`);
+          }
+        }
+        if (lines.length > 0) {
+          jobBriefSection = `\n\nDÉTAILS DU POSTE (à utiliser pour rédiger ta réponse) :\n${lines.join('\n')}`;
+        }
+      }
 
       // Catalogue des CTA disponibles, expliqué au LLM
       const ctaCatalog = `CATALOGUE DES CTA :
 - "rdv" : Proposer de réserver un créneau via Calendly. Utilise le lien fourni si présent. Idéal quand le candidat est intéressé.
 - "call" : Demander un appel rapide (15 min) en proposant 2-3 créneaux. Plus engageant que rdv si pas de Calendly.
 - "cv" : Demander à recevoir le CV ou un portfolio. Idéal pour qualifier un profil prometteur.
-- "job_details" : Proposer d'envoyer la fiche détaillée du poste. Idéal si le candidat veut en savoir plus.
+- "job_details" : ENVOYER directement les infos clés du poste dans le message (titre, contrat, lieu, télétravail, mission, compétences clés, salaire, avantages). PAS proposer d'envoyer la fiche, mais les inclure directement dans le message. C'est le seul CTA où le message peut être plus long (jusqu'à 8-10 phrases / 1500 chars).
 - "check_interest" : Relance soft "toujours intéressé ?" sans pression. Idéal après silence > 1 semaine.
 - "referral" : Demander si la personne connaît quelqu'un d'autre qui pourrait être intéressé. Idéal après un décline poli.
 - "close" : Clôturer poliment en gardant la porte ouverte pour plus tard. Idéal après un décline ferme.`;
@@ -197,8 +273,19 @@ Format strict :
         ? `MODE AUTO : Analyse le DERNIER message du candidat et choisis le CTA le plus pertinent dans le catalogue. Justifie ton choix dans "reason" (1 phrase).`
         : `CTA IMPOSÉ : "${ctaType}". Construis un message qui intègre naturellement ce CTA. Mets ce même type dans "cta_used" et explique brièvement dans "reason" pourquoi ce CTA fonctionne dans ce contexte.`;
 
-      systemPrompt = `Tu es un recruteur expérimenté qui rédige des messages LinkedIn naturels, courts et engageants.
+      // Pour le CTA "job_details", on autorise un message plus long et
+      // on demande explicitement d'intégrer un maximum d'infos du brief.
+      const lengthRule = ctaType === 'job_details'
+        ? `- 5-10 phrases (le candidat veut des infos détaillées)
+- Structure le message : intro courte → infos clés du poste (mission, lieu/remote, compétences, salaire/avantages) → CTA final pour la prochaine étape (ex: "tu veux qu'on en discute en call ?")
+- Inclus TOUTES les infos importantes disponibles dans DÉTAILS DU POSTE — ne demande pas au candidat de te recontacter pour les avoir
+- Tu peux utiliser des sauts de ligne pour aérer la lecture, mais pas de markdown (LinkedIn ne le rend pas)`
+        : `- 2-4 phrases max (LinkedIn = court et direct)`;
+
+      systemPrompt = `Tu es un recruteur expérimenté qui rédige des messages LinkedIn naturels et engageants.
 Tu réponds UNIQUEMENT en JSON valide, sans markdown.
+
+${flowContext}
 
 ${toneInstruction}
 
@@ -210,10 +297,10 @@ CONTEXTE :
 - Candidat : ${candidateName}
 ${recruiterName ? `- Recruteur (toi) : ${recruiterName}` : ''}
 ${jobTitle ? `- Mission : ${jobTitle}` : ''}
-${calendlyLink ? `- Lien Calendly disponible : ${calendlyLink}` : '- Pas de lien Calendly disponible'}
+${calendlyLink ? `- Lien Calendly disponible : ${calendlyLink}` : '- Pas de lien Calendly disponible'}${jobBriefSection}
 
 RÈGLES DE RÉDACTION :
-- 2-4 phrases max (LinkedIn = court et direct)
+${lengthRule}
 - Ne JAMAIS commencer par "Bonjour" ou se re-présenter (c'est une réponse, la conv est déjà ouverte)
 - Si tutoiement dans le dernier message du candidat → continuer en tutoiement (idem vouvoiement)
 - Conserve la langue du dernier message du candidat (FR ou EN)
@@ -222,6 +309,8 @@ RÈGLES DE RÉDACTION :
 - Si le CTA est "rdv" sans Calendly → propose de fixer un créneau par retour de message
 - Pas d'emojis sauf si le candidat en utilise lui-même
 - Pas de "n'hésitez pas" ou tournures vides
+
+RAPPEL CRITIQUE : Tu réponds AU CANDIDAT. Ne jamais paraphraser ou enchaîner sur tes propres messages précédents — utilise-les seulement comme contexte pour comprendre où en est la conversation. Le message généré DOIT logiquement faire suite au dernier message marqué "← ${candidateName.toUpperCase()} (candidat)" (s'il existe), ou être une relance soft si le candidat n'a pas encore répondu.
 
 FORMAT (strict) :
 {

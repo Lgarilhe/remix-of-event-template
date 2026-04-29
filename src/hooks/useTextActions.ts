@@ -57,6 +57,10 @@ export interface CtaReplyInput {
   candidate_name?: string;
   recruiter_name?: string;
   job_title?: string;
+  /** Brief structuré du poste (titre, salaire, lieu, etc.) — utilisé
+      surtout par le CTA "job_details" pour générer un message qui
+      contient toutes les infos directement. Voir buildJobBriefForCta. */
+  job_brief?: Record<string, unknown>;
   calendly_link?: string;
   tone?: string;
 }
@@ -175,6 +179,7 @@ export function useTextActions() {
           candidate_name: input.candidate_name,
           recruiter_name: input.recruiter_name,
           job_title: input.job_title,
+          job_brief: input.job_brief,
           calendly_link: input.calendly_link,
           tone: input.tone,
         });

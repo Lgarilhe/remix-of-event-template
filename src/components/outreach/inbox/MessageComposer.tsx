@@ -65,6 +65,8 @@ export interface MessageComposerProps {
   ctaRecruiterName?: string;
   /** Titre de la mission liée pour le prompt CTA. */
   ctaJobTitle?: string;
+  /** Brief structuré du poste pour le CTA "Détailler le poste". */
+  ctaJobBrief?: Record<string, unknown>;
   /** Lien Calendly pour le CTA "rdv". */
   ctaCalendlyLink?: string;
   /** Ton sélectionné pour le prompt CTA. */
@@ -88,6 +90,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   ctaCandidateName,
   ctaRecruiterName,
   ctaJobTitle,
+  ctaJobBrief,
   ctaCalendlyLink,
   ctaTone,
 }) => {
@@ -425,6 +428,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               candidateName={ctaCandidateName}
               recruiterName={ctaRecruiterName}
               jobTitle={ctaJobTitle}
+              jobBrief={ctaJobBrief}
               calendlyLink={ctaCalendlyLink}
               tone={ctaTone}
               disabled={disabled}

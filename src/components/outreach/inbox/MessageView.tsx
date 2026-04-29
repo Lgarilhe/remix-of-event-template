@@ -54,6 +54,7 @@ import {
   getChatJobInfo, getAttendeeProfileId,
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
+import { jobDataToBrief } from '@/lib/jobBriefForCta';
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '👏', '😂', '😮'];
 
@@ -974,6 +975,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             || undefined
           }
           ctaJobTitle={currentJobData?.title}
+          ctaJobBrief={jobDataToBrief(currentJobData)}
           ctaCalendlyLink={calendlyLink || undefined}
           ctaTone={currentTone}
         />

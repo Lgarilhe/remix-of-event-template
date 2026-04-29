@@ -101,6 +101,10 @@ export interface CtaReplyButtonProps {
   recruiterName?: string;
   /** Titre de la mission liée. */
   jobTitle?: string;
+  /** Brief structuré du poste (extrait via buildJobBriefForCta). Utile
+      surtout pour le CTA "Détailler le poste" qui inclut TOUTES les
+      infos directement dans le message. */
+  jobBrief?: Record<string, unknown>;
   /** Lien Calendly de la mission (pour CTA rdv). */
   calendlyLink?: string;
   /** Ton sélectionné dans le composer. */
@@ -116,6 +120,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
   candidateName,
   recruiterName,
   jobTitle,
+  jobBrief,
   calendlyLink,
   tone,
   onInsert,
@@ -138,6 +143,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
       candidate_name: candidateName,
       recruiter_name: recruiterName,
       job_title: jobTitle,
+      job_brief: jobBrief,
       calendly_link: calendlyLink,
       tone,
     });
@@ -154,6 +160,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
       candidate_name: candidateName,
       recruiter_name: recruiterName,
       job_title: jobTitle,
+      job_brief: jobBrief,
       calendly_link: calendlyLink,
       tone,
     });
