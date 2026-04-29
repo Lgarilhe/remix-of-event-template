@@ -89,9 +89,10 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   }, [collapsed]);
 
   // Charge les intents IA des chats visibles (depuis message_analysis_cache)
+  // Passe les chats complets (pas juste IDs) pour que le hook détecte le
+  // cache stale en comparant chat.last_message.timestamp vs analysis.updated_at
   const visibleAccountId = filteredChats[0]?.account_id || chats[0]?.account_id || null;
-  const visibleChatIds = filteredChats.map(c => c.id);
-  const { data: intentsMap } = useChatIntents(visibleChatIds, visibleAccountId);
+  const { data: intentsMap } = useChatIntents(filteredChats, visibleAccountId);
 
   const classicCount = chats.filter(c => isClassicChat(c)).length;
   const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
