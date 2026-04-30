@@ -68,6 +68,80 @@ function extractUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
+// ── Parse local URL — pour extraire title/company directement depuis le slug
+// quand c'est une URL de poste spécifique (sans devoir scraper le HTML).
+// Marche pour : WTTJ /companies/{slug}/jobs/{title-slug}_{location}
+//               LinkedIn /jobs/view/{job_id}/  (titre dans les query params parfois)
+
+interface UrlParsedJob {
+  title?: string;
+  company?: string;
+  location?: string;
+  source: string;
+  isJobUrl: boolean; // true si URL de POSTE spécifique, false si URL entreprise
+}
+
+function smartCapitalize(s: string): string {
+  return s.split(/[\s-_]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
+}
+
+function parseJobUrl(url: string): UrlParsedJob | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname;
+
+    // WTTJ : /fr/companies/{company-slug}/jobs/{job-slug}[_location]
+    if (host.includes('welcometothejungle.com')) {
+      const jobMatch = path.match(/\/companies\/([a-z0-9-]+)\/jobs\/([a-z0-9-]+?)(?:_([a-z0-9-]+))?(?:\/|$)/i);
+      if (jobMatch) {
+        return {
+          company: smartCapitalize(jobMatch[1]),
+          title: smartCapitalize(jobMatch[2]),
+          location: jobMatch[3] ? smartCapitalize(jobMatch[3]) : undefined,
+          source: 'Welcome to the Jungle',
+          isJobUrl: true,
+        };
+      }
+      const companyMatch = path.match(/\/companies\/([a-z0-9-]+)/i);
+      if (companyMatch) {
+        return { company: smartCapitalize(companyMatch[1]), source: 'Welcome to the Jungle', isJobUrl: false };
+      }
+    }
+
+    // LinkedIn jobs : /jobs/view/{id} — pas de slug dans le path, on doit fetch
+    if (host.includes('linkedin.com') && path.includes('/jobs/')) {
+      return { source: 'LinkedIn Jobs', isJobUrl: true };
+    }
+
+    // Lever : jobs.lever.co/{company}/{job-id-or-slug}
+    if (host === 'jobs.lever.co') {
+      const match = path.match(/^\/([a-z0-9-]+)\/([^/]+)/i);
+      if (match) {
+        return {
+          company: smartCapitalize(match[1]),
+          title: smartCapitalize(match[2].replace(/[a-f0-9-]{20,}/g, '').trim()) || undefined,
+          source: 'Lever',
+          isJobUrl: true,
+        };
+      }
+    }
+
+    // Greenhouse : boards.greenhouse.io/{company}/jobs/{id}
+    if (host === 'boards.greenhouse.io') {
+      const match = path.match(/^\/([a-z0-9-]+)\/jobs\//i);
+      if (match) return { company: smartCapitalize(match[1]), source: 'Greenhouse', isJobUrl: true };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 interface CreateMissionV2Props {
   isOpen: boolean;
   onClose: () => void;
@@ -248,51 +322,68 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     }
   }, [briefName, briefText, clientName, analysis, createProject, onClose, navigate]);
 
-  // ── Scan d'URL (WTTJ / LinkedIn / careers / ATS) ──
+  // ── Scan d'URL — parsing local du slug uniquement.
+  //
+  // Pour la création de mission, on fait du parsing rapide depuis le slug
+  // de l'URL (titre + entreprise + localisation). C'est instantané et
+  // l'user complète ensuite avec la description.
+  //
+  // Pour les pages entreprises avec plusieurs postes, l'user verra un
+  // message qui le redirige vers la fonctionnalité "Importer plusieurs
+  // postes" (à venir) sur la page Missions.
   const handleScanUrl = useCallback(async (urlOverride?: string) => {
     const url = (urlOverride || urlSuggestion || '').trim();
     if (!url) return;
     setScanningUrl(true);
+
     try {
-      const { data, error } = await invokeEdgeFunction<any>('enrich-company', {
-        mode: 'jobs_only',
-        force_refresh: true,
-        careers_url: url,
-      });
+      const parsed = parseJobUrl(url);
 
-      if (error || !data?.success) {
-        toast.error("Impossible de scanner cette URL");
-        return;
-      }
-
-      const company = data.company || data;
-      const roles = company.openRoles || [];
-      const firstRole = roles[0];
-
-      if (firstRole) {
-        // Ajoute le titre + description du 1er rôle dans le brief
-        const sourceLabel = detectUrlSource(url)?.label || 'l\'URL importée';
-        const importedText = [
-          `Poste : ${firstRole.title}`,
-          firstRole.location ? `Lieu : ${firstRole.location}` : null,
-          firstRole.department ? `Département : ${firstRole.department}` : null,
-          company.name ? `Entreprise : ${company.name}` : null,
-          company.industry ? `Secteur : ${company.industry}` : null,
-          firstRole.description || null,
+      // Cas 1 : URL de poste spécifique avec slug parsable
+      if (parsed && parsed.isJobUrl && (parsed.title || parsed.company)) {
+        const lines = [
+          parsed.title && `Poste : ${parsed.title}`,
+          parsed.company && `Entreprise : ${parsed.company}`,
+          parsed.location && `Lieu : ${parsed.location}`,
+          `Source : ${parsed.source}`,
+          `URL : ${url}`,
+          '',
+          '— Complète la description du poste, les compétences, l\'expérience requise —',
         ].filter(Boolean).join('\n');
 
         setBriefText(prev => {
-          // Remplace l'URL par le contenu enrichi
           const without = prev.replace(url, '').trim();
-          return without ? `${without}\n\n${importedText}` : importedText;
+          return without ? `${without}\n\n${lines}` : lines;
         });
-        if (!briefName && firstRole.title) setBriefName(firstRole.title);
-        if (!clientName && company.name) setClientName(company.name);
+        if (!briefName && parsed.title) setBriefName(parsed.title);
+        if (!clientName && parsed.company) setClientName(parsed.company);
         setUrlSuggestion(null);
-        toast.success(`✨ Importé depuis ${sourceLabel}${roles.length > 1 ? ` · ${roles.length} postes détectés` : ''}`);
-      } else {
-        toast.info('Aucun poste détecté à cette URL — colle le contenu manuellement');
+
+        toast.success(`✨ ${parsed.source} importé`, {
+          description: parsed.title
+            ? `${parsed.title}${parsed.company ? ` chez ${parsed.company}` : ''} — complète maintenant la description du poste`
+            : 'Complète maintenant la description du poste',
+          duration: 5000,
+        });
+        return;
       }
+
+      // Cas 2 : URL de page entreprise (plusieurs postes)
+      if (parsed && !parsed.isJobUrl && parsed.company) {
+        // Pré-remplit au moins le nom du client
+        if (!clientName) setClientName(parsed.company);
+        toast.info('Page entreprise détectée', {
+          description: `Pour importer plusieurs postes de ${parsed.company} en une fois, utilise le bouton "Importer plusieurs postes" depuis ta liste de missions (à venir).`,
+          duration: 7000,
+        });
+        return;
+      }
+
+      // Cas 3 : URL non reconnue
+      toast.warning('URL non reconnue', {
+        description: 'Colle la fiche de poste directement dans la zone brief — l\'IA fait le reste.',
+        duration: 5000,
+      });
     } catch (e: any) {
       toast.error(e.message || "Erreur lors du scan");
     } finally {
