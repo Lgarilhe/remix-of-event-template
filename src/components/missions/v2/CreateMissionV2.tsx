@@ -322,24 +322,58 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     }
   }, [briefName, briefText, clientName, analysis, createProject, onClose, navigate]);
 
-  // ── Scan d'URL — parsing local du slug uniquement.
+  // ── Scan d'URL — extraction exhaustive via edge function dédiée.
   //
-  // Pour la création de mission, on fait du parsing rapide depuis le slug
-  // de l'URL (titre + entreprise + localisation). C'est instantané et
-  // l'user complète ensuite avec la description.
+  // L'edge function scrape-job-url fetch le HTML de la page côté serveur
+  // (pas de problème CORS) et parse :
+  //   - WTTJ : __NEXT_DATA__ JSON très riche (description complète,
+  //     profil recherché, salaire, langues, contrat, lieu, remote, …)
+  //   - LinkedIn / Lever / Greenhouse : JSON-LD JobPosting
+  //   - Générique : OpenGraph + meta description
   //
-  // Pour les pages entreprises avec plusieurs postes, l'user verra un
-  // message qui le redirige vers la fonctionnalité "Importer plusieurs
-  // postes" (à venir) sur la page Missions.
+  // En fallback (URL d'une page entreprise multiple postes ou URL
+  // illisible), on parse au moins le slug pour récupérer titre/company.
   const handleScanUrl = useCallback(async (urlOverride?: string) => {
     const url = (urlOverride || urlSuggestion || '').trim();
     if (!url) return;
     setScanningUrl(true);
 
     try {
+      // 1) Tentative extraction exhaustive via edge function
+      const { data, error } = await invokeEdgeFunction<any>('scrape-job-url', { url });
+
+      if (!error && data?.success && data?.job) {
+        const job = data.job;
+        const text = job.raw_text || '';
+        const sourceLabel = job.source || detectUrlSource(url)?.label || 'la page';
+
+        setBriefText(prev => {
+          const without = prev.replace(url, '').trim();
+          return without ? `${without}\n\n${text}` : text;
+        });
+        if (!briefName && job.title) setBriefName(job.title);
+        if (!clientName && job.company) setClientName(job.company);
+        setUrlSuggestion(null);
+
+        const detailsCount = [
+          job.title, job.description, job.profile, job.salary_min,
+          job.location, job.contract_type, job.languages?.length,
+          job.skills?.length, job.benefits, job.experience_level,
+        ].filter(Boolean).length;
+
+        toast.success(`✨ ${sourceLabel} importé`, {
+          description: detailsCount >= 5
+            ? `Brief enrichi avec ${detailsCount} infos — l'IA peut maintenant l'analyser`
+            : `Quelques infos extraites — complète si besoin`,
+          duration: 5000,
+        });
+        return;
+      }
+
+      // 2) Edge function a renvoyé un warning ou un échec → fallback
+      // sur le parsing local du slug pour récupérer au moins l'essentiel.
       const parsed = parseJobUrl(url);
 
-      // Cas 1 : URL de poste spécifique avec slug parsable
       if (parsed && parsed.isJobUrl && (parsed.title || parsed.company)) {
         const lines = [
           parsed.title && `Poste : ${parsed.title}`,
@@ -359,30 +393,27 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         if (!clientName && parsed.company) setClientName(parsed.company);
         setUrlSuggestion(null);
 
-        toast.success(`✨ ${parsed.source} importé`, {
-          description: parsed.title
-            ? `${parsed.title}${parsed.company ? ` chez ${parsed.company}` : ''} — complète maintenant la description du poste`
-            : 'Complète maintenant la description du poste',
-          duration: 5000,
-        });
-        return;
-      }
-
-      // Cas 2 : URL de page entreprise (plusieurs postes)
-      if (parsed && !parsed.isJobUrl && parsed.company) {
-        // Pré-remplit au moins le nom du client
-        if (!clientName) setClientName(parsed.company);
-        toast.info('Page entreprise détectée', {
-          description: `Pour importer plusieurs postes de ${parsed.company} en une fois, utilise le bouton "Importer plusieurs postes" depuis ta liste de missions (à venir).`,
+        toast.warning(`⚠️ Extraction partielle`, {
+          description: data?.warning || 'La page n\'a pas pu être lue entièrement. Les infos du slug ont été extraites — copie-colle la description complète pour un brief riche.',
           duration: 7000,
         });
         return;
       }
 
-      // Cas 3 : URL non reconnue
-      toast.warning('URL non reconnue', {
-        description: 'Colle la fiche de poste directement dans la zone brief — l\'IA fait le reste.',
-        duration: 5000,
+      // 3) Cas d'une page entreprise multiple postes
+      if (parsed && !parsed.isJobUrl && parsed.company) {
+        if (!clientName) setClientName(parsed.company);
+        toast.info('Page entreprise détectée', {
+          description: `Pour importer plusieurs postes de ${parsed.company} en une fois, utilise "Importer plusieurs postes" depuis ta liste de missions (à venir).`,
+          duration: 7000,
+        });
+        return;
+      }
+
+      // 4) Tout a foiré
+      toast.error('Impossible d\'extraire le contenu', {
+        description: data?.error || error?.message || 'Copie-colle la fiche directement dans le brief.',
+        duration: 6000,
       });
     } catch (e: any) {
       toast.error(e.message || "Erreur lors du scan");

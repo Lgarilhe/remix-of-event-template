@@ -187,6 +187,9 @@ verify_jwt = false
 [functions.score-profile-job]
 verify_jwt = false
 
+[functions.scrape-job-url]
+verify_jwt = false
+
 [functions.screen-candidate]
 verify_jwt = false
 
