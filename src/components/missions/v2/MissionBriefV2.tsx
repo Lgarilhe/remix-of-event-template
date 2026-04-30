@@ -27,7 +27,7 @@ import { deepMerge } from '@/lib/deepMerge';
 import { FilterReviewModal } from '../FilterReviewModal';
 import { VoiceDictation } from '../VoiceDictation';
 import type { JobDetails } from '@/types/jobDetails';
-import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, SIZE_LABELS } from '@/types/jobDetails';
+import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, SIZE_LABELS, URGENCY_LABELS } from '@/types/jobDetails';
 import { Pill } from './Pill';
 
 interface MissionBriefV2Props {
@@ -54,21 +54,45 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-save logic (debounced 800ms) — same as v1
+  // Auto-save logic (debounced 800ms).
+  // latestRef = la "vérité serveur" la plus récente (depuis project.job_details).
+  // pendingPatchRef = les changements en cours de saisie pas encore persistés.
+  // À chaque render on re-merge les deux pour afficher l'état frais.
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatchRef = useRef<Partial<JobDetails>>({});
   const latestRef = useRef<JobDetails>(project.job_details || {});
-  latestRef.current = project.job_details || {};
+
+  // Sync latestRef quand project.job_details change (DB sync depuis le serveur).
+  // On ne le réécrase PAS pendant que l'user tape (sinon on perd les patchs locaux).
+  useEffect(() => {
+    latestRef.current = project.job_details || {};
+  }, [project.job_details]);
+
+  // Flush pending patch + cleanup timers au unmount.
+  // CRITIQUE : si l'user navigue ailleurs alors qu'un timer est en cours
+  // (ex: tape un champ puis change de sub-tab dans les 800ms), on flush
+  // immédiatement pour ne pas perdre la saisie.
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        // Flush sync : envoie le patch en attente avant de démonter
+        if (Object.keys(pendingPatchRef.current).length > 0) {
+          const merged = deepMerge(latestRef.current, pendingPatchRef.current);
+          updateProject({ id: project.id, job_details: merged } as any).catch(() => {
+            // best-effort, l'user a déjà quitté
+          });
+        }
+      }
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]); // re-flush si on switch de mission
 
   const [tick, setTick] = useState(0); // forces re-render on local edit
   const jd = deepMerge(latestRef.current, pendingPatchRef.current) as JobDetails;
-
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
-    };
-  }, []);
+  // Le tick force un re-render pour afficher la nouvelle valeur sans race
+  void tick;
 
   const updateField = useCallback((patch: Partial<JobDetails>) => {
     if (readOnly) return;
@@ -489,12 +513,8 @@ const TagsInput: React.FC<{
 
 // ─── Sections ────────────────────────────────────────────────────────
 
-const URGENCY_OPTIONS = [
-  { value: 'low', label: '🟢 Basse' },
-  { value: 'medium', label: '🟡 Moyenne' },
-  { value: 'high', label: '🟠 Haute' },
-  { value: 'critical', label: '🔴 Critique' },
-];
+// Source de vérité : URGENCY_LABELS depuis @/types/jobDetails
+const URGENCY_OPTIONS = Object.entries(URGENCY_LABELS).map(([value, label]) => ({ value, label }));
 
 const SectionPoste: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => (
   <SectionCard emoji="📍" title="Le poste" subtitle="Identité, contrat, localisation">
