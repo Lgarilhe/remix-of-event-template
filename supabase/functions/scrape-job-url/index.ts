@@ -87,27 +87,19 @@ Deno.serve(async (req) => {
     let scraped: ScrapedJob | null = null;
     let html = '';
 
-    // ── 1) Tentative Firecrawl (JS-rendered) en priorité pour les sites
-    // qui font du Client-Side Rendering (WTTJ, LinkedIn, ATS modernes).
-    // Firecrawl exécute le JS et retourne le markdown complet + meta.
+    // ── 1) Tentative Firecrawl /scrape avec waitFor + scroll
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+    let firecrawlMd = '';
+    let firecrawlMeta: Record<string, any> = {};
     if (firecrawlKey) {
       try {
-        // waitFor 8s pour donner le temps à WTTJ/LinkedIn de charger le
-        // contenu complet via leurs API (souvent 3-6s avant que le DOM
-        // soit stable). onlyMainContent=false : on prend tout puis on
-        // filtre nous-mêmes les sections pertinentes via splitMarkdownSections.
-        // includeTags : on guide Firecrawl vers les zones de contenu typiques.
         const fcBody: Record<string, unknown> = {
           url,
           formats: ['markdown'],
           onlyMainContent: false,
-          waitFor: 8000,
+          waitFor: 6000,
           timeout: 35000,
-          excludeTags: ['nav', 'header', 'footer', 'script', 'style', 'iframe', '.cookie-banner', '#cookie-banner'],
         };
-
-        // Pour WTTJ : actions custom pour scroll + wait après chargement
         if (url.toLowerCase().includes('welcometothejungle.com')) {
           fcBody.actions = [
             { type: 'wait', milliseconds: 3000 },
@@ -117,7 +109,6 @@ Deno.serve(async (req) => {
             { type: 'wait', milliseconds: 2000 },
           ];
         }
-
         const fcRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
           headers: {
@@ -128,18 +119,106 @@ Deno.serve(async (req) => {
         });
         if (fcRes.ok) {
           const fcData = await fcRes.json();
-          const md = fcData?.data?.markdown || fcData?.markdown || '';
-          const meta = fcData?.data?.metadata || fcData?.metadata || {};
-          console.log('[scrape-job-url] Firecrawl returned', md.length, 'chars of markdown');
-          if (md && md.length > 200) {
-            scraped = buildFromFirecrawl(md, meta, url);
-          }
+          firecrawlMd = fcData?.data?.markdown || fcData?.markdown || '';
+          firecrawlMeta = fcData?.data?.metadata || fcData?.metadata || {};
+          console.log('[scrape-job-url] Firecrawl /scrape returned', firecrawlMd.length, 'chars');
         } else {
           const errText = await fcRes.text().catch(() => '');
-          console.warn('[scrape-job-url] Firecrawl HTTP', fcRes.status, errText.slice(0, 200));
+          console.warn('[scrape-job-url] Firecrawl /scrape HTTP', fcRes.status, errText.slice(0, 200));
         }
       } catch (e) {
-        console.warn('[scrape-job-url] Firecrawl error:', e);
+        console.warn('[scrape-job-url] Firecrawl /scrape error:', e);
+      }
+
+      // Si /scrape donne assez de contenu → on l'utilise
+      if (firecrawlMd && firecrawlMd.length > 800) {
+        scraped = buildFromFirecrawl(firecrawlMd, firecrawlMeta, url);
+      } else {
+        // Sinon → on tente Firecrawl /extract qui utilise un LLM pour
+        // structurer les données depuis la page (plus lent mais plus fiable
+        // sur les sites complexes type WTTJ avec anti-bot).
+        console.log('[scrape-job-url] Trying Firecrawl /extract as fallback');
+        try {
+          const extractRes = await fetch('https://api.firecrawl.dev/v1/extract', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              urls: [url],
+              prompt: `Extract ALL information about this job posting. Be exhaustive — include the full mission description, profile required, benefits, recruitment process, company info, salary, location, contract type, languages, technical skills, experience required. Don't summarize — return the COMPLETE text content as it appears on the page.`,
+              schema: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Job title' },
+                  company: { type: 'string', description: 'Company name' },
+                  location: { type: 'string', description: 'Job location (city)' },
+                  remote: { type: 'string', description: 'Remote policy if mentioned (full remote, hybrid, etc.)' },
+                  contract_type: { type: 'string', description: 'Contract type (CDI, CDD, Freelance, Stage…)' },
+                  start_date: { type: 'string', description: 'Start date if mentioned' },
+                  experience_level: { type: 'string', description: 'Required experience level' },
+                  salary_min: { type: 'number', description: 'Minimum salary in EUR if mentioned' },
+                  salary_max: { type: 'number', description: 'Maximum salary in EUR if mentioned' },
+                  description: { type: 'string', description: 'FULL job description / mission. Include all details about responsibilities, projects, day-to-day tasks. Several paragraphs.' },
+                  profile: { type: 'string', description: 'FULL profile required / qualifications / requirements. Several paragraphs if available.' },
+                  benefits: { type: 'string', description: 'Benefits, perks, package details' },
+                  recruitment_process: { type: 'string', description: 'Steps of the recruitment process if mentioned' },
+                  company_about: { type: 'string', description: 'About the company, mission, values, size if mentioned' },
+                  industry: { type: 'string', description: 'Company industry / sector' },
+                  skills: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Technical skills, technologies, frameworks mentioned',
+                  },
+                  languages: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Spoken languages required (French, English, etc.)',
+                  },
+                },
+                required: ['title'],
+              },
+            }),
+          });
+          if (extractRes.ok) {
+            const extractData = await extractRes.json();
+            const extracted = extractData?.data || extractData?.extracted || extractData;
+            console.log('[scrape-job-url] Firecrawl /extract returned keys:', Object.keys(extracted || {}));
+            if (extracted && (extracted.title || extracted.description)) {
+              scraped = {
+                title: extracted.title || null,
+                description: extracted.description || null,
+                profile: extracted.profile || null,
+                benefits: extracted.benefits || null,
+                recruitment_process: extracted.recruitment_process || null,
+                company_about: extracted.company_about || null,
+                company: extracted.company || null,
+                industry: extracted.industry || null,
+                location: extracted.location || null,
+                remote: extracted.remote || null,
+                contract_type: extracted.contract_type || null,
+                start_date: extracted.start_date || null,
+                experience_level: extracted.experience_level || null,
+                salary_min: typeof extracted.salary_min === 'number' ? extracted.salary_min : null,
+                salary_max: typeof extracted.salary_max === 'number' ? extracted.salary_max : null,
+                salary_currency: 'EUR',
+                skills: Array.isArray(extracted.skills) ? extracted.skills : [],
+                languages: Array.isArray(extracted.languages) ? extracted.languages : [],
+              };
+            }
+          } else {
+            const errText = await extractRes.text().catch(() => '');
+            console.warn('[scrape-job-url] Firecrawl /extract HTTP', extractRes.status, errText.slice(0, 200));
+          }
+        } catch (e) {
+          console.warn('[scrape-job-url] Firecrawl /extract error:', e);
+        }
+
+        // Si /extract foire aussi mais qu'on a quand même un peu de markdown du /scrape
+        if (!scraped && firecrawlMd && firecrawlMd.length > 200) {
+          scraped = buildFromFirecrawl(firecrawlMd, firecrawlMeta, url);
+        }
       }
     } else {
       console.warn('[scrape-job-url] FIRECRAWL_API_KEY missing — skipping Firecrawl');
