@@ -5,6 +5,12 @@ import { toast } from 'sonner';
 
 const db = supabase as any;
 
+/** Format de l'entretien — visio / téléphone / présentiel. */
+export type MeetingFormat = 'video' | 'phone' | 'onsite';
+
+/** Provider de visioconférence (utilisé seulement quand format='video'). */
+export type MeetingProvider = 'teams' | 'zoom' | 'google_meet' | 'other';
+
 export interface ProcessStep {
   id: string;
   project_id: string;
@@ -20,6 +26,17 @@ export interface ProcessStep {
   evaluation_criteria: Array<{ criterion: string; weight: number }>;
   is_eliminatory: boolean;
   template_source: 'default' | 'custom' | 'ai_generated';
+  /** Format par défaut de l'entretien. Sert à pré-remplir les invitations
+      candidat. Default : 'video'. */
+  meeting_format?: MeetingFormat | null;
+  /** Provider visio quand meeting_format = 'video'. Permet l'auto-génération
+      du lien meeting (Teams / Zoom / Google Meet). */
+  meeting_provider?: MeetingProvider | null;
+  /** URL template / lien personnalisé quand meeting_provider = 'other' ou
+      lien fixe défini par l'utilisateur (ex: salle de visio dédiée). */
+  meeting_link?: string | null;
+  /** Adresse physique quand meeting_format = 'onsite'. */
+  location_address?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -86,6 +86,58 @@ const INTERVIEWER_TYPE_LABELS: Record<string, string> = {
   panel: 'Panel',
 };
 
+// ── Format / provider config ──
+const FORMAT_OPTIONS: { value: 'video' | 'phone' | 'onsite'; label: string; emoji: string; desc: string }[] = [
+  { value: 'video', label: 'Visioconférence', emoji: '🎥', desc: 'Teams, Zoom, Meet…' },
+  { value: 'phone', label: 'Téléphonique', emoji: '📞', desc: 'Appel classique' },
+  { value: 'onsite', label: 'Présentiel', emoji: '🤝', desc: 'Sur place / bureaux' },
+];
+
+const PROVIDER_OPTIONS: { value: 'teams' | 'zoom' | 'google_meet' | 'other'; label: string; logo: React.ReactNode }[] = [
+  {
+    value: 'teams',
+    label: 'Microsoft Teams',
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+        <path d="M14.4 9.6h6.4a1.6 1.6 0 0 1 1.6 1.6v6.4a4.8 4.8 0 0 1-9.6 0V11.2a1.6 1.6 0 0 1 1.6-1.6zM8 8a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4zm-2.4 9.6V11.2A1.6 1.6 0 0 1 7.2 9.6h6.4v8a3.2 3.2 0 0 1-3.2 3.2H8a4.8 4.8 0 0 1-2.4-3.2z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'zoom',
+    label: 'Zoom',
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+        <path d="M2 8a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V8zm17.5 1.5L22 7v10l-2.5-2.5v-5z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'google_meet',
+    label: 'Google Meet',
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+        <path d="M3 6a2 2 0 0 1 2-2h10v6h-3l3 3v5H5a2 2 0 0 1-2-2V6zm14 0v3l3-2.5v11l-3-2.5v3h-2V6h2z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'other',
+    label: 'Lien personnalisé',
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </svg>
+    ),
+  },
+];
+
+function getFormatLabel(format: 'video' | 'phone' | 'onsite' | null | undefined): string {
+  const f = format || 'video';
+  return FORMAT_OPTIONS.find(o => o.value === f)?.emoji || '🎥';
+}
+
 const StepCard: React.FC<StepCardProps> = ({
   step, index, onUpdate, onDelete,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragTarget,
@@ -115,41 +167,48 @@ const StepCard: React.FC<StepCardProps> = ({
     >
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3">
-        <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
+        <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors">
           <GripVertical className="w-4 h-4" />
         </div>
 
-        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-foreground text-background text-xs font-bold shrink-0 font-display">
           {index + 1}
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex items-center gap-2">
           <input
             defaultValue={step.name}
             onBlur={(e) => {
               const val = e.target.value.trim();
               if (val && val !== step.name) onUpdate({ id: step.id, name: val });
             }}
-            className="text-sm font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 w-full"
+            className="text-[14px] font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 min-w-0 max-w-[60%] sm:max-w-none"
           />
+          {/* Format pill — toujours visible en collapsed */}
+          <span
+            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+            title="Format"
+          >
+            <span>{getFormatLabel(step.meeting_format)}</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {step.is_eliminatory && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-destructive/10 text-destructive text-xs font-medium border border-destructive/20">
-              <Zap className="w-3 h-3" /> Éliminatoire
+            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }}>
+              <Zap className="w-2.5 h-2.5" /> Éliminatoire
             </span>
           )}
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="w-3.5 h-3.5" /> {step.duration_minutes}min
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Clock className="w-3 h-3" /> {step.duration_minutes}min
           </span>
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <User className="w-3.5 h-3.5" /> {step.interviewer_name || INTERVIEWER_TYPE_LABELS[step.interviewer_type]}
+          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <User className="w-3 h-3" /> {step.interviewer_name || INTERVIEWER_TYPE_LABELS[step.interviewer_type]}
           </span>
-          <button onClick={() => setExpanded(!expanded)} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+          <button onClick={() => setExpanded(!expanded)} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" aria-label={expanded ? 'Réduire' : 'Développer'}>
             <ChevronDown className={cn("w-4 h-4 transition-transform", expanded && "rotate-180")} />
           </button>
-          <button onClick={() => onDelete(step.id)} className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+          <button onClick={() => onDelete(step.id)} className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" aria-label="Supprimer">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -172,20 +231,20 @@ const StepCard: React.FC<StepCardProps> = ({
           {/* Row: duration, type, interviewer, eliminatory */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Durée (min)</label>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Durée (min)</label>
               <input
                 type="number"
                 defaultValue={step.duration_minutes}
                 onBlur={(e) => onUpdate({ id: step.id, duration_minutes: Number(e.target.value) || 30 })}
-                className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
+                className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Type</label>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Réalisé par</label>
               <select
                 value={step.interviewer_type}
                 onChange={(e) => onUpdate({ id: step.id, interviewer_type: e.target.value as any })}
-                className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
+                className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
               >
                 <option value="internal">Interne</option>
                 <option value="client">Client</option>
@@ -193,28 +252,131 @@ const StepCard: React.FC<StepCardProps> = ({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Interviewer</label>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Interviewer</label>
               <input
                 defaultValue={step.interviewer_name || ''}
                 onBlur={(e) => onUpdate({ id: step.id, interviewer_name: e.target.value || null })}
                 placeholder="Nom..."
-                className="w-full h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
+                className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Éliminatoire</label>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Éliminatoire</label>
               <button
                 onClick={() => onUpdate({ id: step.id, is_eliminatory: !step.is_eliminatory })}
                 className={cn(
-                  "w-full h-9 px-3 text-xs font-bold uppercase tracking-wider border transition-colors",
+                  "w-full h-9 px-3 text-xs font-medium rounded-md border transition-colors inline-flex items-center justify-center gap-1.5",
                   step.is_eliminatory
-                    ? "bg-destructive text-destructive-foreground border-destructive"
+                    ? "border-warning/40"
                     : "bg-background text-muted-foreground border-border hover:bg-muted/50"
                 )}
+                style={step.is_eliminatory ? { background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' } : undefined}
               >
-                {step.is_eliminatory ? '⚡ Oui' : 'Non'}
+                {step.is_eliminatory ? <><Zap className="w-3 h-3" /> Oui</> : 'Non'}
               </button>
             </div>
+          </div>
+
+          {/* Format de l'entretien — visio / téléphone / présentiel */}
+          <div className="space-y-2 pt-1">
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Format de l'entretien
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {FORMAT_OPTIONS.map(opt => {
+                const isActive = (step.meeting_format || 'video') === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onUpdate({ id: step.id, meeting_format: opt.value })}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-md border text-left transition-all',
+                      isActive
+                        ? 'border-foreground/40 bg-background'
+                        : 'border-border bg-background/40 hover:border-borderHi hover:bg-background',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">{opt.emoji}</span>
+                      <span className={cn('text-[12px] font-semibold', !isActive && 'text-muted-foreground')}>
+                        {opt.label}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/70">{opt.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sub-options selon le format */}
+            {(step.meeting_format || 'video') === 'video' && (
+              <div className="mt-2 pl-1 space-y-2 konekt-fade-up">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Outil de visio
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {PROVIDER_OPTIONS.map(prov => {
+                    const isActive = step.meeting_provider === prov.value;
+                    return (
+                      <button
+                        key={prov.value}
+                        type="button"
+                        onClick={() => onUpdate({ id: step.id, meeting_provider: prov.value })}
+                        className={cn(
+                          'flex items-center gap-1.5 px-2.5 py-2 rounded-md border text-[11.5px] font-medium transition-colors',
+                          isActive
+                            ? 'border-foreground/40 bg-background text-foreground'
+                            : 'border-border bg-background/40 text-muted-foreground hover:bg-background hover:text-foreground',
+                        )}
+                      >
+                        <span className={isActive ? 'text-foreground' : 'text-muted-foreground/70'}>
+                          {prov.logo}
+                        </span>
+                        <span className="truncate">{prov.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {step.meeting_provider === 'other' && (
+                  <input
+                    defaultValue={step.meeting_link || ''}
+                    onBlur={(e) => onUpdate({ id: step.id, meeting_link: e.target.value || null })}
+                    placeholder="https://… (lien meeting personnalisé)"
+                    className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
+                  />
+                )}
+                {step.meeting_provider && step.meeting_provider !== 'other' && (
+                  <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3" />
+                    Le lien {PROVIDER_OPTIONS.find(p => p.value === step.meeting_provider)?.label} sera généré automatiquement à chaque entretien planifié.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {step.meeting_format === 'onsite' && (
+              <div className="mt-2 pl-1 space-y-1.5 konekt-fade-up">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Adresse (optionnel)
+                </label>
+                <input
+                  defaultValue={step.location_address || ''}
+                  onBlur={(e) => onUpdate({ id: step.id, location_address: e.target.value || null })}
+                  placeholder="Ex: 12 rue de Paris, 75002 — bureaux client"
+                  className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  L'adresse sera incluse dans l'invitation calendar du candidat.
+                </p>
+              </div>
+            )}
+
+            {step.meeting_format === 'phone' && (
+              <p className="text-[11px] text-muted-foreground pl-1 konekt-fade-up">
+                Le numéro de téléphone du candidat sera utilisé. L'interviewer recevra le numéro dans son invitation calendar.
+              </p>
+            )}
           </div>
 
           {/* Objectives */}
@@ -631,30 +793,34 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
       )}
       {/* Process header stats */}
       {steps.length > 0 && (
-        <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border border-border bg-card">
-          <div className="flex items-center gap-6 flex-1">
-            <div className="text-center">
-              <p className="text-2xl font-semibold text-foreground tabular-nums">{steps.length}</p>
-              <p className="text-xs text-muted-foreground">Étapes</p>
-            </div>
-            <div className="w-px h-8 bg-border" />
-            <div className="text-center">
-              <p className="text-2xl font-semibold text-foreground tabular-nums">{steps.reduce((sum, s) => sum + s.duration_minutes, 0)}<span className="text-sm ml-0.5">min</span></p>
-              <p className="text-xs text-muted-foreground">Durée totale</p>
-            </div>
-            <div className="w-px h-8 bg-border" />
-            <div className="text-center">
-              <p className="text-2xl font-semibold text-foreground tabular-nums">{steps.filter(s => s.is_eliminatory).length}</p>
-              <p className="text-xs text-muted-foreground">Éliminatoires</p>
-            </div>
+        <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto] items-center gap-3 p-4 rounded-xl border border-border bg-card">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Étapes</p>
+            <p className="font-display text-[24px] font-bold tabular-nums leading-none">{steps.length}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Durée totale</p>
+            <p className="font-display text-[24px] font-bold tabular-nums leading-none">
+              {steps.reduce((sum, s) => sum + s.duration_minutes, 0)}
+              <span className="text-[13px] font-medium text-muted-foreground ml-1">min</span>
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Éliminatoires</p>
+            <p
+              className="font-display text-[24px] font-bold tabular-nums leading-none"
+              style={steps.filter(s => s.is_eliminatory).length > 0 ? { color: 'hsl(var(--status-warning))' } : undefined}
+            >
+              {steps.filter(s => s.is_eliminatory).length}
+            </p>
           </div>
           {!readOnly && (
             <button
               onClick={handleAISuggestion}
               disabled={suggestingAI}
-              className="ml-auto flex items-center gap-1.5 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+              className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full text-[12px] font-semibold text-white konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
             >
-              {suggestingAI ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              {suggestingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />}
               Réoptimiser avec l'IA
             </button>
           )}
@@ -662,17 +828,22 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
       )}
 
       {/* Steps timeline */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Étapes du process ({steps.length})
-        </h3>
+      <div className="flex items-center justify-between mb-3 mt-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Étapes du process
+          </p>
+          <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+            {steps.length} étape{steps.length > 1 ? 's' : ''} · glisse pour réordonner
+          </p>
+        </div>
         {steps.length === 0 && !loadingSteps && !readOnly && (
           <button
             onClick={initializeDefaultSteps}
             disabled={isAdding}
-            className="relative overflow-hidden flex items-center gap-1.5 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-foreground text-background group"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-semibold border border-border bg-foreground text-background hover:opacity-90 transition-opacity"
           >
-            <span className="relative z-10">Créer un process par défaut</span>
+            Créer un process par défaut
           </button>
         )}
       </div>
