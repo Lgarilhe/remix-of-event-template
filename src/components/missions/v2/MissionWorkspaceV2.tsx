@@ -52,6 +52,7 @@ import { PhaseStepper, PhaseId } from './PhaseStepper';
 import { CopilotRail } from './CopilotRail';
 import { Pill } from './Pill';
 import { MissionOverviewV2 } from './MissionOverviewV2';
+import { MissionBriefV2 } from './MissionBriefV2';
 
 // ── Mapping ancien tab → phase + sous-onglet ───────────────────────
 // Pour préserver la rétrocompat des deep links (?tab=brief continue de
@@ -277,7 +278,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
                 )}
                 {activeSub === 'brief' && (
                   <SectionErrorBoundary fallbackTitle="Erreur dans le Brief">
-                    <MissionBrief project={project} readOnly={!canEditBrief} />
+                    <MissionBriefV2 project={project} readOnly={!canEditBrief} />
                   </SectionErrorBoundary>
                 )}
                 {activeSub === 'process' && (
