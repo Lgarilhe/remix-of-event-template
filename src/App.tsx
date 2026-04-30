@@ -37,7 +37,7 @@ const Inbox = lazy(() => import("./pages/Inbox"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const Marketplace = lazy(() => import("./pages/Marketplace"));
-const ClientPortalPage = lazy(() => import("./pages/ClientPortal"));
+const ClientPortalPage = lazy(() => import("./pages/ClientPortalV2"));
 const AcceptMissionInvite = lazy(() => import("./pages/AcceptMissionInvite"));
 const UnsubscribePage = lazy(() => import("./pages/Unsubscribe"));
 const PrivacyPage = lazy(() => import("./pages/Privacy"));
