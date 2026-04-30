@@ -83,70 +83,114 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch HTML (with timeout)
+    const lowerUrl = url.toLowerCase();
+    let scraped: ScrapedJob | null = null;
     let html = '';
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Konekt-Bot/1.0; +https://konekt.fr/bot)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Accept-Encoding': 'gzip, deflate, br',
-        },
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timer));
 
-      if (!res.ok) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: `Page inaccessible (HTTP ${res.status})`,
-            details: 'Le site bloque peut-être les bots ou la page n\'existe plus.',
+    // ── 1) Tentative Firecrawl (JS-rendered) en priorité pour les sites
+    // qui font du Client-Side Rendering (WTTJ, LinkedIn, ATS modernes).
+    // Firecrawl exécute le JS et retourne le markdown complet + meta.
+    const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+    if (firecrawlKey) {
+      try {
+        const fcRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${firecrawlKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url,
+            formats: ['markdown'],
+            onlyMainContent: true,
+            waitFor: 3000,
+            timeout: 25000,
           }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        });
+        if (fcRes.ok) {
+          const fcData = await fcRes.json();
+          const md = fcData?.data?.markdown || fcData?.markdown || '';
+          const meta = fcData?.data?.metadata || fcData?.metadata || {};
+          if (md && md.length > 100) {
+            // Firecrawl a réussi → on construit le ScrapedJob depuis le markdown + meta
+            scraped = buildFromFirecrawl(md, meta, url);
+          }
+        } else {
+          console.warn('[scrape-job-url] Firecrawl HTTP', fcRes.status);
+        }
+      } catch (e) {
+        console.warn('[scrape-job-url] Firecrawl error:', e);
       }
-      html = await res.text();
-    } catch (fetchErr: any) {
+    }
+
+    // ── 2) Fallback : fetch HTML statique + parsing si Firecrawl pas dispo
+    // ou content insuffisant
+    if (!scraped || !scraped.description || scraped.description.length < 100) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+          },
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timer));
+
+        if (res.ok) {
+          html = await res.text();
+        }
+      } catch (fetchErr) {
+        console.warn('[scrape-job-url] static fetch failed:', fetchErr);
+      }
+
+      if (html) {
+        let parsedFromHtml: ScrapedJob | null = null;
+        if (lowerUrl.includes('welcometothejungle.com')) {
+          parsedFromHtml = parseWTTJ(html);
+          if (parsedFromHtml) parsedFromHtml.source = 'Welcome to the Jungle';
+        } else if (lowerUrl.includes('linkedin.com')) {
+          parsedFromHtml = parseJsonLd(html);
+          if (parsedFromHtml) parsedFromHtml.source = 'LinkedIn Jobs';
+        } else if (lowerUrl.includes('lever.co')) {
+          parsedFromHtml = parseJsonLd(html) || parseLever(html);
+          if (parsedFromHtml) parsedFromHtml.source = 'Lever';
+        } else if (lowerUrl.includes('greenhouse.io')) {
+          parsedFromHtml = parseJsonLd(html) || parseGreenhouse(html);
+          if (parsedFromHtml) parsedFromHtml.source = 'Greenhouse';
+        } else {
+          parsedFromHtml = parseJsonLd(html);
+        }
+        if (!parsedFromHtml || (!parsedFromHtml.title && !parsedFromHtml.description)) {
+          const fb = parseFallback(html, url);
+          parsedFromHtml = parsedFromHtml ? mergeJobs(parsedFromHtml, fb) : fb;
+        }
+        // Merge avec le résultat Firecrawl éventuel
+        scraped = scraped ? mergeJobs(scraped, parsedFromHtml) : parsedFromHtml;
+      }
+    }
+
+    // Si rien de tout ça n'a marché → on retourne un message clair
+    if (!scraped || (!scraped.title && !scraped.description)) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: fetchErr?.message?.includes('abort')
-            ? 'La page met trop de temps à répondre'
-            : `Erreur de connexion : ${fetchErr?.message || 'inconnue'}`,
+          error: 'Impossible d\'extraire le contenu de cette page',
+          details: 'La page bloque les bots ou nécessite une authentification. Copie-colle le contenu manuellement.',
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Detect source and parse
-    const lowerUrl = url.toLowerCase();
-    let scraped: ScrapedJob | null = null;
-
-    if (lowerUrl.includes('welcometothejungle.com')) {
-      scraped = parseWTTJ(html);
-      if (scraped) scraped.source = 'Welcome to the Jungle';
-    } else if (lowerUrl.includes('linkedin.com')) {
-      scraped = parseJsonLd(html);
-      if (scraped) scraped.source = 'LinkedIn Jobs';
-    } else if (lowerUrl.includes('lever.co')) {
-      scraped = parseJsonLd(html) || parseLever(html);
-      if (scraped) scraped.source = 'Lever';
-    } else if (lowerUrl.includes('greenhouse.io')) {
-      scraped = parseJsonLd(html) || parseGreenhouse(html);
-      if (scraped) scraped.source = 'Greenhouse';
-    } else {
-      // Tentative générique JSON-LD puis OpenGraph
-      scraped = parseJsonLd(html);
-    }
-
-    // Fallback : OpenGraph + meta description
-    if (!scraped || (!scraped.title && !scraped.description)) {
-      const fallback = parseFallback(html, url);
-      scraped = scraped ? mergeJobs(scraped, fallback) : fallback;
+    // Set source if missing based on URL
+    if (!scraped.source) {
+      if (lowerUrl.includes('welcometothejungle.com')) scraped.source = 'Welcome to the Jungle';
+      else if (lowerUrl.includes('linkedin.com')) scraped.source = 'LinkedIn Jobs';
+      else if (lowerUrl.includes('lever.co')) scraped.source = 'Lever';
+      else if (lowerUrl.includes('greenhouse.io')) scraped.source = 'Greenhouse';
     }
 
     if (scraped) {
@@ -174,6 +218,101 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// ─── Firecrawl : markdown + métadonnées ─────────────────────────────
+// Firecrawl exécute le JS et retourne le markdown propre + les meta tags
+// extraits. Pour les sites en CSR (WTTJ, LinkedIn jobs), c'est le seul
+// moyen fiable de récupérer le contenu complet.
+function buildFromFirecrawl(markdown: string, meta: Record<string, any>, url: string): ScrapedJob {
+  const title = pickStr(meta.title, meta.ogTitle, meta['og:title']);
+  // Le titre WTTJ est typiquement "Lead Developer Go (F/H) - NUMSPOT - CDI à Courbevoie"
+  // On peut tenter de le splitter pour extraire entreprise + contrat + lieu
+  const titleParts = title?.split(' - ').map(s => s.trim()).filter(Boolean) || [];
+  const cleanTitle = titleParts[0] || title;
+  let companyFromTitle: string | null = null;
+  let contractFromTitle: string | null = null;
+  let locationFromTitle: string | null = null;
+  if (titleParts.length >= 2) companyFromTitle = titleParts[1];
+  if (titleParts.length >= 3) {
+    const contractCandidate = titleParts[2];
+    // "CDI à Paris" ou "CDI" ou "Paris"
+    const contractMatch = contractCandidate.match(/^(CDI|CDD|Freelance|Stage|Alternance|Apprentissage|Intérim|Internship)/i);
+    if (contractMatch) {
+      contractFromTitle = contractMatch[0];
+      const rest = contractCandidate.replace(contractMatch[0], '').replace(/^[\s-à]+/i, '').trim();
+      if (rest) locationFromTitle = rest;
+    } else {
+      locationFromTitle = contractCandidate;
+    }
+  }
+
+  const description = pickStr(meta.ogDescription, meta['og:description'], meta.description);
+
+  // Parse markdown sections (## Mission, ## Profil, ## Avantages, etc.)
+  const sections = splitMarkdownSections(markdown);
+
+  return {
+    title: cleanTitle,
+    description: sections.mission || sections.poste || sections.description || description,
+    profile: sections.profil || sections.profile || sections.qualifications,
+    benefits: sections.avantages || sections.benefits || sections.perks,
+    recruitment_process: sections.process || sections.recrutement,
+    company_about: sections.entreprise || sections.about || sections['à propos'] || sections.company,
+    company: companyFromTitle || pickStr(meta.ogSiteName, meta['og:site_name']),
+    location: locationFromTitle,
+    contract_type: contractFromTitle,
+    raw_text: markdown,
+  };
+}
+
+// Split markdown by H2/H3 headings to identify sections
+function splitMarkdownSections(md: string): Record<string, string> {
+  const sections: Record<string, string> = {};
+  // Match heading + content jusqu'au prochain heading même niveau ou supérieur
+  const lines = md.split('\n');
+  let currentTitle: string | null = null;
+  let currentContent: string[] = [];
+
+  const flush = () => {
+    if (currentTitle) {
+      sections[currentTitle.toLowerCase().trim()] = currentContent.join('\n').trim();
+    }
+  };
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^#{1,4}\s+(.+)$/);
+    if (headingMatch) {
+      flush();
+      currentTitle = headingMatch[1]
+        .replace(/[^\w\s'àâäéèêëïîôöùûüç-]/gi, '')
+        .toLowerCase()
+        .trim();
+      currentContent = [];
+    } else {
+      currentContent.push(line);
+    }
+  }
+  flush();
+
+  // Aliases : on stocke aussi sous des clés normalisées
+  const aliasMap: Record<string, string[]> = {
+    mission: ['le poste', 'votre mission', 'tes missions', 'descriptif du poste', 'job description', 'about the role', 'le poste en bref'],
+    profil: ['profil recherché', 'ce que nous recherchons', 'votre profil', 'ton profil', 'qualifications', 'requirements'],
+    avantages: ['avantages', 'benefits', 'perks', 'package', 'rémunération', 'ce que nous offrons'],
+    process: ['process de recrutement', 'recruitment process', 'process recrutement', 'étapes du process'],
+    entreprise: ['à propos de l\'entreprise', 'about the company', 'who we are', 'présentation de l\'entreprise'],
+  };
+  for (const [canonical, variants] of Object.entries(aliasMap)) {
+    if (sections[canonical]) continue;
+    for (const variant of variants) {
+      if (sections[variant]) {
+        sections[canonical] = sections[variant];
+        break;
+      }
+    }
+  }
+  return sections;
+}
 
 // ─── WTTJ : __NEXT_DATA__ ────────────────────────────────────────────
 // WTTJ = Next.js. Le HTML statique contient tout le state de la page
