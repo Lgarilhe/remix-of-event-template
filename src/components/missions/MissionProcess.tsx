@@ -25,7 +25,7 @@ import type { JobDetails } from '@/types/jobDetails';
 
 type StepTemplate = { step_order: number; name: string; description: string; objectives: string[]; duration_minutes: number; interviewer_type: 'internal' | 'client' | 'panel'; interviewer_name: null; interviewer_user_id: null; evaluation_criteria: []; is_eliminatory: boolean; template_source: 'default' };
 
-const PROCESS_TEMPLATES: Record<string, { label: string; description: string; steps: StepTemplate[] }> = {
+export const PROCESS_TEMPLATES: Record<string, { label: string; description: string; steps: StepTemplate[] }> = {
   standard: {
     label: 'Standard (3 étapes)',
     description: 'Screening → Technique → Client',
@@ -68,7 +68,7 @@ const PROCESS_TEMPLATES: Record<string, { label: string; description: string; st
 
 // ─── Step Card ─────────────────────────────────────────────
 
-interface StepCardProps {
+export interface StepCardProps {
   step: ProcessStep;
   index: number;
   onUpdate: (patch: Partial<ProcessStep> & { id: string }) => void;
@@ -138,7 +138,7 @@ function getFormatLabel(format: 'video' | 'phone' | 'onsite' | null | undefined)
   return FORMAT_OPTIONS.find(o => o.value === f)?.emoji || '🎥';
 }
 
-const StepCard: React.FC<StepCardProps> = ({
+export const StepCard: React.FC<StepCardProps> = ({
   step, index, onUpdate, onDelete,
   onDragStart, onDragOver, onDragEnd, isDragging, isDragTarget,
 }) => {
@@ -436,7 +436,7 @@ interface MissionTeamSectionProps {
   onRemove: (id: string) => Promise<any>;
 }
 
-const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
+export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   team, loadingTeam, readOnly, getMemberName, orgMembers, projectId, projectName, onAdd, onRemove,
 }) => {
   const { invitations, sendInvitation, isSending, cancelInvitation } = useMissionInvitations(projectId);

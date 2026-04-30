@@ -53,6 +53,7 @@ import { CopilotRail } from './CopilotRail';
 import { Pill } from './Pill';
 import { MissionOverviewV2 } from './MissionOverviewV2';
 import { MissionBriefV2 } from './MissionBriefV2';
+import { MissionProcessV2 } from './MissionProcessV2';
 
 // ── Mapping ancien tab → phase + sous-onglet ───────────────────────
 // Pour préserver la rétrocompat des deep links (?tab=brief continue de
@@ -256,12 +257,11 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
           <div
             className={cn(
               'px-3 sm:px-6 lg:px-8 py-4',
-              // Brief : layout 1280px max, aligné à gauche (pas centré).
-              // Permet de garder le focus visuel à gauche, le sidebar
-              // sticky reste collé à droite du form.
-              activeSub === 'brief' && 'max-w-[1280px] w-full',
+              // Brief & Process : layout 1280px max, aligné à gauche.
+              // Form principal + sidebar sticky à droite (auto-save / KPI).
+              (activeSub === 'brief' || activeSub === 'process') && 'max-w-[1280px] w-full',
               // Autres forms/dashboards : 960px centrés (lecture confortable)
-              NARROW_SUBS.has(activeSub) && activeSub !== 'brief' && 'max-w-[960px] mx-auto w-full',
+              NARROW_SUBS.has(activeSub) && activeSub !== 'brief' && activeSub !== 'process' && 'max-w-[960px] mx-auto w-full',
               // Sourcing/Pipeline : pleine largeur (filtres + grille)
             )}
           >
@@ -287,7 +287,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
                 )}
                 {activeSub === 'process' && (
                   <SectionErrorBoundary fallbackTitle="Erreur dans le Process">
-                    <MissionProcess project={project} readOnly={!canEditProcess} />
+                    <MissionProcessV2 project={project} readOnly={!canEditProcess} />
                   </SectionErrorBoundary>
                 )}
                 {activeSub === 'config' && (
