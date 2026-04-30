@@ -44,6 +44,15 @@ export const useClientPortalTokens = () => {
   const createToken = useMutation({
     mutationFn: async (input: { client_name: string; client_email?: string; project_ids?: string[] }) => {
       if (!organizationId) throw new Error('No organization');
+      // Génère un token côté client (UUID v4, cryptographiquement sûr).
+      // Format URL-friendly : pas de "/" ou caractères spéciaux.
+      // La table devrait aussi avoir un DEFAULT gen_random_uuid() côté DB
+      // (cf migration 20260430140000_client_portal_tokens_default_token.sql)
+      // mais on génère côté client pour ne pas dépendre de ça.
+      const token = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
       const { data, error } = await supabase
         .from('client_portal_tokens')
         .insert({
@@ -51,6 +60,7 @@ export const useClientPortalTokens = () => {
           client_name: input.client_name,
           client_email: input.client_email || null,
           project_ids: input.project_ids || null,
+          token,
         })
         .select()
         .single();
