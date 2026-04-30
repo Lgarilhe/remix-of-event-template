@@ -36,8 +36,37 @@ import { toast } from 'sonner';
 import {
   Sparkles, Loader2, FileText, Mic, Pencil, ArrowRight, ArrowLeft,
   Check, X, Building2, MapPin, Briefcase, Star, Clock, Layers, Euro,
+  Link2, Paperclip, Upload, Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// ── URL helpers (détection des sources connues) ──
+function detectUrlSource(url: string): { label: string; emoji: string } | null {
+  const lower = url.toLowerCase();
+  if (lower.includes('welcometothejungle')) return { label: 'Welcome to the Jungle', emoji: '🌴' };
+  if (lower.includes('linkedin.com/jobs')) return { label: 'LinkedIn Jobs', emoji: '💼' };
+  if (lower.includes('linkedin.com')) return { label: 'LinkedIn', emoji: '💼' };
+  if (lower.includes('lever.co')) return { label: 'Lever', emoji: '⚙️' };
+  if (lower.includes('greenhouse.io')) return { label: 'Greenhouse', emoji: '🌱' };
+  if (lower.includes('workable.com')) return { label: 'Workable', emoji: '⚙️' };
+  if (lower.includes('teamtailor.com')) return { label: 'Teamtailor', emoji: '⚙️' };
+  if (lower.includes('jobteaser.com')) return { label: 'JobTeaser', emoji: '🎓' };
+  if (lower.includes('apec.fr')) return { label: 'APEC', emoji: '🇫🇷' };
+  if (/career|job|recrutement|emploi|talent|hiring|offre/i.test(url)) {
+    return { label: 'Page carrière', emoji: '🌐' };
+  }
+  return null;
+}
+
+function isValidUrl(s: string): boolean {
+  try { new URL(s); return true; } catch { return false; }
+}
+
+// Extract first URL from text
+function extractUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s]+/);
+  return match ? match[0] : null;
+}
 
 interface CreateMissionV2Props {
   isOpen: boolean;
@@ -111,6 +140,21 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BriefAnalysis | null>(null);
   const [creating, setCreating] = useState(false);
+  // Import URL state
+  const [scanningUrl, setScanningUrl] = useState(false);
+  const [urlSuggestion, setUrlSuggestion] = useState<string | null>(null);
+  // File upload state
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  // Détecte automatiquement une URL collée dans le brief — propose un scan
+  useEffect(() => {
+    const url = extractUrl(briefText.trim());
+    if (url && isValidUrl(url) && detectUrlSource(url)) {
+      setUrlSuggestion(url);
+    } else {
+      setUrlSuggestion(null);
+    }
+  }, [briefText]);
 
   // Reset state on close
   useEffect(() => {
@@ -203,6 +247,106 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
       setCreating(false);
     }
   }, [briefName, briefText, clientName, analysis, createProject, onClose, navigate]);
+
+  // ── Scan d'URL (WTTJ / LinkedIn / careers / ATS) ──
+  const handleScanUrl = useCallback(async (urlOverride?: string) => {
+    const url = (urlOverride || urlSuggestion || '').trim();
+    if (!url) return;
+    setScanningUrl(true);
+    try {
+      const { data, error } = await invokeEdgeFunction<any>('enrich-company', {
+        mode: 'jobs_only',
+        force_refresh: true,
+        careers_url: url,
+      });
+
+      if (error || !data?.success) {
+        toast.error("Impossible de scanner cette URL");
+        return;
+      }
+
+      const company = data.company || data;
+      const roles = company.openRoles || [];
+      const firstRole = roles[0];
+
+      if (firstRole) {
+        // Ajoute le titre + description du 1er rôle dans le brief
+        const sourceLabel = detectUrlSource(url)?.label || 'l\'URL importée';
+        const importedText = [
+          `Poste : ${firstRole.title}`,
+          firstRole.location ? `Lieu : ${firstRole.location}` : null,
+          firstRole.department ? `Département : ${firstRole.department}` : null,
+          company.name ? `Entreprise : ${company.name}` : null,
+          company.industry ? `Secteur : ${company.industry}` : null,
+          firstRole.description || null,
+        ].filter(Boolean).join('\n');
+
+        setBriefText(prev => {
+          // Remplace l'URL par le contenu enrichi
+          const without = prev.replace(url, '').trim();
+          return without ? `${without}\n\n${importedText}` : importedText;
+        });
+        if (!briefName && firstRole.title) setBriefName(firstRole.title);
+        if (!clientName && company.name) setClientName(company.name);
+        setUrlSuggestion(null);
+        toast.success(`✨ Importé depuis ${sourceLabel}${roles.length > 1 ? ` · ${roles.length} postes détectés` : ''}`);
+      } else {
+        toast.info('Aucun poste détecté à cette URL — colle le contenu manuellement');
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Erreur lors du scan");
+    } finally {
+      setScanningUrl(false);
+    }
+  }, [urlSuggestion, briefName, clientName]);
+
+  // ── Upload d'un fichier (TXT pris en charge nativement, PDF/DOCX → message) ──
+  const handleFileUpload = useCallback(async (file: File) => {
+    setUploadingFile(true);
+    try {
+      const ext = file.name.toLowerCase().split('.').pop() || '';
+      const mime = file.type.toLowerCase();
+
+      // TXT / Markdown / autres formats texte → lecture directe
+      if (
+        ext === 'txt' || ext === 'md' || ext === 'markdown' ||
+        mime.startsWith('text/') || mime === 'application/json'
+      ) {
+        const text = await file.text();
+        setBriefText(prev => {
+          const cleaned = text.trim().slice(0, 12000); // cap raisonnable
+          return prev.trim() ? `${prev.trim()}\n\n${cleaned}` : cleaned;
+        });
+        if (!briefName) {
+          const guessedName = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').slice(0, 60);
+          setBriefName(guessedName);
+        }
+        toast.success(`📎 Fichier "${file.name}" importé`);
+        return;
+      }
+
+      // PDF / DOCX : pas encore implémenté côté frontend (lourd à bundler).
+      // On accepte le fichier mais on demande à l'user de copier-coller le
+      // contenu pour l'instant. Le parsing automatique viendra dans une PR
+      // future via une edge function dédiée.
+      if (ext === 'pdf' || ext === 'docx' || ext === 'doc' || mime.includes('pdf') || mime.includes('word')) {
+        toast.info(
+          `📄 ${ext.toUpperCase()} reconnu — extraction automatique bientôt disponible`,
+          {
+            description: 'Pour l\'instant, ouvre le document, sélectionne tout (Ctrl+A) et colle le contenu dans la zone brief. L\'IA s\'occupera du reste.',
+            duration: 7000,
+          }
+        );
+        return;
+      }
+
+      toast.error(`Format ${ext.toUpperCase()} non pris en charge — utilise TXT, PDF ou DOCX`);
+    } catch (e: any) {
+      toast.error(e.message || "Erreur lors de la lecture du fichier");
+    } finally {
+      setUploadingFile(false);
+    }
+  }, [briefName]);
 
   // ── Manuel ──
   const handleCreateManual = useCallback(async () => {
@@ -301,6 +445,11 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               analysis={analysis}
               extractedFields={extractedFields}
               onAnalyze={handleAnalyze}
+              urlSuggestion={urlSuggestion}
+              scanningUrl={scanningUrl}
+              onScanUrl={handleScanUrl}
+              uploadingFile={uploadingFile}
+              onFileUpload={handleFileUpload}
             />
           )}
           {mode === 'manual' && (
@@ -460,12 +609,33 @@ interface BriefModeProps {
   analysis: BriefAnalysis | null;
   extractedFields: ExtractedField[];
   onAnalyze: () => void;
+  urlSuggestion: string | null;
+  scanningUrl: boolean;
+  onScanUrl: (url?: string) => void;
+  uploadingFile: boolean;
+  onFileUpload: (file: File) => void;
 }
 
 const BriefMode: React.FC<BriefModeProps> = ({
   briefText, setBriefText, briefName, setBriefName, clientName, setClientName,
   analyzing, analysis, extractedFields,
-}) => (
+  urlSuggestion, scanningUrl, onScanUrl, uploadingFile, onFileUpload,
+}) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [manualUrl, setManualUrl] = useState('');
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) onFileUpload(file);
+  };
+
+  const sourceInfo = urlSuggestion ? detectUrlSource(urlSuggestion) : null;
+
+  return (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 min-h-[440px]">
     {/* Left : input */}
     <div className="p-6 space-y-3 lg:border-r border-border">
@@ -494,17 +664,132 @@ const BriefMode: React.FC<BriefModeProps> = ({
         </div>
       </div>
 
-      <div>
+      {/* Import shortcuts */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1">
+          Importer depuis
+        </p>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadingFile}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
+        >
+          {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+          Un fichier
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowUrlInput(s => !s)}
+          className={cn(
+            'h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium border transition-colors',
+            showUrlInput ? 'bg-foreground text-background border-foreground' : 'border-border bg-card hover:bg-accent',
+          )}
+        >
+          <Link2 className="w-3 h-3" />
+          Une URL
+        </button>
+        <span className="text-[10px] text-muted-foreground/70 flex-1 text-right">
+          PDF · DOCX · TXT · WTTJ · LinkedIn Jobs · careers
+        </span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.doc,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+          className="sr-only"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onFileUpload(file);
+            e.target.value = '';
+          }}
+        />
+      </div>
+
+      {/* URL input box (apparait quand on clique "Une URL") */}
+      {showUrlInput && (
+        <div className="konekt-fade-up flex items-center gap-2 bg-card border border-border rounded-md p-2">
+          <Globe className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 ml-1" />
+          <input
+            value={manualUrl}
+            onChange={(e) => setManualUrl(e.target.value)}
+            placeholder="https://www.welcometothejungle.com/fr/companies/…"
+            className="flex-1 h-8 px-2 text-[12px] bg-transparent focus:outline-none"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && manualUrl.trim() && isValidUrl(manualUrl.trim())) {
+                onScanUrl(manualUrl.trim());
+                setManualUrl('');
+                setShowUrlInput(false);
+              }
+            }}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (manualUrl.trim() && isValidUrl(manualUrl.trim())) {
+                onScanUrl(manualUrl.trim());
+                setManualUrl('');
+                setShowUrlInput(false);
+              }
+            }}
+            disabled={!manualUrl.trim() || !isValidUrl(manualUrl.trim()) || scanningUrl}
+            className="h-7 px-3 rounded-md text-[11px] font-medium bg-foreground text-background hover:opacity-90 disabled:opacity-40 transition-opacity"
+          >
+            {scanningUrl ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Scanner'}
+          </button>
+        </div>
+      )}
+
+      {/* URL detection banner — quand l'user a collé une URL dans le brief */}
+      {urlSuggestion && sourceInfo && (
+        <div
+          className="konekt-fade-up flex items-center gap-2 px-3 py-2 rounded-md"
+          style={{
+            background: 'linear-gradient(135deg, hsl(271 81% 56% / 0.10), hsl(217 91% 60% / 0.10))',
+            border: '1px solid hsl(271 81% 56% / 0.3)',
+          }}
+        >
+          <span className="text-base">{sourceInfo.emoji}</span>
+          <p className="text-[12px] flex-1 min-w-0 truncate">
+            <span className="font-semibold konekt-skalr-text">{sourceInfo.label}</span>
+            <span className="text-muted-foreground ml-1">détecté — scanner cette URL ?</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => onScanUrl()}
+            disabled={scanningUrl}
+            className="h-7 px-3 rounded-full text-[11px] font-semibold text-white konekt-skalr-bg konekt-shine flex-shrink-0 disabled:opacity-50"
+          >
+            {scanningUrl ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Scanner →'}
+          </button>
+        </div>
+      )}
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+        className={cn('relative rounded-md transition-all', dragActive && 'ring-2 ring-foreground/40')}
+      >
         <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
           Fiche de poste / Brief
         </label>
         <textarea
           value={briefText}
           onChange={(e) => setBriefText(e.target.value)}
-          placeholder={`Senior Software Engineer pour Doctolib.\nStack React + TypeScript + Node.\n5+ ans d'expérience, idéalement passé par une scale-up santé ou fintech.\nParis ou full-remote France. Démarrage T3 2026.`}
-          rows={12}
+          placeholder={`Colle ta fiche de poste ici, glisse-dépose un fichier, ou tape ton brief...\n\nEx:\nSenior Software Engineer pour Doctolib.\nStack React + TypeScript + Node.\n5+ ans d'expérience, idéalement passé par une scale-up santé ou fintech.\nParis ou full-remote France. Démarrage T3 2026.`}
+          rows={10}
           className="w-full mt-1 px-3 py-2 text-[13px] leading-relaxed rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
         />
+        {dragActive && (
+          <div className="absolute inset-0 mt-5 flex items-center justify-center rounded-md bg-background/90 border-2 border-dashed border-foreground/40 pointer-events-none">
+            <div className="text-center">
+              <Upload className="w-6 h-6 mx-auto mb-2 text-foreground" />
+              <p className="text-sm font-semibold">Lâche pour importer</p>
+              <p className="text-xs text-muted-foreground">PDF · DOCX · TXT</p>
+            </div>
+          </div>
+        )}
         <p className="text-[10.5px] text-muted-foreground mt-1.5">
           {briefText.length} caractères · {briefText.trim().length < 20 ? 'minimum 20' : 'prêt pour analyse'}
         </p>
@@ -575,7 +860,8 @@ const BriefMode: React.FC<BriefModeProps> = ({
       )}
     </div>
   </div>
-);
+  );
+};
 
 // ─── Mode Manuel ────────────────────────────────────────────────
 
