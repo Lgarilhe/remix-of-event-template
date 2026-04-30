@@ -54,6 +54,7 @@ import { Pill } from './Pill';
 import { MissionOverviewV2 } from './MissionOverviewV2';
 import { MissionBriefV2 } from './MissionBriefV2';
 import { MissionProcessV2 } from './MissionProcessV2';
+import { MissionConfigV2 } from './MissionConfigV2';
 
 // ── Mapping ancien tab → phase + sous-onglet ───────────────────────
 // Pour préserver la rétrocompat des deep links (?tab=brief continue de
@@ -257,11 +258,15 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
           <div
             className={cn(
               'px-3 sm:px-6 lg:px-8 py-4',
-              // Brief & Process : layout 1280px max, aligné à gauche.
-              // Form principal + sidebar sticky à droite (auto-save / KPI).
-              (activeSub === 'brief' || activeSub === 'process') && 'max-w-[1280px] w-full',
+              // Brief, Process & Config : layout 1280px max, aligné à gauche.
+              // Form principal + sidebar sticky (auto-save / KPI / conseils).
+              (activeSub === 'brief' || activeSub === 'process' || activeSub === 'config') && 'max-w-[1280px] w-full',
               // Autres forms/dashboards : 960px centrés (lecture confortable)
-              NARROW_SUBS.has(activeSub) && activeSub !== 'brief' && activeSub !== 'process' && 'max-w-[960px] mx-auto w-full',
+              NARROW_SUBS.has(activeSub)
+                && activeSub !== 'brief'
+                && activeSub !== 'process'
+                && activeSub !== 'config'
+                && 'max-w-[960px] mx-auto w-full',
               // Sourcing/Pipeline : pleine largeur (filtres + grille)
             )}
           >
@@ -292,7 +297,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
                 )}
                 {activeSub === 'config' && (
                   <SectionErrorBoundary fallbackTitle="Erreur dans la Config">
-                    <MissionConfig project={project} readOnly={!canEditBrief} />
+                    <MissionConfigV2 project={project} readOnly={!canEditBrief} />
                   </SectionErrorBoundary>
                 )}
                 {activeSub === 'sourcing' && (
