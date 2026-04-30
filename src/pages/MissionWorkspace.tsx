@@ -22,6 +22,10 @@ import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboa
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { toast } from 'sonner';
 
+// ── V2 (3 phases linéaires) — derrière feature flag mission_v2 ──
+import { useFlag } from '@/lib/featureFlags';
+import { MissionWorkspaceV2 } from '@/components/missions/v2/MissionWorkspaceV2';
+
 // ── Status config ──
 
 const statusConfig: Record<SourcingProject['status'], { label: string; dotColor: string; icon: typeof Play }> = {
@@ -48,6 +52,12 @@ const MissionWorkspace = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { orgType, organizationId } = useOrganization();
+
+  // Feature flag : si mission_v2 actif, on utilise le nouveau parcours
+  // (3 phases au lieu de 8 tabs). Toutes les vues internes sont
+  // réutilisées telles quelles.
+  // Pour activer : localStorage.setItem('konekt:flag:mission_v2', 'true')
+  const useV2 = useFlag('mission_v2');
 
   const { data: project = null, isLoading } = useSourcingProject(id);
 
@@ -88,6 +98,18 @@ const MissionWorkspace = () => {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // ── V2 : nouveau parcours derrière feature flag ──
+  // Branché APRÈS le check isLoading et AVANT le check !project pour
+  // partager les mêmes états loading/not-found avec la v1.
+  if (useV2 && project) {
+    return (
+      <>
+        <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
+        <MissionWorkspaceV2 project={project} />
+      </>
     );
   }
 
