@@ -41,7 +41,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CreateProjectModal } from './CreateProjectModal';
+import { CreateMissionV2 } from '@/components/missions/v2/CreateMissionV2';
 import { EmptyMissionState } from '@/components/missions/EmptyMissionState';
 import { Pill } from '@/components/missions/v2/Pill';
 
@@ -506,10 +506,14 @@ export const ProjectsListV2: React.FC = () => {
           onCreateManual={() => { setCreateInitialTab('manual'); setShowCreateModal(true); }}
         />
         {showCreateModal && (
-          <CreateProjectModal
+          <CreateMissionV2
             isOpen={showCreateModal}
             onClose={() => { setShowCreateModal(false); setCreateInitialTab(undefined); }}
-            initialTab={createInitialTab}
+            initialMode={
+              createInitialTab === 'manual' ? 'manual'
+              : createInitialTab === 'brief' ? 'brief'
+              : 'choose'
+            }
           />
         )}
       </>
@@ -685,10 +689,14 @@ export const ProjectsListV2: React.FC = () => {
 
       {/* ── Modals ── */}
       {showCreateModal && (
-        <CreateProjectModal
+        <CreateMissionV2
           isOpen={showCreateModal}
           onClose={() => { setShowCreateModal(false); setCreateInitialTab(undefined); }}
-          initialTab={createInitialTab}
+          initialMode={
+            createInitialTab === 'manual' ? 'manual'
+            : createInitialTab === 'brief' ? 'brief'
+            : 'choose'
+          }
         />
       )}
 
