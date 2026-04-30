@@ -93,34 +93,56 @@ Deno.serve(async (req) => {
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (firecrawlKey) {
       try {
+        // waitFor 8s pour donner le temps à WTTJ/LinkedIn de charger le
+        // contenu complet via leurs API (souvent 3-6s avant que le DOM
+        // soit stable). onlyMainContent=false : on prend tout puis on
+        // filtre nous-mêmes les sections pertinentes via splitMarkdownSections.
+        // includeTags : on guide Firecrawl vers les zones de contenu typiques.
+        const fcBody: Record<string, unknown> = {
+          url,
+          formats: ['markdown'],
+          onlyMainContent: false,
+          waitFor: 8000,
+          timeout: 35000,
+          excludeTags: ['nav', 'header', 'footer', 'script', 'style', 'iframe', '.cookie-banner', '#cookie-banner'],
+        };
+
+        // Pour WTTJ : actions custom pour scroll + wait après chargement
+        if (url.toLowerCase().includes('welcometothejungle.com')) {
+          fcBody.actions = [
+            { type: 'wait', milliseconds: 3000 },
+            { type: 'scroll', direction: 'down' },
+            { type: 'wait', milliseconds: 2000 },
+            { type: 'scroll', direction: 'down' },
+            { type: 'wait', milliseconds: 2000 },
+          ];
+        }
+
         const fcRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${firecrawlKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            url,
-            formats: ['markdown'],
-            onlyMainContent: true,
-            waitFor: 3000,
-            timeout: 25000,
-          }),
+          body: JSON.stringify(fcBody),
         });
         if (fcRes.ok) {
           const fcData = await fcRes.json();
           const md = fcData?.data?.markdown || fcData?.markdown || '';
           const meta = fcData?.data?.metadata || fcData?.metadata || {};
-          if (md && md.length > 100) {
-            // Firecrawl a réussi → on construit le ScrapedJob depuis le markdown + meta
+          console.log('[scrape-job-url] Firecrawl returned', md.length, 'chars of markdown');
+          if (md && md.length > 200) {
             scraped = buildFromFirecrawl(md, meta, url);
           }
         } else {
-          console.warn('[scrape-job-url] Firecrawl HTTP', fcRes.status);
+          const errText = await fcRes.text().catch(() => '');
+          console.warn('[scrape-job-url] Firecrawl HTTP', fcRes.status, errText.slice(0, 200));
         }
       } catch (e) {
         console.warn('[scrape-job-url] Firecrawl error:', e);
       }
+    } else {
+      console.warn('[scrape-job-url] FIRECRAWL_API_KEY missing — skipping Firecrawl');
     }
 
     // ── 2) Fallback : fetch HTML statique + parsing si Firecrawl pas dispo
@@ -225,8 +247,6 @@ Deno.serve(async (req) => {
 // moyen fiable de récupérer le contenu complet.
 function buildFromFirecrawl(markdown: string, meta: Record<string, any>, url: string): ScrapedJob {
   const title = pickStr(meta.title, meta.ogTitle, meta['og:title']);
-  // Le titre WTTJ est typiquement "Lead Developer Go (F/H) - NUMSPOT - CDI à Courbevoie"
-  // On peut tenter de le splitter pour extraire entreprise + contrat + lieu
   const titleParts = title?.split(' - ').map(s => s.trim()).filter(Boolean) || [];
   const cleanTitle = titleParts[0] || title;
   let companyFromTitle: string | null = null;
@@ -235,7 +255,6 @@ function buildFromFirecrawl(markdown: string, meta: Record<string, any>, url: st
   if (titleParts.length >= 2) companyFromTitle = titleParts[1];
   if (titleParts.length >= 3) {
     const contractCandidate = titleParts[2];
-    // "CDI à Paris" ou "CDI" ou "Paris"
     const contractMatch = contractCandidate.match(/^(CDI|CDD|Freelance|Stage|Alternance|Apprentissage|Intérim|Internship)/i);
     if (contractMatch) {
       contractFromTitle = contractMatch[0];
@@ -246,23 +265,57 @@ function buildFromFirecrawl(markdown: string, meta: Record<string, any>, url: st
     }
   }
 
-  const description = pickStr(meta.ogDescription, meta['og:description'], meta.description);
+  const ogDescription = pickStr(meta.ogDescription, meta['og:description'], meta.description);
 
-  // Parse markdown sections (## Mission, ## Profil, ## Avantages, etc.)
+  // Parse markdown sections — bcp de fiches utilisent les sections H2/H3
   const sections = splitMarkdownSections(markdown);
+  const hasStructuredSections = !!(sections.mission || sections.profil || sections.avantages);
+
+  // Clean markdown : enlève les bouts répétitifs ou non utiles
+  const cleanedMd = cleanMarkdown(markdown);
+
+  // Stratégie pour la description :
+  //   - Si on a des sections structurées → on utilise les bonnes sections
+  //   - Sinon → markdown complet nettoyé (l'IA s'occupera de structurer)
+  let description: string | null;
+  if (hasStructuredSections) {
+    description = sections.mission || sections.poste || sections.description || cleanedMd;
+  } else {
+    // Pas de sections H2/H3 reconnues — on prend le markdown nettoyé entier
+    // qui contient TOUT le contenu de la page
+    description = cleanedMd.length > 200 ? cleanedMd : ogDescription;
+  }
 
   return {
     title: cleanTitle,
-    description: sections.mission || sections.poste || sections.description || description,
-    profile: sections.profil || sections.profile || sections.qualifications,
-    benefits: sections.avantages || sections.benefits || sections.perks,
-    recruitment_process: sections.process || sections.recrutement,
-    company_about: sections.entreprise || sections.about || sections['à propos'] || sections.company,
+    description,
+    profile: sections.profil || sections.profile || sections.qualifications || null,
+    benefits: sections.avantages || sections.benefits || sections.perks || null,
+    recruitment_process: sections.process || sections.recrutement || null,
+    company_about: sections.entreprise || sections.about || sections['à propos'] || sections.company || null,
     company: companyFromTitle || pickStr(meta.ogSiteName, meta['og:site_name']),
     location: locationFromTitle,
     contract_type: contractFromTitle,
-    raw_text: markdown,
+    raw_text: cleanedMd,
   };
+}
+
+// Nettoie le markdown : enlève les images, liens utm, sections de nav/footer
+// résiduelles, sections cookies, ligne dupliquées.
+function cleanMarkdown(md: string): string {
+  return md
+    // Enlève les images (ne servent à rien dans un brief)
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    // Garde le texte du lien mais enlève l'URL
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Enlève les patterns récurrents WTTJ/LinkedIn (postuler, partager, etc.)
+    .replace(/^(Postuler|Apply now|Partager|Share|Sauvegarder|Save|Connexion|Sign in)\s*$/gim, '')
+    // Enlève cookies banners / GDPR
+    .replace(/(?:Accepter|Refuser|Gérer)[^\n]{0,40}cookies?[^\n]*$/gim, '')
+    // Compresse les espaces / lignes vides multiples
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // Split markdown by H2/H3 headings to identify sections
