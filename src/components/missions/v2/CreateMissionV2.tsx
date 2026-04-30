@@ -161,6 +161,21 @@ interface BriefAnalysis {
     years_experience_min?: number | null;
     years_experience_max?: number | null;
     job_category?: string;
+    detected_company?: string | null;
+    // Champs structurés pour pré-remplir job_details
+    skills_must_have?: string[];
+    skills_should_have?: string[];
+    skills_nice_to_have?: string[];
+    salary_min?: number | null;
+    salary_max?: number | null;
+    contract_type?: 'cdi' | 'cdd' | 'freelance' | 'stage' | 'alternance' | 'interim' | null;
+    remote_policy?: 'onsite' | 'hybrid' | 'full_remote' | null;
+    remote_days?: number | null;
+    start_date?: string | null;
+    mission_description?: string;
+    context?: string | null;
+    seniority?: string | null;
+    evaluation_criteria?: string[];
   };
 }
 
@@ -308,6 +323,60 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
           generated_at: new Date().toISOString(),
           brief_text: briefText.trim(),
         };
+
+        // Pré-remplit job_details avec ce que l'IA a extrait — c'est ce
+        // qui alimente le SCORING IA des candidats (skills_must_have,
+        // mission_description, etc.) et l'affichage du brief structuré.
+        const a = analysis.analysis;
+        const jobDetails: Record<string, unknown> = {
+          title: a.suggested_title || briefName || briefText.trim().split('\n')[0].slice(0, 80),
+          mission_description: a.mission_description || briefText.trim().slice(0, 600),
+          raw_brief: briefText.trim(),
+          brief_source: 'imported',
+        };
+        if (a.context) jobDetails.context = a.context;
+        if (clientName || a.detected_company) {
+          jobDetails.client = {
+            name: clientName || a.detected_company,
+          };
+        }
+        if (a.location_hint) jobDetails.location = a.location_hint;
+        if (a.remote_policy) jobDetails.remote_policy = a.remote_policy;
+        if (typeof a.remote_days === 'number') jobDetails.remote_days = a.remote_days;
+        if (a.contract_type) jobDetails.contract_type = a.contract_type;
+        if (a.start_date) jobDetails.start_date = a.start_date;
+        if (a.seniority) jobDetails.seniority = a.seniority;
+        if (typeof a.years_experience_min === 'number') jobDetails.experience_min = a.years_experience_min;
+        if (typeof a.years_experience_max === 'number') jobDetails.experience_max = a.years_experience_max;
+        if (typeof a.salary_min === 'number') jobDetails.salary_min = a.salary_min;
+        if (typeof a.salary_max === 'number') jobDetails.salary_max = a.salary_max;
+        if (a.salary_min || a.salary_max) {
+          jobDetails.salary_currency = 'EUR';
+          jobDetails.salary_type = 'annual';
+        }
+        if (Array.isArray(a.skills_must_have) && a.skills_must_have.length) {
+          jobDetails.skills_must_have = a.skills_must_have;
+        } else if (Array.isArray(a.skills_to_search) && a.skills_to_search.length) {
+          // Fallback : skills_to_search peut servir de must_have si pas explicite
+          jobDetails.skills_must_have = a.skills_to_search.slice(0, 8);
+        }
+        if (Array.isArray(a.skills_should_have) && a.skills_should_have.length) {
+          jobDetails.skills_should_have = a.skills_should_have;
+        }
+        if (Array.isArray(a.skills_nice_to_have) && a.skills_nice_to_have.length) {
+          jobDetails.skills_nice_to_have = a.skills_nice_to_have;
+        }
+        if (Array.isArray(a.evaluation_criteria) && a.evaluation_criteria.length) {
+          // Convertit en format compatible JobDetails.evaluation_criteria
+          jobDetails.evaluation_criteria = a.evaluation_criteria.map((label, i) => ({
+            id: `auto-${i + 1}`,
+            label,
+            description: '',
+            category: 'technical' as const,
+            weight: 2 as const,
+          }));
+        }
+        (input as any).job_details = jobDetails;
       }
 
       const project = await createProject(input);

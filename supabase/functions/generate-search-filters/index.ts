@@ -404,6 +404,23 @@ En plus des filtres de base, tu DOIS retourner ces champs avancés:
 - expanded_titles: string[] - Titres de poste ALTERNATIFS que l'IA recommande d'ajouter (max 6). Expansion intelligente basée sur le contexte. Ex: "SRE" → ["Platform Engineer", "Cloud Engineer", "Infrastructure Engineer", "DevOps Lead"].
 - likely_to_switch_signals: string[] - Signaux que le candidat est ouvert au changement (pour le scoring, pas le filtrage). Ex: ["tenure courte au poste actuel", "promotion récente", "entreprise en restructuration"].
 
+=== BRIEF STRUCTURÉ (OBLIGATOIRE) ===
+En plus des filtres et power filters, tu DOIS extraire ces champs pour PRÉ-REMPLIR la fiche de poste structurée Konekt (ils alimentent le scoring IA des candidats — donc être précis et exhaustif). Si une info n'est PAS dans le brief, mets null :
+
+- skills_must_have: string[] - Compétences techniques OBLIGATOIRES extraites du brief (max 8). Ex: ["React", "TypeScript", "GraphQL"]. C'est ce qui sera utilisé pour le scoring "must-have" des candidats. Sois précis : extrais les technologies, frameworks, langages, méthodologies mentionnés comme requis.
+- skills_should_have: string[] - Compétences souhaitées mais pas indispensables (max 5)
+- skills_nice_to_have: string[] - Compétences bonus / nice-to-have (max 4)
+- salary_min: number | null - Salaire MIN annuel brut en EUROS (chiffre brut, sans "k". Ex: 75000 pour 75K€). Null si pas mentionné.
+- salary_max: number | null - Salaire MAX annuel brut en EUROS. Null si pas mentionné.
+- contract_type: "cdi" | "cdd" | "freelance" | "stage" | "alternance" | "interim" | null - Type de contrat. Détecter "CDI", "freelance", "intérim", etc. dans le brief.
+- remote_policy: "onsite" | "hybrid" | "full_remote" | null - Politique télétravail détectée. "remote" / "100% remote" / "full-remote" → full_remote. "hybride" / "X jours par semaine" → hybrid. "sur site" / "présentiel" → onsite.
+- remote_days: number | null - Si hybride, nombre de jours de remote par semaine (1-5)
+- start_date: string | null - Date de démarrage souhaitée. Garder en français lisible : "ASAP", "Septembre 2026", "T3 2026", "Janvier 2027". Null si pas mentionné.
+- mission_description: string - Résumé court de la mission en 2-4 phrases (max 600 chars). Décris ce que va faire le candidat au quotidien. Reformule pour être clair, pas du copier-coller.
+- context: string | null - Contexte du recrutement en 1-2 phrases (création de poste, remplacement, croissance équipe, projet stratégique...). Max 300 chars. Null si pas devinable.
+- seniority: string | null - Niveau de séniorité formel : "Junior" (0-2 ans), "Confirmé" (3-5 ans), "Senior" (5-8 ans), "Lead" (8+ ans avec management), "Staff" / "Principal" (8+ ans expert). Null si pas inférable.
+- evaluation_criteria: string[] - Critères d'évaluation principaux à évaluer en entretien (max 6). Ex: ["Architecture frontend", "Collaboration équipe", "Vision produit", "Gestion de la pression"]
+
 === SUGGESTIONS D'AFFINAGE (OBLIGATOIRE) ===
 En plus des filtres, tu DOIS retourner un objet "suggestions" avec des alternatives que l'utilisateur peut ajouter en un clic pour affiner sa recherche:
 - alt_skills: string[] - Technologies/compétences ALTERNATIVES non incluses dans les filtres principaux mais pertinentes (max 8). Ex: si le filtre a "Kubernetes", suggérer "Docker", "Helm", "Rancher"
