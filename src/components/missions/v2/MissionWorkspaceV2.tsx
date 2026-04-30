@@ -256,9 +256,11 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
           <div
             className={cn(
               'px-3 sm:px-6 lg:px-8 py-4',
-              // Brief : layout large 2 colonnes (form + sidebar) → 1280px max
-              activeSub === 'brief' && 'max-w-[1280px] mx-auto w-full',
-              // Autres forms/dashboards : 960px (lecture confortable)
+              // Brief : layout 1280px max, aligné à gauche (pas centré).
+              // Permet de garder le focus visuel à gauche, le sidebar
+              // sticky reste collé à droite du form.
+              activeSub === 'brief' && 'max-w-[1280px] w-full',
+              // Autres forms/dashboards : 960px centrés (lecture confortable)
               NARROW_SUBS.has(activeSub) && activeSub !== 'brief' && 'max-w-[960px] mx-auto w-full',
               // Sourcing/Pipeline : pleine largeur (filtres + grille)
             )}
