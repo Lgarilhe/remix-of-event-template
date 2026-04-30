@@ -158,31 +158,9 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
             </div>
           </SectionCard>
 
-          {/* Section Hunt mode */}
-          {!readOnly && (
-            <SectionCard
-              emoji="🎯"
-              title="Mode Hunt"
-              subtitle="Recherche en mode anonyme via tes invités externes"
-            >
-              <div className="-m-5">
-                <MissionHuntMode project={project} />
-              </div>
-            </SectionCard>
-          )}
-
-          {/* Section Client portal */}
-          {!readOnly && (
-            <SectionCard
-              emoji="🌐"
-              title="Portail client"
-              subtitle="Lien public pour partager les candidats avec ton client"
-            >
-              <div className="-m-5">
-                <MissionClientPortal project={project} />
-              </div>
-            </SectionCard>
-          )}
+          {/* Mode Hunt et Portail client — composants déjà cards rounded-xl */}
+          {!readOnly && <MissionHuntMode project={project} />}
+          {!readOnly && <MissionClientPortal project={project} />}
         </div>
       </div>
 
