@@ -300,6 +300,53 @@
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
+  @keyframes konektGlow {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(271 81% 56% / 0.4); }
+    50% { box-shadow: 0 0 0 8px hsl(271 81% 56% / 0); }
+  }
+  @keyframes konektShine {
+    0% { transform: translateX(-100%) skewX(-15deg); }
+    100% { transform: translateX(200%) skewX(-15deg); }
+  }
+  @keyframes konektFadeUp {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Konekt v2 utility classes */
+  .konekt-skalr-bg {
+    background: linear-gradient(135deg, hsl(271 81% 56%), hsl(330 81% 60%), hsl(217 91% 60%));
+    background-size: 200% 200%;
+    animation: konektBgPan 8s ease-in-out infinite;
+  }
+  .konekt-skalr-bg-soft {
+    background: linear-gradient(135deg, hsl(271 81% 56% / 0.15), hsl(330 81% 60% / 0.15), hsl(217 91% 60% / 0.15));
+    background-size: 200% 200%;
+    animation: konektBgPan 8s ease-in-out infinite;
+  }
+  .konekt-skalr-text {
+    background: linear-gradient(135deg, hsl(271 81% 65%), hsl(330 81% 70%), hsl(217 91% 70%));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .konekt-glow {
+    animation: konektGlow 2s ease-in-out infinite;
+  }
+  .konekt-shine {
+    position: relative;
+    overflow: hidden;
+  }
+  .konekt-shine::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.18), transparent);
+    transform: translateX(-100%) skewX(-15deg);
+    animation: konektShine 2.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+  .konekt-fade-up {
+    animation: konektFadeUp 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
 
   /* Animation stagger pour les listes : délai progressif */
   .stagger-in > * {

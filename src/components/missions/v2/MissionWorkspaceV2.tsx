@@ -51,6 +51,7 @@ import { MissionInsights } from '@/components/missions/MissionInsights';
 import { PhaseStepper, PhaseId } from './PhaseStepper';
 import { CopilotRail } from './CopilotRail';
 import { Pill } from './Pill';
+import { MissionOverviewV2 } from './MissionOverviewV2';
 
 // ── Mapping ancien tab → phase + sous-onglet ───────────────────────
 // Pour préserver la rétrocompat des deep links (?tab=brief continue de
@@ -256,8 +257,8 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
                 className="min-w-0"
               >
                 {activeSub === 'overview' && (
-                  <SectionErrorBoundary fallbackTitle="Erreur dans le Dashboard">
-                    <MissionBentoDashboard project={project} onTabChange={handleSubChange} readiness={readiness} />
+                  <SectionErrorBoundary fallbackTitle="Erreur dans la Vue d'ensemble">
+                    <MissionOverviewV2 project={project} onNavigateToSub={handleSubChange} />
                   </SectionErrorBoundary>
                 )}
                 {activeSub === 'brief' && (
