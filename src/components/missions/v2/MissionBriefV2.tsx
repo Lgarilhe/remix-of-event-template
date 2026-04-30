@@ -211,10 +211,12 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
         {/* Sections */}
         <div className="space-y-4">
           <SectionPoste jd={jd} updateField={updateField} readOnly={readOnly} />
+          <SectionMission jd={jd} updateField={updateField} readOnly={readOnly} />
           <SectionClient jd={jd} updateField={updateField} readOnly={readOnly} />
+          <SectionEquipe jd={jd} updateField={updateField} readOnly={readOnly} />
           <SectionProfil jd={jd} updateField={updateField} readOnly={readOnly} />
           <SectionCompetences jd={jd} updateField={updateField} readOnly={readOnly} />
-          <SectionMission jd={jd} updateField={updateField} readOnly={readOnly} />
+          <SectionEvaluation jd={jd} updateField={updateField} readOnly={readOnly} />
         </div>
       </div>
 
@@ -487,12 +489,23 @@ const TagsInput: React.FC<{
 
 // ─── Sections ────────────────────────────────────────────────────────
 
+const URGENCY_OPTIONS = [
+  { value: 'low', label: '🟢 Basse' },
+  { value: 'medium', label: '🟡 Moyenne' },
+  { value: 'high', label: '🟠 Haute' },
+  { value: 'critical', label: '🔴 Critique' },
+];
+
 const SectionPoste: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => (
-  <SectionCard emoji="📍" title="Le poste" subtitle="Informations de base">
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <div>
+  <SectionCard emoji="📍" title="Le poste" subtitle="Identité, contrat, localisation">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="sm:col-span-2">
         <FieldLabel required>Titre du poste</FieldLabel>
         <TextInput value={jd.title} onChange={v => updateField({ title: v })} placeholder="Ex: Senior React Engineer" readOnly={readOnly} />
+      </div>
+      <div>
+        <FieldLabel>Référence interne</FieldLabel>
+        <TextInput value={jd.reference} onChange={v => updateField({ reference: v })} placeholder="Ex: KNK-2026-042" readOnly={readOnly} />
       </div>
       <div>
         <FieldLabel>Type de contrat</FieldLabel>
@@ -502,6 +515,19 @@ const SectionPoste: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetai
           options={Object.entries(CONTRACT_TYPE_LABELS).map(([k, label]) => ({ value: k, label }))}
           readOnly={readOnly}
         />
+      </div>
+      <div>
+        <FieldLabel>Urgence</FieldLabel>
+        <Select
+          value={jd.urgency}
+          onChange={v => updateField({ urgency: (v || undefined) as any })}
+          options={URGENCY_OPTIONS}
+          readOnly={readOnly}
+        />
+      </div>
+      <div>
+        <FieldLabel>Date de démarrage</FieldLabel>
+        <TextInput value={jd.start_date} onChange={v => updateField({ start_date: v })} placeholder="ASAP, T3 2026..." readOnly={readOnly} />
       </div>
       <div>
         <FieldLabel>Localisation</FieldLabel>
@@ -517,10 +543,6 @@ const SectionPoste: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetai
         />
       </div>
       <div>
-        <FieldLabel>Date de démarrage</FieldLabel>
-        <TextInput value={jd.start_date} onChange={v => updateField({ start_date: v })} placeholder="Ex: ASAP, T3 2026" readOnly={readOnly} />
-      </div>
-      <div>
         <FieldLabel>Jours de remote/sem.</FieldLabel>
         <TextInput
           type="number"
@@ -534,23 +556,31 @@ const SectionPoste: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetai
   </SectionCard>
 );
 
-const SectionClient: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => (
-  <SectionCard emoji="🏢" title="Le client" subtitle="L'entreprise qui recrute">
+// ── Section Équipe ──
+const SectionEquipe: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => (
+  <SectionCard emoji="👥" title="L'équipe" subtitle="Hiérarchie et taille (optionnel mais utile pour le pitch)">
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div>
-        <FieldLabel>Nom</FieldLabel>
-        <TextInput value={jd.client?.name} onChange={v => updateField({ client: { ...jd.client, name: v } })} placeholder="Ex: Doctolib" readOnly={readOnly} />
+        <FieldLabel>Taille de l'équipe</FieldLabel>
+        <TextInput
+          type="number"
+          value={typeof jd.team_size === 'number' ? String(jd.team_size) : ''}
+          onChange={v => updateField({ team_size: v ? Number(v) : undefined })}
+          placeholder="Ex: 12"
+          readOnly={readOnly}
+        />
       </div>
       <div>
-        <FieldLabel>Secteur</FieldLabel>
-        <TextInput value={jd.client?.sector} onChange={v => updateField({ client: { ...jd.client, sector: v } })} placeholder="Ex: HealthTech" readOnly={readOnly} />
+        <FieldLabel>Rattachement (à qui ?)</FieldLabel>
+        <TextInput value={jd.reports_to} onChange={v => updateField({ reports_to: v })} placeholder="Ex: VP Engineering" readOnly={readOnly} />
       </div>
       <div>
-        <FieldLabel>Taille</FieldLabel>
-        <Select
-          value={jd.client?.size}
-          onChange={v => updateField({ client: { ...jd.client, size: (v || undefined) as any } })}
-          options={Object.entries(SIZE_LABELS).map(([k, label]) => ({ value: k, label }))}
+        <FieldLabel>Personnes managées</FieldLabel>
+        <TextInput
+          type="number"
+          value={typeof jd.manages === 'number' ? String(jd.manages) : ''}
+          onChange={v => updateField({ manages: v ? Number(v) : undefined })}
+          placeholder="0 si IC"
           readOnly={readOnly}
         />
       </div>
@@ -558,60 +588,248 @@ const SectionClient: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDeta
   </SectionCard>
 );
 
-const SectionProfil: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => (
-  <SectionCard emoji="👤" title="Le profil recherché" subtitle="Séniorité, expérience, salaire">
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      <div>
-        <FieldLabel>Séniorité</FieldLabel>
-        <TextInput value={jd.seniority} onChange={v => updateField({ seniority: v })} placeholder="Ex: Senior, Lead" readOnly={readOnly} />
+const SectionClient: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => {
+  const updateClient = (patch: Partial<NonNullable<JobDetails['client']>>) => {
+    updateField({ client: { ...jd.client, ...patch } });
+  };
+  const updateHiringManager = (patch: Partial<NonNullable<NonNullable<JobDetails['client']>['hiring_manager']>>) => {
+    updateField({
+      client: {
+        ...jd.client,
+        hiring_manager: { ...jd.client?.hiring_manager, ...patch },
+      },
+    });
+  };
+
+  return (
+    <SectionCard emoji="🏢" title="Le client" subtitle="L'entreprise qui recrute + hiring manager">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <FieldLabel>Nom</FieldLabel>
+          <TextInput value={jd.client?.name} onChange={v => updateClient({ name: v })} placeholder="Ex: Doctolib" readOnly={readOnly} />
+        </div>
+        <div>
+          <FieldLabel>Secteur</FieldLabel>
+          <TextInput value={jd.client?.sector} onChange={v => updateClient({ sector: v })} placeholder="Ex: HealthTech" readOnly={readOnly} />
+        </div>
+        <div>
+          <FieldLabel>Taille</FieldLabel>
+          <Select
+            value={jd.client?.size}
+            onChange={v => updateClient({ size: (v || undefined) as any })}
+            options={Object.entries(SIZE_LABELS).map(([k, label]) => ({ value: k, label }))}
+            readOnly={readOnly}
+          />
+        </div>
+        <div className="sm:col-span-3">
+          <FieldLabel>Site web</FieldLabel>
+          <TextInput value={jd.client?.website} onChange={v => updateClient({ website: v })} placeholder="https://..." readOnly={readOnly} />
+        </div>
+        <div className="sm:col-span-3">
+          <FieldLabel>Notes culture / contexte</FieldLabel>
+          <TextArea
+            value={jd.client?.culture_notes}
+            onChange={v => updateClient({ culture_notes: v })}
+            placeholder="Ce qui caractérise l'entreprise (mission, valeurs, ambiance...)"
+            rows={2}
+            readOnly={readOnly}
+          />
+        </div>
       </div>
-      <div>
-        <FieldLabel>Expérience min (ans)</FieldLabel>
-        <TextInput
-          type="number"
-          value={typeof jd.experience_min === 'number' ? String(jd.experience_min) : ''}
-          onChange={v => updateField({ experience_min: v ? Number(v) : undefined })}
-          placeholder="3"
-          readOnly={readOnly}
-        />
+
+      {/* Hiring manager */}
+      <div className="pt-3 border-t border-border">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          Hiring manager
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <FieldLabel>Nom</FieldLabel>
+            <TextInput value={jd.client?.hiring_manager?.name} onChange={v => updateHiringManager({ name: v })} placeholder="Ex: Sarah Dupont" readOnly={readOnly} />
+          </div>
+          <div>
+            <FieldLabel>Poste</FieldLabel>
+            <TextInput value={jd.client?.hiring_manager?.title} onChange={v => updateHiringManager({ title: v })} placeholder="Ex: VP Engineering" readOnly={readOnly} />
+          </div>
+          <div>
+            <FieldLabel>Email</FieldLabel>
+            <TextInput type="email" value={jd.client?.hiring_manager?.email} onChange={v => updateHiringManager({ email: v })} placeholder="sarah@..." readOnly={readOnly} />
+          </div>
+          <div>
+            <FieldLabel>LinkedIn</FieldLabel>
+            <TextInput value={jd.client?.hiring_manager?.linkedin} onChange={v => updateHiringManager({ linkedin: v })} placeholder="https://linkedin.com/in/..." readOnly={readOnly} />
+          </div>
+        </div>
       </div>
-      <div>
-        <FieldLabel>Expérience max (ans)</FieldLabel>
-        <TextInput
-          type="number"
-          value={typeof jd.experience_max === 'number' ? String(jd.experience_max) : ''}
-          onChange={v => updateField({ experience_max: v ? Number(v) : undefined })}
-          placeholder="8"
-          readOnly={readOnly}
-        />
+    </SectionCard>
+  );
+};
+
+const SALARY_TYPE_OPTIONS = [
+  { value: 'annual', label: '€/an' },
+  { value: 'daily', label: '€/jour' },
+  { value: 'hourly', label: '€/heure' },
+];
+
+const CURRENCY_OPTIONS = [
+  { value: 'EUR', label: '€ EUR' },
+  { value: 'USD', label: '$ USD' },
+  { value: 'GBP', label: '£ GBP' },
+  { value: 'CHF', label: 'CHF' },
+];
+
+const SectionProfil: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => {
+  const languages = jd.languages || [];
+  const updateLanguage = (idx: number, patch: Partial<{ language: string; level: string }>) => {
+    const next = [...languages];
+    next[idx] = { ...next[idx], ...patch };
+    updateField({ languages: next });
+  };
+  const addLanguage = () => updateField({ languages: [...languages, { language: '', level: '' }] });
+  const removeLanguage = (idx: number) => updateField({ languages: languages.filter((_, i) => i !== idx) });
+
+  return (
+    <SectionCard emoji="👤" title="Le profil recherché" subtitle="Séniorité, expérience, package, langues">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <FieldLabel>Séniorité</FieldLabel>
+          <TextInput value={jd.seniority} onChange={v => updateField({ seniority: v })} placeholder="Ex: Senior, Lead" readOnly={readOnly} />
+        </div>
+        <div>
+          <FieldLabel>Expérience min (ans)</FieldLabel>
+          <TextInput
+            type="number"
+            value={typeof jd.experience_min === 'number' ? String(jd.experience_min) : ''}
+            onChange={v => updateField({ experience_min: v ? Number(v) : undefined })}
+            placeholder="3"
+            readOnly={readOnly}
+          />
+        </div>
+        <div>
+          <FieldLabel>Expérience max (ans)</FieldLabel>
+          <TextInput
+            type="number"
+            value={typeof jd.experience_max === 'number' ? String(jd.experience_max) : ''}
+            onChange={v => updateField({ experience_max: v ? Number(v) : undefined })}
+            placeholder="8"
+            readOnly={readOnly}
+          />
+        </div>
       </div>
-      <div>
-        <FieldLabel>Salaire min (€/an)</FieldLabel>
-        <TextInput
-          type="number"
-          value={typeof jd.salary_min === 'number' ? String(jd.salary_min) : ''}
-          onChange={v => updateField({ salary_min: v ? Number(v) : undefined })}
-          placeholder="65000"
-          readOnly={readOnly}
-        />
+
+      {/* Salaire */}
+      <div className="pt-3 border-t border-border">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Rémunération</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <FieldLabel>Salaire min</FieldLabel>
+            <TextInput
+              type="number"
+              value={typeof jd.salary_min === 'number' ? String(jd.salary_min) : ''}
+              onChange={v => updateField({ salary_min: v ? Number(v) : undefined })}
+              placeholder="65000"
+              readOnly={readOnly}
+            />
+          </div>
+          <div>
+            <FieldLabel>Salaire max</FieldLabel>
+            <TextInput
+              type="number"
+              value={typeof jd.salary_max === 'number' ? String(jd.salary_max) : ''}
+              onChange={v => updateField({ salary_max: v ? Number(v) : undefined })}
+              placeholder="85000"
+              readOnly={readOnly}
+            />
+          </div>
+          <div>
+            <FieldLabel>Devise</FieldLabel>
+            <Select
+              value={jd.salary_currency || 'EUR'}
+              onChange={v => updateField({ salary_currency: v || undefined })}
+              options={CURRENCY_OPTIONS}
+              readOnly={readOnly}
+            />
+          </div>
+          <div>
+            <FieldLabel>Type</FieldLabel>
+            <Select
+              value={jd.salary_type || 'annual'}
+              onChange={v => updateField({ salary_type: (v || undefined) as any })}
+              options={SALARY_TYPE_OPTIONS}
+              readOnly={readOnly}
+            />
+          </div>
+        </div>
       </div>
-      <div>
-        <FieldLabel>Salaire max (€/an)</FieldLabel>
-        <TextInput
-          type="number"
-          value={typeof jd.salary_max === 'number' ? String(jd.salary_max) : ''}
-          onChange={v => updateField({ salary_max: v ? Number(v) : undefined })}
-          placeholder="85000"
-          readOnly={readOnly}
-        />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <FieldLabel>Equity / BSPCE</FieldLabel>
+          <TextInput value={jd.equity} onChange={v => updateField({ equity: v })} placeholder="Ex: 0.1-0.5% BSPCE" readOnly={readOnly} />
+        </div>
+        <div>
+          <FieldLabel>Avantages</FieldLabel>
+          <TextInput value={jd.benefits} onChange={v => updateField({ benefits: v })} placeholder="Mutuelle, RTT, formation..." readOnly={readOnly} />
+        </div>
       </div>
-      <div>
-        <FieldLabel>Avantages / Equity</FieldLabel>
-        <TextInput value={jd.benefits} onChange={v => updateField({ benefits: v })} placeholder="Ex: BSPCE, mutuelle..." readOnly={readOnly} />
+
+      {/* Langues */}
+      <div className="pt-3 border-t border-border">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Langues requises</p>
+          {!readOnly && (
+            <button onClick={addLanguage} className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+              <Plus className="w-3 h-3" /> Ajouter
+            </button>
+          )}
+        </div>
+        {languages.length === 0 && (
+          <p className="text-[11px] text-muted-foreground italic">Aucune langue spécifiée</p>
+        )}
+        <div className="space-y-2">
+          {languages.map((lang, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+              <TextInput
+                value={lang.language}
+                onChange={v => updateLanguage(i, { language: v })}
+                placeholder="Ex: Français"
+                readOnly={readOnly}
+              />
+              <TextInput
+                value={lang.level}
+                onChange={v => updateLanguage(i, { level: v })}
+                placeholder="Ex: C1, courant, natif"
+                readOnly={readOnly}
+              />
+              {!readOnly && (
+                <button
+                  onClick={() => removeLanguage(i)}
+                  className="h-9 w-9 grid place-items-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  </SectionCard>
-);
+
+      {/* Certifications */}
+      <div className="pt-3 border-t border-border">
+        <FieldLabel>Certifications souhaitées</FieldLabel>
+        <div className="mt-1.5">
+          <TagsInput
+            values={jd.certifications || []}
+            onChange={v => updateField({ certifications: v })}
+            placeholder="AWS Solutions Architect, CKA..."
+            readOnly={readOnly}
+            variant="nice"
+          />
+        </div>
+      </div>
+    </SectionCard>
+  );
+};
 
 const SectionCompetences: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => (
   <SectionCard emoji="⚡" title="Compétences" subtitle="Ce qui sera utilisé pour scorer les candidats">
@@ -651,6 +869,18 @@ const SectionCompetences: React.FC<{ jd: JobDetails; updateField: (p: Partial<Jo
         />
       </div>
     </div>
+    <div className="pt-3 border-t border-border">
+      <FieldLabel>À éviter <span className="ml-1 text-muted-foreground font-normal normal-case tracking-normal">— red flags / compétences disqualifiantes</span></FieldLabel>
+      <div className="mt-1.5">
+        <TagsInput
+          values={jd.skills_to_avoid || []}
+          onChange={v => updateField({ skills_to_avoid: v })}
+          placeholder="ESN/SSII, mobile only..."
+          readOnly={readOnly}
+          variant="must"
+        />
+      </div>
+    </div>
   </SectionCard>
 );
 
@@ -678,6 +908,135 @@ const SectionMission: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDet
     </div>
   </SectionCard>
 );
+
+// ── Section Critères d'évaluation ──
+const CRITERIA_CATEGORIES = [
+  { value: 'technical', label: '🔧 Technique' },
+  { value: 'soft_skill', label: '🤝 Soft skill' },
+  { value: 'culture_fit', label: '🌟 Culture fit' },
+  { value: 'motivation', label: '🎯 Motivation' },
+  { value: 'experience', label: '💼 Expérience' },
+];
+
+const WEIGHT_LABELS: Record<number, string> = {
+  1: 'Bonus',
+  2: 'Important',
+  3: 'Critique',
+};
+
+const WEIGHT_COLORS: Record<number, { bg: string; color: string }> = {
+  1: { bg: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' },
+  2: { bg: 'hsl(var(--status-info-muted))', color: 'hsl(var(--status-info))' },
+  3: { bg: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' },
+};
+
+const SectionEvaluation: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDetails>) => void; readOnly?: boolean }> = ({ jd, updateField, readOnly }) => {
+  const criteria = jd.evaluation_criteria || [];
+
+  const updateCriterion = (idx: number, patch: Partial<NonNullable<JobDetails['evaluation_criteria']>[0]>) => {
+    const next = [...criteria];
+    next[idx] = { ...next[idx], ...patch };
+    updateField({ evaluation_criteria: next });
+  };
+  const addCriterion = () => {
+    updateField({
+      evaluation_criteria: [
+        ...criteria,
+        {
+          id: `criterion-${Date.now()}`,
+          label: '',
+          description: '',
+          category: 'technical',
+          weight: 2,
+        },
+      ],
+    });
+  };
+  const removeCriterion = (idx: number) => {
+    updateField({ evaluation_criteria: criteria.filter((_, i) => i !== idx) });
+  };
+
+  return (
+    <SectionCard emoji="🎯" title="Critères d'évaluation" subtitle="Ce que tu vas évaluer en entretien — utilisé pour la scorecard et l'IA">
+      {criteria.length === 0 && (
+        <p className="text-[12px] text-muted-foreground italic">
+          Aucun critère défini. L'IA peut en proposer automatiquement quand tu lances l'analyse.
+        </p>
+      )}
+      <div className="space-y-2">
+        {criteria.map((c, idx) => (
+          <div key={c.id || idx} className="bg-background border border-border rounded-md p-3 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_120px_auto] gap-2">
+              <TextInput
+                value={c.label}
+                onChange={v => updateCriterion(idx, { label: v })}
+                placeholder="Ex: Architecture frontend, Communication..."
+                readOnly={readOnly}
+              />
+              <Select
+                value={c.category}
+                onChange={v => updateCriterion(idx, { category: v as any })}
+                options={CRITERIA_CATEGORIES}
+                readOnly={readOnly}
+              />
+              <Select
+                value={String(c.weight)}
+                onChange={v => updateCriterion(idx, { weight: Number(v) as 1 | 2 | 3 })}
+                options={[
+                  { value: '1', label: 'Bonus' },
+                  { value: '2', label: 'Important' },
+                  { value: '3', label: 'Critique' },
+                ]}
+                readOnly={readOnly}
+              />
+              {!readOnly && (
+                <button
+                  onClick={() => removeCriterion(idx)}
+                  className="h-9 w-9 grid place-items-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  aria-label="Supprimer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <TextArea
+              value={c.description}
+              onChange={v => updateCriterion(idx, { description: v })}
+              placeholder="Comment évaluer ce critère, ce qu'on cherche concrètement..."
+              rows={2}
+              readOnly={readOnly}
+            />
+            <div className="flex items-center gap-2 text-[11px]">
+              <Pill variant={c.weight === 3 ? 'warning' : c.weight === 2 ? 'info' : 'muted'}>
+                {WEIGHT_LABELS[c.weight] || 'Important'}
+              </Pill>
+              {c.deal_breaker && (
+                <Pill variant="warning">⚡ Deal-breaker</Pill>
+              )}
+              {!readOnly && (
+                <button
+                  onClick={() => updateCriterion(idx, { deal_breaker: !c.deal_breaker })}
+                  className="text-[10px] text-muted-foreground hover:text-foreground ml-auto"
+                >
+                  {c.deal_breaker ? 'Retirer deal-breaker' : 'Marquer deal-breaker'}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {!readOnly && (
+        <button
+          onClick={addCriterion}
+          className="mt-3 w-full h-9 rounded-md border border-dashed border-border text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center justify-center gap-1.5 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Ajouter un critère
+        </button>
+      )}
+    </SectionCard>
+  );
+};
 
 // ─── Completion compute ─────────────────────────────────────────────
 
