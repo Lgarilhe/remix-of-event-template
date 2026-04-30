@@ -99,6 +99,13 @@ const ALL_SUBS: SubTab[] = [
   'sourcing', 'outreach', 'pipeline', 'insights',
 ];
 
+// Sub-tabs qui doivent être limités en largeur pour rester lisibles
+// (forms / dashboards). Les autres (sourcing/pipeline) prennent toute
+// la largeur pour exploiter l'espace (filtres + grille / kanban).
+const NARROW_SUBS = new Set<SubTab>([
+  'overview', 'brief', 'process', 'config', 'outreach', 'insights',
+]);
+
 const tabVariants = {
   enter: { opacity: 0, y: 6 },
   center: { opacity: 1, y: 0 },
@@ -245,7 +252,14 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
       {/* ── Body : main content + CopilotRail ── */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto min-w-0">
-          <div className="px-3 sm:px-6 lg:px-8 py-4">
+          <div
+            className={cn(
+              'px-3 sm:px-6 lg:px-8 py-4',
+              // Forms/dashboards : on cap la largeur pour la lisibilité.
+              // Sourcing/Pipeline : pleine largeur (ils en ont besoin).
+              NARROW_SUBS.has(activeSub) && 'max-w-[960px] mx-auto w-full',
+            )}
+          >
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={activeSub}
