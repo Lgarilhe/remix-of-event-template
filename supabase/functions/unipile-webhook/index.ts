@@ -72,17 +72,29 @@ interface WebhookPayload {
   chat_id?: string;
   sender?: { attendee_id?: string; attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string };
   attendees?: Array<{ attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string }>;
-  // mail_received format (flat — Unipile email events)
+  // mail_received format (per Unipile docs, source='email')
+  // Champs effectifs : email_id, account_id, event, webhook_name, date,
+  // from_attendee, to_attendees, bcc_attendees, cc_attendees, reply_to_attendees,
+  // provider_id, message_id, has_attachments, subject, body, body_plain,
+  // attachments, folders, role, read_date, is_complete, in_reply_to,
+  // tracking_id, origin
   email_id?: string;
-  thread_id?: string;
+  message_id?: string;
+  provider_id?: string;
   subject?: string;
   body?: string;
   body_plain?: string;
-  in_reply_to?: string;
-  is_reply?: boolean;
-  from_attendee?: { display_name?: string; identifier?: string; email?: string };
-  to_attendees?: Array<{ display_name?: string; identifier?: string; email?: string }>;
+  /** Per docs : object { message_id, id }. Garde any pour souplesse. */
+  in_reply_to?: { message_id?: string; id?: string } | string;
+  has_attachments?: boolean;
+  is_complete?: boolean;
+  from_attendee?: { display_name?: string; identifier?: string };
+  to_attendees?: Array<{ display_name?: string; identifier?: string }>;
+  cc_attendees?: Array<{ display_name?: string; identifier?: string }>;
+  bcc_attendees?: Array<{ display_name?: string; identifier?: string }>;
   date?: string;
+  // account_status webhook : payload peut arriver wrappé en AccountStatus
+  AccountStatus?: { account_id?: string; account_type?: string; message?: string };
 }
 
 /**
@@ -227,10 +239,18 @@ Deno.serve(async (req) => {
       // transitions de statut (OK, CONNECTING, CREDENTIALS, ERROR, SYNC_SUCCESS,
       // RECONNECTED, CREATION_SUCCESS, DELETED). Manquait avant — on ratait les
       // transitions intermédiaires en prod.
+      // Per Unipile docs (account-lifecycle), payload may be wrapped as
+      // { AccountStatus: { account_id, account_type, message: 'CREDENTIALS' } }
+      // ou flat avec payload.status. On gère les deux formats.
       case 'account_status_updated':
       case 'account.status_updated': {
-        const newStatus = payload.status || (payload.data as any)?.status || 'UNKNOWN';
-        console.log('[unipile-webhook] Status updated:', payload.account_id, '->', newStatus);
+        const newStatus =
+          payload.status
+          || (payload.data as any)?.status
+          || (payload as any)?.AccountStatus?.message
+          || 'UNKNOWN';
+        const accId = payload.account_id || (payload as any)?.AccountStatus?.account_id;
+        console.log('[unipile-webhook] Status updated:', accId, '->', newStatus);
         try {
           // Normaliser les status Unipile pour simplifier la lecture frontend.
           // OK et RECONNECTED et SYNC_SUCCESS sont tous "compte fonctionnel".
@@ -238,15 +258,17 @@ Deno.serve(async (req) => {
             newStatus === 'RECONNECTED' || newStatus === 'SYNC_SUCCESS' || newStatus === 'CREATION_SUCCESS'
               ? 'OK'
               : newStatus;
-          await supabase
-            .from('member_linkedin_accounts')
-            .update({
-              account_status: normalizedStatus,
-              last_checked_at: new Date().toISOString(),
-              // Si on repasse OK, on efface la raison d'échec précédente
-              ...(normalizedStatus === 'OK' ? { failure_reason: null } : {}),
-            })
-            .eq('linkedin_account_id', payload.account_id);
+          if (accId) {
+            await supabase
+              .from('member_linkedin_accounts')
+              .update({
+                account_status: normalizedStatus,
+                last_checked_at: new Date().toISOString(),
+                // Si on repasse OK, on efface la raison d'échec précédente
+                ...(normalizedStatus === 'OK' ? { failure_reason: null } : {}),
+              })
+              .eq('linkedin_account_id', accId);
+          }
         } catch (e) {
           console.warn('[unipile-webhook] status_updated handler failed:', e);
         }
@@ -828,7 +850,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
  * d'autres orgs partageant le même candidat.
  */
 async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) {
-  const { account_id, from_attendee, to_attendees, subject, in_reply_to, is_reply, email_id } = payload;
+  const { account_id, from_attendee, to_attendees, subject, email_id } = payload;
 
   if (!account_id) {
     console.log('[unipile-webhook][mail] Missing account_id, skipping');
@@ -836,7 +858,9 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
   }
 
   // Email de l'expéditeur (= candidat qui répond)
-  const senderEmail = (from_attendee?.identifier || from_attendee?.email || '').toLowerCase().trim();
+  // Per Unipile docs, from_attendee est un objet { display_name, identifier }
+  // où identifier contient l'adresse email.
+  const senderEmail = (from_attendee?.identifier || '').toLowerCase().trim();
   if (!senderEmail) {
     console.log('[unipile-webhook][mail] No sender email, skipping');
     return;
@@ -861,7 +885,7 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
   // Skip si c'est un email QU'ON A ENVOYÉ (cas Unipile inclut sent in webhook)
   // Vérifier que le sender ne match pas l'identifier du compte connecté
   const recipientEmails = (to_attendees || [])
-    .map(a => (a.identifier || a.email || '').toLowerCase().trim())
+    .map(a => (a.identifier || '').toLowerCase().trim())
     .filter(Boolean);
   if (recipientEmails.length === 0) {
     console.log('[unipile-webhook][mail] No recipients, skipping');
