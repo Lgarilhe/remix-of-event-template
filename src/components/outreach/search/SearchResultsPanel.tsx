@@ -384,14 +384,17 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
 
   return (
-    <div className="bg-background border border-border flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
-      {/* HEADER: Search + count + filters + actions — unified compact bar */}
-      <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0">
+    <div className="bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
+      {/* HEADER: count clarifié + actions globales */}
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border shrink-0 min-w-0">
         {hasSearched && (
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            <span className="font-semibold text-foreground">{displayResults.length}</span>
-            {total !== null && <span className="text-muted-foreground/60"> / {total.toLocaleString()}</span>}
-          </span>
+          <div className="flex items-baseline gap-1.5 text-[12.5px] whitespace-nowrap">
+            <span className="font-display font-bold text-foreground tabular-nums">{displayResults.length}</span>
+            <span className="text-muted-foreground">candidat{displayResults.length > 1 ? 's' : ''} affiché{displayResults.length > 1 ? 's' : ''}</span>
+            {total !== null && total > displayResults.length && (
+              <span className="text-muted-foreground/60">· {total.toLocaleString()} total</span>
+            )}
+          </div>
         )}
 
         {/* Spacer */}
@@ -403,48 +406,60 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             variant={showPoolView ? 'secondary' : 'ghost'}
             size="sm"
             onClick={() => onSetShowPoolView(!showPoolView)}
-            className="h-7 px-2 text-xs gap-1 shrink-0"
+            className="h-7 px-2.5 text-[11.5px] gap-1.5 rounded-full shrink-0"
+            title={showPoolView ? 'Voir les nouveaux résultats' : 'Voir les profils déjà connus'}
           >
             <Database className="w-3 h-3" />
-            {showPoolView ? 'Pool' : 'Résultats'}
+            {showPoolView ? 'Vue : Pool' : 'Vue : Résultats'}
           </Button>
         )}
       </div>
 
       {/* TOOLBAR: Status filters + actions — single compact row */}
       {selectedJob && hasSearched && displayResults.length > 0 && (
-        <div className="flex items-center gap-1 px-2 sm:px-3 py-1 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
-          {/* Status filter pills */}
-          <div className="flex items-center gap-px bg-muted/40 p-px border border-border shrink-0">
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
+          {/* Eyebrow label */}
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden md:inline">
+            Filtrer
+          </span>
+
+          {/* Status filter pills with explicit labels */}
+          <div className="flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-full border border-border shrink-0">
             {([
-              { value: 'all' as const, emoji: '👥', count: mergedResults.length },
-              { value: 'untreated' as const, emoji: '👁', count: statusCounts.untreated },
-              { value: 'scored' as const, emoji: '🎯', count: statusCounts.scored },
-              { value: 'messaged' as const, emoji: '✉️', count: statusCounts.messaged },
-              { value: 'known' as const, emoji: '📋', count: statusCounts.known },
-              { value: 'dismissed' as const, emoji: '📦', count: statusCounts.dismissed },
-            ]).map(({ value, emoji, count }) => {
-              const isActive = statusFilter === value || 
+              { value: 'all' as const,        label: 'Tous',         icon: '👥', count: mergedResults.length, tooltip: 'Tous les candidats' },
+              { value: 'untreated' as const,  label: 'Non traités',  icon: '👁',  count: statusCounts.untreated, tooltip: 'Candidats pas encore évalués' },
+              { value: 'scored' as const,     label: 'Scorés',       icon: '🎯', count: statusCounts.scored,    tooltip: 'Candidats déjà scorés par l\'IA' },
+              { value: 'messaged' as const,   label: 'Contactés',    icon: '✉️', count: statusCounts.messaged,  tooltip: 'Candidats déjà contactés' },
+              { value: 'known' as const,      label: 'Déjà connus',  icon: '📋', count: statusCounts.known,     tooltip: 'Candidats présents dans ton vivier' },
+              { value: 'dismissed' as const,  label: 'Archivés',     icon: '📦', count: statusCounts.dismissed, tooltip: 'Candidats archivés / écartés' },
+            ]).map(({ value, label, icon, count, tooltip }) => {
+              const isActive = statusFilter === value ||
                 (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));
               return (
                 <button
                   key={value}
                   onClick={() => onSetStatusFilter(value)}
-                  className={`flex items-center gap-1 h-6 px-1.5 text-xs transition-colors shrink-0 ${
+                  title={tooltip}
+                  className={`inline-flex items-center gap-1 h-6 px-2 text-[11.5px] rounded-full transition-colors shrink-0 ${
                     isActive
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-foreground text-background font-semibold'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                   }`}
                 >
-                  <span className="text-xs">{emoji}</span>
-                  {count > 0 && <span className="font-medium">{count}</span>}
+                  <span className="text-[11px]">{icon}</span>
+                  <span className="hidden lg:inline">{label}</span>
+                  {count > 0 && (
+                    <span className={`tabular-nums ${isActive ? 'opacity-90' : 'text-muted-foreground/80'}`}>
+                      {count}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
 
           {/* Separator */}
-          <div className="w-px h-5 bg-border shrink-0 mx-0.5" />
+          <div className="w-px h-5 bg-border shrink-0" />
 
           {/* Scorer les pertinents */}
           {selectedProfiles.size === 0 && selectedJob && filteredResults.some((p: any) => p._preScore?.tier === 'high' && !jobScores[p.id]) && (
@@ -462,11 +477,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 highTier.forEach(id => onToggleProfileSelection(id));
                 toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
               }}
-              className="h-6 px-2 text-xs gap-1 text-emerald-400 hover:bg-success/10 shrink-0"
+              className="h-7 px-3 text-[11.5px] gap-1.5 rounded-full text-emerald-500 hover:bg-emerald-500/10 shrink-0 font-medium"
               disabled={scoringInProgress}
+              title="Sélectionne automatiquement les profils détectés comme à haut potentiel par l'IA pré-scoring (avant LLM)"
             >
               <Sparkles className="w-3 h-3" />
-              <span className="hidden sm:inline">Scorer pertinents</span>
+              <span className="hidden sm:inline">Sélectionner les top profils</span>
+              <span className="sm:hidden">Top</span>
             </Button>
           )}
 
@@ -508,25 +525,42 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* View mode toggle (Compact / Detaille) — preference persistee dans localStorage.
-              Compact = 1 ligne par profil (avatar + nom + headline + score + actions).
-              Detaille = card complete avec experiences/formation/skills (default actuel). */}
-          <div className="flex items-center border border-border shrink-0" role="group" aria-label="Mode d'affichage">
+          {/* Eyebrow label "Affichage" */}
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden lg:inline">
+            Affichage
+          </span>
+
+          {/* View mode toggle (Compact / Détaillé) */}
+          <div
+            className="flex items-center bg-muted/40 p-0.5 rounded-full border border-border shrink-0"
+            role="group"
+            aria-label="Mode d'affichage"
+          >
             <button
               onClick={() => setViewMode('compact')}
-              className={`p-1 ${viewMode === 'compact' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors ${
+                viewMode === 'compact'
+                  ? 'bg-foreground text-background font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
               title="Vue compacte (1 ligne par profil)"
               aria-pressed={viewMode === 'compact'}
             >
-              <Rows3 className="w-3.5 h-3.5" aria-hidden="true" />
+              <Rows3 className="w-3 h-3" aria-hidden="true" />
+              <span className="hidden xl:inline">Compact</span>
             </button>
             <button
               onClick={() => setViewMode('detailed')}
-              className={`p-1 border-l border-border ${viewMode === 'detailed' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors ${
+                viewMode === 'detailed'
+                  ? 'bg-foreground text-background font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
               title="Vue détaillée (mini-CV complet)"
               aria-pressed={viewMode === 'detailed'}
             >
-              <Layers className="w-3.5 h-3.5" aria-hidden="true" />
+              <Layers className="w-3 h-3" aria-hidden="true" />
+              <span className="hidden xl:inline">Détaillé</span>
             </button>
           </div>
 
@@ -534,22 +568,30 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {Object.keys(jobScores).length > 0 && (
             <button
               onClick={() => onSetSortByScore(!sortByScore)}
-              className={`p-1 rounded-sm shrink-0 ${sortByScore ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-              title={sortByScore ? 'Tri par score actif' : 'Trier par score'}
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full border transition-colors shrink-0 ${
+                sortByScore
+                  ? 'bg-foreground text-background border-foreground font-semibold'
+                  : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-foreground/30'
+              }`}
+              title={sortByScore ? 'Tri par score actif — clic pour désactiver' : 'Trier les profils par score décroissant'}
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3 h-3" />
+              <span className="hidden xl:inline">{sortByScore ? 'Tri ★ actif' : 'Trier par score'}</span>
+              <span className="xl:hidden">★</span>
             </button>
           )}
 
           {/* Select all */}
-          <div className="flex items-center gap-1 pl-1 border-l border-border shrink-0">
+          <div className="flex items-center gap-1.5 pl-2 border-l border-border shrink-0">
             <Checkbox
               checked={allSelectableSelected && selectableProfiles.length > 0}
               onCheckedChange={onToggleSelectAll}
               id="select-all"
               className="h-3.5 w-3.5"
             />
-            <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">Tout</label>
+            <label htmlFor="select-all" className="text-[11.5px] text-muted-foreground hover:text-foreground cursor-pointer select-none">
+              Tout sélectionner
+            </label>
           </div>
         </div>
       )}
