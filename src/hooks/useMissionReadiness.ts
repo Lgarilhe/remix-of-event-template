@@ -68,12 +68,14 @@ export function computeReadiness(project: SourcingProject): StepReadiness[] {
       id: 'outreach',
       isComplete: hasMessaged,
       isReady: hasCandidates,
-      isLocked: !hasCandidates,
-      completionPercent: hasMessaged ? 100 : 0,
-      blockerMessage: !hasCandidates
-        ? 'Sourcez des candidats avant de créer une séquence.'
+      // Pas de verrou : on permet la création de séquences en amont
+      // (templates, brouillons) pour qu'elles soient prêtes au moment du sourcing.
+      isLocked: false,
+      completionPercent: hasMessaged ? 100 : hasCandidates ? 30 : 0,
+      blockerMessage: null,
+      nextAction: !hasCandidates
+        ? { label: 'Sourcer des candidats', tab: 'sourcing' }
         : null,
-      nextAction: null,
     },
     {
       id: 'pipeline',
