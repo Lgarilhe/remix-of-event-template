@@ -62,6 +62,7 @@ interface SequenceWithStats {
   description: string | null;
   is_active: boolean;
   created_at: string;
+  project_id: string | null;
   steps: any[];
   enrollments: {
     total: number;
@@ -141,7 +142,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .order('created_at', { ascending: false }) as any;
 
       if (projectId) {
-        seqQuery = seqQuery.eq('project_id', projectId);
+        // Affiche les séquences de la mission courante ET les séquences
+        // "globales" (project_id IS NULL) qui servent de templates réutilisables.
+        seqQuery = seqQuery.or(`project_id.eq.${projectId},project_id.is.null`);
       }
 
       const { data: seqData, error: seqError } = await seqQuery;
@@ -734,7 +737,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-lg">{getSequenceEmoji(index)}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-foreground truncate">{seq.name}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium text-foreground truncate">{seq.name}</div>
+                      {/* Badge "Template" si la séquence n'est pas attachée à une mission
+                          (visible et utilisable depuis toutes les missions) */}
+                      {!seq.project_id && (
+                        <span
+                          className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-info/10 text-info border border-info/30"
+                          title="Séquence globale réutilisable depuis toutes les missions"
+                        >
+                          ✨ Template
+                        </span>
+                      )}
+                    </div>
                     {seq.description && (
                       <div className="text-xs text-muted-foreground truncate">{seq.description}</div>
                     )}
@@ -834,7 +849,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="text-base">{getSequenceEmoji(index)}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm text-foreground truncate">{seq.name}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="font-medium text-sm text-foreground truncate">{seq.name}</div>
+                        {!seq.project_id && (
+                          <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-info/10 text-info border border-info/30">
+                            ✨ Template
+                          </span>
+                        )}
+                      </div>
                       {seq.description && (
                         <div className="text-xs text-muted-foreground truncate">{seq.description}</div>
                       )}
