@@ -382,13 +382,18 @@ export function useLinkedInSearch({
           .join('\n');
         job.bodyContent = (job.bodyContent ? job.bodyContent + '\n\n' : '') + `=== CRITÈRES D'ÉVALUATION DU MANAGER ===\n${criteriaText}`;
       }
-      // Raw brief as additional context
-      if (jd.raw_brief && !job.bodyContent) {
-        job.bodyContent = jd.raw_brief.slice(0, 1000);
+      // Raw brief : TOUJOURS transmis dans son propre field (séparé de
+      // bodyContent qui sert pour les criteria). Le LLM scoring l'utilise
+      // pour récupérer toutes les nuances que l'extraction IA a pu rater
+      // (ex: "passé par une scale-up santé", "anglais courant requis", etc.)
+      if (jd.raw_brief) {
+        // 4000 chars couvre une fiche WTTJ / LinkedIn complète sans trop
+        // bloater le prompt LLM (~1k tokens).
+        job.originalBriefText = jd.raw_brief.slice(0, 4000);
       }
-      // Safety: cap bodyContent total length
-      if (job.bodyContent && job.bodyContent.length > 2000) {
-        job.bodyContent = job.bodyContent.slice(0, 2000);
+      // Safety: cap bodyContent total length (criteria seulement)
+      if (job.bodyContent && job.bodyContent.length > 3000) {
+        job.bodyContent = job.bodyContent.slice(0, 3000);
       }
       // Target companies as transversal context
       if (jd.target_companies?.length) {

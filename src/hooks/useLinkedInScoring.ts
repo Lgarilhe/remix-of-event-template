@@ -466,6 +466,7 @@ export function useLinkedInScoring({
           shouldHave: selectedJob.shouldHave,
           niceToHave: selectedJob.niceToHave,
           bodyContent: selectedJob.bodyContent,
+          originalBriefText: (selectedJob as any).originalBriefText,
           transversalCriteria: selectedJob.transversalCriteria,
         },
         customScoringInstructions,

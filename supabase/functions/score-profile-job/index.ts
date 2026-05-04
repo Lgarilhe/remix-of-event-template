@@ -70,6 +70,10 @@ interface JobData {
     bodyContent?: string;
   };
   bodyContent?: string;
+  /** Brief brut du recruteur (texte original collé/dicté à la création).
+      Utilisé par le LLM pour récupérer les nuances que l'extraction IA
+      a pu rater (ex: "passé par une scale-up santé", soft requirements). */
+  originalBriefText?: string;
 }
 
 interface DimensionScore {
@@ -1028,7 +1032,8 @@ ${job.seniority ? "Séniorité: " + job.seniority : ""}
 ${job.contractType ? "Contrat: " + job.contractType : ""}
 ${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
 ${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
-${job.bodyContent ? "Détails: " + job.bodyContent.substring(0, 400) : ""}
+${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
+${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
 
 === CANDIDAT ===
 ${profile.name} — ${profile.headline || profile.currentRole || "?"}
@@ -1224,7 +1229,8 @@ ${job.seniority ? "Séniorité: " + job.seniority : ""}
 ${job.contractType ? "Contrat: " + job.contractType : ""}
 ${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
 ${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
-${job.bodyContent ? "Détails: " + job.bodyContent.substring(0, 400) : ""}
+${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
+${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
 ${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 400) : ""}`
   );
 
