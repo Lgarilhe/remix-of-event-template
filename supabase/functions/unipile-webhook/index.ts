@@ -72,6 +72,17 @@ interface WebhookPayload {
   chat_id?: string;
   sender?: { attendee_id?: string; attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string };
   attendees?: Array<{ attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string }>;
+  // mail_received format (flat — Unipile email events)
+  email_id?: string;
+  thread_id?: string;
+  subject?: string;
+  body?: string;
+  body_plain?: string;
+  in_reply_to?: string;
+  is_reply?: boolean;
+  from_attendee?: { display_name?: string; identifier?: string; email?: string };
+  to_attendees?: Array<{ display_name?: string; identifier?: string; email?: string }>;
+  date?: string;
 }
 
 /**
@@ -157,6 +168,15 @@ Deno.serve(async (req) => {
       case 'message_received': {
         // A new message was received
         await handleNewMessage(supabase, payload, uCreds);
+        break;
+      }
+
+      case 'mail_received':
+      case 'mail.received':
+      case 'new_email': {
+        // Un email a été reçu sur un compte connecté → vérifier si c'est une
+        // réponse à une étape de séquence email pour stopper les suivantes.
+        await handleNewMail(supabase, payload);
         break;
       }
       
@@ -790,5 +810,148 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         }),
       }).catch(err => console.warn('[unipile-webhook] RAG ingest failed (non-blocking):', err));
     }
+  }
+}
+
+/**
+ * Handler pour les emails reçus (Unipile event `mail_received`).
+ * Détecte si l'email entrant est une réponse à une étape de séquence email
+ * et stoppe les étapes restantes de la séquence pour ce candidat.
+ *
+ * Stratégie de matching :
+ *   1. Récupère l'email expéditeur (from_attendee.identifier)
+ *   2. Recherche les enrollments actifs avec email_used = sender_email
+ *      sur ce account_id
+ *   3. Marque comme replied + cancel pending steps + log analytics
+ *
+ * Sécurité : on filtre par account_id pour ne pas matcher des replies
+ * d'autres orgs partageant le même candidat.
+ */
+async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) {
+  const { account_id, from_attendee, to_attendees, subject, in_reply_to, is_reply, email_id } = payload;
+
+  if (!account_id) {
+    console.log('[unipile-webhook][mail] Missing account_id, skipping');
+    return;
+  }
+
+  // Email de l'expéditeur (= candidat qui répond)
+  const senderEmail = (from_attendee?.identifier || from_attendee?.email || '').toLowerCase().trim();
+  if (!senderEmail) {
+    console.log('[unipile-webhook][mail] No sender email, skipping');
+    return;
+  }
+
+  // Skip auto-replies / system bounces
+  const subjectLower = (subject || '').toLowerCase();
+  const isAutoReply = subjectLower.includes('auto-reply') ||
+    subjectLower.includes('out of office') ||
+    subjectLower.includes('absence du bureau') ||
+    subjectLower.includes('réponse automatique') ||
+    senderEmail.startsWith('mailer-daemon@') ||
+    senderEmail.startsWith('postmaster@') ||
+    senderEmail.startsWith('no-reply@') ||
+    senderEmail.startsWith('noreply@');
+
+  if (isAutoReply) {
+    console.log('[unipile-webhook][mail] Skipping auto-reply / bounce from', senderEmail);
+    return;
+  }
+
+  // Skip si c'est un email QU'ON A ENVOYÉ (cas Unipile inclut sent in webhook)
+  // Vérifier que le sender ne match pas l'identifier du compte connecté
+  const recipientEmails = (to_attendees || [])
+    .map(a => (a.identifier || a.email || '').toLowerCase().trim())
+    .filter(Boolean);
+  if (recipientEmails.length === 0) {
+    console.log('[unipile-webhook][mail] No recipients, skipping');
+    return;
+  }
+
+  console.log(
+    `[unipile-webhook][mail] from=${senderEmail} to=${recipientEmails.join(',')} ` +
+    `account=${account_id} email_id=${email_id || '?'} subject="${subjectLower.slice(0, 80)}"`,
+  );
+
+  // 1. Récupérer les enrollments actifs avec email_used = senderEmail sur ce account_id
+  const { data: enrollments, error: enrErr } = await supabase
+    .from('sequence_enrollments')
+    .select('id, sequence_id, profile_id, account_id, email_used')
+    .eq('account_id', account_id)
+    .eq('status', 'active')
+    .ilike('email_used', senderEmail);
+
+  if (enrErr) {
+    console.error('[unipile-webhook][mail] Error fetching enrollments:', enrErr);
+    return;
+  }
+
+  if (!enrollments || enrollments.length === 0) {
+    console.log('[unipile-webhook][mail] No active enrollment matched for', senderEmail);
+    return;
+  }
+
+  console.log(`[unipile-webhook][mail] Matched ${enrollments.length} enrollment(s)`);
+
+  // 2. Marquer chaque enrollment comme replied + canceller les étapes pending
+  const today = new Date().toISOString().split('T')[0];
+  for (const enrollment of enrollments) {
+    const { error: updErr } = await supabase
+      .from('sequence_enrollments')
+      .update({
+        status: 'replied',
+        replied_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', enrollment.id);
+
+    if (updErr) {
+      console.error('[unipile-webhook][mail] Error updating enrollment:', updErr);
+      continue;
+    }
+
+    await supabase
+      .from('sequence_step_executions')
+      .update({
+        status: 'cancelled',
+        skip_reason: 'Email reply detected via webhook',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('enrollment_id', enrollment.id)
+      .eq('status', 'scheduled');
+
+    await supabase
+      .from('sequence_analytics')
+      .upsert({
+        sequence_id: enrollment.sequence_id,
+        date: today,
+        replies_received: 1,
+      }, { onConflict: 'sequence_id,date' });
+
+    // Update job_candidate_status si on a un profile_id
+    if (enrollment.profile_id) {
+      const { data: jcsRows } = await supabase
+        .from('job_candidate_status')
+        .select('id, pipeline_stage')
+        .eq('candidate_id', enrollment.profile_id)
+        .in('status', ['contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated']);
+      if (jcsRows && jcsRows.length > 0) {
+        for (const row of jcsRows) {
+          const shouldUpdatePipeline = !row.pipeline_stage ||
+            row.pipeline_stage === 'Nouveau' ||
+            row.pipeline_stage === 'Contacté';
+          await supabase
+            .from('job_candidate_status')
+            .update({
+              status: 'replied',
+              ...(shouldUpdatePipeline ? { pipeline_stage: 'Pré-qualif' } : {}),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', row.id);
+        }
+      }
+    }
+
+    console.log('[unipile-webhook][mail] Enrollment', enrollment.id, 'marked replied (email)');
   }
 }

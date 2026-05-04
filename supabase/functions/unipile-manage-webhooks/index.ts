@@ -18,14 +18,16 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
 
-// Unipile API uses 'account_status' not 'accounts' for the source value
-type WebhookSource = 'messaging' | 'users' | 'account_status';
+// Unipile API source values (cf. Unipile webhooks docs)
+type WebhookSource = 'messaging' | 'users' | 'account_status' | 'email' | 'email_tracking';
 
 // Map our internal names to Unipile API source values
 const SOURCE_MAP: Record<string, WebhookSource> = {
   messaging: 'messaging',
   users: 'users',
   accounts: 'account_status',
+  email: 'email',
+  email_tracking: 'email_tracking',
 };
 
 // Reverse map for display
@@ -33,6 +35,8 @@ const REVERSE_SOURCE_MAP: Record<WebhookSource, string> = {
   messaging: 'messaging',
   users: 'users',
   account_status: 'accounts',
+  email: 'email',
+  email_tracking: 'email_tracking',
 };
 
 interface WebhookConfig {
@@ -130,7 +134,9 @@ Deno.serve(async (req) => {
         }
 
         const webhookUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
-        const allInternalSources = ['messaging', 'users', 'accounts'];
+        // 'email' = mail_received / mail_sent (réponses aux séquences email)
+        // 'email_tracking' = opens / clicks (analytics)
+        const allInternalSources = ['messaging', 'users', 'accounts', 'email', 'email_tracking'];
         const existingInternalSources = existingApiSources.map(s => REVERSE_SOURCE_MAP[s as WebhookSource] || s);
         
         const results: Array<{ source: string; success: boolean; error?: string; id?: string; skipped?: boolean }> = [];
