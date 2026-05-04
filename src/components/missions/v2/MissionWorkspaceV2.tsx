@@ -19,12 +19,14 @@
  *   │ ① Cadrage  ──  ② Sourcing & Outreach  ──  ③ Pipeline│
  *   ├─ Sub-tabs (selon la phase courante) ────────────────┤
  *   │ Brief · Process · Config                             │
- *   ├──────────────────────────┬──────────────────────────┤
- *   │                          │                          │
- *   │   Vue active             │   CopilotRail            │
- *   │   (composant existant)   │   (next-step + insights) │
- *   │                          │                          │
- *   └──────────────────────────┴──────────────────────────┘
+ *   ├──────────────────────────────────────────────────────┤
+ *   │                                                      │
+ *   │   Vue active (composant existant)                    │
+ *   │                                                      │
+ *   └──────────────────────────────────────────────────────┘
+ *
+ * Note : le copilot IA est accessible via le bouton flottant 👁
+ * en bas à droite (pas un rail latéral persistant).
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -49,7 +51,6 @@ import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionInsights } from '@/components/missions/MissionInsights';
 
 import { PhaseStepper, PhaseId } from './PhaseStepper';
-import { CopilotRail } from './CopilotRail';
 import { Pill } from './Pill';
 import { MissionOverviewV2 } from './MissionOverviewV2';
 import { MissionBriefV2 } from './MissionBriefV2';
@@ -252,7 +253,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
         })}
       </div>
 
-      {/* ── Body : main content + CopilotRail ── */}
+      {/* ── Body : main content (le copilot est accessible via le bouton flottant en bas à droite) ── */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto min-w-0">
           <div
@@ -325,101 +326,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
           </div>
         </div>
 
-        {/* ── CopilotRail à droite (caché sur mobile) ── */}
-        <div className="hidden lg:flex">
-          <CopilotRail phase={activePhase}>
-            <CopilotPhaseContent
-              phase={activePhase}
-              activeSub={activeSub}
-              readiness={readiness}
-              onJump={handleSubChange}
-            />
-          </CopilotRail>
-        </div>
       </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────
-// Contenu du CopilotRail selon la phase courante
-// (placeholder simple — l'IA contextuelle viendra dans une PR future)
-// ─────────────────────────────────────────────────────────────────
-
-interface CopilotPhaseContentProps {
-  phase: PhaseId;
-  activeSub: SubTab;
-  readiness: ReturnType<typeof useMissionReadiness>;
-  onJump: (sub: SubTab) => void;
-}
-
-const CopilotPhaseContent: React.FC<CopilotPhaseContentProps> = ({
-  phase,
-  activeSub,
-  readiness,
-  onJump,
-}) => {
-  // Calcule les prochaines étapes non-faites pour cette phase
-  const subsForPhase = PHASE_SUBS[phase].filter(s => s.id !== 'overview');
-  const incomplete = subsForPhase.filter(s => {
-    const r = readiness.find(rd => rd.id === s.id);
-    return r && !r.isComplete && !r.isLocked;
-  });
-
-  return (
-    <div className="p-4 space-y-3">
-      {/* Next-step card */}
-      {incomplete.length > 0 && incomplete[0].id !== activeSub && (
-        <div
-          className="rounded-lg p-3 border"
-          style={{
-            background: 'linear-gradient(135deg, hsl(271 81% 56% / 0.08), hsl(330 81% 60% / 0.08))',
-            borderColor: 'hsl(271 81% 56% / 0.3)',
-          }}
-        >
-          <p
-            className="text-[10px] uppercase tracking-wider font-semibold mb-1.5"
-            style={{ color: 'hsl(330 81% 75%)' }}
-          >
-            Étape suivante
-          </p>
-          <p className="text-[12px] font-medium mb-2.5">{incomplete[0].label}</p>
-          <button
-            type="button"
-            onClick={() => onJump(incomplete[0].id)}
-            className="w-full h-7 rounded-md text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-opacity"
-          >
-            Y aller →
-          </button>
-        </div>
-      )}
-
-      {/* Phase-specific tip */}
-      <div className="bg-card border border-border rounded-lg p-3">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-          Conseil
-        </p>
-        {phase === 1 && (
-          <p className="text-[12px] leading-snug text-muted-foreground">
-            Plus le brief est précis, meilleur sera le sourcing. Les compétences must-have et les critères d'évaluation sont les fields les plus impactants.
-          </p>
-        )}
-        {phase === 2 && (
-          <p className="text-[12px] leading-snug text-muted-foreground">
-            Personnalise tes messages avec un projet précis du candidat → +24% de réponses en moyenne.
-          </p>
-        )}
-        {phase === 3 && (
-          <p className="text-[12px] leading-snug text-muted-foreground">
-            Garde tes candidats engagés : un suivi rapide post-entretien améliore le taux d'acceptation d'offres.
-          </p>
-        )}
-      </div>
-
-      {/* Footer informatif */}
-      <p className="text-[10px] text-muted-foreground text-center pt-2 border-t border-border">
-        Plus de fonctionnalités IA contextuelles à venir.
-      </p>
     </div>
   );
 };
