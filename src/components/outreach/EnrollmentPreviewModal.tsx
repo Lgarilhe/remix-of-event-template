@@ -923,7 +923,7 @@ function MessageStepCard({
             )}
             {step.actionType === 'email' && (
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Objet</label>
+                <label className="text-[10px] text-muted-foreground">Objet</label>
                 {isEditing ? (
                   <Input
                     value={preview?.subject || ''}
@@ -937,7 +937,7 @@ function MessageStepCard({
             )}
             <div>
               {step.actionType === 'email' && (
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Message</label>
+                <label className="text-[10px] text-muted-foreground">Message</label>
               )}
               {isEditing ? (
                 <AiTextarea
@@ -1055,7 +1055,7 @@ function SummaryMode({
 
       <div className="border border-border rounded-lg overflow-hidden">
         <div className="px-3 py-2 bg-muted/30 border-b border-border">
-          <span className="text-[11px] font-medium uppercase tracking-wider">Séquence — {steps.length} étapes</span>
+          <span className="text-[11px] font-medium">Séquence — {steps.length} étapes</span>
         </div>
         <div className="p-2 space-y-1">
           {steps.slice(0, 6).map((step, i) => {

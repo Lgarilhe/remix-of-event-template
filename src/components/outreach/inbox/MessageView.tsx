@@ -610,7 +610,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     Résumé IA
                   </h3>
                   <button
@@ -778,7 +778,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                       className="flex items-center gap-3 my-6 px-2 select-none"
                     >
                       <div className="flex-1 h-px bg-border/60" />
-                      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 px-2">
+                      <span className="text-[11px] font-medium text-muted-foreground/70 px-2">
                         {item.label}
                       </span>
                       <div className="flex-1 h-px bg-border/60" />

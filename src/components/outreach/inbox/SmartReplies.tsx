@@ -61,7 +61,7 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
       data-component="smart-replies"
     >
       <Sparkles className="w-3 h-3 text-muted-foreground shrink-0" aria-hidden="true" />
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium shrink-0 mr-1">
+      <span className="text-[10px] text-muted-foreground/70 font-medium shrink-0 mr-1">
         Suggestions
       </span>
       <div className="flex items-center gap-1.5">

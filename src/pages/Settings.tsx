@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
 import { Button } from '@/components/ui/button';
@@ -54,7 +54,7 @@ const roleLabels = {
 };
 
 const Settings = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { organization, organizationId, isOwner, isAdmin, isCollaborator, isAgency } = useOrganization();
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, resendInvitation, isResendingInvitation, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
 
@@ -99,7 +99,7 @@ const Settings = () => {
     }
   };
 
-  const [activeTab, setActiveTab] = useState(() => {
+  const [activeTab, _setActiveTab] = useState(() => {
     const tab = searchParams.get('tab');
     if (tab === 'credits') return 'credits';
     if (tab === 'billing' && isAdmin) return 'billing';
@@ -112,6 +112,18 @@ const Settings = () => {
     if (tab === 'marketplace') return 'marketplace';
     return 'general';
   });
+
+  // Sync activeTab → URL pour bookmark / partage de lien direct
+  const setActiveTab = useCallback(
+    (next: string) => {
+      _setActiveTab(next);
+      const params = new URLSearchParams(searchParams);
+      if (next === 'general') params.delete('tab');
+      else params.set('tab', next);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const tabs = [
     { value: 'general', label: 'Général', icon3d: iconBuilding3d },

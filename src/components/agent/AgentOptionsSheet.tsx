@@ -43,7 +43,7 @@ export const AgentOptionsSheet: React.FC<AgentOptionsSheetProps> = ({
           transition={{ type: 'spring', damping: 26, stiffness: 300 }}
           className="shrink-0 border-t-2 border-border px-4 py-3 z-10 bg-background"
         >
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+          <p className="text-xs font-bold text-muted-foreground mb-2">
             Actions suggérées
           </p>
           <div className={useGrid

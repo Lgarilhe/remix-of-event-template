@@ -95,7 +95,7 @@ export const SnoozeArchiveButtons: React.FC<SnoozeArchiveButtonsProps> = ({
         </PopoverTrigger>
         <PopoverContent align="end" className="w-72 p-2">
           <div className="px-2 py-1.5 mb-1">
-            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="text-xs font-bold text-muted-foreground">
               Mettre en sommeil
             </div>
             <div className="text-[10px] text-muted-foreground/70 mt-0.5">
@@ -132,7 +132,7 @@ export const SnoozeArchiveButtons: React.FC<SnoozeArchiveButtonsProps> = ({
 
           {/* Custom date */}
           <div className="border-t border-border mt-2 pt-2 px-2">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold flex items-center gap-1 mb-1">
+            <label className="text-[10px] text-muted-foreground font-bold flex items-center gap-1 mb-1">
               <CalendarIcon className="w-2.5 h-2.5" aria-hidden="true" />
               Date personnalisée
             </label>

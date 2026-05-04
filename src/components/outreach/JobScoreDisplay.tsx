@@ -134,7 +134,7 @@ const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
   }[rec] || { icon: AlertCircle, label: 'Inconnu', cls: 'bg-muted text-muted-foreground border-border' };
   const Icon = config.icon;
   return (
-    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border uppercase tracking-wider rounded-lg", config.cls)}>
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border rounded-lg", config.cls)}>
       <Icon className="w-3 h-3" /> {config.label}
     </span>
   );
@@ -143,7 +143,7 @@ const RecommendationPill: React.FC<{ rec: string }> = ({ rec }) => {
 // ── Meta pill ──
 const MetaPill: React.FC<{ icon: React.ElementType; label: string; ok: boolean }> = ({ icon: Icon, label, ok }) => (
   <span className={cn(
-    "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border uppercase tracking-wider rounded-lg",
+    "inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border rounded-lg",
     ok ? "bg-background text-foreground border-border" : "bg-muted text-muted-foreground border-border"
   )}>
     <Icon className="w-3 h-3" /> {label}
@@ -176,7 +176,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       <div className="flex items-start gap-2.5 p-3 border border-border bg-muted rounded-lg">
         <Ban className="w-4 h-4 text-foreground/60 mt-0.5 shrink-0" />
         <div>
-          <p className="text-xs font-bold text-foreground uppercase tracking-wider">Éliminé par filtre</p>
+          <p className="text-xs font-bold text-foreground">Éliminé par filtre</p>
           <p className="text-xs text-muted-foreground mt-0.5">{result.hardFilterKO}</p>
         </div>
       </div>
@@ -244,7 +244,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
         <ScoreRing score={result.match_score} size={72} />
         <div className="flex-1 min-w-0 space-y-2">
           {jobTitle && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold">
               <Target className="w-3 h-3" />
               Match pour: <span className="text-foreground">{jobTitle}</span>
             </div>
@@ -268,7 +268,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       {/* Skills — unified row */}
       {allSkills.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs font-bold text-muted-foreground">
             <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Matchés ({result.matching_skills.length})</span>
             <span className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Manquants ({result.missing_skills.length})</span>
           </div>
@@ -320,7 +320,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       {/* Criteria evaluations from brief */}
       {result.criteriaEvaluations && result.criteriaEvaluations.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+          <p className="text-xs font-bold text-muted-foreground flex items-center gap-1">
             <Target className="w-3 h-3" /> Critères du brief
           </p>
           <div className="space-y-1">

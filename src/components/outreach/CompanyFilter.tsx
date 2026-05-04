@@ -25,9 +25,9 @@ export interface CompanyKeywordFilter {
 
 // Options for priority
 export const COMPANY_PRIORITY_OPTIONS = [
-  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-green-700', icon: '✓' },
-  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-blue-700', icon: '○' },
-  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-red-700', icon: '✕' },
+  { value: 'MUST_HAVE', label: 'Obligatoire', color: 'bg-success/10 text-success', icon: '✓' },
+  { value: 'CAN_HAVE', label: 'Souhaité', color: 'bg-info/10 text-info', icon: '○' },
+  { value: 'DOESNT_HAVE', label: 'Exclure', color: 'bg-destructive/10 text-destructive', icon: '✕' },
 ];
 
 // Options for scope
@@ -193,7 +193,7 @@ export const CompanyFilter: React.FC<CompanyFilterProps> = ({
                   <button 
                     type="button" 
                     onClick={() => onRemoveKeywordCompany(index)} 
-                    className="text-muted-foreground hover:text-red-500 hover:bg-destructive/10 rounded-full p-0.5 transition-colors"
+                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full p-0.5 transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>

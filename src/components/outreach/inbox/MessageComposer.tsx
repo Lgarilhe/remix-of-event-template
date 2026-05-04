@@ -399,7 +399,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-44 p-1" side="top" align="start">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+                <p className="text-[10px] text-muted-foreground px-2 py-1.5">
                   Traduire vers
                 </p>
                 <button
@@ -578,7 +578,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
             {/* Actions droite */}
             <div className="flex items-center gap-2.5">
-              <kbd className="hidden md:inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">
+              <kbd className="hidden md:inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 font-medium">
                 {channel ? <span>{channel} ·</span> : null}
                 <span className="px-1 py-0.5 rounded border border-border/60">{cmd}+↵</span>
               </kbd>
@@ -625,7 +625,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+              <p className="text-[10px] text-muted-foreground font-semibold mb-1">
                 Original
               </p>
               <div className="p-3 rounded-lg border border-border bg-muted/20 text-[13px] leading-relaxed whitespace-pre-wrap">
@@ -633,7 +633,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               </div>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-foreground font-semibold mb-1">
+              <p className="text-[10px] text-foreground font-semibold mb-1">
                 Traduction
               </p>
               <div className="p-3 rounded-lg border-2 border-foreground/20 bg-foreground/5 text-[13px] leading-relaxed whitespace-pre-wrap">
@@ -674,7 +674,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-accent/30 transition-all group"
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground bg-foreground/10 px-2 py-0.5 rounded">
+                  <span className="text-[10px] font-semibold text-foreground bg-foreground/10 px-2 py-0.5 rounded">
                     {v.label}
                   </span>
                   <span className="text-[10px] text-muted-foreground">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -46,11 +46,23 @@ const viewTabs = [
 ] as const;
 
 export default function ATS() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialView = (searchParams.get('view') as any) || 'kanban';
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics'>(
+  const [activeView, _setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics'>(
     ['kanban', 'table', 'timeline', 'shortlist', 'analytics'].includes(initialView) ? initialView : 'kanban'
+  );
+
+  // Sync view → URL pour bookmark / partage de lien direct
+  const setActiveView = useCallback(
+    (next: 'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics') => {
+      _setActiveView(next);
+      const params = new URLSearchParams(searchParams);
+      if (next === 'kanban') params.delete('view');
+      else params.set('view', next);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
   );
   const [showReminders, setShowReminders] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);

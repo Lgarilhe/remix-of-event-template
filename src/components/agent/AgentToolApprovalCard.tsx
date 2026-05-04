@@ -139,7 +139,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="text-[10px] font-bold text-muted-foreground">
                     Action proposée
                   </span>
                   <span className="text-[10px] font-mono text-muted-foreground/60">

@@ -292,7 +292,7 @@ const StatCard: React.FC<{
   >
     <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
       {icon}
-      <span className="text-[10px] uppercase tracking-wider font-semibold">{label}</span>
+      <span className="text-[10px] font-semibold">{label}</span>
     </div>
     <span
       className={cn(
@@ -464,7 +464,7 @@ const ReportEntryRow: React.FC<ReportEntryRowProps> = ({ entry, isSelected, onTo
           <div className="px-4 pb-3 ml-[3.25rem] text-xs text-muted-foreground space-y-1.5 border-l-2 border-border pl-3">
             {entry.hardFilterKO && (
               <p>
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-foreground/70 mr-1">Filtre :</span>
+                <span className="text-[10px] font-semibold text-foreground/70 mr-1">Filtre :</span>
                 {entry.hardFilterKO}
               </p>
             )}

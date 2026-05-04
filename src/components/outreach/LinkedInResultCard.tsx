@@ -248,7 +248,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '300ms' }} />
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '600ms' }} />
             </div>
-            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">
               Scoring…
             </span>
           </div>
@@ -395,7 +395,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (
-                    <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
+                    <span className="text-[8px] font-bold px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
                       {companyType.label}
                     </span>
                   )}

@@ -353,7 +353,7 @@ function StepCard({ current, total, title, question }: {
           {current}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="text-[10px] font-semibold text-muted-foreground">
             Étape {current}/{total}
           </p>
           <p className="text-sm font-semibold text-foreground">{title}</p>
@@ -404,7 +404,7 @@ function SummaryCard({ items, tags }: { items: string[]; tags: string[] }) {
       style={{ borderLeft: '3px solid hsl(var(--skalr-purple))' }}
     >
       <p
-        className="text-[10px] font-bold uppercase tracking-wider mb-2.5"
+        className="text-[10px] font-bold mb-2.5"
         style={{ color: 'hsl(var(--skalr-purple))' }}
       >
         Résumé du poste
@@ -517,7 +517,7 @@ function DiagnosticCard({ data }: { data: DiagnosticData }) {
           <div key={i} className="flex items-start gap-2.5">
             <item.icon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{item.label}</span>
+              <span className="text-[10px] font-semibold text-muted-foreground/60">{item.label}</span>
               <p className="text-[13px] text-foreground/80 leading-relaxed">{item.value}</p>
             </div>
           </div>
@@ -604,7 +604,7 @@ function ScoringTestCard({ data }: { data: ScoringTestData }) {
                     <p className="text-xs text-muted-foreground truncate">{profile.title} @ {profile.company}</p>
                   </div>
                 </div>
-                <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider shrink-0", rec.cls)}>
+                <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0", rec.cls)}>
                   {rec.label}
                 </span>
               </div>
@@ -744,7 +744,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
   return (
     <div className="border border-border/60 rounded-xl overflow-hidden">
       <div className="px-4 py-3 flex items-center justify-between bg-muted/20">
-        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+        <span className="text-xs font-bold text-foreground">
           Plan de recherche
         </span>
         <div className="flex items-center gap-1.5">
@@ -754,7 +754,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
             <span className="text-[10px] text-muted-foreground/40">—</span>
           ) : estimatedCount !== null ? (
             <span className={cn(
-              "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md tabular-nums",
+              "px-2 py-0.5 text-[10px] font-bold rounded-md tabular-nums",
               estimatedCount > 100
                 ? "bg-success/10 text-success border border-success/20"
                 : estimatedCount > 20
@@ -773,7 +773,7 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
             <div key={i} className="flex items-start gap-3">
               <span className="h-1.5 w-1.5 rounded-full bg-foreground/20 shrink-0 mt-[7px]" />
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</p>
+                <p className="text-[10px] font-semibold text-muted-foreground">{item.label}</p>
                 <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{item.value}</p>
               </div>
             </div>
@@ -784,17 +784,17 @@ function SearchPlanCard({ plan, conversationId }: { plan: Record<string, unknown
       {(locationKeywords.length > 0 || filters.calculated_experience_min != null || stopConditions.target_go_profiles) && (
         <div className="border-t border-border/30 px-4 py-2.5 flex flex-wrap gap-1.5">
           {locationKeywords.length > 0 && (
-            <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-muted text-muted-foreground">
+            <span className="px-2 py-1 text-[10px] font-semibold rounded-md bg-muted text-muted-foreground">
               {locationKeywords.join(', ')}
             </span>
           )}
           {filters.calculated_experience_min != null && (
-            <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-muted text-muted-foreground">
+            <span className="px-2 py-1 text-[10px] font-semibold rounded-md bg-muted text-muted-foreground">
               {filters.calculated_experience_min}–{filters.calculated_experience_max} ans
             </span>
           )}
           {stopConditions.target_go_profiles && (
-            <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-muted text-muted-foreground">
+            <span className="px-2 py-1 text-[10px] font-semibold rounded-md bg-muted text-muted-foreground">
               {stopConditions.target_go_profiles} profils Go
             </span>
           )}
@@ -829,7 +829,7 @@ function CandidateMiniCard({ candidate }: { candidate: ParsedCandidate }) {
       </div>
       {candidate.score && (
         <span className={cn(
-          "text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 uppercase tracking-wider",
+          "text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0",
           scoreStyles[candidate.score] || ''
         )}>
           {candidate.score}
@@ -1047,7 +1047,7 @@ function SampleProfileCard({ profile, feedback, onFeedback, locked }: {
       {/* Trajectory with company logos */}
       {profile.trajectory.length > 0 && (
         <div className="px-4 pb-2">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Parcours</p>
+          <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">Parcours</p>
           <div className="flex items-center gap-2 text-xs text-foreground/70 overflow-x-auto no-scrollbar">
             {profile.trajectory.map((t, i) => {
               const companyName = trajectoryCompanies[i];

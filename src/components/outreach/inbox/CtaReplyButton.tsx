@@ -200,7 +200,7 @@ export const CtaReplyButton: React.FC<CtaReplyButtonProps> = ({
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-72 p-1" side="top" align="start">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+          <p className="text-[10px] text-muted-foreground px-2 py-1.5">
             Choisis un CTA
           </p>
           <div className="flex flex-col gap-0.5">
