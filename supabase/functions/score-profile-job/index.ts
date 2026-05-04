@@ -1422,13 +1422,33 @@ function computeFinalScore(weightedScore: number, semanticScore: number | null, 
     }
     return Math.round(total / totalWeight);
   }
-  
+
   // Fallback without LLM: algo 80%, semantic 20%
   if (semanticScore !== null) {
     return Math.round(weightedScore * 0.8 + semanticScore * 0.2);
   }
-  
+
   return weightedScore;
+}
+
+/**
+ * Cap le score final à 50 max si une compétence MUST-HAVE manque.
+ * Avant ce fix : un profil pouvait être noté 80+ par le LLM même si
+ * une compétence obligatoire (ex: "React") manquait → faux positifs.
+ * Après : si mustHavePassed === false → score plafonné, recommandation
+ * passe en "skip" automatiquement.
+ *
+ * `uncertain` (LLM pas sûr, ex: profil sans détails) → on cap à 65 pour
+ * forcer un "maybe" et inviter le recruteur à vérifier manuellement.
+ */
+function capScoreOnMustHaveFail(
+  finalScore: number,
+  mustHavePassed: boolean | undefined,
+  mustHaveUncertain: boolean | undefined,
+): number {
+  if (mustHavePassed === false) return Math.min(finalScore, 50);
+  if (mustHaveUncertain === true) return Math.min(finalScore, 65);
+  return finalScore;
 }
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
@@ -1804,21 +1824,35 @@ async function scoreProfile(
     // When LLM is unavailable, we still score with algo + semantic only
   }
 
-  const finalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
+  const rawFinalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
+  // Cap le score si must-have manquant — évite qu'un LLM trop bienveillant
+  // donne 80 à un profil qui n'a pas la compétence obligatoire.
+  const finalScore = capScoreOnMustHaveFail(
+    rawFinalScore,
+    llmResult?.mustHavePassed,
+    llmResult?.mustHaveUncertain,
+  );
 
   const recommendation = getRecommendation(finalScore);
 
   // Build summary, strengths, concerns — prefer LLM output when available
-  const summary =
+  let summary =
     llmResult?.summary ||
     (finalScore >= 60
       ? `Bon match algo (${weighted.score}/100)`
       : finalScore >= 40
         ? `Match partiel (${weighted.score}/100)`
         : `Faible match (${weighted.score}/100)`);
+  // Annote le summary si on a capped à cause d'un must-have manquant
+  if (rawFinalScore !== finalScore && llmResult?.mustHavePassed === false) {
+    summary = `⚠️ Compétence obligatoire manquante — ${summary}`;
+  }
 
   const strengths = llmResult?.strengths || [];
   const concerns = llmResult?.concerns || [];
+  if (rawFinalScore !== finalScore && llmResult?.mustHavePassed === false) {
+    concerns.unshift(`Score plafonné (${rawFinalScore} → ${finalScore}) car must-have manquant`);
+  }
 
   // Use LLM's skill analysis when available, fallback to heuristic
   const matchedSkills = llmResult?.matchedSkills?.length ? llmResult.matchedSkills : weighted.matchedSkills;
@@ -2232,7 +2266,27 @@ Deno.serve(async (req) => {
         finalScore = Math.round(finalScore * 0.9); // -10% for partial data
       }
 
+      // Cap si must-have manquant (priorité sur les data penalties).
+      // Evite qu'un profil sans la compétence obligatoire passe à 70+
+      // juste parce que le LLM était bienveillant ou qu'il a un beau parcours.
+      const scoreBeforeMustHaveCap = finalScore;
+      finalScore = capScoreOnMustHaveFail(
+        finalScore,
+        llmResult?.mustHavePassed,
+        (llmResult as any)?.mustHaveUncertain,
+      );
+
       const recommendation = getRecommendation(finalScore);
+
+      // Annote concerns si on a capped à cause d'un must-have failed
+      if (scoreBeforeMustHaveCap !== finalScore && llmResult?.mustHavePassed === false) {
+        if (llmResult.concerns) {
+          llmResult.concerns = [
+            `Score plafonné (${scoreBeforeMustHaveCap} → ${finalScore}) car compétence must-have manquante`,
+            ...llmResult.concerns,
+          ];
+        }
+      }
 
       const result: ScoringResult = {
         profile_id: ps.profile.id,

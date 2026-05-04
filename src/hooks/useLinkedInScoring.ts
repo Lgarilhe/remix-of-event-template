@@ -538,6 +538,37 @@ export function useLinkedInScoring({
       return;
     }
 
+    // ── PRÉ-CHECK 1 : brief complet ?
+    // Sans skills_must_have ni description, le scoring n'a pas de quoi
+    // évaluer la pertinence. On bloque pour éviter des scores hauts non
+    // fondés.
+    const hasMustHave = !!(selectedJob.mustHave && selectedJob.mustHave.trim().length > 0);
+    const hasSkills = Array.isArray(selectedJob.skills) && selectedJob.skills.length > 0;
+    const hasDescription = !!(selectedJob.description && selectedJob.description.trim().length >= 30);
+    const isMissionJob = typeof selectedJob.id === 'string' && selectedJob.id.startsWith('project:');
+    if (isMissionJob && !hasMustHave && !hasSkills && !hasDescription) {
+      toast.error('Brief incomplet', {
+        description: 'Renseigne au moins les compétences must-have ou la description de la mission avant de lancer le scoring — sinon les scores ne seront pas pertinents.',
+        duration: 8000,
+      });
+      return;
+    }
+
+    // ── PRÉ-CHECK 2 : taille du batch raisonnable
+    // Au-delà de 30 profils, le batch prend 1-3 minutes (10 profils/call,
+    // 3 calls en parallèle, ~20s/call). On confirme avec l'user.
+    const SAFE_BATCH_SIZE = 30;
+    if (selectedProfiles.size > SAFE_BATCH_SIZE) {
+      const eta = Math.ceil(selectedProfiles.size / 30) * 60; // ~1min par tranche de 30
+      const ok = window.confirm(
+        `Tu vas scorer ${selectedProfiles.size} profils en une fois.\n\n`
+        + `Temps estimé : ~${eta < 60 ? eta + ' secondes' : Math.ceil(eta / 60) + ' minutes'}\n`
+        + `Crédits IA consommés : ~${selectedProfiles.size}\n\n`
+        + `Continuer ?`
+      );
+      if (!ok) return;
+    }
+
     setScoringInProgress(true);
 
     // 🐛 BUG FIX Opus A1 (race scoring cross-projet) : capture l'ID du job au
