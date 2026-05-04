@@ -6,10 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Plus, 
+import {
+  Plus,
   Search,
-  Star,
   BarChart3,
   MoreHorizontal,
   Trash2, 
@@ -542,38 +541,38 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-lg sm:text-xl font-bold text-foreground uppercase tracking-tight">Séquences</h1>
-        <div className="flex items-center gap-0 overflow-x-auto no-scrollbar">
-          <button 
+        <h1 className="text-lg sm:text-xl font-semibold text-foreground tracking-tight">Séquences</h1>
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <button
             onClick={() => setShowGlobalAnalytics(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group shrink-0"
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
           >
-            <BarChart3 className="w-3.5 h-3.5 relative z-10" />
-            <span className="hidden sm:inline relative z-10">Analytics</span>
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Analytics</span>
           </button>
-          <button 
+          <button
             onClick={handleForceReschedule}
             disabled={forceRescheduling || !selectedAccount}
-            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-accent text-foreground group shrink-0 disabled:opacity-50"
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-accent/40 text-foreground hover:bg-accent/60 transition-colors shrink-0 disabled:opacity-50"
             title="Envoyer toutes les actions du jour maintenant"
           >
-            <Zap className={cn("w-3.5 h-3.5 relative z-10", forceRescheduling && "animate-pulse")} />
-            <span className="hidden sm:inline relative z-10">{forceRescheduling ? 'En cours...' : 'Envoyer tout'}</span>
+            <Zap className={cn("w-3.5 h-3.5", forceRescheduling && "animate-pulse")} />
+            <span className="hidden sm:inline">{forceRescheduling ? 'En cours…' : 'Envoyer tout'}</span>
           </button>
-          <button 
+          <button
             onClick={() => setShowActivityLog(true)}
-            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-background text-foreground group shrink-0"
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
           >
-            <Activity className="w-3.5 h-3.5 relative z-10" />
-            <span className="hidden sm:inline relative z-10">Journal</span>
+            <Activity className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Journal</span>
           </button>
-          <button 
+          <button
             onClick={handleCreateNew}
-            className="relative overflow-hidden flex items-center gap-1.5 h-9 px-3 sm:px-4 text-xs sm:text-xs font-medium uppercase tracking-wider border border-border border-l-0 bg-foreground text-background group shrink-0"
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-colors shrink-0"
           >
-            <Send className="w-3.5 h-3.5 relative z-10" />
-            <span className="hidden sm:inline relative z-10">Créer une séquence</span>
-            <span className="sm:hidden relative z-10">Créer</span>
+            <Send className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Créer une séquence</span>
+            <span className="sm:hidden">Créer</span>
           </button>
         </div>
       </div>
@@ -609,24 +608,25 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       {/* Table */}
       {sequences.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-background border border-border">
+        <div className="flex flex-col items-center justify-center py-16 bg-card rounded-xl border border-border">
           <div className="text-4xl mb-4">🔗</div>
-          <h3 className="font-bold text-lg text-foreground mb-2 uppercase tracking-wide">Séquences automatisées</h3>
+          <h3 className="font-semibold text-base text-foreground mb-2 tracking-tight">Séquences automatisées</h3>
           <p className="text-muted-foreground text-center mb-6 max-w-md text-sm">
             Les séquences envoient automatiquement des messages personnalisés à vos candidats en plusieurs étapes.
             L'IA adapte chaque message au profil du candidat et au poste.
           </p>
-          <button 
+          <button
             onClick={handleCreateNew}
-            className="relative overflow-hidden h-9 px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group"
+            className="flex items-center gap-2 h-9 px-5 bg-foreground text-background hover:bg-foreground/90 rounded-lg text-sm font-semibold transition-colors"
           >
-            <span className="relative z-10 flex items-center gap-2">Créer ma première séquence</span>
+            <Send className="w-4 h-4" />
+            Créer ma première séquence
           </button>
         </div>
       ) : (
-        <div className="bg-background border border-border overflow-hidden">
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
           {/* Table header - hidden on mobile */}
-          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 bg-muted border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 bg-muted/40 border-b border-border text-[11px] font-semibold text-muted-foreground">
             <div className="w-5" />
             <div>Statut</div>
             <div>Nom de la séquence</div>
@@ -703,13 +703,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
                 </div>
                 <div className="flex items-center justify-center gap-1">
-                  <button className="p-1.5 hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors">
-                    <Star className="w-4 h-4" />
-                  </button>
-                  <button 
-                    className="p-1.5 hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
+                  <button
+                    className="p-1.5 rounded-md hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={(e) => { e.stopPropagation(); setAnalyticsSequence(seq); }}
                     title="Voir les analytics"
+                    aria-label="Voir les analytics de la séquence"
                   >
                     <BarChart3 className="w-4 h-4" />
                   </button>

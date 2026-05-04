@@ -160,7 +160,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
           </div>
           <button
             onClick={() => { setShowEmptyState(false); setOutreachTab('sequences'); }}
-            className="shrink-0 flex items-center gap-2 h-9 px-4 text-xs font-bold uppercase tracking-wider bg-foreground text-background hover:bg-foreground/90 transition-colors rounded-lg"
+            className="shrink-0 flex items-center gap-2 h-9 px-4 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 transition-colors rounded-lg"
           >
             Créer une séquence
             <ArrowRight className="w-3.5 h-3.5" />
@@ -182,11 +182,11 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Compte:</span>
+          <span className="text-xs font-medium text-muted-foreground">Compte :</span>
           <select
             value={selectedAccount || ''}
             onChange={(e) => setSelectedAccount(e.target.value || null)}
-            className="h-8 px-2 text-xs uppercase tracking-wider border border-border bg-background text-foreground font-medium"
+            className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground font-medium"
           >
             {accounts.map(a => (
               <option key={a.id} value={a.id}>{a.name || a.identifier}</option>
@@ -197,18 +197,18 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
 
       {/* Enrollment stats */}
       {enrollmentStats.total > 0 && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 border-b border-border">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">
-            {enrollmentStats.total} inscrits
+        <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2.5 border-b border-border">
+          <span className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{enrollmentStats.total}</span> inscrits
           </span>
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">
-            {enrollmentStats.active} en cours
+          <span className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{enrollmentStats.active}</span> en cours
           </span>
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">
-            {enrollmentStats.replied} répondu
+          <span className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{enrollmentStats.replied}</span> répondu
           </span>
           {enrollmentStats.replied > 0 && (
-            <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+            <span className="text-xs font-semibold text-success">
               {Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)}% taux de réponse
             </span>
           )}
@@ -216,19 +216,20 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
       )}
 
       {/* Sub-tabs */}
-      <div className="flex gap-0 px-4 pt-3 pb-0">
-        {subTabs.map((sub, idx) => (
+      <div className="flex gap-1 px-4 pt-3 pb-0">
+        {subTabs.map((sub) => (
           <button
             key={sub.value}
             onClick={() => setOutreachTab(sub.value as 'sequences' | 'invitations')}
             className={cn(
-              "relative overflow-hidden flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors group shrink-0",
-              idx > 0 && "border-l-0",
-              outreachTab === sub.value ? "bg-foreground text-background" : "bg-background text-foreground"
+              "flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border transition-colors shrink-0",
+              outreachTab === sub.value
+                ? "bg-foreground text-background border-foreground"
+                : "bg-background text-foreground border-border hover:bg-muted/50"
             )}
           >
-            <span className="relative z-10">{sub.emoji}</span>
-            <span className="relative z-10">{sub.label}</span>
+            <span>{sub.emoji}</span>
+            <span>{sub.label}</span>
           </button>
         ))}
       </div>

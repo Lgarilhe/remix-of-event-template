@@ -118,7 +118,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
             variant="outline"
             size="sm"
             title="Inscrire dans une séquence d'outreach"
-            className="border-green-600/60 text-green-700 hover:bg-success/10 hover:border-green-600 dark:text-green-500 dark:hover:text-green-400 px-2.5 h-7 gap-1.5 text-xs font-medium rounded-lg shrink-0"
+            className="border-success/60 text-success hover:bg-success/10 hover:border-success px-2.5 h-7 gap-1.5 text-xs font-medium rounded-lg shrink-0"
           >
             <GitBranch className="w-3.5 h-3.5 shrink-0" />
             Séquence
@@ -163,7 +163,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                 >
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
-                      <GitBranch className="w-4 h-4 text-green-600" />
+                      <GitBranch className="w-4 h-4 text-success" />
                       <span className="font-medium">{seq.name}</span>
                     </div>
                     <Badge variant="secondary" className="text-xs">

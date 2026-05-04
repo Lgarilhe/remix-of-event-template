@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -438,8 +439,18 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   const primarySteps = useMemo(() => getPrimarySteps(sequence.steps), [sequence.steps]);
 
   const handleSave = async () => {
-    if (!sequence.name.trim() || sequence.steps.length === 0) return;
-    
+    // Validation user-visible : toast au lieu d'un return silencieux
+    if (!sequence.name.trim()) {
+      toast.error('Nom requis', { description: 'Donnez un nom à votre séquence avant de l\'enregistrer.' });
+      if (mode === 'wizard') setWizardStep('basics');
+      return;
+    }
+    if (sequence.steps.length === 0) {
+      toast.error('Ajoutez au moins une étape', { description: 'Une séquence doit contenir au moins une action.' });
+      if (mode === 'wizard') setWizardStep('steps');
+      return;
+    }
+
     const errors: string[] = [];
     sequence.steps.forEach(s => {
       const stepLabel = `Étape ${s.order + 1}${s.variantGroup ? ` (${s.variantGroup})` : ''}`;
@@ -456,17 +467,26 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
         errors.push(`${stepLabel}: le seuil de score est requis`);
       }
     });
-    
+
     if (errors.length > 0) {
       setValidationErrors(errors);
       if (mode === 'wizard') setWizardStep('review');
+      toast.error(`${errors.length} erreur${errors.length > 1 ? 's' : ''} à corriger`, {
+        description: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} autre${errors.length > 2 ? 's' : ''})` : ''),
+      });
       return;
     }
-    
+
     setIsSaving(true);
     try {
       await onSave(sequence);
+      toast.success('Séquence enregistrée');
       onClose();
+    } catch (err) {
+      console.error('[SequenceBuilder] save failed:', err);
+      toast.error('Erreur à l\'enregistrement', {
+        description: err instanceof Error ? err.message : 'Réessayez dans un instant.',
+      });
     } finally {
       setIsSaving(false);
     }

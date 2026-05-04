@@ -68,7 +68,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
         initial={{ y: 10, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1, duration: 0.3 }}
-        className="text-base font-bold uppercase tracking-wider text-foreground mb-2"
+        className="text-lg font-semibold text-foreground mb-2 tracking-tight"
       >
         Contactez vos meilleurs candidats
       </motion.h2>
@@ -100,7 +100,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
               )}
             >
               {opt.recommended && (
-                <span className="absolute -top-2.5 right-2 flex items-center gap-1 px-2 py-0.5 bg-accent text-foreground text-xs font-bold uppercase tracking-wider border border-border">
+                <span className="absolute -top-2 right-2 flex items-center gap-1 px-2 py-0.5 bg-accent text-foreground text-[10px] font-semibold rounded-md border border-border">
                   <Crown className="w-2.5 h-2.5" />
                   Recommandé
                 </span>
@@ -111,7 +111,7 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
                 <Icon className="w-4 h-4 text-foreground" />
               </div>
 
-              <h3 className="text-xs font-bold uppercase tracking-wider text-foreground mb-1">
+              <h3 className="text-sm font-semibold text-foreground mb-1">
                 {opt.title}
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
@@ -130,9 +130,9 @@ export const OutreachEmptyState: React.FC<OutreachEmptyStateProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="mt-6 text-xs text-muted-foreground uppercase tracking-wider"
+          className="mt-6 text-xs text-muted-foreground"
         >
-          {goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} 🟢 Go — prêts à être contactés
+          <span className="font-semibold text-foreground">{goCount}</span> candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} 🟢 Go — prêts à être contactés
         </motion.p>
       )}
     </div>

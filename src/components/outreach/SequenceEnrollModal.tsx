@@ -180,7 +180,14 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           };
         });
 
-        await supabase.from('sequence_step_executions').insert(execRows);
+        const { error: execError } = await supabase.from('sequence_step_executions').insert(execRows);
+        if (execError) {
+          console.error('[SequenceEnrollModal] Failed to schedule first executions:', execError);
+          toast.error('Inscriptions créées mais étapes non planifiées', {
+            description: 'Lance "Traiter les séquences" depuis Outreach pour relancer.',
+          });
+          // Ne pas throw — l'enrollment est déjà créé, le cron pourra rattraper
+        }
       }
 
       // 4. Batch upsert job_candidate_status if a job is linked
@@ -199,9 +206,13 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           }));
 
         if (statusRows.length > 0) {
-          await supabase
+          const { error: statusError } = await supabase
             .from('job_candidate_status')
             .upsert(statusRows, { onConflict: 'job_id,candidate_id,created_by' });
+          if (statusError) {
+            console.warn('[SequenceEnrollModal] job_candidate_status upsert failed:', statusError);
+            // Non-bloquant : l'enrollment est OK, le tracking pipeline se rattrapera
+          }
         }
       }
 
