@@ -142,9 +142,14 @@ const getAvailableStepTypes = (previousSteps: SequenceStep[]) => {
 
   const availableActions = ACTIONS.filter(action => {
     if (action.excludeIfPrevious.some(ex => previousTypes.includes(ex as SequenceStep['actionType']))) return false;
-    // requiresConnection : on autorise quand même comme 1er step
-    // (cas candidat déjà 1er degré). Sinon, demande un wait_connection avant.
-    if (action.requiresConnection && previousSteps.length > 0 && !previousTypes.includes('wait_connection')) return false;
+    // requiresConnection : Message LinkedIn nécessite une connexion 1er degré.
+    // On autorise dans 3 cas :
+    //   1. C'est le 1er step (cas candidat déjà connecté)
+    //   2. Un wait_connection est avant (l'invitation a été acceptée)
+    //   3. Un check_connection est avant (la branche "1er degré" du test)
+    if (action.requiresConnection && previousSteps.length > 0
+        && !previousTypes.includes('wait_connection')
+        && !previousTypes.includes('check_connection')) return false;
     return true;
   });
 
