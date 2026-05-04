@@ -166,6 +166,41 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ─── Idempotency : dédoublonne les retries Unipile (5× selon doc) ──────
+    // Construit un event_key stable par event. Ordre de préférence :
+    // 1. message_id / email_id pour les events de message
+    // 2. account_id + event + timestamp pour les status changes
+    // 3. SHA simplifié du payload sinon
+    const eventIdRaw =
+      (payload as any).message_id
+      || (payload as any).email_id
+      || ((payload as any).AccountStatus
+          ? `${(payload as any).AccountStatus.account_id}:${(payload as any).AccountStatus.message}:${Math.floor(Date.now() / 60000)}`
+          : null)
+      || `${payload.account_id || 'no-acc'}:${payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${Math.floor(Date.now() / 60000)}`;
+    const eventKey = `unipile:${payload.event}:${eventIdRaw}`.slice(0, 500);
+
+    try {
+      const { data: isNew } = await supabase.rpc('record_webhook_event', {
+        p_event_key: eventKey,
+        p_provider: 'unipile',
+        p_event_type: payload.event,
+        p_account_id: payload.account_id || null,
+      });
+      if (isNew === false) {
+        console.log('[unipile-webhook] Duplicate event ignored:', eventKey);
+        return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } catch (e) {
+      // Si la dédup échoue (table absente, RPC indisponible), on continue
+      // pour pas bloquer la prod. Les doublons restent possibles mais l'event
+      // sera traité au moins une fois.
+      console.warn('[unipile-webhook] Dedup check failed (non-blocking):', e);
+    }
+
     // Resolve per-org Unipile credentials based on the account_id in the webhook payload
     const uCreds = await resolveCredsForAccount(payload.account_id || '', supabase);
 

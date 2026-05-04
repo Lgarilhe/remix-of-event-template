@@ -137,28 +137,52 @@ Deno.serve(async (req) => {
     });
   }
 
+  let heartbeatAction: string | null = null;
   try {
-
     const { action, force } = await req.json();
+    heartbeatAction = action;
 
+    let response: Response;
     switch (action) {
       case 'process':
-        return await handleProcess(supabase, !!force);
+        response = await handleProcess(supabase, !!force);
+        break;
       case 'check_replies':
-        return await handleCheckReplies(supabase);
+        response = await handleCheckReplies(supabase);
+        break;
       case 'check_timeouts':
-        return await handleCheckTimeouts(supabase);
+        response = await handleCheckTimeouts(supabase);
+        break;
       case 'check_wait_events':
-        return await handleCheckWaitEvents(supabase);
+        response = await handleCheckWaitEvents(supabase);
+        break;
       case 'force_reschedule':
-        return await handleForceReschedule(supabase);
+        response = await handleForceReschedule(supabase);
+        break;
       default:
         return new Response(JSON.stringify({ error: 'Unknown action' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
     }
+
+    // Heartbeat OK — fire-and-forget, ne bloque pas la réponse
+    supabase.rpc('record_cron_heartbeat', {
+      p_job_name: `process-sequences:${action}`,
+      p_status: 'ok',
+      p_error: null,
+    }).then(() => {}).catch((e: unknown) => console.warn('[process] heartbeat write failed:', e));
+
+    return response;
   } catch (error) {
     console.error('Sequence processor error:', error);
+    // Heartbeat ERROR — important pour détection panne
+    if (heartbeatAction) {
+      supabase.rpc('record_cron_heartbeat', {
+        p_job_name: `process-sequences:${heartbeatAction}`,
+        p_status: 'error',
+        p_error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+      }).then(() => {}).catch(() => {});
+    }
     return new Response(JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

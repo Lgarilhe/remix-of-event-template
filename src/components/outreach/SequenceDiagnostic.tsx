@@ -42,6 +42,15 @@ interface SequenceDiagnosticProps {
   projectId?: string;
 }
 
+interface CronHeartbeat {
+  job_name: string;
+  last_run_at: string;
+  last_status: string;
+  last_error: string | null;
+  run_count: number;
+  error_count: number;
+}
+
 interface DiagnosticData {
   loading: boolean;
   lastExecutionAt: Date | null;
@@ -51,6 +60,7 @@ interface DiagnosticData {
   scheduledCount: number;
   activeEnrollments: number;
   recentErrors: Array<{ id: string; error_message: string; created_at: string }>;
+  heartbeats: CronHeartbeat[];
 }
 
 const initialState: DiagnosticData = {
@@ -62,6 +72,7 @@ const initialState: DiagnosticData = {
   scheduledCount: 0,
   activeEnrollments: 0,
   recentErrors: [],
+  heartbeats: [],
 };
 
 export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
@@ -152,6 +163,13 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         .slice(0, 5)
         .map(e => ({ id: e.id, error_message: e.error_message, created_at: e.created_at }));
 
+      // 6. Cron heartbeats (table cron_heartbeat, écrite par chaque cron run)
+      const { data: heartbeatRows } = await (supabase
+        .from('cron_heartbeat')
+        .select('job_name, last_run_at, last_status, last_error, run_count, error_count')
+        .like('job_name', 'process-sequences:%')
+        .order('last_run_at', { ascending: false }) as any);
+
       setData({
         loading: false,
         lastExecutionAt,
@@ -161,6 +179,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         scheduledCount: scheduledCount || 0,
         activeEnrollments: activeCount || 0,
         recentErrors,
+        heartbeats: (heartbeatRows as CronHeartbeat[]) || [],
       });
     } catch (err) {
       console.error('[SequenceDiagnostic] refresh error:', err);
@@ -197,9 +216,16 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
     }
   };
 
-  const cronHealthy = data.lastExecutionAt
-    ? Date.now() - data.lastExecutionAt.getTime() < 10 * 60 * 1000 // < 10 min
+  // Le cron principal est 'process-sequences:process' (toutes les minutes).
+  // On regarde son heartbeat pour savoir si le pipeline tourne, indépendamment
+  // de la présence de trafic (avant on devinait via la dernière step_execution
+  // — peu fiable si aucune séquence active).
+  const mainHeartbeat = data.heartbeats.find(h => h.job_name === 'process-sequences:process');
+  const lastCronRunAt = mainHeartbeat?.last_run_at ? new Date(mainHeartbeat.last_run_at) : null;
+  const cronHealthy = lastCronRunAt
+    ? Date.now() - lastCronRunAt.getTime() < 5 * 60 * 1000 // < 5 min (cron toutes les min)
     : false;
+  const cronHasErrors = (mainHeartbeat?.error_count || 0) > 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -233,7 +259,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
             </div>
           ) : (
             <>
-              {/* Cron heartbeat */}
+              {/* Cron heartbeat — lecture directe de la table cron_heartbeat */}
               <div
                 className={cn(
                   'p-4 rounded-xl border',
@@ -253,13 +279,23 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {data.lastExecutionAt
-                    ? `Dernière exécution ${formatDistanceToNow(data.lastExecutionAt, { addSuffix: true, locale: fr })}`
-                    : 'Aucune exécution encore. Le cron tourne toutes les minutes.'}
+                  {lastCronRunAt
+                    ? `Dernière exécution cron ${formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr })}`
+                    : 'Aucune exécution cron enregistrée. Vérifie que pg_cron est branché.'}
                 </p>
-                {!cronHealthy && data.lastExecutionAt && (
+                {!cronHealthy && lastCronRunAt && (
                   <p className="text-xs text-destructive mt-1">
-                    ⚠ Plus de 10 min sans activité — le cron pourrait être bloqué
+                    ⚠ Plus de 5 min sans run — le cron est probablement gelé
+                  </p>
+                )}
+                {cronHasErrors && (
+                  <p className="text-xs text-warning mt-1">
+                    {mainHeartbeat?.error_count} erreur(s) cumulées · dernier run: {mainHeartbeat?.last_status}
+                  </p>
+                )}
+                {data.lastExecutionAt && (
+                  <p className="text-[11px] text-muted-foreground/70 mt-1">
+                    Dernier message envoyé {formatDistanceToNow(data.lastExecutionAt, { addSuffix: true, locale: fr })}
                   </p>
                 )}
               </div>
