@@ -48,6 +48,7 @@ import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
+import { SequenceDiagnostic } from './SequenceDiagnostic';
 // Q5 — SequenceAnalytics contient recharts (~100KB), lazy-load pour split chunk
 const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
@@ -101,6 +102,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
   const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
   const [showActivityLog, setShowActivityLog] = useState(false);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [showGlobalAnalytics, setShowGlobalAnalytics] = useState(false);
   const [analyticsSequence, setAnalyticsSequence] = useState<SequenceWithStats | null>(null);
   const [forceRescheduling, setForceRescheduling] = useState(false);
@@ -560,10 +562,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <span className="hidden sm:inline">{forceRescheduling ? 'En cours…' : 'Envoyer tout'}</span>
           </button>
           <button
-            onClick={() => setShowActivityLog(true)}
+            onClick={() => setShowDiagnostic(true)}
             className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
+            title="Vérifier l'état du système d'envoi"
           >
             <Activity className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Diagnostic</span>
+          </button>
+          <button
+            onClick={() => setShowActivityLog(true)}
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
+            title="Voir le journal détaillé des actions envoyées"
+          >
+            <FileText className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Journal</span>
           </button>
           <button
@@ -876,6 +887,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       <SequenceActivityLog
         isOpen={showActivityLog}
         onClose={() => setShowActivityLog(false)}
+      />
+
+      {/* Diagnostic */}
+      <SequenceDiagnostic
+        open={showDiagnostic}
+        onOpenChange={setShowDiagnostic}
+        projectId={projectId}
       />
 
       {/* Global Analytics — lazy chunk recharts */}
