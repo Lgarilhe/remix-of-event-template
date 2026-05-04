@@ -347,6 +347,26 @@ Deno.serve(async (req) => {
           'Etape': { select: { name: data.etape } },
         });
       }
+
+      // Sync vers job_candidate_status même en cas de doublon
+      if (data.linkedinUrl && data.organization_id) {
+        try {
+          await supabase
+            .from('job_candidate_status')
+            .update({
+              notion_shortlist_id: existingShortlistId,
+              notion_candidate_id: candidateId,
+              notion_synced_at: new Date().toISOString(),
+              status: 'shortlisted',
+              pipeline_stage: data.etape || 'Pressenti',
+            })
+            .eq('organization_id', data.organization_id)
+            .eq('linkedin_profile_url', data.linkedinUrl);
+        } catch (syncErr) {
+          console.warn('[add-to-shortlist] sync error on existing (non-blocking):', syncErr);
+        }
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -404,6 +424,37 @@ Deno.serve(async (req) => {
     console.log('Creating shortlist entry...');
     const shortlistResult = await createNotionPage(creds.shortlistDatabaseId, creds.notionApiKey, shortlistProps);
     console.log('Shortlist created:', shortlistResult.id);
+
+    // ── 5. Sync back vers job_candidate_status (best-effort, non-blocking) ─
+    // On stocke notion_shortlist_id + notion_candidate_id + notion_synced_at
+    // pour que le dashboard / portail client voient un état cohérent et
+    // pour permettre la synchro bidirectionnelle Notion ↔ Konekt.
+    if (data.linkedinUrl && data.organization_id) {
+      try {
+        const updatePayload = {
+          notion_shortlist_id: shortlistResult.id,
+          notion_candidate_id: candidateId,
+          notion_synced_at: new Date().toISOString(),
+          status: 'shortlisted',
+          pipeline_stage: data.etape || 'Pressenti',
+        };
+        // Try update by (organization_id, linkedin_profile_url) — most precise
+        const { data: updated, error: updErr } = await supabase
+          .from('job_candidate_status')
+          .update(updatePayload)
+          .eq('organization_id', data.organization_id)
+          .eq('linkedin_profile_url', data.linkedinUrl)
+          .select('id');
+        if (updErr) {
+          console.warn('[add-to-shortlist] sync to job_candidate_status failed:', updErr.message);
+        } else {
+          console.log(`[add-to-shortlist] Synced ${updated?.length || 0} job_candidate_status rows`);
+        }
+      } catch (syncErr) {
+        // Non-blocking — log seulement
+        console.warn('[add-to-shortlist] sync error (non-blocking):', syncErr);
+      }
+    }
 
     return new Response(
       JSON.stringify({
