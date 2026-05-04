@@ -170,7 +170,10 @@ Deno.serve(async (req) => {
 // deno-lint-ignore no-explicit-any
 
 async function acquireLock(supabase: any, runId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('acquire_sequence_lock', { p_run_id: runId, p_ttl_minutes: 3 });
+  // TTL 10 min : les exécutions LinkedIn lentes (rate limit, retry) peuvent
+  // dépasser 5 min. Avec TTL 3 min, un 2e cron démarrait pendant la 1re →
+  // risque de doublons d'envoi. 10 min couvre largement.
+  const { data, error } = await supabase.rpc('acquire_sequence_lock', { p_run_id: runId, p_ttl_minutes: 10 });
   if (error) {
     console.error(`[process] Lock RPC error:`, error);
     return false;
@@ -1400,7 +1403,11 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
   try {
     if (actionType === 'inmail' || actionType === 'smart_message') {
       const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      if (!r.ok) return { allowed: true };
+      // Fail-CLOSED : si Unipile balance check échoue, on bloque l'envoi.
+      // Préférable de retarder un envoi que de cramer le quota silencieusement.
+      if (!r.ok) {
+        return { allowed: false, reason: `Quota check unavailable (HTTP ${r.status})` };
+      }
       const b = await r.json();
       const total = (b.recruiter || 0) + (b.premium || 0) + (b.sales_navigator || 0);
       if (total <= 0) return { allowed: false, reason: 'Quota InMail épuisé' };
@@ -1503,36 +1510,73 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
   }
 }
 
-// Force reschedule: move all today's scheduled executions to NOW so they get picked up immediately
+// Force reschedule: move today's scheduled executions to NOW so they get picked up immediately
+// IMPORTANT : on EXCLUT les connection_request (limite 100/semaine LinkedIn).
+// Les avancer en masse risquerait de violer le quota et faire bannir le compte.
+// Les autres types (email, message, profile_visit) sont safe à reschedule.
 async function handleForceReschedule(supabase: any) {
   const now = new Date();
   const tz = 'Europe/Paris';
-  
+
   // Get today's end in Paris timezone
   const todayEnd = new Date(now);
   todayEnd.setDate(todayEnd.getDate() + 1);
   setLocalHour(todayEnd, tz, 0, 0);
-  
-  // Reschedule all 'scheduled' executions that are due today but haven't been processed yet
-  const { data: updated, error } = await supabase
+
+  // Récupère les exécutions du jour SAUF les connection_request
+  // (jointure via step_id pour lire action_type)
+  const { data: candidates, error: fetchErr } = await supabase
     .from('sequence_step_executions')
-    .update({ scheduled_at: now.toISOString() })
+    .select('id, step:sequence_steps!inner(action_type)')
     .eq('status', 'scheduled')
     .gt('scheduled_at', now.toISOString())
     .lte('scheduled_at', todayEnd.toISOString())
+    .neq('step.action_type', 'connection_request');
+
+  if (fetchErr) {
+    console.error('[force_reschedule] Fetch error:', fetchErr);
+    return new Response(JSON.stringify({ success: false, error: fetchErr.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const ids = (candidates || []).map((c: any) => c.id);
+  if (ids.length === 0) {
+    return new Response(JSON.stringify({ success: true, rescheduled: 0, skipped_invitations: 0 }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const { data: updated, error } = await supabase
+    .from('sequence_step_executions')
+    .update({ scheduled_at: now.toISOString() })
+    .in('id', ids)
     .select('id');
-  
+
   if (error) {
-    console.error('[force_reschedule] Error:', error);
+    console.error('[force_reschedule] Update error:', error);
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-  
+
+  // Count des invitations skippées pour information utilisateur
+  const { count: skippedCount } = await supabase
+    .from('sequence_step_executions')
+    .select('id, step:sequence_steps!inner(action_type)', { count: 'exact', head: true })
+    .eq('status', 'scheduled')
+    .gt('scheduled_at', now.toISOString())
+    .lte('scheduled_at', todayEnd.toISOString())
+    .eq('step.action_type', 'connection_request');
+
   const count = updated?.length || 0;
-  console.log(`[force_reschedule] Rescheduled ${count} executions to now`);
-  
-  return new Response(JSON.stringify({ success: true, rescheduled: count }), {
+  console.log(`[force_reschedule] Rescheduled ${count} executions, skipped ${skippedCount || 0} invitations (quota safety)`);
+
+  return new Response(JSON.stringify({
+    success: true,
+    rescheduled: count,
+    skipped_invitations: skippedCount || 0,
+  }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
