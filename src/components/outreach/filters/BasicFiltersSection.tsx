@@ -122,7 +122,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
                 <SelectTrigger className="h-7 w-[160px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-background z-[100]" position="popper" sideOffset={4}>
+                <SelectContent className="bg-background" position="popper" sideOffset={4}>
                   {LOCATION_RADIUS_OPTIONS.map((opt) => (
                     <SelectItem
                       key={opt.value?.toString() || 'null'}
@@ -219,7 +219,7 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
               <span className="text-amber-800 font-medium">TOP 15 Écoles</span>
             </SelectTrigger>
-            <SelectContent className="bg-popover border shadow-lg z-[3000]">
+            <SelectContent className="bg-popover border shadow-lg">
               <SelectItem value="MUST_HAVE" className="text-xs cursor-pointer">
                 <span className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-red-500" />

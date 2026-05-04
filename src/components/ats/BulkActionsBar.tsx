@@ -86,7 +86,7 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
             <span className="text-xs font-medium">Déplacer vers…</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="center" side="top" className="z-[300]">
+        <DropdownMenuContent align="center" side="top">
           <DropdownMenuLabel className="text-xs">Choisir une étape</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {ATS_STAGES.map((stage) => (

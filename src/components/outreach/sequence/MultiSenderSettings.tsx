@@ -203,9 +203,9 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             </Select>
           </div>
 
-          {/* Team member picker modal — z-[5000] pour passer au-dessus du SequenceBuilder portal (z-[4000]) */}
+          {/* Team member picker modal — z-index géré globalement par dialog.tsx (z-[9999]) */}
           <Dialog open={showPickerModal} onOpenChange={setShowPickerModal}>
-            <DialogContent className="max-w-md bg-background border-border rounded-lg p-0 gap-0 z-[5000]">
+            <DialogContent className="max-w-md bg-background border-border rounded-lg p-0 gap-0">
               <DialogHeader className="px-5 pt-5 pb-4 border-b border-border">
                 <DialogTitle className="flex items-center gap-2.5 text-base">
                   <div className="w-8 h-8 bg-muted flex items-center justify-center">

@@ -647,7 +647,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="z-[3000] bg-background border-border rounded-lg">
+                              <DropdownMenuContent align="end" className="bg-background border-border rounded-lg">
                                 {enrollment.status === 'active' ? (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
