@@ -41,21 +41,28 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
       ['inmail', 'email', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(s.actionType)
     );
     const emptyMessages = messageSteps.filter(s => !s.useAiPersonalization && !s.messageTemplate?.trim());
+    // Numéros d'étapes en clair pour que l'user sache OÙ chercher
+    const emptyMessageNumbers = emptyMessages
+      .map(s => `Étape ${s.order + 1}`)
+      .join(', ');
     result.push({
       id: 'messages', label: 'Messages rédigés',
       description: emptyMessages.length > 0
-        ? `${emptyMessages.length} message${emptyMessages.length > 1 ? 's' : ''} vide${emptyMessages.length > 1 ? 's' : ''}`
+        ? `À compléter : ${emptyMessageNumbers}`
         : 'Tous remplis',
       status: emptyMessages.length > 0 ? 'fail' : 'pass', icon: MessageSquare, category: 'required',
     });
 
     const emailSteps = sequence.steps.filter(s => ['email', 'inmail'].includes(s.actionType));
     const emptySubjects = emailSteps.filter(s => !s.useAiPersonalization && !s.subjectTemplate?.trim());
+    const emptySubjectNumbers = emptySubjects
+      .map(s => `Étape ${s.order + 1}`)
+      .join(', ');
     if (emailSteps.length > 0) {
       result.push({
         id: 'subjects', label: 'Objets email',
         description: emptySubjects.length > 0
-          ? `${emptySubjects.length} manquant${emptySubjects.length > 1 ? 's' : ''}`
+          ? `À compléter : ${emptySubjectNumbers}`
           : 'Tous définis',
         status: emptySubjects.length > 0 ? 'fail' : 'pass', icon: Mail, category: 'required',
       });

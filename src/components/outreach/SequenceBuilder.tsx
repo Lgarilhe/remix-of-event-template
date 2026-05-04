@@ -540,11 +540,33 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 <StepIcon className="w-4 h-4" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
+                    Étape {step.order + 1}
+                  </span>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground">
                     {stepIsTrigger ? 'TRIGGER' : 'ACTION'}
                   </span>
                   <span className="font-medium text-sm">{stepConfig?.label}</span>
+                  {/* Badge "Incomplet" si message ou objet email manquant */}
+                  {(() => {
+                    const needsMsg = needsMessage(step.actionType) && !step.useAiPersonalization && !step.messageTemplate?.trim();
+                    const needsSubj = needsSubject(step.actionType) && !step.useAiPersonalization && !step.subjectTemplate?.trim();
+                    const tooLongInvite = step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300;
+                    if (!needsMsg && !needsSubj && !tooLongInvite) return null;
+                    const reasons: string[] = [];
+                    if (needsMsg) reasons.push('message');
+                    if (needsSubj) reasons.push('objet');
+                    if (tooLongInvite) reasons.push('trop long');
+                    return (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-destructive/10 text-destructive border border-destructive/30"
+                        title={`Manque : ${reasons.join(', ')}`}
+                      >
+                        ⚠ Incomplet ({reasons.join(' + ')})
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
                   {step.delayDays > 0 && (
