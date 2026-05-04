@@ -788,15 +788,22 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
       locationDetails = `Match direct: ${profile.location}`;
     } else {
       // Same country / region check
-      const frenchCities = ["france", "paris", "lyon", "marseille", "toulouse", "nantes", "bordeaux", "lille", "strasbourg"];
+      const frenchCities = ["france", "paris", "lyon", "marseille", "toulouse", "nantes", "bordeaux", "lille", "strasbourg", "rennes", "montpellier", "nice", "nancy", "grenoble"];
       const isFranceJob = frenchCities.some((c) => jn.includes(c));
       const isFranceProfile = frenchCities.some((c) => pn.includes(c));
       const foreignSignals = ["united states", "usa", "uk", "germany", "spain", "india", "canada", "australia", "brazil"];
       const isAbroad = foreignSignals.some((s) => pn.includes(s));
+      const isOnSiteJob = job.remote && !["full", "full remote", "remote", "full_remote", "hybrid", "hybride"].includes(job.remote.toLowerCase());
 
       if (isFranceJob && isFranceProfile) {
-        locationScore = 70;
-        locationDetails = `Même pays: ${profile.location} / ${job.location}`;
+        // Same country mais ville différente : pénaliser plus si on-site
+        if (isOnSiteJob) {
+          locationScore = 45;
+          locationDetails = `Ville différente: ${profile.location} (poste on-site à ${job.location})`;
+        } else {
+          locationScore = 70;
+          locationDetails = `Même pays: ${profile.location} / ${job.location}`;
+        }
       } else if (isFranceJob && isAbroad) {
         locationScore = 10;
         locationDetails = `Étranger: ${profile.location} vs ${job.location}`;
@@ -836,7 +843,7 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   }
   dimensions.receptivity = {
     score: Math.max(0, Math.min(100, Math.round(receptivityScore))),
-    weight: 20,
+    weight: 15,
     details: signals.join(", ") || "Neutre",
   };
 
@@ -863,42 +870,109 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   }
   dimensions.tenure = {
     score: Math.round(tenureScore),
-    weight: 15,
+    weight: 10,
     details: tenureDetails,
   };
 
-  // --- Contract Fit (weight: 5%) ---
+  // --- Contract Fit (weight: 10%) ---
   // Check headline + summary + currentRole for freelance indicators
+  // Détection bidirectionnelle : freelance vs CDI ET CDI vs freelance
   let contractFitScore = 70; // default: neutral-positive
   let contractDetails = "Neutre";
   if (job.contractType) {
-    const freelanceKeywords = ["freelance", "indépendant", "auto-entrepreneur", "consultant indépendant", "micro-entrepreneur", "portage salarial"];
+    const freelanceKeywords = ["freelance", "indépendant", "independant", "auto-entrepreneur", "auto entrepreneur", "consultant indépendant", "micro-entrepreneur", "portage salarial", "freelancer", "self-employed", "self employed"];
+    const tjmKeywords = ["tjm", "€/j", "€ / j", "€ par jour", "daily rate", "/jour"];
+    const internKeywords = ["stagiaire", "stage en cours", "intern ", "internship", "apprenti", "alternant", "alternance"];
     const textToCheck = [
       profile.headline || "",
       profile.summary || "",
       profile.currentRole || "",
       profile.currentCompany || "",
     ].join(" ").toLowerCase();
-    const isFreelance = freelanceKeywords.some((f) => textToCheck.includes(f));
-    const isCDI = ["cdi", "permanent"].includes(job.contractType.toLowerCase());
-    const isFreelanceJob = ["freelance", "mission", "portage"].includes(job.contractType.toLowerCase());
-    if (isFreelance && isCDI) {
-      // Freelance explicite sur un poste CDI → exclu par hard filter en amont
-      // Si on arrive ici, c'est un cas edge (mot dans currentCompany par ex.)
+    const isFreelanceProfile = freelanceKeywords.some((f) => textToCheck.includes(f)) || tjmKeywords.some((t) => textToCheck.includes(t));
+    const isInternProfile = internKeywords.some((k) => textToCheck.includes(k));
+    const ct = job.contractType.toLowerCase();
+    const isCDI = ["cdi", "permanent", "perm"].includes(ct);
+    const isCDD = ["cdd", "fixed-term", "fixed term"].includes(ct);
+    const isFreelanceJob = ["freelance", "mission", "portage", "freelance/contract", "contractor", "contract"].includes(ct);
+    const isInternJob = ["stage", "internship", "alternance", "apprenticeship"].includes(ct);
+
+    if (isFreelanceProfile && isCDI) {
       contractFitScore = 10;
-      contractDetails = "Freelance vs CDI — exclu";
-    } else if (isFreelance && isFreelanceJob) {
+      contractDetails = "Freelance vs CDI — incompatible";
+    } else if (!isFreelanceProfile && isFreelanceJob) {
+      // Profil sans signal freelance + poste freelance = signal moyen négatif
+      // (peut accepter mission ponctuelle, mais préférence CDI probable)
+      contractFitScore = 45;
+      contractDetails = "Profil salarié vs poste freelance — risque";
+    } else if (isFreelanceProfile && isFreelanceJob) {
       contractFitScore = 100;
       contractDetails = "Freelance match";
-    } else if (!isFreelance && isCDI) {
-      contractFitScore = 80;
+    } else if (!isFreelanceProfile && isCDI) {
+      contractFitScore = 85;
       contractDetails = "Profil salarié / CDI";
+    } else if (isInternProfile && !isInternJob) {
+      contractFitScore = 30;
+      contractDetails = "Profil stagiaire/alternant vs poste senior";
+    } else if (isCDD) {
+      contractFitScore = 65;
+      contractDetails = "CDD — neutre";
     }
   }
   dimensions.contract_fit = {
     score: Math.round(contractFitScore),
-    weight: 5,
+    weight: 10,
     details: contractDetails,
+  };
+
+  // --- Salary / TJM compatibility (weight: 5%) ---
+  // Heuristique : on cherche dans le headline/summary une indication explicite
+  // de TJM ou salaire (ex: "TJM 800€", "Cherche poste à 60k€"). Si rien
+  // trouvé, score neutre (le LLM regardera aussi).
+  let salaryScore = 70;
+  let salaryDetails = "Pas d'indication explicite";
+  const profileText = [profile.headline || "", profile.summary || ""].join(" ").toLowerCase();
+  // TJM detection : "TJM 800", "800€/j", "800 €/jour"
+  const tjmMatch = profileText.match(/(?:tjm[:\s]*|tarif[:\s]*)?(\d{2,4})\s*(?:€|eur|euros)?\s*(?:\/\s*(?:j|jour|day)|par\s*jour|\/\s*day)/i);
+  // Salaire annuel : "60k€", "65 000€/an", "55-65k€"
+  const salaryMatch = profileText.match(/(\d{2,3})\s*(?:k|000)\s*(?:€|eur|euros)?\s*(?:brut|annuel|\/\s*an|par\s*an)?/i);
+  if (job.tjmMin || job.tjmMax) {
+    if (tjmMatch) {
+      const profileTjm = parseInt(tjmMatch[1], 10);
+      const min = job.tjmMin ?? 0;
+      const max = job.tjmMax ?? 9999;
+      if (profileTjm > max * 1.15) {
+        salaryScore = 25;
+        salaryDetails = `TJM candidat (${profileTjm}€) > max poste (${max}€)`;
+      } else if (profileTjm < min * 0.7) {
+        salaryScore = 60;
+        salaryDetails = `TJM candidat (${profileTjm}€) < min poste — sous-positionné`;
+      } else {
+        salaryScore = 95;
+        salaryDetails = `TJM compatible: ${profileTjm}€ vs ${min}-${max}€`;
+      }
+    }
+  } else if (job.salaryMin || job.salaryMax) {
+    if (salaryMatch) {
+      const profileSalary = parseInt(salaryMatch[1], 10) * 1000;
+      const min = job.salaryMin ?? 0;
+      const max = job.salaryMax ?? 999999;
+      if (profileSalary > max * 1.15) {
+        salaryScore = 25;
+        salaryDetails = `Attente candidat (${Math.round(profileSalary/1000)}k€) > max poste (${Math.round(max/1000)}k€)`;
+      } else if (profileSalary < min * 0.7) {
+        salaryScore = 60;
+        salaryDetails = `Attente candidat sous-positionnée`;
+      } else {
+        salaryScore = 95;
+        salaryDetails = `Salaire compatible`;
+      }
+    }
+  }
+  dimensions.salary_fit = {
+    score: Math.round(salaryScore),
+    weight: 5,
+    details: salaryDetails,
   };
 
   // Calculate weighted total
@@ -967,6 +1041,9 @@ interface LLMResult {
   likelyToSwitchScore: number | null;
   careerGrowthScore: number | null;
   switchSignals: string[];
+  contractMismatch?: string | null;
+  locationMismatch?: string | null;
+  salaryMismatch?: string | null;
   tokensUsed: { input: number; output: number };
 }
 
@@ -1029,7 +1106,11 @@ ${job.mustHave ? "\n⚠️ CRITÈRES OBLIGATOIRES (must-have): " + job.mustHave 
 ${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
 ${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
 ${job.seniority ? "Séniorité: " + job.seniority : ""}
-${job.contractType ? "Contrat: " + job.contractType : ""}
+${job.contractType ? "Contrat proposé: " + job.contractType : ""}
+${job.remote ? "Politique remote: " + job.remote : ""}
+${job.location ? "Localisation poste: " + job.location : ""}
+${job.salaryMin || job.salaryMax ? `Salaire: ${job.salaryMin ? Math.round(job.salaryMin/1000) + "k" : "?"}${job.salaryMax ? "-" + Math.round(job.salaryMax/1000) + "k" : ""}€ brut annuel` : ""}
+${job.tjmMin || job.tjmMax ? `TJM: ${job.tjmMin || "?"}${job.tjmMax ? "-" + job.tjmMax : ""}€/jour` : ""}
 ${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
 ${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
 ${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
@@ -1182,6 +1263,9 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
     likelyToSwitchScore: typeof parsed.likelyToSwitchScore === 'number' ? parsed.likelyToSwitchScore : null,
     careerGrowthScore: typeof parsed.careerGrowthScore === 'number' ? parsed.careerGrowthScore : null,
     switchSignals: Array.isArray(parsed.switchSignals) ? parsed.switchSignals : [],
+    contractMismatch: typeof parsed.contractMismatch === 'string' && parsed.contractMismatch.trim() ? parsed.contractMismatch.trim() : null,
+    locationMismatch: typeof parsed.locationMismatch === 'string' && parsed.locationMismatch.trim() ? parsed.locationMismatch.trim() : null,
+    salaryMismatch: typeof parsed.salaryMismatch === 'string' && parsed.salaryMismatch.trim() ? parsed.salaryMismatch.trim() : null,
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
       output: data.usage?.output_tokens || 0,
@@ -1226,7 +1310,11 @@ ${job.mustHave ? "\n⚠️ CRITÈRES OBLIGATOIRES (must-have): " + job.mustHave 
 ${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
 ${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
 ${job.seniority ? "Séniorité: " + job.seniority : ""}
-${job.contractType ? "Contrat: " + job.contractType : ""}
+${job.contractType ? "Contrat proposé: " + job.contractType : ""}
+${job.remote ? "Politique remote: " + job.remote : ""}
+${job.location ? "Localisation poste: " + job.location : ""}
+${job.salaryMin || job.salaryMax ? `Salaire: ${job.salaryMin ? Math.round(job.salaryMin/1000) + "k" : "?"}${job.salaryMax ? "-" + Math.round(job.salaryMax/1000) + "k" : ""}€ brut annuel` : ""}
+${job.tjmMin || job.tjmMax ? `TJM: ${job.tjmMin || "?"}${job.tjmMax ? "-" + job.tjmMax : ""}€/jour` : ""}
 ${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
 ${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
 ${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
@@ -1270,9 +1358,18 @@ ${profileSections}
 === TA MISSION ===
 Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-100), pedigree (0-100), score global (0-100), must-have ("passed"/"failed"/"uncertain").
 
+⚠️ VÉRIFICATIONS DE COMPATIBILITÉ (impactent le score global ET les concerns) :
+- **Contrat** : si le poste est en CDI mais le candidat se présente comme freelance/indépendant dans son headline ou son À propos → score global plafonné à 45, concern "Profil freelance vs poste CDI". Inversement si poste freelance et profil "carrière CDI 10+ ans en grand groupe", concern "Risque attractivité freelance".
+- **Salaire/TJM** : si le profil mentionne explicitement un TJM ou un salaire (ex "TJM 800€/j", "Cherche poste 70k€") incompatible avec le range du poste (>15% au-dessus du max) → concern "Attente salariale > range" et baisse le score de 10-15 points.
+- **Remote** : si poste 100% on-site dans une ville et profil dans une autre région française sans signal de mobilité → concern "Distance géo, mobilité à confirmer". Si poste full-remote → ne JAMAIS pénaliser pour la location.
+- **Localisation** : si poste France et profil à l'étranger (USA, UK, Asie...) sans signal de retour → score global plafonné à 40, concern "Profil basé à l'étranger".
+
+Renseigne ces concerns spécifiques dans le tableau "concerns" en plus des concerns techniques.
+
 Réponds UNIQUEMENT avec un JSON ARRAY, un objet par candidat dans l'ORDRE, format :
-[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"],"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif courte"}],"switchSignals":["signal1"]}]
+[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"],"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif courte"}],"switchSignals":["signal1"],"contractMismatch":null,"locationMismatch":null,"salaryMismatch":null}]
 verdict: "pass"/"partial"/"fail"/"unknown". criteriaEvaluations: évalue chaque critère du manager si fournis dans le contexte du poste, sinon [].
+contractMismatch/locationMismatch/salaryMismatch : null si OK, sinon string courte expliquant le problème.
 JSON uniquement, sans markdown.`;
 
   console.log(`[llm-batch] Scoring ${inputs.length} profiles in single call`);
@@ -1401,9 +1498,12 @@ JSON uniquement, sans markdown.`;
       mustHaveUncertain: parsed.mustHavePassed === "uncertain",
       mustHaveDetails: parsed.mustHaveDetails || null,
       criteriaEvaluations: Array.isArray(parsed.criteriaEvaluations) ? parsed.criteriaEvaluations : [],
-    likelyToSwitchScore: typeof parsed.likelyToSwitchScore === 'number' ? parsed.likelyToSwitchScore : null,
-    careerGrowthScore: typeof parsed.careerGrowthScore === 'number' ? parsed.careerGrowthScore : null,
-    switchSignals: Array.isArray(parsed.switchSignals) ? parsed.switchSignals : [],
+      likelyToSwitchScore: typeof parsed.likelyToSwitchScore === 'number' ? parsed.likelyToSwitchScore : null,
+      careerGrowthScore: typeof parsed.careerGrowthScore === 'number' ? parsed.careerGrowthScore : null,
+      switchSignals: Array.isArray(parsed.switchSignals) ? parsed.switchSignals : [],
+      contractMismatch: typeof parsed.contractMismatch === 'string' && parsed.contractMismatch.trim() ? parsed.contractMismatch.trim() : null,
+      locationMismatch: typeof parsed.locationMismatch === 'string' && parsed.locationMismatch.trim() ? parsed.locationMismatch.trim() : null,
+      salaryMismatch: typeof parsed.salaryMismatch === 'string' && parsed.salaryMismatch.trim() ? parsed.salaryMismatch.trim() : null,
       tokensUsed: tokensPerProfile,
     });
   }
@@ -1860,6 +1960,17 @@ async function scoreProfile(
     concerns.unshift(`Score plafonné (${rawFinalScore} → ${finalScore}) car must-have manquant`);
   }
 
+  // Surface explicit compatibility issues at the top of concerns
+  if (llmResult?.contractMismatch && !concerns.some(c => c.toLowerCase().includes("contrat") || c.toLowerCase().includes("freelance"))) {
+    concerns.unshift(`Contrat: ${llmResult.contractMismatch}`);
+  }
+  if (llmResult?.locationMismatch && !concerns.some(c => c.toLowerCase().includes("localisation") || c.toLowerCase().includes("location") || c.toLowerCase().includes("distance"))) {
+    concerns.unshift(`Localisation: ${llmResult.locationMismatch}`);
+  }
+  if (llmResult?.salaryMismatch && !concerns.some(c => c.toLowerCase().includes("salaire") || c.toLowerCase().includes("tjm"))) {
+    concerns.unshift(`Rémunération: ${llmResult.salaryMismatch}`);
+  }
+
   // Use LLM's skill analysis when available, fallback to heuristic
   const matchedSkills = llmResult?.matchedSkills?.length ? llmResult.matchedSkills : weighted.matchedSkills;
   const missingSkills = llmResult?.missingCriticalSkills?.length ? llmResult.missingCriticalSkills : weighted.missingSkills;
@@ -1884,8 +1995,15 @@ async function scoreProfile(
     internationalExperienceValidation: "none",
     locationCompatibility:
       weighted.dimensions.location?.score && weighted.dimensions.location.score > 60 ? "compatible" : "partial",
-    candidatePreferencesConflict: null,
-    contractMismatch: weighted.dimensions.contract_fit?.details !== "Neutre" ? weighted.dimensions.contract_fit?.details || null : null,
+    candidatePreferencesConflict: (() => {
+      // Aggregate non-null LLM-detected mismatches into a single readable string
+      const parts: string[] = [];
+      if (llmResult?.locationMismatch) parts.push(`Localisation: ${llmResult.locationMismatch}`);
+      if (llmResult?.salaryMismatch) parts.push(`Salaire: ${llmResult.salaryMismatch}`);
+      return parts.length > 0 ? parts.join(" | ") : null;
+    })(),
+    contractMismatch: llmResult?.contractMismatch
+      || (weighted.dimensions.contract_fit?.details !== "Neutre" ? weighted.dimensions.contract_fit?.details || null : null),
     skipReason: finalScore < 40 ? summary : null,
     matchedSkills,
     matchedSkillCount: matchedSkills.length,

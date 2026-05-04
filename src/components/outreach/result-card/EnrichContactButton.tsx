@@ -288,11 +288,11 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`gap-1.5 ${compact ? 'h-7 px-2 text-xs' : 'text-xs'} opacity-50 ${className}`}
-        title="Demandez à votre administrateur d'activer l'enrichment de contacts"
+        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        title="Demandez à votre administrateur d'activer la récupération de coordonnées"
       >
-        <Sparkles className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden="true" />
-        <span>Contact (désactivé)</span>
+        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <span>Coordonnées</span>
       </Button>
     );
   }
@@ -303,11 +303,11 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`gap-1.5 ${compact ? 'h-7 px-2 text-xs' : 'text-xs'} ${className}`}
-        title={`Récupérer email/téléphone de ${fullName}`}
+        className={`gap-1.5 font-medium ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} ${className}`}
+        title={`Récupérer email & téléphone de ${fullName}`}
       >
-        <Sparkles className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden="true" />
-        <span>{compact ? 'Contact' : 'Récupérer email/tél.'}</span>
+        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <span>{compact ? 'Coordonnées' : 'Récupérer email & téléphone'}</span>
       </Button>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

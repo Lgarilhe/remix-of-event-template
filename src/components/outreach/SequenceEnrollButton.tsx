@@ -117,11 +117,12 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
           <Button
             variant="outline"
             size="sm"
-            className="border-green-600 text-green-600 hover:bg-success/10 px-2 h-7 gap-1 text-xs uppercase tracking-wider font-bold rounded-lg shrink-0"
+            title="Inscrire dans une séquence d'outreach"
+            className="border-green-600/60 text-green-700 hover:bg-success/10 hover:border-green-600 dark:text-green-500 dark:hover:text-green-400 px-2.5 h-7 gap-1.5 text-xs font-medium rounded-lg shrink-0"
           >
-            <GitBranch className="w-3 h-3 shrink-0" />
-            Séq.
-            <ChevronDown className="w-2.5 h-2.5 shrink-0" />
+            <GitBranch className="w-3.5 h-3.5 shrink-0" />
+            Séquence
+            <ChevronDown className="w-3 h-3 shrink-0 opacity-70" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="bg-card w-64 z-[9999]">
