@@ -204,35 +204,55 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   sequenceId,
   sequenceName,
 }) => {
+  const PAGE_SIZE = 200;
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [processingSequences, setProcessingSequences] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop'; id?: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'markReplied'; id?: string } | null>(null);
 
-  const fetchEnrollments = async () => {
+  const fetchEnrollments = async (append = false) => {
     try {
-      setLoading(true);
-      
-      // Fetch sequence steps FIRST to get the full workflow
-      const { data: stepsData } = await supabase
-        .from('sequence_steps')
-        .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours, delay_minutes, timeout_days, timeout_branch_step_id, if_true_goto_step, if_false_goto_step, wait_for_event')
-        .eq('sequence_id', sequenceId)
-        .order('step_order', { ascending: true });
+      if (append) setLoadingMore(true);
+      else setLoading(true);
 
-      setAllSteps(stepsData || []);
+      // Fetch sequence steps FIRST to get the full workflow.
+      // Pour append on réutilise allSteps déjà en state.
+      let stepsLookup = allSteps;
+      if (!append) {
+        const { data: stepsData } = await supabase
+          .from('sequence_steps')
+          .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours, delay_minutes, timeout_days, timeout_branch_step_id, if_true_goto_step, if_false_goto_step, wait_for_event')
+          .eq('sequence_id', sequenceId)
+          .order('step_order', { ascending: true });
+        stepsLookup = stepsData || [];
+        setAllSteps(stepsLookup);
 
-      // Fetch enrollments
+        // Count total enrollments for pagination UI
+        const { count } = await supabase
+          .from('sequence_enrollments')
+          .select('id', { count: 'exact', head: true })
+          .eq('sequence_id', sequenceId);
+        setTotalCount(count || 0);
+      }
+
+      // Fetch enrollments paginés (200 par page)
+      const offset = append ? enrollments.length : 0;
       const { data: enrollData, error: enrollError } = await supabase
         .from('sequence_enrollments')
         .select('*')
         .eq('sequence_id', sequenceId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
 
       if (enrollError) throw enrollError;
+
+      setHasMore((enrollData?.length || 0) === PAGE_SIZE);
 
       // Fetch all step executions for these enrollments
       const enrollmentIds = enrollData?.map(e => e.id) || [];
@@ -242,23 +262,24 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         .in('enrollment_id', enrollmentIds)
         .order('step_order', { ascending: true });
 
-      // Attach executions to enrollments
+      // Attach executions to enrollments (stepsLookup déjà résolu plus haut)
       const enriched = (enrollData || []).map(enrollment => ({
         ...enrollment,
         executions: (execData || [])
           .filter(e => e.enrollment_id === enrollment.id)
           .map(exec => ({
             ...exec,
-            step: stepsData?.find(s => s.id === exec.step_id),
+            step: stepsLookup.find((s: any) => s.id === exec.step_id),
           })),
       }));
 
-      setEnrollments(enriched);
+      setEnrollments(prev => append ? [...prev, ...enriched] : enriched);
     } catch (err) {
       console.error('Error fetching enrollments:', err);
       toast.error('Erreur lors du chargement');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -380,12 +401,45 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     }
   };
 
+  const markReplied = async (enrollmentId: string) => {
+    try {
+      // Marque l'enrollment 'replied' + cancel les executions pending
+      const { error } = await supabase
+        .from('sequence_enrollments')
+        .update({
+          status: 'replied',
+          replied_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', enrollmentId);
+      if (error) throw error;
+
+      await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: 'Réponse marquée manuellement' })
+        .eq('enrollment_id', enrollmentId)
+        .eq('status', 'scheduled');
+
+      setEnrollments(prev =>
+        prev.map(e => e.id === enrollmentId ? { ...e, status: 'replied', replied_at: new Date().toISOString() } : e)
+      );
+      toast.success('Marqué comme répondu', {
+        description: 'Les étapes restantes ont été annulées.',
+      });
+    } catch (err) {
+      console.error('[EnrollmentsPanel] markReplied failed:', err);
+      toast.error('Erreur lors du marquage');
+    }
+  };
+
   const handleConfirmedAction = async () => {
     if (!confirmAction) return;
     if (confirmAction.type === 'stop' && confirmAction.id) {
       await stopEnrollment(confirmAction.id);
     } else if (confirmAction.type === 'bulkStop') {
       await bulkStopActive();
+    } else if (confirmAction.type === 'markReplied' && confirmAction.id) {
+      await markReplied(confirmAction.id);
     }
     setConfirmAction(null);
   };
@@ -657,7 +711,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     Arrêter la séquence
                                   </DropdownMenuItem>
                                 ) : enrollment.status === 'paused' ? (
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     onClick={() => resumeEnrollment(enrollment.id)}
                                     className="text-success-foreground"
                                   >
@@ -665,6 +719,17 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     Reprendre la séquence
                                   </DropdownMenuItem>
                                 ) : null}
+                                {/* Marquer répondu manuellement (cas réponse hors-canal :
+                                    téléphone, en personne, autre boîte mail). Évite de
+                                    continuer à spammer le candidat. */}
+                                {(enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
+                                  <DropdownMenuItem
+                                    onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id })}
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 mr-2 text-success" />
+                                    Marquer comme répondu
+                                  </DropdownMenuItem>
+                                )}
                                 {enrollment.profile_url && (
                                   <DropdownMenuItem asChild>
                                     <a
@@ -827,6 +892,26 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   );
                 });
               })()}
+
+              {/* Pagination — Charger plus si > PAGE_SIZE candidats */}
+              {hasMore && !loading && (
+                <div className="text-center py-3 border-t border-border mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchEnrollments(true)}
+                    disabled={loadingMore}
+                    className="text-xs"
+                  >
+                    {loadingMore ? 'Chargement…' : `Charger plus (${enrollments.length} / ${totalCount})`}
+                  </Button>
+                </div>
+              )}
+              {!hasMore && enrollments.length >= PAGE_SIZE && (
+                <div className="text-center py-3 text-xs text-muted-foreground">
+                  Tous les candidats chargés ({totalCount})
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -839,18 +924,25 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           <AlertDialogTitle>
             {confirmAction?.type === 'bulkStop'
               ? `Arrêter toutes les séquences actives (${activeCount})`
-              : 'Arrêter la séquence'}
+              : confirmAction?.type === 'markReplied'
+                ? 'Marquer comme répondu'
+                : 'Arrêter la séquence'}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {confirmAction?.type === 'bulkStop'
               ? `Les ${activeCount} candidat(s) actif(s) ne recevront plus de messages de cette séquence.`
-              : 'Le candidat ne recevra plus de messages de cette séquence.'}
+              : confirmAction?.type === 'markReplied'
+                ? 'L\'enrollment passera en "Répondu" et toutes les étapes restantes seront annulées. Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).'
+                : 'Le candidat ne recevra plus de messages de cette séquence.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleConfirmedAction}>
-            Confirmer
+          <AlertDialogAction
+            className={confirmAction?.type === 'markReplied' ? '' : 'bg-destructive hover:bg-destructive/90'}
+            onClick={handleConfirmedAction}
+          >
+            {confirmAction?.type === 'markReplied' ? 'Marquer répondu' : 'Confirmer'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

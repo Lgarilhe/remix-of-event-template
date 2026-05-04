@@ -61,7 +61,11 @@ interface DiagnosticData {
   activeEnrollments: number;
   recentErrors: Array<{ id: string; error_message: string; created_at: string }>;
   heartbeats: CronHeartbeat[];
+  // Quota LinkedIn invitations (limite Unipile : 100/semaine)
+  invitesSentThisWeek: number;
 }
+
+const WEEKLY_INVITE_LIMIT = 100;
 
 const initialState: DiagnosticData = {
   loading: true,
@@ -73,6 +77,7 @@ const initialState: DiagnosticData = {
   activeEnrollments: 0,
   recentErrors: [],
   heartbeats: [],
+  invitesSentThisWeek: 0,
 };
 
 export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
@@ -170,6 +175,29 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         .like('job_name', 'process-sequences:%')
         .order('last_run_at', { ascending: false }) as any);
 
+      // 7. Quota invitations LinkedIn cette semaine (lookback 7j depuis maintenant).
+      // Seul les connection_request envoyés (status='sent') comptent dans la limite Unipile.
+      const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      let inviteQuery = supabase
+        .from('sequence_step_executions')
+        .select('id, step:sequence_steps!inner(action_type)', { count: 'exact', head: true })
+        .eq('status', 'sent')
+        .eq('step.action_type', 'connection_request')
+        .gte('executed_at', since7d) as any;
+      if (sequenceIds && sequenceIds.length > 0) {
+        const { data: enr } = await supabase
+          .from('sequence_enrollments')
+          .select('id')
+          .in('sequence_id', sequenceIds);
+        const enrollmentIds = (enr || []).map((e: any) => e.id);
+        if (enrollmentIds.length > 0) {
+          inviteQuery = inviteQuery.in('enrollment_id', enrollmentIds);
+        } else {
+          inviteQuery = inviteQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+        }
+      }
+      const { count: inviteCount } = await inviteQuery;
+
       setData({
         loading: false,
         lastExecutionAt,
@@ -180,6 +208,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         activeEnrollments: activeCount || 0,
         recentErrors,
         heartbeats: (heartbeatRows as CronHeartbeat[]) || [],
+        invitesSentThisWeek: inviteCount || 0,
       });
     } catch (err) {
       console.error('[SequenceDiagnostic] refresh error:', err);
@@ -299,6 +328,47 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                   </p>
                 )}
               </div>
+
+              {/* Quota LinkedIn invitations (limite Unipile 100/semaine) */}
+              {(() => {
+                const ratio = data.invitesSentThisWeek / WEEKLY_INVITE_LIMIT;
+                const isOverWarn = ratio >= 0.8;
+                const isCritical = ratio >= 0.95;
+                const barColor = isCritical
+                  ? 'bg-destructive'
+                  : isOverWarn
+                    ? 'bg-warning'
+                    : 'bg-success';
+                return (
+                  <div className="p-3 rounded-xl border border-border bg-card">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-foreground">Quota invitations LinkedIn</p>
+                      <span className="text-xs font-mono font-medium text-foreground">
+                        {data.invitesSentThisWeek}<span className="text-muted-foreground"> / {WEEKLY_INVITE_LIMIT}</span>
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn('h-full transition-all', barColor)}
+                        style={{ width: `${Math.min(100, ratio * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                      Glissant 7 jours · LinkedIn limite ~100/semaine pour éviter le ban
+                    </p>
+                    {isCritical && (
+                      <p className="text-[11px] text-destructive mt-1 font-medium">
+                        ⚠ Quota presque épuisé — les nouvelles invitations seront rejetées
+                      </p>
+                    )}
+                    {isOverWarn && !isCritical && (
+                      <p className="text-[11px] text-warning mt-1">
+                        Attention : tu approches la limite hebdo
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Stats 24h */}
               <div className="grid grid-cols-2 gap-2">
