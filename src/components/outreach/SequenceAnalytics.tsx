@@ -89,13 +89,19 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   const [sequences, setSequences] = useState<{ id: string; name: string }[]>([]);
   const [selectedSeqId, setSelectedSeqId] = useState<string>(sequenceId || 'all');
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState<'7' | '30' | '90'>('30');
+  const [period, setPeriod] = useState<'7' | '30' | '90' | 'custom'>('30');
+  const [customStart, setCustomStart] = useState<string>(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
+  const [customEnd, setCustomEnd] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [abResults, setAbResults] = useState<VariantResult[]>([]);
+  const [stepStats, setStepStats] = useState<Array<{ step_order: number; action_type: string; sent: number; replied: number }>>([]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const startDate = format(subDays(new Date(), parseInt(period)), 'yyyy-MM-dd');
+      const startDate = period === 'custom'
+        ? customStart
+        : format(subDays(new Date(), parseInt(period)), 'yyyy-MM-dd');
+      const endDate = period === 'custom' ? customEnd : format(new Date(), 'yyyy-MM-dd');
 
       if (!sequenceId) {
         const { data: seqData } = await supabase
@@ -109,6 +115,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         .from('sequence_analytics')
         .select('*')
         .gte('date', startDate)
+        .lte('date', endDate)
         .order('date', { ascending: true });
 
       const filterSeqId = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
@@ -188,6 +195,49 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       } else {
         setAbResults([]);
       }
+
+      // Stats par étape (drill-down) — reply_rate par step si une séquence est sélectionnée
+      if (filterSeqId) {
+        const { data: stepRows } = await (supabase
+          .from('sequence_steps')
+          .select('id, step_order, action_type')
+          .eq('sequence_id', filterSeqId)
+          .order('step_order', { ascending: true }) as any);
+
+        if (stepRows && stepRows.length > 0) {
+          const stepIds = (stepRows as any[]).map((s: any) => s.id);
+          // Récupère toutes les executions de ces steps sur la période
+          const sinceTs = new Date(startDate).toISOString();
+          const untilTs = new Date(endDate + 'T23:59:59').toISOString();
+          const { data: execRows } = await (supabase
+            .from('sequence_step_executions')
+            .select('step_id, status')
+            .in('step_id', stepIds)
+            .gte('created_at', sinceTs)
+            .lte('created_at', untilTs) as any);
+
+          const perStep = new Map<string, { sent: number; replied: number }>();
+          (execRows as any[] || []).forEach((e: any) => {
+            const cur = perStep.get(e.step_id) || { sent: 0, replied: 0 };
+            if (['sent', 'executed', 'opened', 'clicked', 'replied'].includes(e.status)) cur.sent++;
+            if (e.status === 'replied') cur.replied++;
+            perStep.set(e.step_id, cur);
+          });
+
+          setStepStats(
+            (stepRows as any[]).map((s: any) => ({
+              step_order: s.step_order,
+              action_type: s.action_type,
+              sent: perStep.get(s.id)?.sent || 0,
+              replied: perStep.get(s.id)?.replied || 0,
+            })),
+          );
+        } else {
+          setStepStats([]);
+        }
+      } else {
+        setStepStats([]);
+      }
     } catch (err) {
       console.error('Error fetching analytics:', err);
     } finally {
@@ -197,7 +247,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
   useEffect(() => {
     if (isOpen) fetchData();
-  }, [isOpen, selectedSeqId, period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, selectedSeqId, period, customStart, customEnd]);
 
   const totals = useMemo(() => {
     return analytics.reduce(
@@ -293,16 +344,39 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                   </SelectContent>
                 </Select>
               )}
-              <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90')}>
-                <SelectTrigger className="w-[120px] bg-background border-border rounded-lg text-xs uppercase tracking-wide">
+              <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
+                <SelectTrigger className="w-[140px] bg-background border-border rounded-lg text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border rounded-lg">
                   <SelectItem value="7">7 jours</SelectItem>
                   <SelectItem value="30">30 jours</SelectItem>
                   <SelectItem value="90">90 jours</SelectItem>
+                  <SelectItem value="custom">Personnalisé</SelectItem>
                 </SelectContent>
               </Select>
+              {period === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    max={customEnd}
+                    className="h-9 px-2 text-xs rounded-lg border border-border bg-background text-foreground"
+                    aria-label="Date de début"
+                  />
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    min={customStart}
+                    max={format(new Date(), 'yyyy-MM-dd')}
+                    className="h-9 px-2 text-xs rounded-lg border border-border bg-background text-foreground"
+                    aria-label="Date de fin"
+                  />
+                </div>
+              )}
               <Button
                 variant="outline"
                 size="icon"
@@ -502,6 +576,52 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 {/* A/B Test Results */}
                 {abResults.length > 0 && (
                   <ABTestResults results={abResults} />
+                )}
+
+                {/* Stats par étape (drill-down) */}
+                {stepStats.length > 0 && (
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <ArrowDown className="w-4 h-4 text-muted-foreground" />
+                      <h3 className="text-sm font-semibold text-foreground">Performance par étape</h3>
+                    </div>
+                    <div className="space-y-2">
+                      {stepStats.map(s => {
+                        const replyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
+                        return (
+                          <div
+                            key={s.step_order}
+                            className="flex items-center gap-3 text-xs p-2 rounded-md bg-background border border-border"
+                          >
+                            <span className="w-16 font-medium text-foreground">Étape {s.step_order + 1}</span>
+                            <span className="w-32 text-muted-foreground capitalize">{s.action_type.replace(/_/g, ' ')}</span>
+                            <span className="flex-1 text-muted-foreground">
+                              <span className="font-mono font-semibold text-foreground">{s.sent}</span> envoyé
+                              {s.sent > 1 ? 's' : ''}
+                              {s.replied > 0 && (
+                                <>
+                                  {' · '}
+                                  <span className="font-mono font-semibold text-success">{s.replied}</span> réponse
+                                  {s.replied > 1 ? 's' : ''}
+                                </>
+                              )}
+                            </span>
+                            <span
+                              className={cn(
+                                'w-16 text-right font-mono font-semibold',
+                                replyRate >= 20 ? 'text-success' : replyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
+                              )}
+                            >
+                              {replyRate.toFixed(1)}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Taux de réponse par étape — colore en vert si ≥20%, orange si ≥10%, gris sinon.
+                    </p>
+                  </div>
                 )}
           </div>
         </ScrollArea>

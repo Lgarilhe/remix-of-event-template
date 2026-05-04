@@ -863,6 +863,29 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 </div>
                               </div>
                               <Textarea ref={messageRef} value={step.messageTemplate || ''} onChange={(e) => updateStep(step.id, { messageTemplate: e.target.value })} placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300 car.)" : "Bonjour {{first_name}}, ..."} rows={step.actionType === 'connection_request' ? 2 : 3} maxLength={step.actionType === 'connection_request' ? 300 : undefined} className={cn("mt-1.5", step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-destructive")} />
+
+                              {/* Aperçu rendu avec variables résolues — exemple "Laurent" */}
+                              {(step.messageTemplate || '').includes('{{') && (
+                                <details className="mt-2 group">
+                                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground select-none flex items-center gap-1">
+                                    <Eye className="w-3 h-3" />
+                                    Aperçu (exemple "Laurent Garilhe / Konekt")
+                                  </summary>
+                                  <div className="mt-2 p-3 bg-muted/30 border border-border rounded-lg text-xs whitespace-pre-wrap text-foreground">
+                                    {(step.messageTemplate || '')
+                                      .replace(/\{\{first_name\}\}/g, 'Laurent')
+                                      .replace(/\{\{last_name\}\}/g, 'Garilhe')
+                                      .replace(/\{\{full_name\}\}/g, 'Laurent Garilhe')
+                                      .replace(/\{\{company\}\}/g, 'Konekt')
+                                      .replace(/\{\{job_title\}\}/g, 'Lead Developer')
+                                      .replace(/\{\{sender_name\}\}/g, sequence.name?.includes('Skalr') ? 'Anna (Skalr)' : 'Toi')
+                                      .replace(/\{\{calendly_link\}\}/g, 'https://calendly.com/konekt/call')
+                                      .replace(/\{\{signature\}\}/g, '— L.G., Konekt')
+                                      .replace(/\{\{ai_snippet\}\}/g, '[snippet IA généré par profil]')
+                                      || 'Tape ton message ci-dessus pour voir l\'aperçu'}
+                                  </div>
+                                </details>
+                              )}
                             </div>
                           </>
                         )}

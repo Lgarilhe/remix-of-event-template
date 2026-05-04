@@ -214,7 +214,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [processingSequences, setProcessingSequences] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'markReplied'; id?: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
 
   const fetchEnrollments = async (append = false) => {
     try {
@@ -401,6 +401,81 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     }
   };
 
+  const reEnroll = async (enrollmentId: string) => {
+    try {
+      // Re-enrôlement : remet active + reset retry_count + reschedule la prochaine
+      // étape à maintenant. Utile pour relancer un candidat qui s'était arrêté
+      // (replied/paused/stopped) après contact résolu hors-canal.
+      const { error: updErr } = await supabase
+        .from('sequence_enrollments')
+        .update({
+          status: 'active',
+          replied_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', enrollmentId);
+      if (updErr) throw updErr;
+
+      // Trouve la prochaine étape pending (cancelled ou scheduled) et la reschedule
+      const { data: nextExec } = await (supabase
+        .from('sequence_step_executions')
+        .select('id')
+        .eq('enrollment_id', enrollmentId)
+        .in('status', ['cancelled', 'scheduled', 'failed', 'quota_blocked'])
+        .order('step_order', { ascending: true })
+        .limit(1) as any);
+      if (nextExec && nextExec.length > 0) {
+        await supabase
+          .from('sequence_step_executions')
+          .update({
+            status: 'scheduled',
+            scheduled_at: new Date().toISOString(),
+            retry_count: 0,
+            error_message: null,
+            skip_reason: null,
+          })
+          .eq('id', nextExec[0].id);
+      }
+
+      setEnrollments(prev =>
+        prev.map(e => e.id === enrollmentId ? { ...e, status: 'active', replied_at: null } : e)
+      );
+      toast.success('Candidat ré-enrôlé', {
+        description: 'La prochaine étape part dans les prochaines minutes.',
+      });
+    } catch (err) {
+      console.error('[EnrollmentsPanel] reEnroll failed:', err);
+      toast.error('Erreur lors du ré-enrôlement');
+    }
+  };
+
+  const skipStep = async (executionId: string) => {
+    try {
+      // Skip : marque l'étape skipped, le cron passera à la suivante automatiquement
+      const { error } = await supabase
+        .from('sequence_step_executions')
+        .update({
+          status: 'skipped',
+          skip_reason: 'Manuellement sautée par le recruteur',
+          executed_at: new Date().toISOString(),
+        })
+        .eq('id', executionId);
+      if (error) throw error;
+
+      // Trigger un cycle pour scheduler la suivante immédiatement
+      await invokeEdgeFunction('process-sequences', { action: 'process', force: true })
+        .catch(() => {}); // non-bloquant
+
+      toast.success('Étape sautée', {
+        description: 'La séquence passera à l\'étape suivante.',
+      });
+      await fetchEnrollments();
+    } catch (err) {
+      console.error('[EnrollmentsPanel] skipStep failed:', err);
+      toast.error('Erreur lors du saut d\'étape');
+    }
+  };
+
   const markReplied = async (enrollmentId: string) => {
     try {
       // Marque l'enrollment 'replied' + cancel les executions pending
@@ -440,6 +515,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       await bulkStopActive();
     } else if (confirmAction.type === 'markReplied' && confirmAction.id) {
       await markReplied(confirmAction.id);
+    } else if (confirmAction.type === 'reEnroll' && confirmAction.id) {
+      await reEnroll(confirmAction.id);
+    } else if (confirmAction.type === 'skipStep' && confirmAction.stepId) {
+      await skipStep(confirmAction.stepId);
     }
     setConfirmAction(null);
   };
@@ -730,6 +809,15 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     Marquer comme répondu
                                   </DropdownMenuItem>
                                 )}
+                                {/* Ré-enrôler : utile après un stop / replied résolu / completed */}
+                                {(enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'paused' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
+                                  <DropdownMenuItem
+                                    onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
+                                  >
+                                    <RefreshCw className="w-4 h-4 mr-2 text-foreground" />
+                                    Ré-enrôler
+                                  </DropdownMenuItem>
+                                )}
                                 {enrollment.profile_url && (
                                   <DropdownMenuItem asChild>
                                     <a
@@ -825,9 +913,21 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         {exec && (
                                           <div className="text-xs mt-1">
                                             {exec.status === 'scheduled' && (
-                                              <span className="text-muted-foreground">
-                                                Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
-                                              </span>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-muted-foreground">
+                                                  Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
+                                                </span>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setConfirmAction({ type: 'skipStep', stepId: exec.id });
+                                                  }}
+                                                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                                                  title="Sauter cette étape pour ce candidat"
+                                                >
+                                                  Sauter
+                                                </button>
+                                              </div>
                                             )}
                                             {(exec.status === 'executed' || exec.status === 'sent') && exec.executed_at && (
                                               <span className="text-success-foreground">
@@ -926,23 +1026,34 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               ? `Arrêter toutes les séquences actives (${activeCount})`
               : confirmAction?.type === 'markReplied'
                 ? 'Marquer comme répondu'
-                : 'Arrêter la séquence'}
+                : confirmAction?.type === 'reEnroll'
+                  ? 'Ré-enrôler ce candidat'
+                  : confirmAction?.type === 'skipStep'
+                    ? 'Sauter cette étape ?'
+                    : 'Arrêter la séquence'}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {confirmAction?.type === 'bulkStop'
               ? `Les ${activeCount} candidat(s) actif(s) ne recevront plus de messages de cette séquence.`
               : confirmAction?.type === 'markReplied'
                 ? 'L\'enrollment passera en "Répondu" et toutes les étapes restantes seront annulées. Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).'
-                : 'Le candidat ne recevra plus de messages de cette séquence.'}
+                : confirmAction?.type === 'reEnroll'
+                  ? 'Le candidat repassera en statut actif. La prochaine étape pending sera reschedulée à maintenant. Utile pour relancer un candidat après une réponse résolue.'
+                  : confirmAction?.type === 'skipStep'
+                    ? 'Cette étape ne sera pas envoyée pour ce candidat. La séquence passera directement à l\'étape suivante.'
+                    : 'Le candidat ne recevra plus de messages de cette séquence.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
           <AlertDialogAction
-            className={confirmAction?.type === 'markReplied' ? '' : 'bg-destructive hover:bg-destructive/90'}
+            className={['markReplied', 'reEnroll'].includes(confirmAction?.type || '') ? '' : 'bg-destructive hover:bg-destructive/90'}
             onClick={handleConfirmedAction}
           >
-            {confirmAction?.type === 'markReplied' ? 'Marquer répondu' : 'Confirmer'}
+            {confirmAction?.type === 'markReplied' ? 'Marquer répondu'
+              : confirmAction?.type === 'reEnroll' ? 'Ré-enrôler'
+              : confirmAction?.type === 'skipStep' ? 'Sauter l\'étape'
+              : 'Confirmer'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
