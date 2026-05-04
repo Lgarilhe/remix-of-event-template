@@ -7,6 +7,7 @@
  * and sending via Microsoft Graph API or VPS MCP endpoint.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
+import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -22,9 +23,10 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
-const UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
-const UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-const UNIPILE_DSN = `https://${UNIPILE_DSN_RAW}`;
+// Note : UNIPILE_API_KEY/UNIPILE_DSN ne sont plus utilisés en globals.
+// On résout les creds par organization via resolveUnipileCredentials() pour
+// supporter le multi-tenant proprement (chaque org peut avoir son propre
+// compte Unipile via organization_integrations).
 
 // ============ HELPERS ============
 
@@ -193,6 +195,8 @@ async function generateAiSnippet(
  * Requires an email account connected in Unipile (Gmail, Outlook, IMAP).
  */
 async function sendViaUnipile(
+  unipileApiKey: string,
+  unipileDsn: string,
   accountId: string,
   senderName: string,
   to: string,
@@ -201,8 +205,8 @@ async function sendViaUnipile(
   cc?: string[],
   bcc?: string[],
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  if (!UNIPILE_API_KEY || !UNIPILE_DSN) {
-    return { success: false, error: 'Unipile not configured (missing UNIPILE_API_KEY or UNIPILE_DSN)' };
+  if (!unipileApiKey || !unipileDsn) {
+    return { success: false, error: 'Unipile not configured (no API key or DSN resolved for this org)' };
   }
 
   try {
@@ -222,10 +226,10 @@ async function sendViaUnipile(
       tracking_options: { opens: true, links: true },
     };
 
-    const res = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/emails`, {
+    const res = await fetchWithTimeout(`${unipileDsn}/api/v1/emails`, {
       method: 'POST',
       headers: {
-        'X-API-KEY': UNIPILE_API_KEY,
+        'X-API-KEY': unipileApiKey,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
@@ -498,9 +502,23 @@ Deno.serve(async (req) => {
     // Priority: step.sender_id > enrollment.assigned_sender_id > enrollment.account_id
     const emailAccountId = (step.sender_id || enrollment.assigned_sender_id || enrollment.account_id || '') as string;
 
-    if (emailAccountId && UNIPILE_API_KEY) {
+    // Resolve Unipile credentials per organization (multi-tenant safe).
+    // Fallback automatique sur les env vars si pas de creds org-specific.
+    const unipileCreds = await resolveUnipileCredentials(orgId, supabase);
+
+    if (emailAccountId && unipileCreds?.apiKey && unipileCreds?.dsn) {
       // Primary: send via Unipile (same infra as LinkedIn — supports Gmail, Outlook, IMAP)
-      sendResult = await sendViaUnipile(emailAccountId, senderName, recipientEmail, subject, htmlBody, cc, bcc);
+      sendResult = await sendViaUnipile(
+        unipileCreds.apiKey,
+        unipileCreds.dsn,
+        emailAccountId,
+        senderName,
+        recipientEmail,
+        subject,
+        htmlBody,
+        cc,
+        bcc,
+      );
     } else {
       // Fallback: Microsoft Graph API (if configured)
       const graphToken = Deno.env.get('MICROSOFT_GRAPH_TOKEN');

@@ -561,13 +561,36 @@ async function handleProcess(supabase: any, force = false) {
           }
         }
 
+        // Snapshot du contenu de l'étape AU MOMENT du lock.
+        // Si le user modifie step.message_template plus tard, l'historique des
+        // exécutions reste figé sur ce qui a été réellement envoyé/programmé.
+        // Sur retry (retry_count > 0), on garde la valeur déjà snapshotée.
+        const isRetry = (exec.retry_count || 0) > 0;
+        const snapshotMessage = isRetry && exec.final_message
+          ? exec.final_message
+          : (step.message_template || '');
+        const snapshotSubject = isRetry && exec.final_subject
+          ? exec.final_subject
+          : (step.subject_template || '');
+
         const { data: lockResult, error: lockError } = await supabase
-          .from('sequence_step_executions').update({ status: 'sending' }).eq('id', exec.id).eq('status', 'scheduled').select().single();
+          .from('sequence_step_executions')
+          .update({
+            status: 'sending',
+            // Fige le contenu : si on retry, on a déjà la bonne valeur,
+            // sinon on snapshot le template courant
+            final_message: snapshotMessage,
+            final_subject: snapshotSubject,
+          })
+          .eq('id', exec.id)
+          .eq('status', 'scheduled')
+          .select()
+          .single();
 
         if (lockError || !lockResult) { results.skipped++; continue; }
 
-        let finalMessage = (exec.final_message || step.message_template || '') as string;
-        let finalSubject = (exec.final_subject || step.subject_template || '') as string;
+        let finalMessage = snapshotMessage;
+        let finalSubject = snapshotSubject;
 
         // AI personalization: use the rich pipeline for ALL message types including email
         // SKIP if already generated on a previous attempt (retry) — avoids double billing
@@ -635,15 +658,34 @@ async function handleProcess(supabase: any, force = false) {
               continue;
             }
           }
-          // Error handling: differentiate rate limits from other retryable errors
+          // Error handling: differentiate rate limits, account disconnections, and other retryable errors
           const currentRetryCount = exec.retry_count || 0;
           const errorStr = executeResult.error || '';
-          
-          if (isRateLimitError(errorStr)) {
+
+          if (isAccountDisconnectedError(errorStr)) {
+            // Compte LinkedIn/email déconnecté : retry inutile. On pause
+            // l'enrollment, marque l'execution failed, et logue clair pour
+            // que l'utilisateur reconnecte son compte (toast déjà géré côté
+            // LinkedInAccountsContext via webhook account_disconnected).
+            await supabase.from('sequence_step_executions').update({
+              status: 'failed',
+              error_message: `Compte déconnecté : ${executeResult.error}. Reconnectez le compte dans Settings.`,
+              executed_at: new Date().toISOString(),
+              final_message: finalMessage || null,
+              final_subject: finalSubject || null,
+            }).eq('id', exec.id);
+            await supabase.from('sequence_enrollments').update({
+              status: 'paused',
+              updated_at: new Date().toISOString(),
+            }).eq('id', enrollment.id);
+            console.warn(`[process] ⚠️ Account disconnected for enrollment ${enrollment.id} — paused`);
+            results.failed++;
+            if (enrollment.sequence_id) failedSequenceIds.add(enrollment.sequence_id);
+          } else if (isRateLimitError(errorStr)) {
             // Rate limit: NO retry counter increment, reschedule based on action type
             const retryAt = getRateLimitRetryDate(step.action_type, enrollment.user_timezone || 'Europe/Paris');
-            await supabase.from('sequence_step_executions').update({ 
-              status: 'scheduled', 
+            await supabase.from('sequence_step_executions').update({
+              status: 'scheduled',
               error_message: `Rate limit (${step.action_type}) → rescheduled to ${retryAt.toISOString()}`,
               scheduled_at: retryAt.toISOString(),
             }).eq('id', exec.id);
@@ -668,9 +710,22 @@ async function handleProcess(supabase: any, force = false) {
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown';
         const currentRetryCount = exec.retry_count || 0;
-        if (isRateLimitError(errorMsg)) {
+        if (isAccountDisconnectedError(errorMsg)) {
+          // Pause enrollment + skip retry sur compte déconnecté
+          await supabase.from('sequence_step_executions').update({
+            status: 'failed',
+            error_message: `Compte déconnecté : ${errorMsg}. Reconnectez le compte dans Settings.`,
+            executed_at: new Date().toISOString(),
+          }).eq('id', exec.id);
+          await supabase.from('sequence_enrollments').update({
+            status: 'paused',
+            updated_at: new Date().toISOString(),
+          }).eq('id', enrollment.id);
+          console.warn(`[process] ⚠️ Account disconnected (in catch) for enrollment ${enrollment.id} — paused`);
+          results.failed++;
+        } else if (isRateLimitError(errorMsg)) {
           const retryAt = getRateLimitRetryDate(step.action_type, enrollment.user_timezone || 'Europe/Paris');
-          await supabase.from('sequence_step_executions').update({ 
+          await supabase.from('sequence_step_executions').update({
             status: 'scheduled',
             error_message: `Rate limit (${step.action_type}) → rescheduled to ${retryAt.toISOString()}`,
             scheduled_at: retryAt.toISOString(),
@@ -1036,6 +1091,25 @@ function isRetryableError(error: string | undefined): boolean {
   return e.includes('429') || e.includes('500') || e.includes('502') || e.includes('503') || e.includes('504')
     || e.includes('timeout') || e.includes('rate limit') || e.includes('temporarily') || e.includes('econnreset')
     || e.includes('fetch failed') || e.includes('network');
+}
+
+/**
+ * Détecte les erreurs liées à un compte LinkedIn/Email/WhatsApp déconnecté.
+ * Ces erreurs ne sont PAS retry-ables : retry 3× ne va pas re-connecter
+ * le compte. On préfère pauser l'enrollment et notifier l'utilisateur.
+ */
+function isAccountDisconnectedError(error: string | undefined): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return e.includes('credentials')
+    || e.includes('account_disconnected')
+    || e.includes('account not found')
+    || e.includes('account is not connected')
+    || e.includes('invalid credentials')
+    || e.includes('unauthorized')
+    || (e.includes('401') && (e.includes('account') || e.includes('unipile')))
+    || e.includes('account_status')
+    || e.includes('reconnect');
 }
 
 /**
