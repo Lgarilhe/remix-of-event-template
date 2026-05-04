@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { MissionContextBanner } from './MissionContextBanner';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
@@ -21,8 +22,26 @@ interface MissionOutreachProps {
 export const MissionOutreach = ({ project }: MissionOutreachProps) => {
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
   const { organizationId } = useOrganization();
-  const [outreachTab, setOutreachTab] = useState<'sequences' | 'invitations'>('sequences');
-  const [showEmptyState, setShowEmptyState] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Sub-tab persistant via URL (?outreach=sequences|invitations) pour permettre
+  // bookmarks et préserver l'état au refresh.
+  const initialTab = searchParams.get('outreach') === 'invitations' ? 'invitations' : 'sequences';
+  const [outreachTab, _setOutreachTab] = useState<'sequences' | 'invitations'>(initialTab);
+  const setOutreachTab = useCallback(
+    (next: 'sequences' | 'invitations') => {
+      _setOutreachTab(next);
+      const params = new URLSearchParams(searchParams);
+      if (next === 'sequences') params.delete('outreach');
+      else params.set('outreach', next);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  // showEmptyState commence en false pour éviter le flash empty → loaded.
+  // Sera mis à true seulement si le fetch confirme 0 séquences.
+  const [showEmptyState, setShowEmptyState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Enrollment stats

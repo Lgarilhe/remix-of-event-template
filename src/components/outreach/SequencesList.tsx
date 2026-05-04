@@ -99,6 +99,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [toggleConfirm, setToggleConfirm] = useState<{ id: string; nextActive: boolean; activeCount: number } | null>(null);
   const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
   const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
   const [showActivityLog, setShowActivityLog] = useState(false);
@@ -462,7 +463,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .eq('id', sequenceId);
 
       if (error) throw error;
-      
+
       setSequences(prev => prev.filter(s => s.id !== sequenceId));
       toast.success('Séquence supprimée');
     } catch (err) {
@@ -470,6 +471,58 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       toast.error('Erreur lors de la suppression');
     } finally {
       setDeleteConfirmId(null);
+    }
+  };
+
+  const handleDuplicate = async (seq: SequenceWithStats) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Charge les steps réelles depuis la DB
+      const { data: steps, error: stepsErr } = await (supabase
+        .from('sequence_steps')
+        .select('*')
+        .eq('sequence_id', seq.id)
+        .order('step_order', { ascending: true }) as any);
+      if (stepsErr) throw stepsErr;
+
+      // 2. Crée la nouvelle séquence avec un nom suffixé "(copie)"
+      const { data: newSeq, error: seqErr } = await (supabase
+        .from('outreach_sequences')
+        .insert({
+          name: `${seq.name} (copie)`,
+          description: seq.description,
+          is_active: false, // toujours inactive par défaut, l'user choisit quand activer
+          created_by: user.id,
+          ...(projectId ? { project_id: projectId } : {}),
+        } as any)
+        .select()
+        .single() as any);
+      if (seqErr || !newSeq) throw seqErr || new Error('Création échouée');
+
+      // 3. Re-crée les steps avec la nouvelle sequence_id
+      if (steps && steps.length > 0) {
+        const stepsCopy = (steps as any[]).map((s: any) => {
+          const { id: _id, sequence_id: _sid, created_at: _ca, updated_at: _ua, ...rest } = s;
+          return { ...rest, sequence_id: newSeq.id };
+        });
+        const { error: stepsCreateErr } = await (supabase
+          .from('sequence_steps')
+          .insert(stepsCopy as any) as any);
+        if (stepsCreateErr) throw stepsCreateErr;
+      }
+
+      toast.success(`Séquence dupliquée : "${newSeq.name}"`, {
+        description: 'Inactive par défaut. Active-la quand tu es prêt.',
+      });
+      // Refresh la liste
+      await fetchSequences();
+    } catch (err) {
+      console.error('Error duplicating sequence:', err);
+      toast.error('Erreur lors de la duplication', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -554,9 +607,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           </button>
           <button
             onClick={handleForceReschedule}
-            disabled={forceRescheduling || !selectedAccount}
+            disabled={forceRescheduling}
             className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-accent/40 text-foreground hover:bg-accent/60 transition-colors shrink-0 disabled:opacity-50"
-            title="Envoyer toutes les actions du jour maintenant"
+            title="Avance toutes les actions du jour à maintenant (sauf invitations LinkedIn — quota safety)"
           >
             <Zap className={cn("w-3.5 h-3.5", forceRescheduling && "animate-pulse")} />
             <span className="hidden sm:inline">{forceRescheduling ? 'En cours…' : 'Envoyer tout'}</span>
@@ -666,7 +719,15 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 <div className="w-5" />
                 <Switch
                   checked={seq.is_active}
-                  onCheckedChange={() => handleToggleActive(seq.id, seq.is_active)}
+                  onCheckedChange={(next) => {
+                    // Confirmation requise si on désactive ET qu'il y a des actifs
+                    // (peut couper l'envoi pour 50+ candidats par clic).
+                    if (!next && seq.enrollments.active > 0) {
+                      setToggleConfirm({ id: seq.id, nextActive: false, activeCount: seq.enrollments.active });
+                      return;
+                    }
+                    handleToggleActive(seq.id, seq.is_active);
+                  }}
                   onClick={(e) => e.stopPropagation()}
                   className="data-[state=checked]:bg-foreground"
                 />
@@ -734,12 +795,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       <Edit2 className="w-4 h-4 mr-2" />
                       Modifier
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicate(seq); }}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Dupliquer
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSaveTemplateSeq(seq); }}>
                       <FileText className="w-4 h-4 mr-2" />
                       Sauvegarder comme template
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       className="text-destructive"
                       onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(seq.id); }}
                     >
@@ -918,13 +983,34 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         </React.Suspense>
       )}
 
-      {/* Delete confirmation */}
+      {/* Delete confirmation — affiche le count d'enrollments impactés */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogContent className="bg-background border-border rounded-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette séquence ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Cette action est irréversible. Tous les candidats inscrits seront retirés de la séquence.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Cette action est <strong>irréversible</strong>. Tous les candidats inscrits seront retirés
+                  et leur historique d'envoi (étapes programmées et envoyées) supprimé.
+                </p>
+                {(() => {
+                  const seq = sequences.find(s => s.id === deleteConfirmId);
+                  if (!seq) return null;
+                  const total = seq.enrollments.total || 0;
+                  const active = seq.enrollments.active || 0;
+                  if (total === 0) return null;
+                  return (
+                    <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-sm">
+                      <p className="font-semibold text-destructive">⚠ Impact :</p>
+                      <p className="text-destructive/90 mt-1">
+                        {total} candidat{total > 1 ? 's' : ''} inscrit{total > 1 ? 's' : ''}
+                        {active > 0 && ` (dont ${active} actif${active > 1 ? 's' : ''} en cours d'envoi)`}.
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -933,7 +1019,38 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Supprimer
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Pause séquence avec actifs */}
+      <AlertDialog open={!!toggleConfirm} onOpenChange={() => setToggleConfirm(null)}>
+        <AlertDialogContent className="bg-background border-border rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Désactiver cette séquence ?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Les <strong>{toggleConfirm?.activeCount}</strong> candidat{(toggleConfirm?.activeCount || 0) > 1 ? 's' : ''} actuellement
+                  en cours seront mis en pause. Aucun nouveau message ne partira tant que la séquence est désactivée.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tu pourras la réactiver à tout moment — les enrollments reprendront là où ils en étaient.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (toggleConfirm) handleToggleActive(toggleConfirm.id, true);
+                setToggleConfirm(null);
+              }}
+            >
+              Désactiver
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -475,6 +475,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
       }
     });
 
+    // A/B variants : poids total doit faire 100% par groupe d'order partagé
+    const variantsByOrder = new Map<number, SequenceStep[]>();
+    sequence.steps.forEach(s => {
+      if (s.variantGroup) {
+        const list = variantsByOrder.get(s.order) || [];
+        list.push(s);
+        variantsByOrder.set(s.order, list);
+      }
+    });
+    variantsByOrder.forEach((variants, order) => {
+      if (variants.length < 2) return; // 1 seule variante = pas un A/B
+      const total = variants.reduce((sum, v) => sum + (v.variantWeight || 0), 0);
+      if (total !== 100) {
+        errors.push(`Étape ${order + 1} : poids des variantes A/B = ${total}% (doit être 100%)`);
+      }
+    });
+
     if (errors.length > 0) {
       setValidationErrors(errors);
       if (mode === 'wizard') setWizardStep('review');

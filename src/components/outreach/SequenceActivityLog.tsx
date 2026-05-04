@@ -50,6 +50,16 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { EditScheduledMessageModal } from './activity-log/EditScheduledMessageModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface StepExecution {
   id: string;
@@ -118,6 +128,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [editingExecution, setEditingExecution] = useState<StepExecution | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{ id: string; candidateName: string } | null>(null);
 
   const fetchExecutions = async () => {
     try {
@@ -555,7 +566,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleCancelExecution(exec.id);
+                                      setCancelConfirm({ id: exec.id, candidateName: exec.candidate_name || 'le candidat' });
                                     }}
                                     disabled={cancellingId === exec.id}
                                   >
@@ -598,6 +609,31 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         execution={editingExecution}
         onSaved={fetchExecutions}
       />
+
+      {/* Confirmation avant annulation d'une exécution programmée */}
+      <AlertDialog open={!!cancelConfirm} onOpenChange={() => setCancelConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Annuler cette étape ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              L'envoi prévu pour <strong>{cancelConfirm?.candidateName}</strong> sera annulé.
+              Cette action est irréversible — l'étape ne partira plus.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Conserver l'envoi</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (cancelConfirm) handleCancelExecution(cancelConfirm.id);
+                setCancelConfirm(null);
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Annuler l'étape
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 };
