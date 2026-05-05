@@ -487,12 +487,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {hasMessageSteps && mode !== 'summary' && (
-              <Badge variant="outline" className="text-[10px] gap-1 hidden sm:inline-flex">
-                <Eye className="w-3 h-3" />
-                Preview {generatedCount}/{totalToGenerate}
-              </Badge>
-            )}
+            {/* Compteur "Preview N/M" déplacé dans DynamicSummaryBanner
+                (pill IA en haut à droite) — évite la duplication. */}
             {hasMessageSteps && !enrollResults && (
               <div className="flex items-center border border-border rounded-md overflow-hidden">
                 <button
@@ -517,14 +513,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             )}
           </div>
         </div>
-        {/* Mobile preview counter */}
-        {hasMessageSteps && mode !== 'summary' && (
-          <div className="sm:hidden px-3 pb-2 -mt-1">
-            <span className="text-[10px] text-muted-foreground">
-              ✨ Previews : {generatedCount}/{totalToGenerate} · ~{estimatedCredits} crédits
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Dynamic summary banner */}

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateState, computeYearsOfExperience, getChannelAvailability } from './types';
 import { cn } from '@/lib/utils';
-import { Check, Pencil, MapPin, Briefcase, MoreVertical, X as XIcon, SkipForward, BarChart3, History, ExternalLink } from 'lucide-react';
+import { Check, Pencil, MapPin, Briefcase, MoreVertical, X as XIcon, SkipForward, BarChart3, History, ExternalLink, Mail, Linkedin, MessageCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -123,34 +123,49 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         )}
       </div>
 
-      {/* Channel badges */}
+      {/* Channel badges — icônes Lucide color-coded au lieu de croix/check
+          textuelles. Plus scannable d'un coup d'œil : icône colorée =
+          dispo, icône grisée = manquante. */}
       <TooltipProvider delayDuration={300}>
         <div className="flex items-center gap-1 pl-10">
-          <ChannelBadge available={channels.email} label="Email" tooltipMissing="Les steps email seront skippés" />
-          <ChannelBadge available={channels.linkedin} label="LinkedIn" tooltipMissing="Pas de compte LinkedIn" />
-          <ChannelBadge available={channels.whatsapp} label="WhatsApp" tooltipMissing="Les steps WhatsApp seront skippés" />
+          <ChannelBadge available={channels.email} icon={Mail} label="Email" tooltipMissing="Pas d'email — étapes Email skippées" tooltipAvailable="Email disponible" />
+          <ChannelBadge available={channels.linkedin} icon={Linkedin} label="LinkedIn" tooltipMissing="Pas de profil LinkedIn" tooltipAvailable="LinkedIn disponible" />
+          <ChannelBadge available={channels.whatsapp} icon={MessageCircle} label="WhatsApp" tooltipMissing="Pas de téléphone — étapes WhatsApp skippées" tooltipAvailable="WhatsApp disponible" />
         </div>
       </TooltipProvider>
     </div>
   );
 });
 
-function ChannelBadge({ available, label, tooltipMissing }: { available: boolean; label: string; tooltipMissing: string }) {
+function ChannelBadge({
+  available, icon: Icon, label, tooltipMissing, tooltipAvailable,
+}: {
+  available: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  tooltipMissing: string;
+  tooltipAvailable: string;
+}) {
   const badge = (
-    <span className={cn(
-      "text-[8px] px-1 py-0.5 rounded border",
-      available ? "border-emerald-500/30 text-emerald-400 bg-success/10" : "border-muted text-muted-foreground bg-muted/30"
-    )}>
-      {available ? '✓' : '✗'} {label}
+    <span
+      className={cn(
+        'inline-flex items-center justify-center h-5 w-5 rounded border transition-colors',
+        available
+          ? 'border-success/30 text-success bg-success/10'
+          : 'border-border text-muted-foreground/50 bg-muted/30',
+      )}
+      aria-label={`${label}${available ? ' disponible' : ' indisponible'}`}
+    >
+      <Icon className="w-3 h-3" />
     </span>
   );
-
-  if (available) return badge;
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>{badge}</TooltipTrigger>
-      <TooltipContent side="bottom" className="text-xs">{tooltipMissing}</TooltipContent>
+      <TooltipContent side="bottom" className="text-xs">
+        {available ? tooltipAvailable : tooltipMissing}
+      </TooltipContent>
     </Tooltip>
   );
 }
