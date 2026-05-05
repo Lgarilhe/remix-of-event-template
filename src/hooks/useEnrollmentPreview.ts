@@ -6,9 +6,11 @@
  * - Bulk generation with concurrency control
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export interface SequenceStepPreview {
   stepId: string;
@@ -72,6 +74,61 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   const [generatedCount, setGeneratedCount] = useState(0);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const abortRef = useRef(false);
+  const { user } = useAuthReady();
+
+  // Fetch outreach_config de la mission depuis sourcing_projects.job_details.
+  // Sans ça, l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet
+  // externe" même si l'user a config la mission en mode interne dans le brief.
+  const [outreachConfig, setOutreachConfig] = useState<{
+    recruitment_mode?: 'internal' | 'client';
+    sender_role?: string;
+    anonymize_client?: boolean;
+    anonymized_alias?: string;
+  } | null>(null);
+  const [missionClientName, setMissionClientName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const jobId = job?.id;
+    if (!jobId) {
+      setOutreachConfig(null);
+      setMissionClientName(null);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('sourcing_projects')
+          .select('id, job_id, job_details, client_name')
+          .or(`id.eq.${jobId},job_id.eq.${jobId}`)
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        const jd = (data?.job_details ?? null) as Record<string, unknown> | null;
+        const cfg = (jd?.outreach_config ?? null) as typeof outreachConfig;
+        setOutreachConfig(cfg);
+        setMissionClientName(
+          data?.client_name
+            ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
+            ?? null,
+        );
+      } catch (err) {
+        console.warn('[useEnrollmentPreview] outreach_config fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [job?.id]);
+
+  // Nom de l'expéditeur (le user connecté). Sans ça, l'edge function
+  // signe avec "[Prénom]" littéralement (placeholder par défaut) ou
+  // pire, hallucine "Konekt" comme nom de personne.
+  const senderName: string | undefined = (
+    (user?.user_metadata as any)?.full_name
+    || [(user?.user_metadata as any)?.first_name, (user?.user_metadata as any)?.last_name]
+        .filter(Boolean).join(' ').trim()
+    || (user?.email ? user.email.split('@')[0].split('.').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ') : '')
+    || undefined
+  );
 
   const messageSteps = steps.filter(hasMessage);
   const totalToGenerate = profiles.length;
@@ -193,13 +250,16 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             profile: profileData,
             job: job ? {
               title: job.title,
-              client: job.client,
+              // Si on a missionClientName plus à jour côté DB, on l'utilise
+              // pour respecter le client.name réel de la mission.
+              client: job.client || (missionClientName ? { name: missionClientName } : undefined),
               skills: job.skills || [],
               description: job.description,
               location: job.location,
               accompagnement: job.accompagnement || [],
             } : undefined,
             tone: step.aiTone || 'professional',
+            senderName,
             accountId,
             profileId: profile.provider_id || profile.id,
             candidateLinkedInUrl: (profile as any).profile_url || (profile as any).public_profile_url || (profile as any).linkedin_url,
@@ -212,6 +272,12 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
               currentActionType: step.actionType,
               prevSentSteps,
             },
+            // Config outreach mission : INTERNE / CABINET, sender_role
+            // (TA / CTO / Founder...), anonymisation client. Sans ça
+            // l'edge function tombait sur le fallback MODE SUCCÈS =
+            // cabinet → AI disait "j'accompagne une scale-up tech"
+            // même quand la mission était config en INTERNE.
+            outreachConfig: outreachConfig || undefined,
           });
 
           if (error) throw error;
@@ -264,7 +330,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
         setPreview(profile.id, step.stepId, noAiMsg);
       }
     }
-  }, [messageSteps, steps, job, accountId, previews, setPreview]);
+  }, [messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
 
   const generateForCandidateById = useCallback(async (candidateId: string) => {
     const profile = profiles.find(p => p.id === candidateId);
@@ -335,13 +401,14 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           profile: profileData,
           job: job ? {
             title: job.title,
-            client: job.client,
+            client: job.client || (missionClientName ? { name: missionClientName } : undefined),
             skills: job.skills || [],
             description: job.description,
             location: job.location,
             accompagnement: job.accompagnement || [],
           } : undefined,
           tone: step.aiTone || 'professional',
+          senderName,
           accountId,
           profileId: profile.provider_id || profile.id,
           messageTemplate: step.messageTemplate,
@@ -350,6 +417,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             currentActionType: step.actionType,
             prevSentSteps,
           },
+          outreachConfig: outreachConfig || undefined,
         });
 
         if (error) throw error;
@@ -384,7 +452,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
         isEdited: false,
       });
     }
-  }, [profiles, messageSteps, job, accountId, previews, setPreview]);
+  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
 
   const editMessage = useCallback((candidateId: string, stepId: string, field: 'subject' | 'message', value: string) => {
     setPreview(candidateId, stepId, {
