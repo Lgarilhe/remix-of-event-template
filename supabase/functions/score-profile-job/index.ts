@@ -1143,11 +1143,32 @@ ${workExpText}
 2. **Must-have** : Si des critères sont marqués must-have/obligatoires, le candidat les satisfait-il ?
    → Si les critères listent plusieurs options avec "parmi", "ou", "dont", au moins UNE suffit.
    → Sois intelligent sur les noms d'écoles, certifications, et synonymes techniques.
-   → IMPORTANT : 3 verdicts possibles :
-     - "passed" : le profil satisfait clairement le critère (preuve dans le profil)
-     - "failed" : le profil contredit clairement le critère (aucun indice, domaine totalement différent)
-     - "uncertain" : pas assez d'infos pour juger (profil LinkedIn minimal, pas de description de poste, etc.)
-     → En cas de doute, choisis "uncertain" plutôt que "failed". Mieux vaut vérifier qu'écarter à tort.
+   → 3 verdicts possibles :
+     - "passed" : profil satisfait le critère. INCLUT 2 cas :
+       (a) Preuve EXPLICITE dans le profil (skill listée, projet visible, etc.)
+       (b) PROFIL THIN (peu d'infos détaillées) MAIS signaux contextuels COHÉRENTS
+           avec le critère : titre du poste, séniorité, entreprise actuelle, parcours.
+           Ex 1 : Lead Backend Engineer chez Doctolib avec 8 ans d'XP → must-have "Go" =
+                  passed même si "Go" n'apparaît pas littéralement (la stack Doctolib =
+                  Go, le titre = backend senior).
+           Ex 2 : Tech Lead avec 10 ans d'XP, ancien Stripe + Datadog → must-have
+                  "microservices distribués" = passed (impossible d'avoir bossé là
+                  sans toucher à ça).
+           **Le test mental** : "si on l'avait en call de 30 min, est-ce que ce candidat
+           pourrait raisonnablement parler du sujet pendant 10 min sans coller ?"
+           Si OUI → passed.
+     - "failed" : le profil CONTREDIT clairement le critère (domaine totalement différent,
+       absence de signaux ET incompatibilité explicite). Ex : Frontend React-only depuis
+       8 ans pour un must-have "Go backend distribué" = failed.
+     - "uncertain" : RÉSERVÉ aux cas où :
+       (a) Le profil est minimal (juste nom + 1 ligne) ET aucun signal contextuel
+           (pas de titre clair, pas de séniorité, pas d'entreprise pertinente)
+       (b) OU le critère est très pointu (techno de niche) ET aucun signal le confirme
+           ni le contredit
+       → Si les SIGNAUX CONTEXTUELS supportent le critère même sans preuve explicite,
+         choisis "passed" PAS "uncertain". Mieux vaut faire confiance qu'écarter un bon profil.
+       → "uncertain" n'est PAS le défaut quand on hésite. C'est seulement quand on n'a
+         vraiment AUCUN signal pour trancher.
 
 3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
 
@@ -1358,6 +1379,15 @@ ${profileSections}
 === TA MISSION ===
 Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-100), pedigree (0-100), score global (0-100), must-have ("passed"/"failed"/"uncertain").
 
+🔑 MUST-HAVE — RÈGLE CRITIQUE pour ne PAS écarter à tort les profils light :
+- "passed" = preuve EXPLICITE OU signaux contextuels COHÉRENTS (titre + séniorité + entreprise actuelle).
+  Ex : Lead Backend chez Doctolib avec 8 ans XP → must-have "Go" = passed (la stack le suggère).
+  Test mental : "en call de 30 min, ce candidat pourrait-il parler du sujet 10 min sans coller ?" Si OUI → passed.
+- "uncertain" = RÉSERVÉ aux profils MINIMAUX (juste nom + 1 ligne) ET aucun signal contextuel.
+  PAS le défaut quand on hésite — le défaut c'est "passed" si les signaux supportent.
+- "failed" = profil CONTREDIT le critère (domaine totalement différent).
+Mieux vaut faire confiance qu'écarter un bon profil sur un manque de preuve explicite.
+
 ⚠️ VÉRIFICATIONS DE COMPATIBILITÉ (impactent le score global ET les concerns) :
 - **Contrat** : si le poste est en CDI mais le candidat se présente comme freelance/indépendant dans son headline ou son À propos → score global plafonné à 45, concern "Profil freelance vs poste CDI". Inversement si poste freelance et profil "carrière CDI 10+ ans en grand groupe", concern "Risque attractivité freelance".
 - **Salaire/TJM** : si le profil mentionne explicitement un TJM ou un salaire (ex "TJM 800€/j", "Cherche poste 70k€") incompatible avec le range du poste (>15% au-dessus du max) → concern "Attente salariale > range" et baisse le score de 10-15 points.
@@ -1538,14 +1568,25 @@ function computeFinalScore(weightedScore: number, semanticScore: number | null, 
 }
 
 /**
- * Cap le score final à 50 max si une compétence MUST-HAVE manque.
- * Avant ce fix : un profil pouvait être noté 80+ par le LLM même si
- * une compétence obligatoire (ex: "React") manquait → faux positifs.
- * Après : si mustHavePassed === false → score plafonné, recommandation
- * passe en "skip" automatiquement.
+ * Cap le score final selon le verdict mustHave du LLM.
  *
- * `uncertain` (LLM pas sûr, ex: profil sans détails) → on cap à 65 pour
- * forcer un "maybe" et inviter le recruteur à vérifier manuellement.
+ * Calibration (refonte 2026-05-05 après feedback "des fois les profils
+ * mettent pas beaucoup d'infos et donc on les écarte à tort") :
+ *
+ * - `failed` (le profil CONTREDIT le must-have) → cap à 50
+ *   = signal fort, on plafonne pour forcer skip.
+ *
+ * - `uncertain` (vraiment aucun signal pour trancher) → cap à 75
+ *   (avant : 65 → trop punitif, capait des bons profils thin).
+ *   75 laisse passer en "go" les très bons matchs algo+semantic même
+ *   quand le LLM ne peut pas confirmer la skill explicitement.
+ *
+ * - `passed` (preuve explicite OU signaux contextuels cohérents) → pas de cap.
+ *
+ * Le LLM est maintenant calibré (voir prompt) pour répondre "passed"
+ * dès que les signaux contextuels (titre, séniorité, entreprise) sont
+ * cohérents avec la must-have, même sans preuve explicite. "uncertain"
+ * est réservé aux profils vraiment minimaux sans aucun signal.
  */
 function capScoreOnMustHaveFail(
   finalScore: number,
@@ -1553,7 +1594,7 @@ function capScoreOnMustHaveFail(
   mustHaveUncertain: boolean | undefined,
 ): number {
   if (mustHavePassed === false) return Math.min(finalScore, 50);
-  if (mustHaveUncertain === true) return Math.min(finalScore, 65);
+  if (mustHaveUncertain === true) return Math.min(finalScore, 75);
   return finalScore;
 }
 
@@ -1901,12 +1942,14 @@ async function scoreProfile(
       return koResult;
     }
 
-    // If must-have is uncertain, penalize score and flag for review
+    // If must-have is uncertain, light penalty + soft flag for review.
+    // Réduit de -15 à -5 : un profil thin avec signaux contextuels positifs
+    // ne doit pas être pénalisé deux fois (déjà cap 75 dans capScoreOnMustHaveFail).
     if ((llmResult as any).mustHaveUncertain) {
-      llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 15);
+      llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 5);
       llmResult.concerns = [
         ...(llmResult.concerns || []),
-        "⚠️ Critère obligatoire à vérifier manuellement — pas assez d'infos sur le profil",
+        "ℹ️ Profil léger sur LinkedIn — must-have à confirmer en call (probablement OK vu les signaux contextuels)",
       ];
       if (llmResult.mustHaveDetails) {
         llmResult.concerns.push(llmResult.mustHaveDetails);
@@ -2363,12 +2406,12 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Must-have uncertain penalty
+        // Must-have uncertain penalty (light, see capScoreOnMustHaveFail comment)
         if ((llmResult as any).mustHaveUncertain) {
-          llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 15);
+          llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 5);
           llmResult.concerns = [
             ...(llmResult.concerns || []),
-            "⚠️ Critère obligatoire à vérifier manuellement",
+            "ℹ️ Profil léger sur LinkedIn — must-have à confirmer en call",
           ];
         }
 
