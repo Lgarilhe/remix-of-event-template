@@ -1,15 +1,13 @@
-import React, { useState, useCallback } from 'react';
-import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
+import React, { useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { countBriefFields } from '@/lib/missionUtils';
 import { useAgent } from '@/contexts/AgentContext';
-import { Sparkles, Loader2, Bot, MessageSquare } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { ArrowLeft, MessageSquare } from 'lucide-react';
 import type { JobDetails } from '@/types/jobDetails';
 
 interface MissionSourcingProps {
@@ -25,9 +23,21 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
   const hasFilters = project.filters_snapshot && Object.keys(project.filters_snapshot).length > 0;
   const showBriefToFiltersPrompt = hasBriefData && !hasFilters;
 
-  const { updateProject } = useSourcingProjects();
   const { openContextualAgent } = useAgent();
-  const [isGeneratingFilters, setIsGeneratingFilters] = useState(false);
+  const [, setSearchParams] = useSearchParams();
+
+  // CTA "Aller au brief" : redirige vers le tab brief (où vit le bouton
+  // canonique "Analyser avec l'IA"). Pourquoi la redirection plutôt que
+  // de générer ici : le tab brief montre la review modal qui permet à
+  // l'user de valider/éditer chaque filtre avant qu'ils soient persistés
+  // — meilleure qualité que la génération silencieuse historique.
+  const goToBrief = useCallback(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'brief');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const handleOpenSearchAgent = useCallback(() => {
     const jobTitle = jd.title || project.name || '';
@@ -74,60 +84,6 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
     });
   }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent]);
 
-  const handleGenerateFilters = useCallback(async () => {
-    setIsGeneratingFilters(true);
-    try {
-      const response = await invokeWithCredits('generate-search-filters', 'filter_generation', {
-        job: {
-          id: project.id,
-          title: jd.title || project.name,
-          description: [jd.mission_description, jd.context, jd.raw_brief].filter(Boolean).join('\n\n'),
-          client: jd.client?.name ? { name: jd.client.name, sector: jd.client.sector } : (project.client_name ? { name: project.client_name } : null),
-          location: jd.location || null,
-          skills: [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])],
-          seniority: jd.seniority || null,
-          xpMin: jd.experience_min,
-          xpMax: jd.experience_max,
-          remote: jd.remote_policy || null,
-          contractType: jd.contract_type || null,
-          salaryMin: jd.salary_min,
-          salaryMax: jd.salary_max,
-          mustHave: jd.skills_must_have?.join(', ') || null,
-          shouldHave: jd.skills_should_have?.join(', ') || null,
-          niceToHave: jd.skills_nice_to_have?.join(', ') || null,
-          sourcingCriteria: jd.skills_to_avoid?.length ? `Compétences à éviter : ${jd.skills_to_avoid.join(', ')}` : null,
-          requirements: [
-            ...(jd.certifications?.length ? [`Certifications : ${jd.certifications.join(', ')}`] : []),
-            ...(jd.languages?.length ? [`Langues : ${jd.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}`] : []),
-          ].join('. ') || null,
-        },
-      });
-      if (response.error) throw new Error(response.error.message || 'Erreur IA');
-      if (!response.data?.success) throw new Error('Génération échouée');
-
-      const generatedFilters =
-        response.data.filters && typeof response.data.filters === 'object' && !Array.isArray(response.data.filters)
-          ? response.data.filters
-          : {};
-
-      const sug = response.data.suggestions || null;
-
-      await updateProject({
-        id: project.id,
-        filters_snapshot: {
-          ...generatedFilters,
-          suggestions: sug,
-          generated_at: new Date().toISOString(),
-        },
-      });
-      toast.success('Filtres générés depuis votre brief');
-    } catch (err: any) {
-      toast.error(err.message || 'Erreur lors de la génération des filtres');
-    } finally {
-      setIsGeneratingFilters(false);
-    }
-  }, [project, jd, updateProject]);
-
   if (accountsLoading) {
     return (
       <div className="bg-background border border-border p-6">
@@ -138,7 +94,11 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
 
   return (
     <div className="border border-border bg-background overflow-hidden">
-      {/* Brief → Filters prompt */}
+      {/* Brief rempli mais pas encore de filtres → renvoie au brief où vit
+          le bouton canonique "Analyser avec l'IA" (avec review modal).
+          Avant : on avait un bouton ici qui dupliquait l'appel sans review.
+          Supprimé pour éviter les divergences et garantir qu'il n'y a qu'1
+          seul point de génération avec validation user. */}
       {showBriefToFiltersPrompt && (
         <div className="border-b border-border bg-accent/10 p-3 sm:p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -147,24 +107,16 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
                 Brief rempli ({briefCompletion.filled}/{briefCompletion.total} champs)
               </p>
               <p className="text-xs text-muted-foreground">
-                Générez les filtres de recherche automatiquement depuis votre brief.
+                Lancez l'analyse IA depuis le brief pour générer les filtres de recherche
+                (avec validation des suggestions avant sauvegarde).
               </p>
             </div>
             <button
-              onClick={handleGenerateFilters}
-              disabled={isGeneratingFilters}
-              className={cn(
-                "shrink-0 flex items-center gap-2 h-9 px-4 sm:px-5 text-xs font-bold uppercase tracking-wider border border-border transition-colors",
-                isGeneratingFilters
-                  ? "bg-muted text-muted-foreground"
-                  : "bg-foreground text-background hover:bg-foreground/90"
-              )}
+              onClick={goToBrief}
+              className="shrink-0 flex items-center gap-2 h-9 px-4 sm:px-5 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
             >
-              {isGeneratingFilters ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Génération...</>
-              ) : (
-                <><Sparkles className="w-3.5 h-3.5" /> Générer les filtres</>
-              )}
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Aller au brief
             </button>
           </div>
         </div>
