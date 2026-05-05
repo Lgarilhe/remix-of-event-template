@@ -119,23 +119,66 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     return () => { cancelled = true; };
   }, [job?.id]);
 
-  // Nom de l'expéditeur (le user connecté). On passe UNIQUEMENT le
-  // prénom — sinon l'IA tend à signer "L. Garilhe" (initiale + nom)
-  // au lieu de "Laurent" qui est attendu sur LinkedIn (ton pair-à-pair,
-  // pas formel).
+  // Nom de l'expéditeur — on garde UNIQUEMENT le prénom pour signer
+  // "Laurent" et pas "L. Garilhe" / "Laurent Garilhe" / "Garilhe".
+  // Sources dans l'ordre :
+  //  1. user_metadata.first_name (signup direct)
+  //  2. profiles.display_name fetché en DB (1er token = prénom)
+  //  3. user_metadata.full_name (1er token)
+  //  4. email local part (avec heuristique pour éviter d'extraire le nom)
+  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id;
+    if (!userId) {
+      setProfileDisplayName(null);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!cancelled && data?.display_name) {
+          setProfileDisplayName(data.display_name);
+        }
+      } catch (err) {
+        console.warn('[useEnrollmentPreview] profile display_name fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   const senderName: string | undefined = (() => {
-    const fullName = (user?.user_metadata as any)?.full_name as string | undefined;
-    const firstName = (user?.user_metadata as any)?.first_name as string | undefined;
-    if (firstName) return firstName.trim();
-    if (fullName) return fullName.trim().split(/\s+/)[0]; // 1er token
+    const fullNameMeta = (user?.user_metadata as any)?.full_name as string | undefined;
+    const firstNameMeta = (user?.user_metadata as any)?.first_name as string | undefined;
+    // Priorité 1 : user_metadata.first_name (le plus fiable)
+    if (firstNameMeta?.trim()) return firstNameMeta.trim();
+    // Priorité 2 : profiles.display_name (1er token = prénom)
+    if (profileDisplayName?.trim()) {
+      const firstToken = profileDisplayName.trim().split(/\s+/)[0];
+      if (firstToken && firstToken.length >= 2) return firstToken;
+    }
+    // Priorité 3 : user_metadata.full_name (1er token)
+    if (fullNameMeta?.trim()) {
+      const firstToken = fullNameMeta.trim().split(/\s+/)[0];
+      if (firstToken && firstToken.length >= 2) return firstToken;
+    }
+    // Fallback ultime : email — on ESSAIE de deviner le prénom
+    // mais on ne renvoie PAS le nom de famille en signature (signal IA).
+    // Si on n'a vraiment rien d'utilisable, on renvoie undefined → l'edge
+    // function tombera sur son défaut "[Prénom]" (au moins explicite).
     if (user?.email) {
-      const local = user.email.split('@')[0]; // ex: "l.garilhe"
-      const firstToken = local.split(/[._-]/)[0]; // ex: "l"
-      // Si <2 chars (genre "l"), on essaie le 2e token (ex: "garilhe")
-      const candidate = firstToken.length >= 2
-        ? firstToken
-        : (local.split(/[._-]/)[1] || firstToken);
-      return candidate.charAt(0).toUpperCase() + candidate.slice(1);
+      const local = user.email.split('@')[0];
+      const tokens = local.split(/[._-]/);
+      // Si format "prenom.nom" → tokens[0] = prénom (>=2 chars)
+      if (tokens[0] && tokens[0].length >= 2) {
+        return tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1);
+      }
+      // Format "p.nom" → on ne renvoie PAS le nom (Garilhe), trop risqué
+      // Mieux vaut undefined et que l'edge function fasse un fallback générique
     }
     return undefined;
   })();
