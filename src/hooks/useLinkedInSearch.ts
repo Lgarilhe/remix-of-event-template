@@ -402,6 +402,12 @@ export function useLinkedInSearch({
           job.transversalCriteria = { context: `Entreprises cibles / feeders : ${companies.join(', ')}` };
         }
       }
+      // ⭐ Outreach config (incarnation IA pour les messages générés sur cette mission).
+      // Forward direct depuis job_details vers le synthetic job pour que
+      // OutreachMessageModal puisse le passer à generate-outreach-message.
+      if ((jd as any).outreach_config) {
+        (job as any).outreachConfig = (jd as any).outreach_config;
+      }
       return job;
     };
 
