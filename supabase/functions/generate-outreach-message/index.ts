@@ -925,7 +925,7 @@ Tu OBSERVES et tu POSES DES QUESTIONS, tu ne démontres pas une expertise que tu
      C'est une OBSERVATION SPÉCIFIQUE: quelque chose que tu as remarqué, une question sur un choix de carrière, une référence à un post ou un élément du profil (SANS citer la source comme "ton À propos").
      → PHRASE 2-3 = Ce que le candidat y gagne (1-2 phrases)
      → PHRASE 4 = CTA non-engageant (1 phrase)
-   - Signature: "${senderName || '[Prénom]'}"
+   - Signature : ${senderName ? `EXACTEMENT "${senderName}" — uniquement le prénom, JAMAIS d'initiale + nom (pas "${senderName.charAt(0)}. NomDeFamille"), JAMAIS le nom complet, JAMAIS un titre, JAMAIS de mention de société` : 'utilise un prénom court et chaleureux. JAMAIS d\'initiale + nom de famille, JAMAIS de titre, JAMAIS de signature corporate.'}
    
    IMPORTANT: \\n\\n entre les paragraphes. Jamais de bloc massif.
 

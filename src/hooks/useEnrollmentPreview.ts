@@ -119,16 +119,41 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     return () => { cancelled = true; };
   }, [job?.id]);
 
-  // Nom de l'expéditeur (le user connecté). Sans ça, l'edge function
-  // signe avec "[Prénom]" littéralement (placeholder par défaut) ou
-  // pire, hallucine "Konekt" comme nom de personne.
-  const senderName: string | undefined = (
-    (user?.user_metadata as any)?.full_name
-    || [(user?.user_metadata as any)?.first_name, (user?.user_metadata as any)?.last_name]
-        .filter(Boolean).join(' ').trim()
-    || (user?.email ? user.email.split('@')[0].split('.').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ') : '')
-    || undefined
-  );
+  // Nom de l'expéditeur (le user connecté). On passe UNIQUEMENT le
+  // prénom — sinon l'IA tend à signer "L. Garilhe" (initiale + nom)
+  // au lieu de "Laurent" qui est attendu sur LinkedIn (ton pair-à-pair,
+  // pas formel).
+  const senderName: string | undefined = (() => {
+    const fullName = (user?.user_metadata as any)?.full_name as string | undefined;
+    const firstName = (user?.user_metadata as any)?.first_name as string | undefined;
+    if (firstName) return firstName.trim();
+    if (fullName) return fullName.trim().split(/\s+/)[0]; // 1er token
+    if (user?.email) {
+      const local = user.email.split('@')[0]; // ex: "l.garilhe"
+      const firstToken = local.split(/[._-]/)[0]; // ex: "l"
+      // Si <2 chars (genre "l"), on essaie le 2e token (ex: "garilhe")
+      const candidate = firstToken.length >= 2
+        ? firstToken
+        : (local.split(/[._-]/)[1] || firstToken);
+      return candidate.charAt(0).toUpperCase() + candidate.slice(1);
+    }
+    return undefined;
+  })();
+
+  // 🔍 DEBUG : log ce qui arrive aux call sites pour qu'on puisse voir
+  // si outreach_config est bien fetché et passé.
+  useEffect(() => {
+    if (job?.id) {
+      console.log('[EnrollmentPreview] Config IA :', {
+        jobId: job.id,
+        outreach_mode: outreachConfig?.recruitment_mode || '(undefined → fallback CABINET legacy)',
+        sender_role: outreachConfig?.sender_role || '(undefined)',
+        anonymize: outreachConfig?.anonymize_client || false,
+        client_name: missionClientName || '(undefined)',
+        sender_first_name: senderName || '(undefined)',
+      });
+    }
+  }, [job?.id, outreachConfig, missionClientName, senderName]);
 
   const messageSteps = steps.filter(hasMessage);
   const totalToGenerate = profiles.length;

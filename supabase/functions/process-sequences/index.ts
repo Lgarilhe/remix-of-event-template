@@ -2860,7 +2860,12 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     let senderName = 'Recruteur';
     try {
       const { data: senderProfile } = await supabase.from('profiles').select('display_name').eq('user_id', enrollment.created_by).maybeSingle();
-      if (senderProfile?.display_name) senderName = senderProfile.display_name;
+      if (senderProfile?.display_name) {
+        // On ne garde que le prénom (1er token) pour éviter que l'IA
+        // signe "L. Garilhe" ou "Laurent Garilhe" au lieu de "Laurent".
+        // Sur LinkedIn ton pair-à-pair = prénom seul, jamais formel.
+        senderName = senderProfile.display_name.trim().split(/\s+/)[0] || senderProfile.display_name;
+      }
     } catch { /* ignore */ }
 
     // Determine RPO vs Succès (legacy heuristique)
