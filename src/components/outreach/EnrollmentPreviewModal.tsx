@@ -224,19 +224,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     }
   }, [candidateIds, selectedCandidateId]);
 
-  // Auto-generate for single candidate
-  useEffect(() => {
-    if (isSingle && hasMessageSteps && mode === 'preview' && selectedCandidateId) {
-      generateForCandidateById(selectedCandidateId);
-    }
-  }, [isSingle, hasMessageSteps, mode, selectedCandidateId]);
-
-  // Auto-generate first candidate in list mode
-  useEffect(() => {
-    if (!isSingle && !isBulk && hasMessageSteps && mode === 'preview' && firstProfileId && selectedCandidateId === firstProfileId) {
-      generateForCandidateById(firstProfileId);
-    }
-  }, [isSingle, isBulk, hasMessageSteps, mode, firstProfileId, selectedCandidateId]);
+  // 🛑 Auto-trigger retiré (refonte 2026-05-05) : on ne génère plus
+  // automatiquement à l'ouverture du modal — l'user doit cliquer
+  // explicitement sur "Générer la preview" pour ne pas brûler ses
+  // crédits sans son accord. Le bouton "Générer toutes les previews"
+  // (bulk) et "Régénérer ce step" (single) restent disponibles.
 
   const selectedProfile = useMemo(
     () => profiles.find(p => p.id === selectedCandidateId) ?? null,
@@ -268,8 +260,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const handleSelectCandidate = (id: string) => {
     setSelectedCandidateId(id);
     setMobilePane('preview');
-    const existing = messageSteps.every(s => getPreview(id, s.stepId)?.isGenerated);
-    if (!existing) generateForCandidateById(id);
+    // 🛑 Auto-trigger retiré : sélectionner un candidat n'enclenche plus
+    // la génération. L'user doit cliquer explicitement sur "Générer la
+    // preview" pour ce candidat. Évite la consommation silencieuse de
+    // crédits IA quand on parcourt la liste pour vérifier qui est là.
   };
 
   const toggleEditing = (stepId: string) => {

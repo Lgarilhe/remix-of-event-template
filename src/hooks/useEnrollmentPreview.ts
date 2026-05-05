@@ -102,6 +102,34 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
       setPreview(profile.id, step.stepId, { isGenerating: true, error: undefined });
 
+      // Construit prevSentSteps simulés pour ce step : on liste tous
+      // les steps "reach" précédents dans la séquence + leur message
+      // déjà généré dans la preview (s'il existe). Ça permet à l'edge
+      // function de typer correctement le message (PREMIER MESSAGE vs
+      // RELANCE 1 vs INMAIL DE RELANCE etc.) — exactement comme le
+      // cron de prod, mais à partir de la simulation preview.
+      const prevSentSteps = steps
+        .filter(s =>
+          s.stepOrder < step.stepOrder &&
+          ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
+            .includes(s.actionType)
+        )
+        .sort((a, b) => a.stepOrder - b.stepOrder)
+        .map(s => {
+          const prev = previews.get(profile.id)?.get(s.stepId);
+          return {
+            actionType: s.actionType,
+            // Pour les invitations, le "message" est généralement vide
+            // (juste une note), donc on ne le passe pas — utile car le
+            // shared module ne consomme finalMessage que pour les
+            // messages de type message/inmail/etc.
+            finalMessage: prev?.message
+              ? prev.message.replace(/<br\s*\/?>(\s*)/gi, '\n')
+              : '',
+            stepOrder: s.stepOrder,
+          };
+        });
+
       if (step.useAiPersonalization) {
         try {
           // Build rich profile data — the more context, the better the AI personalization
@@ -155,6 +183,13 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             candidateLinkedInUrl: (profile as any).profile_url || (profile as any).public_profile_url || (profile as any).linkedin_url,
             messageTemplate: step.messageTemplate,
             subjectTemplate: step.subjectTemplate,
+            // Contexte séquence : permet à l'edge function de différencier
+            // PREMIER MESSAGE / RELANCE 1 / INMAIL DE RELANCE / etc.
+            // Aligné sur le shared module sequence-message-context.ts.
+            sequenceContext: {
+              currentActionType: step.actionType,
+              prevSentSteps,
+            },
           });
 
           if (error) throw error;
@@ -235,6 +270,27 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           skills: profile.skills?.map(s => s.name) || [],
         };
 
+        // Idem qu'au-dessus : on simule prevSentSteps pour que le LLM
+        // sache si c'est un 1er message, une RELANCE 1, un INMAIL de
+        // relance, etc.
+        const prevSentSteps = steps
+          .filter(s =>
+            s.stepOrder < step.stepOrder &&
+            ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
+              .includes(s.actionType)
+          )
+          .sort((a, b) => a.stepOrder - b.stepOrder)
+          .map(s => {
+            const prev = previews.get(candidateId)?.get(s.stepId);
+            return {
+              actionType: s.actionType,
+              finalMessage: prev?.message
+                ? prev.message.replace(/<br\s*\/?>(\s*)/gi, '\n')
+                : '',
+              stepOrder: s.stepOrder,
+            };
+          });
+
         const { data, error } = await invokeWithCredits<{
           subject?: string;
           message?: string;
@@ -254,6 +310,10 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           profileId: profile.provider_id || profile.id,
           messageTemplate: step.messageTemplate,
           subjectTemplate: step.subjectTemplate,
+          sequenceContext: {
+            currentActionType: step.actionType,
+            prevSentSteps,
+          },
         });
 
         if (error) throw error;

@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
     const _body = await req.json();
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig } = _body as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig, sequenceContext } = _body as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -371,6 +371,19 @@ Deno.serve(async (req) => {
         sender_role?: string;
         anonymize_client?: boolean;
         anonymized_alias?: string;
+      };
+      /** Contexte de séquence : si présent, on utilise le shared module
+       *  computeMessageTypeContext pour piquer le bon ton (PREMIER MESSAGE
+       *  vs RELANCE 1 vs INMAIL DE RELANCE etc.). Sans ça on génère par
+       *  défaut un message "to_evaluate" qui ressemble à un 1er contact —
+       *  ce qui rend les previews de relance fausses. */
+      sequenceContext?: {
+        currentActionType?: string;
+        prevSentSteps?: Array<{
+          actionType: string;
+          finalMessage?: string | null;
+          stepOrder?: number;
+        }>;
       };
     };
 
@@ -466,6 +479,30 @@ Deno.serve(async (req) => {
       casual: "Tutoiement naturel mais reste professionnel. Comme un message à un pair du secteur. Évite le jargon trop startup ('ton taf', 'mise gros'). Reste accessible sans être familier.",
       enthusiastic: "Tutoiement, ton dynamique mais mesuré. Montre de l'intérêt sans surjouer. Garde un vocabulaire professionnel, évite les expressions trop cool."
     };
+
+    // Si on est dans un contexte de séquence (preview du modal d'enrollment),
+    // on calcule le bon msgType (PREMIER MESSAGE / RELANCE 1 / INMAIL DE
+    // RELANCE / SUITE INVITATION / etc.) avec le shared module — même
+    // logique que celle utilisée par le cron process-sequences. Permet
+    // que la preview montre exactement ce qui sera envoyé.
+    let sequenceMsgType: string | null = null;
+    let sequenceToneInstructions: string | null = null;
+    let sequencePrevMessagesBlock = '';
+    if (sequenceContext?.currentActionType) {
+      try {
+        const { computeMessageTypeContext } = await import('../_shared/sequence-message-context.ts');
+        const ctx = computeMessageTypeContext(
+          sequenceContext.currentActionType,
+          sequenceContext.prevSentSteps || [],
+        );
+        sequenceMsgType = ctx.msgType;
+        sequenceToneInstructions = ctx.toneInstructions;
+        sequencePrevMessagesBlock = ctx.previousMessagesBlock;
+        console.log(`[generate-outreach-message] Sequence context detected: ${ctx.msgType}`);
+      } catch (e) {
+        console.warn('[generate-outreach-message] sequence-message-context import failed:', e);
+      }
+    }
 
     // Build salary info for the prompt
     const salaryInfo: string[] = [];
@@ -724,8 +761,14 @@ ${hideSalary ? `⛔ RÈGLE CLIENT: Ne JAMAIS mentionner de salaire, TJM, rémun�
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
 ${job.description ? `- Contexte mission: ${job.description.slice(0, 300)}...` : ''}
 
-STATUT: ${candidateStatus.toUpperCase()}
-${statusInstructions[candidateStatus] || statusInstructions.other}
+${sequenceMsgType
+  ? `=== TYPE DE MESSAGE DANS LA SÉQUENCE ===
+TYPE: ${sequenceMsgType}
+${sequenceToneInstructions}
+${sequencePrevMessagesBlock ? `\nMESSAGES PRÉCÉDENTS DÉJÀ ENVOYÉS À CE CANDIDAT :\n${sequencePrevMessagesBlock}\n→ Ne répète PAS la même accroche. Référence-les si pertinent.` : ''}
+=== FIN TYPE DE MESSAGE ===`
+  : `STATUT: ${candidateStatus.toUpperCase()}
+${statusInstructions[candidateStatus] || statusInstructions.other}`}
 
 
 === POSTURE DU RECRUTEUR (CRITIQUE) ===
