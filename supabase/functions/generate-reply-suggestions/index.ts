@@ -150,6 +150,16 @@ interface ChatContext {
   candidateProfileUrl?: string;
   // Candidate name for Calendly pre-fill
   candidateName?: string;
+  /** Config outreach de la mission (incarnation IA + anonymisation).
+   *  Lue depuis sourcing_projects.job_details.outreach_config via enrollmentsMap. */
+  outreachConfig?: {
+    recruitment_mode?: 'internal' | 'client';
+    sender_role?: string;
+    anonymize_client?: boolean;
+    anonymized_alias?: string;
+  };
+  /** Nom du client (utilisé pour le sanity-check anonymisation). */
+  outreachClientName?: string;
 }
 
 // Format salary info for display
@@ -538,8 +548,23 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
     const candidateId = context.profileData?.currentRole ? (context.recipientName || '').toLowerCase().replace(/\s+/g, '-') : '';
     const ragContext = (candidateId && orgId) ? await fetchRAGContext(orgId, candidateId, jobContext || '').catch(() => null) : null;
 
-    const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
+    // ⭐ Contexte d'incarnation IA depuis la mission liée à l'enrollment
+    let outreachContextBlock = '';
+    if (context.outreachConfig && (context.outreachConfig.recruitment_mode || context.outreachConfig.sender_role || context.outreachConfig.anonymize_client)) {
+      try {
+        const { buildOutreachContext } = await import('../_shared/outreach-context.ts');
+        outreachContextBlock = '\n' + buildOutreachContext(
+          context.outreachConfig as any,
+          context.outreachClientName || jobData?.client?.name,
+          context.candidateName || 'le recruteur',
+        );
+      } catch (e) {
+        console.warn('[generate-reply-suggestions] outreach-context import failed:', e);
+      }
+    }
 
+    const prompt = `Tu es un recruteur tech expérimenté. Génère 3 suggestions de réponses courtes et naturelles pour cette conversation LinkedIn.
+${outreachContextBlock}
 PROFIL DU CANDIDAT:
 ${profileContext}
 ${jobContext}
@@ -649,10 +674,27 @@ Réponds UNIQUEMENT en JSON valide:
 
     try {
       const result = JSON.parse(content);
+      let suggestions = result.suggestions || [];
+
+      // ⭐ Sanity-check anonymisation : si la mission impose l'anonymisation,
+      // on force-replace toute occurrence du nom client par l'alias dans
+      // chaque suggestion. Filet de sécurité côté serveur.
+      if (context.outreachConfig?.anonymize_client && context.outreachClientName) {
+        try {
+          const { applyClientAnonymization } = await import('../_shared/outreach-context.ts');
+          suggestions = suggestions.map((s: any) => ({
+            ...s,
+            text: applyClientAnonymization(s.text || '', context.outreachConfig as any, context.outreachClientName!),
+          }));
+        } catch (e) {
+          console.warn('[generate-reply-suggestions] anonymization sanity check failed:', e);
+        }
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
-          suggestions: result.suggestions || [],
+          suggestions,
           infoToRequest: infoToRequest.length > 0 ? infoToRequest : undefined,
           detectedLanguage,
         }),

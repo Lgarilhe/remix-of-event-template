@@ -110,6 +110,16 @@ export interface SequenceEnrollmentInfo {
   status: string;
   replied_at: string | null;
   current_step_order: number;
+  /** Config outreach de la mission (incarnation IA + anonymisation).
+   *  Lue depuis sourcing_projects.job_details.outreach_config. */
+  outreach_config?: {
+    recruitment_mode?: 'internal' | 'client';
+    sender_role?: string;
+    anonymize_client?: boolean;
+    anonymized_alias?: string;
+  } | null;
+  /** Nom du client pour les sanity-checks anonymisation côté backend. */
+  client_name?: string | null;
 }
 
 export interface JobData {
@@ -515,7 +525,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   // Chat status (snooze + archive) — Inbox refonte Phase 1
   const chatStatus = useChatStatus();
 
-  // Fetch sequence enrollments
+  // Fetch sequence enrollments + outreach_config de chaque mission liée.
+  // Le outreach_config sert à passer le contexte d'incarnation IA aux
+  // smart replies dans l'inbox (cohérence avec les messages sortants).
   const fetchEnrollments = useCallback(async () => {
     try {
       let query = supabase
@@ -523,19 +535,40 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         .select('profile_id, job_title, job_id, status, replied_at, current_step_order')
         .order('created_at', { ascending: false })
         .limit(500);
-      
+
       if (organizationId) {
         query = query.eq('organization_id', organizationId);
       }
 
       const { data, error } = await query;
-      
       if (error) throw error;
-      
+
+      // Récupère outreach_config + client_name pour chaque job_id distinct (1 query batch)
+      const jobIds = Array.from(new Set((data || []).map(e => e.job_id).filter(Boolean) as string[]));
+      const projectsMap = new Map<string, { outreach_config: any; client_name: string | null }>();
+      if (jobIds.length > 0) {
+        const { data: projects } = await (supabase
+          .from('sourcing_projects')
+          .select('id, job_id, job_details, client_name')
+          .or(jobIds.map(id => `id.eq.${id},job_id.eq.${id}`).join(',')) as any);
+        (projects || []).forEach((p: any) => {
+          const config = (p.job_details as any)?.outreach_config || null;
+          const entry = { outreach_config: config, client_name: p.client_name || (p.job_details as any)?.client?.name || null };
+          // Index par les 2 ids (project.id ET project.job_id) pour un lookup rapide
+          if (p.id) projectsMap.set(p.id, entry);
+          if (p.job_id) projectsMap.set(p.job_id, entry);
+        });
+      }
+
       const map = new Map<string, SequenceEnrollmentInfo>();
       data?.forEach(enrollment => {
         if (!map.has(enrollment.profile_id)) {
-          map.set(enrollment.profile_id, enrollment);
+          const projectInfo = enrollment.job_id ? projectsMap.get(enrollment.job_id) : undefined;
+          map.set(enrollment.profile_id, {
+            ...enrollment,
+            outreach_config: projectInfo?.outreach_config || null,
+            client_name: projectInfo?.client_name || null,
+          });
         }
       });
       setEnrollmentsMap(map);
@@ -1138,11 +1171,18 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       const recipientName = getChatDisplayName(selectedChat);
       const recipientHeadline = getChatHeadline(selectedChat);
       const jobInfo = getChatJobInfo(selectedChat, enrollmentsMap);
-      
+
       let enrichedJobData: JobData | undefined;
       if (jobInfo?.job_id) {
         enrichedJobData = availableJobs.find(j => j.id === jobInfo.job_id);
       }
+
+      // Lit outreach_config (incarnation IA) depuis enrollmentsMap pour appliquer
+      // la même config qu'à l'envoi : mode interne/client, rôle expéditeur,
+      // anonymisation client. Garantit la cohérence du fil narratif.
+      const enrollmentInfo = jobInfo;
+      const outreachConfig = enrollmentInfo?.outreach_config || undefined;
+      const outreachClientName = enrollmentInfo?.client_name || enrichedJobData?.client?.name;
       
       const response = await invokeEdgeFunction<{ suggestions?: any[] }>('generate-reply-suggestions', {
         context: {
@@ -1189,6 +1229,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           calendlyLink: calendlyLink || undefined,
           candidateProfileUrl: selectedChat.attendees?.[0]?.profile_url || undefined,
           candidateName: getChatDisplayName(selectedChat) || undefined,
+          outreachConfig,
+          outreachClientName,
         },
       });
 
