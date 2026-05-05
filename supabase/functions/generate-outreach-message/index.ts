@@ -722,7 +722,6 @@ ${senderIsInHistory ? `- TU ES le consultant qui a interagi avec ce candidat →
     })();
 
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
-${engagementInstructions}
 
 PROFIL DU CANDIDAT:
 - Prénom: ${(() => {
@@ -995,12 +994,16 @@ INSTRUCTIONS POUR UTILISER LE TEMPLATE :
 5. NE T'ÉLOIGNE PAS de la consigne du recruteur. C'est SA voix, pas la tienne.
 6. Continue d'appliquer toutes les règles anti-IA ci-dessus (pas de flatterie, pas de jugement de valeur, longueur, etc.) — un template ne te dispense PAS de ces règles.
 7. Si le template contient déjà une formule de flatterie interdite, REFORMULE pour respecter les règles anti-IA tout en gardant l'intention.
+8. Si le template contradictoire avec le CONTEXTE OUTREACH MISSION ci-dessous (mode interne vs cabinet), c'est le CONTEXTE qui prime, REFORMULE pour respecter le mode.
 
 === FIN TEMPLATE ===
 ` : ''}${customInstructions ? `
 === INSTRUCTIONS SUPPLÉMENTAIRES DU RECRUTEUR (PRIORITÉ HAUTE) ===
 ${customInstructions.slice(0, 500)}
 === FIN INSTRUCTIONS SUPPLÉMENTAIRES ===
+` : ''}${engagementInstructions ? `
+
+${engagementInstructions}
 ` : ''}
 Réponds UNIQUEMENT en JSON valide:
 {

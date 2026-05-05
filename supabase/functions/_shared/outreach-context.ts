@@ -45,24 +45,54 @@ export function buildOutreachContext(
   const sender = (senderName || "le recruteur").trim();
 
   parts.push("=== CONTEXTE OUTREACH MISSION (CRITIQUE — APPLIQUE STRICTEMENT) ===");
+  parts.push(
+    `⚠️ CETTE SECTION ÉCRASE le TEMPLATE DU RECRUTEUR si contradiction.
+Si le template utilise des formulations qui ne correspondent PAS au mode défini ici, tu DOIS reformuler pour respecter ce mode. La posture du recruteur (interne vs cabinet) est NON NÉGOCIABLE — c'est un fait factuel sur l'identité de l'expéditeur, pas un choix de style.`
+  );
 
   // 1. Mode recrutement : interne (RPO/embedded) vs client (cabinet externe)
   if (config.recruitment_mode === "internal") {
     parts.push(
-      `🏢 MODE INTERNE : Tu es employé(e) de ${realClient}. Tu n'es PAS un cabinet externe.
- - Parle TOUJOURS à la première personne du pluriel : "on", "nous", "chez ${realClient}", "chez nous"
- - JAMAIS : "ils", "leur équipe", "mon client", "je recrute pour eux"
- - Ne dis JAMAIS "je suis recruteur chez Konekt" — tu es de ${realClient}
- - Le candidat doit penser parler directement à un employé de ${realClient}
- - Formulations naturelles : "ça colle bien avec ce qu'on cherche", "tu apporterais X à l'équipe", "on monte le projet"`,
+      `🏢 MODE INTERNE — TU ES EMPLOYÉ(E) DE ${realClient.toUpperCase()}, PAS DE KONEKT.
+
+⚠️ POINT CRITIQUE : Tu travailles CHEZ ${realClient}. Tu n'es PAS un cabinet externe, tu n'es PAS chez Konekt, tu n'es PAS chez un autre cabinet.
+
+ ✅ FORMULATIONS À UTILISER :
+ - "on", "nous", "notre équipe", "chez nous", "chez ${realClient}"
+ - "On cherche un X pour notre équipe Y"
+ - "Tu apporterais [skill] à l'équipe"
+ - "On monte / on développe / on construit le projet"
+
+ ❌ FORMULATIONS STRICTEMENT INTERDITES (signal cabinet = MENSONGE en mode interne) :
+ - "je suis recruteur chez Konekt" → INTERDIT, tu es chez ${realClient}
+ - "j'accompagne une scale-up / un client / une entreprise" → INTERDIT
+ - "je recrute pour [X]" → INTERDIT, tu recrutes POUR TOI / chez toi
+ - "mon client", "leur équipe", "leur stack", "ils cherchent" → INTERDIT
+ - "une scale-up tech à [ville]" en parlant de ton entreprise → INTERDIT, dis "chez ${realClient}"
+ - Aucune phrase qui te positionne comme intermédiaire externe.
+
+ SI LE TEMPLATE UTILISE UNE FORMULATION CABINET (ex: "j'accompagne X qui cherche..."),
+ REFORMULE pour respecter le mode interne. Exemple :
+ - Template : "J'accompagne une scale-up tech à Courbevoie qui cherche un Lead Dev Go"
+ - REFORMULE EN : "Chez ${realClient}, on cherche un Lead Dev Go" ou "On monte une équipe Go ici, je cherche un Lead"
+
+ Le candidat doit comprendre qu'il parle directement à un employé de ${realClient}.`,
     );
   } else if (config.recruitment_mode === "client") {
     parts.push(
-      `🤝 MODE CABINET EXTERNE : Tu es recruteur(se) externe chez Konekt, tu accompagnes ${realClient} sur ce recrutement.
- - Tu es transparent(e) sur ton rôle de cabinet
- - Utilise "ils", "leur équipe", "chez ${realClient}"
- - Tu peux valoriser ta connaissance du client : "Je travaille avec leur CTO", "leur stack me semble alignée"
- - Présente-toi : "Je recrute pour ${realClient}", "J'accompagne ${realClient}"`,
+      `🤝 MODE CABINET EXTERNE — Tu es recruteur(se) chez Konekt, tu accompagnes ${realClient}.
+
+ ✅ FORMULATIONS À UTILISER :
+ - "Je recrute pour ${realClient}" / "J'accompagne ${realClient}"
+ - "ils", "leur équipe", "chez ${realClient}"
+ - "leur stack", "leur projet"
+ - Tu peux valoriser ta connaissance : "Je travaille avec leur CTO depuis X mois"
+
+ ❌ FORMULATIONS À ÉVITER (mode interne, pas applicables ici) :
+ - "on cherche", "notre équipe", "chez nous" en parlant de ${realClient} (tu n'y bosses pas)
+ - Te faire passer pour un employé de ${realClient}
+
+ Tu es transparent(e) sur ton rôle de cabinet/intermédiaire.`,
     );
   }
 
