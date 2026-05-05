@@ -159,6 +159,12 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           ? 'THIRD_DEGREE'
           : typeof networkDist === 'string' ? networkDist : null;
 
+        // Normalise job.id : "project:{uuid}" → uuid pour que le cron
+        // process-sequences puisse retrouver le sourcing_project associé.
+        const normalizedJobId = job?.id?.startsWith('project:')
+          ? job.id.slice('project:'.length)
+          : job?.id;
+
         return {
           sequence_id: sequence.id,
           account_id: accountId,
@@ -166,7 +172,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           profile_name: profile.name,
           profile_headline: profile.headline,
           profile_url: profile.profile_url || profile.public_profile_url,
-          job_id: job?.id,
+          job_id: normalizedJobId,
           job_title: job?.title,
           created_by: userId,
           user_timezone: userTimezone,
@@ -220,11 +226,14 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
       // 4. Batch upsert job_candidate_status if a job is linked
       if (job?.id && insertedEnrollments.length > 0) {
+        const normalizedJobIdForStatus = job.id.startsWith('project:')
+          ? job.id.slice('project:'.length)
+          : job.id;
         const enrolledProfileIds = new Set(insertedEnrollments.map(e => e.profile_id));
         const statusRows = newProfiles
           .filter(p => enrolledProfileIds.has(p.id))
           .map(profile => ({
-            job_id: job.id,
+            job_id: normalizedJobIdForStatus,
             candidate_id: profile.id,
             candidate_name: profile.name || null,
             candidate_headline: profile.headline || null,

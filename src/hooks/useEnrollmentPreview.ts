@@ -89,12 +89,22 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
   useEffect(() => {
     let cancelled = false;
-    const jobId = job?.id;
-    if (!jobId) {
+    const rawJobId = job?.id;
+    if (!rawJobId) {
       setOutreachConfig(null);
       setMissionClientName(null);
       return;
     }
+    // 🔧 FIX CRITIQUE : depuis le flow Sourcing, useLinkedInSearch génère
+    // des jobs synthétiques avec id: "project:{uuid}" (préfixe pour
+    // distinguer des Notion job IDs). Si on ne décape pas ce préfixe,
+    // notre query .or(`id.eq.project:abc-123,job_id.eq.project:abc-123`)
+    // ne match RIEN → outreach_config arrive null → fallback CABINET.
+    // C'est ce qui faisait que mode INTERNE n'était JAMAIS appliqué
+    // depuis le modal d'enrollment.
+    const jobId = rawJobId.startsWith('project:')
+      ? rawJobId.slice('project:'.length)
+      : rawJobId;
     (async () => {
       try {
         const { data } = await supabase
@@ -112,6 +122,13 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
             ?? null,
         );
+        console.log('[useEnrollmentPreview] Fetched mission config:', {
+          rawJobId,
+          resolvedJobId: jobId,
+          found: !!data,
+          recruitment_mode: cfg?.recruitment_mode || '(undefined)',
+          client_name: data?.client_name || '(undefined)',
+        });
       } catch (err) {
         console.warn('[useEnrollmentPreview] outreach_config fetch failed:', err);
       }

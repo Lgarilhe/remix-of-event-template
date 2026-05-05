@@ -320,6 +320,16 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       const userId = user?.id || '00000000-0000-0000-0000-000000000000';
       const firstStep = sequence.steps.find((s: any) => (s.step_order ?? s.stepOrder) === 0) || sequence.steps[0];
 
+      // 🔧 Normalise job.id : depuis le flow Sourcing, useLinkedInSearch
+      // génère des jobs synthétiques avec id="project:{uuid}". Si on
+      // sauvegarde "project:abc-123" en sequence_enrollments.job_id, le
+      // cron process-sequences ne pourra PAS retrouver le sourcing_project
+      // associé (queries WHERE id.eq.project:abc-123 → no match) → mode
+      // outreach pas appliqué, contexte mission perdu.
+      const normalizedJobId = job?.id?.startsWith('project:')
+        ? job.id.slice('project:'.length)
+        : job?.id;
+
       for (const profile of activeProfiles) {
         try {
           const { data: existing } = await supabase
@@ -352,7 +362,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               profile_name: profile.name,
               profile_headline: profile.headline,
               profile_url: profile.profile_url || profile.public_profile_url,
-              job_id: job?.id,
+              job_id: normalizedJobId,
               job_title: job?.title,
               created_by: userId,
               user_timezone: userTimezone,
@@ -389,11 +399,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
           results.success++;
 
-          if (job?.id) {
+          if (normalizedJobId) {
             await supabase
               .from('job_candidate_status')
               .upsert({
-                job_id: job.id,
+                job_id: normalizedJobId,
                 candidate_id: profile.id,
                 candidate_name: profile.name || null,
                 candidate_headline: profile.headline || null,
@@ -429,11 +439,16 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       const userId = user?.id || '00000000-0000-0000-0000-000000000000';
       let count = 0;
 
+      // Idem normalisation : "project:{uuid}" → uuid
+      const normalizedJobId = job.id.startsWith('project:')
+        ? job.id.slice('project:'.length)
+        : job.id;
+
       for (const profile of activeProfiles) {
         await supabase
           .from('job_candidate_status')
           .upsert({
-            job_id: job.id,
+            job_id: normalizedJobId,
             candidate_id: profile.id,
             candidate_name: profile.name || null,
             candidate_headline: profile.headline || null,
