@@ -41,7 +41,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft, User, Loader2, MessageSquare, Clock, CheckCheck, Check, Trash2,
-  FileText, ChevronDown, ArrowRight,
+  FileText, ChevronDown, ArrowRight, Briefcase,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
@@ -527,21 +527,53 @@ export const MessageView: React.FC<MessageViewProps> = ({
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-semibold text-foreground truncate text-[15px] tracking-tight">
                 {displayName}
               </h2>
-              {jobInfo?.job_title && (
-                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full">
-                  <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
-                  {jobInfo.job_title}
-                </span>
+              {/* Badge statut séquence si enrollment actif/passé */}
+              {jobInfo && jobInfo.status && (
+                <SequenceStatusBadge status={jobInfo.status} repliedAt={jobInfo.replied_at} />
               )}
             </div>
             {headline && (
               <p className="text-[13px] text-muted-foreground truncate mt-0.5 leading-tight">
                 {headline}
               </p>
+            )}
+            {/* Bandeau contexte mission : poste + statut séquence + mode outreach + anonymisation */}
+            {jobInfo && (
+              <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                {jobInfo.job_title && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground bg-foreground/8 border border-border px-2 py-0.5 rounded-md">
+                    <Briefcase className="w-3 h-3 text-muted-foreground" />
+                    {jobInfo.job_title}
+                  </span>
+                )}
+                {jobInfo.current_step_order != null && jobInfo.status === 'active' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-info bg-info/10 border border-info/30 px-2 py-0.5 rounded-md">
+                    Étape {(jobInfo.current_step_order ?? 0) + 1}
+                  </span>
+                )}
+                {jobInfo.outreach_config?.recruitment_mode && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md"
+                    title={jobInfo.outreach_config.recruitment_mode === 'internal'
+                      ? 'L\'IA parle en "on / nous / chez nous"'
+                      : 'L\'IA parle en cabinet externe'}
+                  >
+                    {jobInfo.outreach_config.recruitment_mode === 'internal' ? '🏢 Interne' : '🤝 Cabinet'}
+                  </span>
+                )}
+                {jobInfo.outreach_config?.anonymize_client && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded-md"
+                    title={`Le nom du client est masqué dans les réponses générées (alias : ${jobInfo.outreach_config.anonymized_alias || 'défaut'})`}
+                  >
+                    🕶 Anonyme
+                  </span>
+                )}
+              </div>
             )}
             {subject && (
               <p className="hidden md:block text-xs text-muted-foreground/70 truncate mt-1 italic">
@@ -1064,5 +1096,41 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+};
+
+/**
+ * SequenceStatusBadge — petit badge coloré qui rend visible l'état de
+ * l'enrollment du candidat dans la séquence outreach. Affiché dans le
+ * header de la conversation à côté du nom.
+ *
+ * Statuts possibles :
+ *  - active     : candidat en cours de séquence (étapes pas encore toutes envoyées)
+ *  - replied    : a répondu (la séquence s'arrête automatiquement)
+ *  - paused     : en pause (raison: crédits InMail = 0, profil bloqué 403, etc.)
+ *  - completed  : toutes les étapes ont été exécutées
+ *  - cancelled / stopped : interrompu manuellement
+ */
+const SequenceStatusBadge: React.FC<{ status: string; repliedAt: string | null }> = ({ status, repliedAt }) => {
+  // Si répondu, override le statut pour l'affichage (même si le DB dit "active")
+  const effectiveStatus = repliedAt ? 'replied' : status;
+  const config: Record<string, { label: string; className: string }> = {
+    active: { label: 'En séquence', className: 'bg-info/10 text-info border-info/30' },
+    replied: { label: '✓ A répondu', className: 'bg-success/10 text-success border-success/30' },
+    paused: { label: '⏸ En pause', className: 'bg-warning/10 text-warning border-warning/30' },
+    completed: { label: 'Terminé', className: 'bg-muted/40 text-muted-foreground border-border' },
+    cancelled: { label: 'Annulé', className: 'bg-destructive/10 text-destructive border-destructive/30' },
+    stopped: { label: 'Stoppé', className: 'bg-destructive/10 text-destructive border-destructive/30' },
+  };
+  const cfg = config[effectiveStatus] || config.active;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md border whitespace-nowrap',
+        cfg.className,
+      )}
+    >
+      {cfg.label}
+    </span>
   );
 };
