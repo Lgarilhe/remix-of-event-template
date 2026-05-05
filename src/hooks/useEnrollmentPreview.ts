@@ -94,20 +94,46 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   }, []);
 
   const generateForCandidate = useCallback(async (profile: LinkedInProfile) => {
+    // 🔧 Accumulator local pour résoudre un BUG de closure :
+    // setPreview est async (passe par React state), donc dans la même
+    // boucle, lire `previews.get(profile.id)?.get(s.stepId)` retourne
+    // la valeur AVANT les writes faits dans les itérations précédentes.
+    //
+    // Conséquence : pour le step #5 (RELANCE), prevSentSteps n'avait
+    // PAS le message #3 généré juste avant → l'IA recevait
+    // prevSentSteps=[] → générait une "relance" sans contexte → message
+    // bidon générique du type "Je relance brièvement, je sais que LinkedIn
+    // déborde [...]" sans aucun lien avec le 1er message.
+    //
+    // Fix : on maintient une Map locale synchrone qui contient les
+    // messages déjà générés dans cette boucle. C'est ELLE qu'on utilise
+    // pour construire prevSentSteps, pas le React state.
+    const localPreviews = new Map<string, GeneratedMessage>();
+
+    // Pré-charge les previews déjà existants (cas où l'user a déjà
+    // généré certains steps avant ; on ne les regenere pas mais on
+    // veut les inclure dans prevSentSteps des steps suivants).
+    const existingCandidateMap = previews.get(profile.id);
+    if (existingCandidateMap) {
+      existingCandidateMap.forEach((msg, stepId) => {
+        if (msg.isGenerated || msg.isEdited) localPreviews.set(stepId, msg);
+      });
+    }
+
     for (const step of messageSteps) {
       if (abortRef.current) return;
 
-      const existing = previews.get(profile.id)?.get(step.stepId);
+      const existing = localPreviews.get(step.stepId);
       if (existing?.isGenerated && !existing.isEdited) continue; // Already generated
 
       setPreview(profile.id, step.stepId, { isGenerating: true, error: undefined });
 
       // Construit prevSentSteps simulés pour ce step : on liste tous
-      // les steps "reach" précédents dans la séquence + leur message
-      // déjà généré dans la preview (s'il existe). Ça permet à l'edge
-      // function de typer correctement le message (PREMIER MESSAGE vs
-      // RELANCE 1 vs INMAIL DE RELANCE etc.) — exactement comme le
-      // cron de prod, mais à partir de la simulation preview.
+      // les steps "reach" précédents + leur message déjà généré dans
+      // localPreviews (= synchrone, à jour). Ça permet à l'edge function
+      // de typer correctement le message (PREMIER MESSAGE / RELANCE 1
+      // / INMAIL DE RELANCE) ET de fournir le texte du message précédent
+      // à l'IA pour qu'elle puisse vraiment référencer.
       const prevSentSteps = steps
         .filter(s =>
           s.stepOrder < step.stepOrder &&
@@ -116,13 +142,9 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
         )
         .sort((a, b) => a.stepOrder - b.stepOrder)
         .map(s => {
-          const prev = previews.get(profile.id)?.get(s.stepId);
+          const prev = localPreviews.get(s.stepId);
           return {
             actionType: s.actionType,
-            // Pour les invitations, le "message" est généralement vide
-            // (juste une note), donc on ne le passe pas — utile car le
-            // shared module ne consomme finalMessage que pour les
-            // messages de type message/inmail/etc.
             finalMessage: prev?.message
               ? prev.message.replace(/<br\s*\/?>(\s*)/gi, '\n')
               : '',
@@ -198,37 +220,51 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             .replace(/\n\n/g, '<br><br>')
             .replace(/\n/g, '<br>');
 
-          setPreview(profile.id, step.stepId, {
+          const generatedMsg: GeneratedMessage = {
             subject: data?.subject || step.subjectTemplate || '',
             message: formattedMessage,
             personalizationPoints: data?.personalization_points,
             isGenerated: true,
             isGenerating: false,
             isEdited: false,
-          });
+          };
+          // Met à jour l'accumulator local AVANT setPreview pour que la
+          // prochaine itération de la boucle voie bien ce step comme
+          // déjà généré (utilisé pour construire prevSentSteps des
+          // steps suivants).
+          localPreviews.set(step.stepId, generatedMsg);
+          setPreview(profile.id, step.stepId, generatedMsg);
         } catch (err: any) {
           console.error('Preview generation error:', err);
           // Fallback to template with variables resolved
-          setPreview(profile.id, step.stepId, {
+          const fallbackMsg: GeneratedMessage = {
             subject: resolveVariables(step.subjectTemplate, profile),
             message: resolveVariables(step.messageTemplate, profile),
             isGenerated: false,
             isGenerating: false,
             error: 'Impossible de générer — le message template sera utilisé tel quel',
-          });
+          };
+          localPreviews.set(step.stepId, fallbackMsg);
+          setPreview(profile.id, step.stepId, fallbackMsg);
         }
       } else {
-        // No AI: resolve variables
-        setPreview(profile.id, step.stepId, {
+        // No AI: resolve variables (template only)
+        const noAiMsg: GeneratedMessage = {
           subject: resolveVariables(step.subjectTemplate, profile),
           message: resolveVariables(step.messageTemplate, profile),
           isGenerated: true,
           isGenerating: false,
           isEdited: false,
-        });
+        };
+        // Important : on l'ajoute aussi à localPreviews pour que les
+        // steps suivants reçoivent ce message comme prevSentStep (même
+        // pour les steps non-IA, le message a été "envoyé" du point de
+        // vue séquentiel).
+        localPreviews.set(step.stepId, noAiMsg);
+        setPreview(profile.id, step.stepId, noAiMsg);
       }
     }
-  }, [messageSteps, job, accountId, previews, setPreview]);
+  }, [messageSteps, steps, job, accountId, previews, setPreview]);
 
   const generateForCandidateById = useCallback(async (candidateId: string) => {
     const profile = profiles.find(p => p.id === candidateId);

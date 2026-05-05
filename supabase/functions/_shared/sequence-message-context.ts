@@ -126,11 +126,32 @@ export function computeMessageTypeContext(
   // Bloc texte des messages précédents (pour mémoire conversationnelle).
   const previousMessagesBlock = prevMessages.length > 0
     ? prevMessages
-        .map((p, i) => `MESSAGE ${i + 1} (${p.actionType}): "${(p.finalMessage || '').slice(0, 200)}"`)
-        .join('\n')
+        .map((p, i) => `MESSAGE ${i + 1} (${p.actionType}): "${(p.finalMessage || '').slice(0, 400)}"`)
+        .join('\n\n')
     : '';
 
-  return { msgType, toneInstructions, previousMessagesBlock, isFirstReach };
+  // Détecte si les messages précédents utilisent vouvoiement ou tutoiement.
+  // Permet à l'IA de garder la même politesse sur la relance (incohérence
+  // vous → tu sur le même candidat = signal IA évident, à éviter).
+  let toneConsistencyHint = '';
+  if (prevMessages.length > 0) {
+    const allText = prevMessages.map(p => p.finalMessage || '').join(' ').toLowerCase();
+    // Heuristique simple : compte les marqueurs vous/tu
+    const vousMarkers = (allText.match(/\b(vous|votre|vos|êtes|avez)\b/g) || []).length;
+    const tuMarkers = (allText.match(/\b(tu|ton|ta|tes|t'|toi)\b/g) || []).length;
+    if (vousMarkers > tuMarkers && vousMarkers >= 2) {
+      toneConsistencyHint = `\n⚠️ COHÉRENCE DE POLITESSE : les messages précédents utilisent le VOUVOIEMENT. Tu DOIS garder le vouvoiement pour rester cohérent. Pas de bascule en tutoiement, ce serait suspect.`;
+    } else if (tuMarkers > vousMarkers && tuMarkers >= 2) {
+      toneConsistencyHint = `\n⚠️ COHÉRENCE DE POLITESSE : les messages précédents utilisent le TUTOIEMENT. Tu DOIS garder le tutoiement pour rester cohérent. Pas de bascule en vouvoiement, ce serait suspect.`;
+    }
+  }
+
+  return {
+    msgType,
+    toneInstructions: toneInstructions + toneConsistencyHint,
+    previousMessagesBlock,
+    isFirstReach,
+  };
 }
 
 /**
