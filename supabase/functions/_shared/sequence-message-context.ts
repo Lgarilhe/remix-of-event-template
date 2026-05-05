@@ -110,16 +110,24 @@ export function computeMessageTypeContext(
 - 200-400 caractères`;
     } else if (prevDirectMsgs.length === 1) {
       msgType = 'RELANCE 1';
-      toneInstructions = `PREMIÈRE RELANCE. Tu PEUX référencer ton précédent message.
-- Apporte un angle complémentaire ou renforce le pitch
-- Ton plus direct, familier
-- 200-350 caractères`;
+      toneInstructions = `PREMIÈRE RELANCE. Tu DOIS référencer EXPLICITEMENT le sujet de ton précédent message — pas juste "je relance brièvement".
+- OBLIGATOIRE : mentionne le poste / l'entreprise / l'angle qui était dans le 1er message
+  Ex : "Je relance vite fait sur le poste Lead Go chez X"
+       "Je reviens sur l'idée du bridge Rust → Go dont je te parlais"
+- Apporte UN angle complémentaire ou UN nouvel argument (pas une copie du 1er message)
+- Ton plus direct, plus familier que le 1er
+- 150-280 caractères max (les relances longues = 0 réponse)
+- ❌ INTERDIT : "Je relance brièvement, je sais que LinkedIn déborde" (générique vide)
+- ❌ INTERDIT : "Si le timing ne te parle pas, dis-le moi en un mot" sans avoir d'abord rappelé le sujet`;
     } else {
       msgType = 'RELANCE 2';
-      toneInstructions = `DEUXIÈME RELANCE. Tu PEUX référencer tes précédents messages.
+      toneInstructions = `DEUXIÈME RELANCE. Tu DOIS rappeler le sujet précis dont vous parliez.
+- OBLIGATOIRE : référence concrète au poste / entreprise / angle des messages précédents
 - Ton direct, un peu plus insistant mais jamais agressif
-- Propose un dernier angle ou un CTA concret (appel, café, etc.)
-- 200-350 caractères`;
+- Propose un dernier angle (créneau précis, autre format de discussion)
+- 150-280 caractères max
+- Si le candidat n'a pas répondu après 2 relances, c'est probablement non — n'insiste plus, formule de fermeture courtoise OK
+- ❌ INTERDIT : "Je relance brièvement" générique sans rappeler le sujet`;
     }
   }
 
