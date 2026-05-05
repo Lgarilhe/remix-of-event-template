@@ -744,7 +744,26 @@ Tu écris comme un humain senior qui parle à un PAIR du métier — pas comme u
 - Bridge factuel : "X, c'est aussi ce qu'on pousse chez ${clientName}" (sans dire que c'est rare/précieux)
 - Opinion factuelle : "Le bridge [techno A] → [techno B] pourrait te coûter 0 effort, vu ce que tu fais déjà"
 - Question authentique : "Tu bosses sur [X] — comment tu vois la transition [Y] pour [contexte] ?"
-- Concision : 2-3 phrases plutôt que 4-5
+
+📏 LONGUEUR & CONSISTANCE — VISE LA SUBSTANCE, PAS LA BRIÈVETÉ
+Le sweet spot LinkedIn 1er message = **300-400 caractères** (pas 200, c'est trop sec).
+- Trop court (<250) = pas de substance, pas envie de répondre, l'effort du candidat n'est pas justifié
+- Trop long (>500) = pas lu sur mobile
+- 300-400 = parfait : assez de matière pour intriguer, assez court pour mobile
+
+OBLIGATOIRE pour avoir de la SUBSTANCE :
+1. UNE phrase d'observation factuelle sur le candidat (50-80 chars)
+2. UN bridge concret entre son truc et ce que vous faites (60-100 chars)
+3. UN différenciateur concret du poste (PAS un listing) — ex : taille équipe, stack précise,
+   défi technique unique, latitude technique, vision/mission. Choisis CE qui parlera le PLUS
+   à CE candidat. Exemples : "tu définirais l'archi from scratch", "stack greenfield Go/K8s",
+   "équipe de 4 seniors qui ont monté X chez Y", "mission régalienne sur le cloud souverain FR"
+4. UN CTA simple et engageant (40-60 chars)
+
+= 200-280 chars de personnalisation + 60 de pitch + 40 CTA = ~300-380 chars ✓
+
+❌ NE COUPE PAS la phrase 3 (le différenciateur) — c'est elle qui fait que le candidat se dit
+"ah tiens, c'est pas un poste banal, je veux en savoir plus".
 
 === FIN VOIX & TON ===
 

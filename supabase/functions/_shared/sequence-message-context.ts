@@ -114,9 +114,13 @@ export function computeMessageTypeContext(
 - OBLIGATOIRE : mentionne le poste / l'entreprise / l'angle qui était dans le 1er message
   Ex : "Je relance vite fait sur le poste Lead Go chez X"
        "Je reviens sur l'idée du bridge Rust → Go dont je te parlais"
-- Apporte UN angle complémentaire ou UN nouvel argument (pas une copie du 1er message)
+- Apporte UN nouvel angle / UN nouvel argument / UNE question concrète
+  (pas une simple copie ou réduction du 1er message)
+- Idéalement une question CONCRÈTE liée au profil ou au choix de carrière du candidat
+  Ex : "Tu fais du X en parallèle de ton Y ou c'est vraiment Y-first ?"
+       "Tu serais ouvert à du Z après [N] ans de [W] ?"
 - Ton plus direct, plus familier que le 1er
-- 150-280 caractères max (les relances longues = 0 réponse)
+- LONGUEUR 200-300 caractères : assez pour la référence + 1 nouvel angle, assez court pour rester punchy
 - ❌ INTERDIT : "Je relance brièvement, je sais que LinkedIn déborde" (générique vide)
 - ❌ INTERDIT : "Si le timing ne te parle pas, dis-le moi en un mot" sans avoir d'abord rappelé le sujet`;
     } else {
@@ -124,9 +128,9 @@ export function computeMessageTypeContext(
       toneInstructions = `DEUXIÈME RELANCE. Tu DOIS rappeler le sujet précis dont vous parliez.
 - OBLIGATOIRE : référence concrète au poste / entreprise / angle des messages précédents
 - Ton direct, un peu plus insistant mais jamais agressif
-- Propose un dernier angle (créneau précis, autre format de discussion)
-- 150-280 caractères max
-- Si le candidat n'a pas répondu après 2 relances, c'est probablement non — n'insiste plus, formule de fermeture courtoise OK
+- Propose un dernier angle (créneau précis, autre format de discussion, question fermée)
+- LONGUEUR 200-300 caractères
+- Si tu sens que le candidat n'a aucun intérêt, formule de fermeture courtoise OK ("pas de souci, bonne continuation")
 - ❌ INTERDIT : "Je relance brièvement" générique sans rappeler le sujet`;
     }
   }
