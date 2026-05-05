@@ -449,39 +449,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setFilters: search.setFilters,
   });
 
-  // Auto-fill trigger for readiness panel
-  const [readinessAutoFillLoading, setReadinessAutoFillLoading] = useState(false);
-  const handleReadinessAutoFill = useCallback(async () => {
-    if (!search.selectedJob) {
-      toast.error('Aucun poste sélectionné');
-      return;
-    }
-    setReadinessAutoFillLoading(true);
-    try {
-      const { data, error } = await invokeEdgeFunction<{
-        filters?: any;
-        suggestions?: FilterSuggestions | null;
-        success?: boolean;
-        error?: string;
-      }>(
-        'generate-search-filters',
-        { job: search.selectedJob, search_source: searchSource || 'linkedin' }
-      );
-      if (error) throw error;
-      if (!data?.success || !data?.filters) throw new Error(data?.error || 'Réponse invalide');
-      handleAutoFillFilters(data.filters);
-      handleSuggestionsGenerated(
-        data.suggestions && Object.values(data.suggestions).some(value => Array.isArray(value) && value.length > 0)
-          ? data.suggestions
-          : null
-      );
-      toast.success('Filtres générés par l\'IA !');
-    } catch (err: any) {
-      toast.error(err.message || 'Erreur lors de la génération des filtres');
-    } finally {
-      setReadinessAutoFillLoading(false);
-    }
-  }, [search.selectedJob, searchSource, handleAutoFillFilters, handleSuggestionsGenerated]);
+  // NOTE : la génération des filtres ne vit plus ici. Le bouton du panneau
+  // de readiness "Générer les filtres" a été retiré pour ne pas dupliquer
+  // le flow canonique du brief (qui inclut la review modal). Pour
+  // régénérer in-context, l'utilisateur peut toujours cliquer sur Auto-fill
+  // dans le panneau de filtres (ce flow accepte le selectedJob synthétique
+  // et applique direct sans review — intent différent : ajustement, pas
+  // génération from-scratch).
 
   // Account data helpers
   const selectedAccountData = useMemo(() => 
@@ -950,8 +924,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           selectedAccount={selectedAccount}
           activeProject={activeProject}
           searchSource={searchSource}
-          onAutoFill={handleReadinessAutoFill}
-          autoFillLoading={readinessAutoFillLoading}
           filtersReady={!!(search.filters.keywords?.trim() || (search.filters as any).role?.length > 0)}
           accountName={selectedAccountData?.name || selectedAccountData?.identifier || null}
           accountStatus={selectedAccountData?.status || null}
