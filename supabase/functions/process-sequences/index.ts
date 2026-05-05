@@ -1368,11 +1368,27 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
     // Resolve recruiter IDs to a format the chat API understands
     const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase, effectiveApiKey, effectiveDsn);
 
-    const chatsRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${resolvedId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
+    const chatsRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${encodeURIComponent(resolvedId)}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
     if (!chatsRes.ok) {
+      // HTTP 403 = candidate has BLOCKED our account on LinkedIn → toute relance
+      // continuera à échouer silencieusement (spam invisible). On pause
+      // l'enrollment et on alerte via le toast LinkedIn-disconnected.
+      if (chatsRes.status === 403 && enrollmentId && supabase) {
+        console.warn(`[checkForReplyAfterDate] Account blocked by candidate (HTTP 403) — pausing enrollment ${enrollmentId}`);
+        await supabase.from('sequence_enrollments').update({
+          status: 'paused',
+          updated_at: new Date().toISOString(),
+        }).eq('id', enrollmentId);
+        await supabase.from('sequence_step_executions').update({
+          status: 'cancelled',
+          skip_reason: 'Candidat a bloqué le compte LinkedIn — séquence stoppée',
+          updated_at: new Date().toISOString(),
+        }).eq('enrollment_id', enrollmentId).eq('status', 'scheduled');
+        return false;
+      }
       // If resolved ID also fails and it was different from original, try original as fallback
       if (resolvedId !== profileId) {
-        const fallbackRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${profileId}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
+        const fallbackRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/chat_attendees/${encodeURIComponent(profileId)}/chats?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
         if (!fallbackRes.ok) return false;
         const fallbackChats = (await fallbackRes.json()).items || [];
         return await checkMessagesForReply(fallbackChats, enrollmentTime, effectiveApiKey, effectiveDsn);
@@ -1926,7 +1942,10 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
     const accountId = ((step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string);
     const profileId = enrollment.profile_id as string;
     const msg = (execution.final_message || step.message_template || '') as string;
-    const subj = (execution.final_subject || step.subject_template || '') as string;
+    // Subject InMail/email : LinkedIn impose ~200 chars max, on truncate pour
+    // éviter les rejects 400 silencieux. Marge à 198 + ellipsis si tronqué.
+    const subjRaw = (execution.final_subject || step.subject_template || '') as string;
+    const subj = subjRaw.length > 200 ? subjRaw.slice(0, 198) + '…' : subjRaw;
 
     switch (actionType) {
       case 'email': {
@@ -1984,7 +2003,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         return { success: true };
       }
       case 'profile_visit': {
-        const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${profileId}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
+        // encodeURIComponent : sécurise les slugs avec caractères spéciaux (espaces,
+        // accents, /, ?). Sans ça, Unipile reçoit une URL malformée → erreur silencieuse.
+        const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(profileId)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
         if (r.ok) {
           await logAnalytics(supabase, enrollment.sequence_id as string, 'profile_visits');
           return { success: true };
@@ -2009,11 +2030,23 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
               else if ((bal.sales_navigator || 0) > 0) linkedinApiMode = 'sales_navigator';
               else if ((bal.premium || 0) > 0) linkedinApiMode = 'classic';
               else {
-                // Zero credits across all types — fail permanently instead of wasting retries
-                return { success: false, error: 'No InMail credits available (recruiter: 0, sales_nav: 0, premium: 0)' };
+                // Zero credits across all types — fail-CLOSED. Pause enrollment pour
+                // que l'utilisateur soit notifié au lieu de stuck en retry-loop.
+                await supabase.from('sequence_enrollments').update({
+                  status: 'paused',
+                  updated_at: new Date().toISOString(),
+                }).eq('id', enrollment.id);
+                return { success: false, error: 'Quota InMail épuisé (recruiter: 0, sales_nav: 0, premium: 0). Achetez des credits ou changez de mode.' };
               }
+            } else {
+              // HTTP non-OK sur balance check : fail-CLOSED au lieu de tenter aveuglément.
+              // Reschedule (pas un échec définitif), Unipile peut être en glitch temporaire.
+              return { success: false, error: `InMail balance check failed (HTTP ${balRes.status}) — reschedule` };
             }
-          } catch { linkedinApiMode = 'recruiter'; /* fallback on API error */ }
+          } catch (e) {
+            // Erreur réseau/timeout : fail-CLOSED + retry naturel via process-sequences
+            return { success: false, error: `InMail balance check error: ${e instanceof Error ? e.message : 'unknown'}` };
+          }
         }
 
         console.log(`[executeStepAction] ${(enrollment as any).profile_name} | actionType=${actionType} | isConnected=${isConnected} | needsInMail=${needsInMail} | apiMode=${linkedinApiMode}`);
@@ -2193,7 +2226,18 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           }
 
           if (!resolved) {
-            console.warn(`[connection_request] Could not resolve classic ID for ${profileId}, attempting with original ID`);
+            // Fail-CLOSED : envoyer avec un ID non-résolu fait spammer Unipile
+            // d'erreurs 400 silencieuses + retry inutiles. Mieux vaut paused
+            // l'enrollment pour que l'user vérifie le profil manuellement.
+            console.warn(`[connection_request] Could not resolve classic ID for ${profileId} — pausing enrollment`);
+            await supabase.from('sequence_enrollments').update({
+              status: 'paused',
+              updated_at: new Date().toISOString(),
+            }).eq('id', enrollment.id);
+            return {
+              success: false,
+              error: `Profil LinkedIn introuvable (ID: ${profileId.slice(0, 30)}...). Vérifiez l'URL du profil dans la fiche candidat.`,
+            };
           }
 
           // Save resolved classic ID for future reply matching (webhook + checkReplies)
