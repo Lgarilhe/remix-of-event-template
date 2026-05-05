@@ -362,6 +362,7 @@ ${sourcesSummary}`;
         tool_choice: { type: 'function', function: { name: 'return_audit' } },
         max_tokens: 3000,
         timeoutMs: 20000,
+        antiAiStyle: "full",
       });
     } catch (e) {
       console.error('[audit] Claude error:', e);

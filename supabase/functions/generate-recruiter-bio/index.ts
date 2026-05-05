@@ -136,6 +136,7 @@ CONSIGNES STRICTES :
       messages: [{ role: "user", content: prompt }],
       max_tokens: 500,
       timeoutMs: 30000,
+      antiAiStyle: "full",
     });
 
     const bio = aiResult.content.trim();

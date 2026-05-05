@@ -84,6 +84,7 @@ Retourne UNIQUEMENT ce JSON :
       response_format: { type: "json_object" },
       max_tokens: 3000,
       timeoutMs: 60000,
+      antiAiStyle: "full",
     });
 
     const text = result.content || "{}";

@@ -11,6 +11,7 @@
 // mais on supprime la dépendance au gateway.
 
 import { getAnthropicModelId } from "./ai-config.ts";
+import { ANTI_AI_STYLE_PROMPT, ANTI_AI_STYLE_COMPACT } from "./anti-ai-style.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
@@ -61,6 +62,16 @@ export interface ClaudeCompatOptions {
   response_format?: { type: "json_object" | "text" };
   timeoutMs?: number;
   maxRetries?: number;
+  /**
+   * Injecte les règles anti-IA Konekt dans le system prompt.
+   * - "full" : version complète (~250 tokens) — pour les messages user-facing
+   *            (outreach, replies, descriptions de mission, etc.)
+   * - "compact" : version condensée (~80 tokens) — pour les contextes où
+   *               l'espace token est précieux (analyses, summaries internes)
+   * - "none" / undefined : aucune règle injectée — pour les classifs,
+   *                        scoring numérique, JSON tools, etc.
+   */
+  antiAiStyle?: "full" | "compact" | "none";
 }
 
 export interface ClaudeCompatResult {
@@ -111,6 +122,14 @@ export async function callClaudeCompat(opts: ClaudeCompatOptions): Promise<Claud
     } else {
       chatMessages.push({ role: m.role, content: m.content });
     }
+  }
+
+  // Injection des règles anti-IA Konekt selon le flag.
+  // En 1re position pour qu'elles soient prioritaires sur le reste du system.
+  if (opts.antiAiStyle === "full") {
+    systemParts.unshift(ANTI_AI_STYLE_PROMPT);
+  } else if (opts.antiAiStyle === "compact") {
+    systemParts.unshift(ANTI_AI_STYLE_COMPACT);
   }
 
   // JSON mode → consigne dans le system prompt (Anthropic n'a pas de mode

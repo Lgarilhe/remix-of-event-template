@@ -420,6 +420,7 @@ Analyse cette conversation et retourne le JSON.`;
           { role: "user", content: userPrompt }
         ],
         timeoutMs: 55000,
+        antiAiStyle: "full", // les suggestions de réponse sont user-facing
       });
       content = result.content;
     } catch (e) {

@@ -3099,10 +3099,14 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     const callAI = async (userPrompt: string) => {
       try {
         const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
+        const { ANTI_AI_STYLE_PROMPT } = await import('../_shared/anti-ai-style.ts');
         const result = await callWithRetry(ANTHROPIC_API_KEY!, {
           model: resolvedAnthropicModel,
           max_tokens: 500,
-          system: [{ type: 'text', text: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. JAMAIS de superlatifs, JAMAIS de tournures IA. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.', cache_control: { type: 'ephemeral' } }],
+          system: [
+            { type: 'text', text: ANTI_AI_STYLE_PROMPT, cache_control: { type: 'ephemeral' } },
+            { type: 'text', text: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.' },
+          ],
           messages: [{ role: 'user', content: userPrompt }],
         });
         // Track tokens
