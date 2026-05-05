@@ -94,7 +94,45 @@ export interface JobDetails {
   voice_transcript?: string;
   voice_audio_url?: string;
   brief_video_url?: string;
+
+  // ── Configuration outreach (influence la rédaction des messages IA) ──
+  outreach_config?: {
+    /** Pour qui on recrute : 'internal' = notre boîte, 'client' = client externe */
+    recruitment_mode?: 'internal' | 'client';
+    /** Rôle qu'incarne l'expéditeur dans les messages */
+    sender_role?: SenderRole;
+    /** Si true, ne mentionne pas le nom de l'entreprise dans les messages */
+    anonymize_client?: boolean;
+    /** Alias à utiliser à la place du nom (ex: "une scale-up tech française") */
+    anonymized_alias?: string;
+  };
 }
+
+export type SenderRole =
+  | 'talent_acquisition'   // Talent Acquisition / Recruteur interne
+  | 'recruiter_external'   // Recruteur externe / Cabinet
+  | 'cto'                  // CTO / Directeur tech
+  | 'talent_lead'          // Talent Lead / Head of Talent
+  | 'founder'              // Founder / CEO
+  | 'manager'              // Manager direct du poste
+  | 'hr_director'          // DRH / People
+  | 'team_member';         // Membre de l'équipe (peer-to-peer)
+
+export const SENDER_ROLE_LABELS: Record<SenderRole, string> = {
+  talent_acquisition: 'Talent Acquisition',
+  recruiter_external: 'Recruteur externe / Cabinet',
+  cto: 'CTO / Directeur tech',
+  talent_lead: 'Talent Lead / Head of Talent',
+  founder: 'Founder / CEO',
+  manager: 'Manager direct',
+  hr_director: 'DRH / People',
+  team_member: 'Membre de l\'équipe (peer)',
+};
+
+export const RECRUITMENT_MODE_LABELS: Record<'internal' | 'client', string> = {
+  internal: 'Notre société (interne)',
+  client: 'Un client externe',
+};
 
 export const CONTRACT_TYPE_LABELS: Record<string, string> = {
   cdi: 'CDI',

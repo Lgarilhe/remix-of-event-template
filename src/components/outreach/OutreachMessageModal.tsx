@@ -168,6 +168,13 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         }
       } catch { /* non-blocking */ }
 
+      // Récupère outreach_config depuis job.job_details si défini sur la mission active.
+      // Influence le ton, la posture, et l'anonymisation des messages générés.
+      const outreachConfig = (job as any)?.outreachConfig
+        || (job as any)?.outreach_config
+        || (job as any)?.job_details?.outreach_config
+        || undefined;
+
       const { data, error } = await invokeWithCredits<{ subject?: string; message?: string; personalization_points?: string[] }>('generate-outreach-message', 'outreach_message', {
         profile: profileData,
         job: {
@@ -188,6 +195,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         calendlyLink: calendlyLink || undefined,
         candidateLinkedInUrl: profile.public_profile_url || profile.profile_url || (profile as any).linkedin_url || undefined,
         ragContext,
+        outreachConfig,
       }, { modelOverride: selectedModel ?? undefined });
 
       if (error) throw error;

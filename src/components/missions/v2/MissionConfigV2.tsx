@@ -11,7 +11,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Settings, Cloud, CloudUpload, Check, AlertCircle, Globe, Target,
-  Calendar, Eye, Briefcase,
+  Calendar, Eye, Briefcase, MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
@@ -19,6 +19,8 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { MissionHuntMode } from '../MissionHuntMode';
 import { MissionClientPortal } from '../MissionClientPortal';
 import { Pill } from './Pill';
+import type { JobDetails, SenderRole } from '@/types/jobDetails';
+import { SENDER_ROLE_LABELS, RECRUITMENT_MODE_LABELS } from '@/types/jobDetails';
 
 interface MissionConfigV2Props {
   project: SourcingProject;
@@ -157,6 +159,14 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
               </Field>
             </div>
           </SectionCard>
+
+          {/* Section Configuration outreach — incarnation IA pour les messages */}
+          {!readOnly && (
+            <OutreachConfigSection
+              project={project}
+              onUpdate={handleUpdate}
+            />
+          )}
 
           {/* Mode Hunt et Portail client — composants déjà cards rounded-xl */}
           {!readOnly && <MissionHuntMode project={project} />}
@@ -337,3 +347,147 @@ const DebouncedTextarea: React.FC<{
     )}
   />
 );
+
+// ───────────────────────────────────────────────────────────────────
+// OutreachConfigSection : config AI per-mission
+// (qui incarne l'IA quand elle rédige les messages outreach)
+// ───────────────────────────────────────────────────────────────────
+
+const OutreachConfigSection: React.FC<{
+  project: SourcingProject;
+  onUpdate: (patch: Partial<SourcingProject>) => Promise<void>;
+}> = ({ project, onUpdate }) => {
+  const jd = (project.job_details || {}) as JobDetails;
+  const config = jd.outreach_config || {};
+
+  const updateConfig = (patch: Partial<NonNullable<JobDetails['outreach_config']>>) => {
+    const newJd: JobDetails = {
+      ...jd,
+      outreach_config: { ...config, ...patch },
+    };
+    onUpdate({ job_details: newJd as any });
+  };
+
+  const recruitmentMode = config.recruitment_mode || 'client';
+  const senderRole = config.sender_role || 'recruiter_external';
+  const anonymize = !!config.anonymize_client;
+  const alias = config.anonymized_alias || '';
+  const clientName = jd.client?.name || '';
+
+  return (
+    <SectionCard
+      emoji="💬"
+      title="Configuration outreach"
+      subtitle="Influence la rédaction IA des messages de cette mission"
+    >
+      <div className="space-y-4">
+        {/* 1. Mode recrutement */}
+        <div>
+          <label className="text-xs font-medium text-foreground mb-1.5 block">
+            Pour qui recrutes-tu ?
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['internal', 'client'] as const).map(mode => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => updateConfig({ recruitment_mode: mode })}
+                className={cn(
+                  'px-3 py-2 rounded-lg border text-sm text-left transition-colors',
+                  recruitmentMode === mode
+                    ? 'border-foreground bg-foreground/5 font-medium'
+                    : 'border-border bg-background hover:bg-muted/30',
+                )}
+              >
+                <div className="font-medium">{RECRUITMENT_MODE_LABELS[mode]}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {mode === 'internal'
+                    ? 'L\'IA parle en "on / nous / chez nous"'
+                    : 'L\'IA mentionne "ton client" / cabinet externe'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. Rôle expéditeur */}
+        <div>
+          <label className="text-xs font-medium text-foreground mb-1.5 block">
+            Qui incarne l'IA ?
+          </label>
+          <select
+            value={senderRole}
+            onChange={(e) => updateConfig({ sender_role: e.target.value as SenderRole })}
+            className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {(Object.entries(SENDER_ROLE_LABELS) as [SenderRole, string][]).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            Adapte le ton, le wording et la posture des messages générés.
+            Ex : un CTO parle tech, un Talent parle people, un Founder parle vision.
+          </p>
+        </div>
+
+        {/* 3. Anonymisation client */}
+        <div className="pt-3 border-t border-border">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <label className="text-xs font-medium text-foreground block">
+                Anonymiser le client dans les messages
+              </label>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {clientName
+                  ? <>Cache le nom <span className="font-mono">"{clientName}"</span> et le remplace par un alias générique</>
+                  : <span className="italic">Renseigne d'abord le client dans le brief pour activer cette option</span>}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateConfig({ anonymize_client: !anonymize })}
+              disabled={!clientName}
+              className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                anonymize ? 'bg-foreground' : 'bg-muted',
+              )}
+              aria-checked={anonymize}
+              role="switch"
+            >
+              <span
+                className={cn(
+                  'inline-block h-4 w-4 rounded-full bg-background transition-transform',
+                  anonymize ? 'translate-x-6' : 'translate-x-1',
+                )}
+              />
+            </button>
+          </div>
+
+          {anonymize && (
+            <div className="mt-3">
+              <label className="text-xs font-medium text-foreground mb-1.5 block">
+                Alias (utilisé à la place du nom)
+              </label>
+              <DebouncedInput
+                defaultValue={alias}
+                onCommit={(v) => updateConfig({ anonymized_alias: v.trim() })}
+                placeholder="Ex: une scale-up tech française, un acteur du paiement, etc."
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Si vide, l'IA utilisera "une entreprise tech française" par défaut.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Note d'avertissement si pas configuré */}
+        {!config.recruitment_mode && (
+          <div className="p-3 rounded-lg bg-warning/5 border border-warning/30 text-[12px] text-foreground">
+            <strong>⚠ Pas encore configuré</strong> : par défaut, l'IA considère que c'est
+            un recrutement pour un client externe. Configure ci-dessus pour adapter le ton.
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+};

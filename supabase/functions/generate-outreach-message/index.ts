@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
     const _body = await req.json();
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl } = _body as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig } = _body as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -364,6 +364,14 @@ Deno.serve(async (req) => {
       customInstructions?: string;
       calendlyLink?: string;
       candidateLinkedInUrl?: string;
+      /** Config outreach de la mission (sourcing_projects.job_details.outreach_config).
+       *  Influence le ton, la posture, et l'anonymisation du client. */
+      outreachConfig?: {
+        recruitment_mode?: "internal" | "client";
+        sender_role?: string;
+        anonymize_client?: boolean;
+        anonymized_alias?: string;
+      };
     };
 
     // Resolve AI model from frontend
@@ -518,8 +526,28 @@ Accroche + présentation + CTA.`
     
     // Different positioning based on engagement type
     const clientName = clientNameRaw || 'nous';
-    const engagementInstructions = isRPO
-      ? `
+
+    // ⭐ NOUVEAU : si outreachConfig est fourni par le frontend (depuis
+    // sourcing_projects.job_details.outreach_config), il prime sur l'heuristique
+    // RPO/Success qui suit. Le helper buildOutreachContext gère l'incarnation
+    // (interne/client + rôle + anonymisation).
+    let engagementInstructions = '';
+    if (outreachConfig && (outreachConfig.recruitment_mode || outreachConfig.sender_role || outreachConfig.anonymize_client)) {
+      try {
+        const { buildOutreachContext } = await import('../_shared/outreach-context.ts');
+        engagementInstructions = '\n' + buildOutreachContext(
+          outreachConfig as any,
+          clientName,
+          senderName || 'Recruteur',
+        );
+      } catch (e) {
+        console.warn('[generate-outreach-message] outreach-context import failed:', e);
+      }
+    }
+    if (!engagementInstructions) {
+      // Fallback legacy : RPO/Success heuristique
+      engagementInstructions = isRPO
+        ? `
 === MODE RPO (TU ES SALARIÉ DE ${job.client?.name?.toUpperCase() || 'L\'ENTREPRISE'}) ===
 CRITIQUE: Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe.
 - TOUJOURS: "on", "nous", "chez ${clientName}" ou "chez nous"
@@ -537,13 +565,14 @@ FORMULATIONS RPO NATURELLES (exemples):
 - "je recrute pour eux/mon client" ❌
 - "ils/leur" ❌
 - Préférer des formulations courtes: "chez ${clientName}" OU "notre équipe" mais PAS les deux ensemble`
-      : `
+        : `
 === MODE SUCCÈS (CABINET EXTERNE) ===
 Tu parles EN TANT QUE recruteur externe/cabinet qui accompagne un client.
 - Utilise "ils", "leur équipe", "chez ${clientName}"
 - Tu présentes l'opportunité: "Je recrute pour ${clientName}"
 - Tu peux valoriser ta connaissance du client: "Je travaille avec leur CTO"
 - Sois transparent sur ton rôle de cabinet`;
+    } // end fallback if (!engagementInstructions)
 
     // Await posts and RAG context (fetched in parallel)
     const [recentPosts, ragContext] = await Promise.all([postsPromise, ragPromise]);
@@ -1001,6 +1030,21 @@ Réponds UNIQUEMENT en JSON valide:
     }
 
     parsed.message = sanitizeMessage(parsed.message);
+
+    // ⭐ Sanity-check anonymisation client : si outreachConfig.anonymize_client est
+    // actif, force-replace toute occurrence du clientName par l'alias dans message
+    // ET subject. Filet de sécurité au cas où l'IA aurait laissé filtrer le nom.
+    if (outreachConfig?.anonymize_client && clientNameRaw) {
+      try {
+        const { applyClientAnonymization } = await import('../_shared/outreach-context.ts');
+        parsed.message = applyClientAnonymization(parsed.message, outreachConfig as any, clientNameRaw);
+        if (parsed.subject) {
+          parsed.subject = applyClientAnonymization(parsed.subject, outreachConfig as any, clientNameRaw);
+        }
+      } catch (e) {
+        console.warn('[generate-outreach-message] anonymization sanity check failed:', e);
+      }
+    }
 
     // Settle credits based on actual token usage (fire-and-forget)
     if (_totalTokensIn + _totalTokensOut > 0) {

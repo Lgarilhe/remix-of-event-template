@@ -2827,21 +2827,52 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       if (senderProfile?.display_name) senderName = senderProfile.display_name;
     } catch { /* ignore */ }
 
-    // Determine RPO vs Succès
+    // Determine RPO vs Succès (legacy heuristique)
     const isRPO = jobAccompagnement.some(a => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded') || a.toLowerCase().includes('intégré'));
     const clientName = jobNotionData['Client'] || jobNotionData['Entreprise'] || enrollment.job_title as string || 'nous';
 
-    const engagementBlock = isRPO
-      ? `=== MODE RPO (TU ES INTÉGRÉ CHEZ ${clientName.toUpperCase()}) ===
+    // ⭐ NOUVEAU : config outreach explicite par mission (sourcing_projects.job_details.outreach_config)
+    // Si présente, elle PRIME sur l'heuristique RPO/Success.
+    let outreachConfig: any = null;
+    if (enrollment.job_id) {
+      try {
+        const { data: project } = await supabase
+          .from('sourcing_projects')
+          .select('job_details')
+          .or(`id.eq.${enrollment.job_id},job_id.eq.${enrollment.job_id}`)
+          .limit(1)
+          .maybeSingle();
+        const jd = project?.job_details as any;
+        outreachConfig = jd?.outreach_config || null;
+      } catch { /* ignore */ }
+    }
+
+    // Build engagementBlock : si outreach_config est défini, on utilise le nouveau
+    // helper buildOutreachContext qui couvre tous les cas (interne/client + rôle
+    // expéditeur + anonymisation). Sinon fallback sur l'ancien heuristique RPO/Succès.
+    let engagementBlock = '';
+    if (outreachConfig) {
+      try {
+        const { buildOutreachContext } = await import('../_shared/outreach-context.ts');
+        engagementBlock = buildOutreachContext(outreachConfig, clientName, senderName);
+      } catch (e) {
+        console.warn('[generatePersonalizedMessage] outreach-context import failed:', e);
+      }
+    }
+    if (!engagementBlock) {
+      // Fallback legacy : heuristique RPO basée sur accompagnement
+      engagementBlock = isRPO
+        ? `=== MODE RPO (TU ES INTÉGRÉ CHEZ ${clientName.toUpperCase()}) ===
 Tu travailles CHEZ ${clientName}. Tu n'es PAS un cabinet externe. Tu es un recruteur interne.
 - TOUJOURS: "on", "nous", "notre équipe", "chez ${clientName}" ou "chez nous"
 - JAMAIS: "ils", "leur", "mon client", "je recrute pour", "j'accompagne"
 - Tu parles comme si tu étais SALARIÉ de ${clientName}
 - Exemples: "On cherche", "Notre équipe Data", "Chez nous", "Chez ${clientName}"`
-      : `=== MODE SUCCÈS (CABINET EXTERNE) ===
+        : `=== MODE SUCCÈS (CABINET EXTERNE) ===
 Tu parles EN TANT QUE recruteur externe indépendant.
 - Utilise "je", "j'accompagne", "chez ${clientName}", "leur équipe"
 - Tu peux valoriser ta connaissance du client`;
+    }
 
     // Build posts section
     const postsSection = recentPosts.length > 0
@@ -3145,7 +3176,22 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
 
     // Sanitize output
     parsed.message = sanitizeSequenceMessage(parsed.message || '');
-    
+
+    // ⭐ Sanity-check anonymisation client : si outreach_config.anonymize_client est
+    // actif, on force-replace toute occurrence du clientName par l'alias dans le
+    // message ET le subject. Filet de sécurité au cas où l'IA aurait laissé filtrer.
+    if (outreachConfig?.anonymize_client && clientName) {
+      try {
+        const { applyClientAnonymization } = await import('../_shared/outreach-context.ts');
+        parsed.message = applyClientAnonymization(parsed.message, outreachConfig, clientName);
+        if (parsed.subject) {
+          parsed.subject = applyClientAnonymization(parsed.subject, outreachConfig, clientName);
+        }
+      } catch (e) {
+        console.warn('[generatePersonalizedMessage] anonymization sanity check failed:', e);
+      }
+    }
+
     // Force-replace "Recruteur" signature with actual sender name
     parsed.message = parsed.message.replace(/\bRecruteur\b/gi, senderName);
     
