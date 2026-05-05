@@ -340,12 +340,14 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
       </aside>
 
       {/* Filter review modal */}
-      {showFilterReview && analysis && (
+      {analysis && (
         <FilterReviewModal
-          isOpen={showFilterReview}
-          analysis={analysis}
-          onClose={() => setShowFilterReview(false)}
+          open={showFilterReview}
+          onOpenChange={setShowFilterReview}
+          filters={analysis.filters}
+          analysis={analysis.analysis}
           onAccept={handleAcceptFilters}
+          onRegenerate={() => { setShowFilterReview(false); setAnalysis(null); handleAnalyze(); }}
         />
       )}
     </div>
