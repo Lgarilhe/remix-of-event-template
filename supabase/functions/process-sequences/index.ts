@@ -3109,7 +3109,23 @@ RÈGLES D'UTILISATION:
 - Pour les INMAILS INITIAUX et PREMIERS MESSAGES: ne mets PAS le lien (trop tôt)
 - Pour les RELANCES et messages POST-CONNEXION: tu peux l'utiliser si le CTA propose un échange
 === FIN CALENDLY ===` : ''}
+${(((step as any).message_template || '').toString().trim() || ((step as any).subject_template || '').toString().trim()) ? `
+=== TEMPLATE DU RECRUTEUR (À RESPECTER — PRIORITÉ ABSOLUE) ===
+Le recruteur a écrit ce template pour cette étape de la séquence. Tu dois t'en servir comme STRUCTURE et INTENTION de message, PAS générer from scratch.
 
+${((step as any).subject_template || '').toString().trim() ? `OBJET (template) : "${((step as any).subject_template || '').toString().slice(0, 300)}"\n` : ''}${((step as any).message_template || '').toString().trim() ? `MESSAGE (template) :\n"""\n${((step as any).message_template || '').toString().slice(0, 2000)}\n"""` : ''}
+
+INSTRUCTIONS POUR UTILISER LE TEMPLATE :
+1. Remplace les variables ({{first_name}}, {{company}}, {{job_title}}, etc.) avec les infos du candidat ci-dessus.
+2. RESPECTE l'intention, la structure et le ton du template — n'invente pas un autre angle.
+3. Si le template est court/minimal (juste une accroche + variables), tu peux ENRICHIR avec un fait précis du profil du candidat (post LinkedIn, side project, ancien employeur commun) tant que tu restes dans l'esprit du template.
+4. Si le template est détaillé, reste FIDÈLE à sa structure — tu personnalises les phrases, tu ne les remplaces pas.
+5. NE T'ÉLOIGNE PAS de la consigne du recruteur. C'est SA voix, pas la tienne.
+6. Continue d'appliquer toutes les règles anti-IA ci-dessus (pas de flatterie, pas de jugement de valeur, longueur, etc.) — un template ne te dispense PAS de ces règles.
+7. Si le template contient déjà une formule de flatterie interdite, REFORMULE pour respecter les règles anti-IA tout en gardant l'intention.
+
+=== FIN TEMPLATE ===
+` : ''}
 Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "message": "le message complet"}`;
 
     // Resolve AI model from org settings (respects user's model choice in Settings)

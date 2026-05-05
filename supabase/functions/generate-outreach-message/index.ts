@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
     const _body = await req.json();
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig, sequenceContext } = _body as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig, sequenceContext, messageTemplate, subjectTemplate } = _body as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -364,6 +364,13 @@ Deno.serve(async (req) => {
       customInstructions?: string;
       calendlyLink?: string;
       candidateLinkedInUrl?: string;
+      /** Template défini par le recruteur dans le step de la séquence.
+       *  Si présent, l'IA doit le respecter comme structure/intention de
+       *  message (pas générer from scratch). Variables {{first_name}},
+       *  {{company}}, etc. sont remplacées + l'IA personnalise le reste
+       *  en gardant l'esprit du template. */
+      messageTemplate?: string;
+      subjectTemplate?: string;
       /** Config outreach de la mission (sourcing_projects.job_details.outreach_config).
        *  Influence le ton, la posture, et l'anonymisation du client. */
       outreachConfig?: {
@@ -974,7 +981,23 @@ RÈGLES D'UTILISATION:
 - Pour les messages de qualification (question ouverte), ne mets PAS le lien
 === FIN CALENDLY ===
 ` : ''}
-${customInstructions ? `
+${(messageTemplate?.trim() || subjectTemplate?.trim()) ? `
+=== TEMPLATE DU RECRUTEUR (À RESPECTER — PRIORITÉ ABSOLUE) ===
+Le recruteur a écrit ce template pour cette étape de la séquence. Tu dois t'en servir comme STRUCTURE et INTENTION de message, PAS générer from scratch.
+
+${subjectTemplate?.trim() ? `OBJET (template) : "${subjectTemplate.slice(0, 300)}"\n` : ''}${messageTemplate?.trim() ? `MESSAGE (template) :\n"""\n${messageTemplate.slice(0, 2000)}\n"""` : ''}
+
+INSTRUCTIONS POUR UTILISER LE TEMPLATE :
+1. Remplace les variables ({{first_name}}, {{company}}, {{job_title}}, etc.) avec les infos du candidat ci-dessus.
+2. RESPECTE l'intention, la structure et le ton du template — n'invente pas un autre angle.
+3. Si le template est court/minimal (juste une accroche + variables), tu peux ENRICHIR avec un fait précis du profil du candidat (post LinkedIn, side project, ancien employeur commun) tant que tu restes dans l'esprit du template.
+4. Si le template est détaillé, reste FIDÈLE à sa structure — tu personnalises les phrases, tu ne les remplaces pas.
+5. NE T'ÉLOIGNE PAS de la consigne du recruteur. C'est SA voix, pas la tienne.
+6. Continue d'appliquer toutes les règles anti-IA ci-dessus (pas de flatterie, pas de jugement de valeur, longueur, etc.) — un template ne te dispense PAS de ces règles.
+7. Si le template contient déjà une formule de flatterie interdite, REFORMULE pour respecter les règles anti-IA tout en gardant l'intention.
+
+=== FIN TEMPLATE ===
+` : ''}${customInstructions ? `
 === INSTRUCTIONS SUPPLÉMENTAIRES DU RECRUTEUR (PRIORITÉ HAUTE) ===
 ${customInstructions.slice(0, 500)}
 === FIN INSTRUCTIONS SUPPLÉMENTAIRES ===
