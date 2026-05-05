@@ -1173,10 +1173,34 @@ ${workExpText}
 3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
 
 4. **Qualité des expériences & pedigree** : Évalue la QUALITÉ des entreprises ET la pertinence de l'expérience (durée + titre).
-   → **Bonus fort** : scale-ups reconnues (Doctolib, Alan, Datadog, Contentsquare, Mirakl, etc.), GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1 (McKinsey, BCG, etc.).
-   → **Bonus modéré** : startups funded, entreprises tech reconnues dans leur niche, PME innovantes.
-   → **Neutre** : grands groupes CAC40, administrations, PME traditionnelles.
-   → **Signal négatif** : ESN/SSII body shopping (Alten, Altran, Sopra, CGI = neutre-négatif), intérim généraliste, expériences exclusivement offshore.
+
+   🌍 RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE (CRITIQUE) :
+   Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT de l'entreprise — PAS de sa
+   géographie. Une scale-up africaine (Andela, Flutterwave, Wave, Twiga, Yassir...), latino-américaine
+   (MercadoLibre, Rappi, Nubank, Kavak, dLocal...), asiatique (Grab, Gojek, Razorpay, Coupang, Shopee...)
+   ou moyen-orientale (Careem, Talabat, Swvl...) reconnue dans son marché vaut autant qu'une scale-up
+   française ou US équivalente. Tu n'as PAS le droit de pénaliser un profil parce que ses entreprises
+   sont moins connues du recruteur français — tu fais l'effort de RECONNAÎTRE leur statut local.
+   En cas de doute sur une entreprise étrangère, va voir le rôle (Lead Engineer dans une boîte de
+   1000+ personnes = pedigree fort, peu importe le pays).
+
+   → **Bonus fort** : scale-ups reconnues GLOBALEMENT, peu importe la géographie :
+     • EU/FR : Doctolib, Alan, Datadog, Contentsquare, Mirakl, Qonto, Back Market, Spendesk...
+     • US : GAFAM, FAANG, Stripe, Airbnb, Uber, Snowflake, Databricks...
+     • Africa : Andela, Flutterwave, Wave, Yoco, Chipper Cash, Yassir, Twiga, Kuda...
+     • LATAM : MercadoLibre, Rappi, Nubank, Kavak, dLocal, Cornershop...
+     • Asia : Grab, Gojek, Razorpay, Coupang, Sea/Shopee, Tokopedia, Klook...
+     • MEA : Careem, Talabat, Swvl, Tabby, Kitopi...
+     + GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1 (McKinsey, BCG, etc.).
+   → **Bonus modéré** : startups funded reconnues dans leur niche/marché local, PME tech innovantes.
+   → **Neutre** : grands groupes traditionnels (CAC40, administrations, PME non-tech).
+   → **Signal négatif (LIMITÉ)** : ESN/SSII body shopping pure (Alten, Altran, Sopra, CGI sur des missions
+     génériques = neutre-négatif), intérim généraliste.
+     ⚠️ NE PAS pénaliser une boîte juste parce qu'elle fait du service offshore. Si le candidat a un
+     titre Engineer/Lead/Architect dans une boîte qui livre du software à des clients (même offshore),
+     son expérience reste valide. Le signal négatif s'applique aux profils QUI ONT FAIT du body
+     shopping (mission courte 3-6 mois, rotation rapide chez 5 clients en 2 ans, titre "consultant junior"
+     dans grosse SSII), pas aux profils basés ou ayant travaillé à l'étranger en général.
 
    ⚠️ IMPORTANT — La durée et le titre comptent autant que le nom de la boîte :
    → Stage ou alternance dans une bonne boîte = bonus FAIBLE (formation mais pas de vraie responsabilité)
@@ -1185,6 +1209,17 @@ ${workExpText}
    → 3+ ans sur un poste senior/lead dans une boîte reconnue = bonus TRÈS FORT
    → Titre non pertinent (support, admin, RH) dans une boîte tech ≠ bonus tech
    → Seules les expériences sur des POSTES PERTINENTS pour le job évalué comptent pour le pedigree
+
+   🎓 RÈGLE D'ÉQUITÉ DIPLÔME (CRITIQUE) :
+   Le diplôme COMPTE pour ce qu'il valide TECHNIQUEMENT, pas pour son prestige géographique.
+   - Diplôme d'ingé/Master/MBA d'une école de N'IMPORTE QUEL pays = qualification valide.
+   - École française "non-grande école" (UTC, INSA, INP, EPITA, EPITECH, IUT/BUT) ≠ pénalité, ce sont
+     des écoles qui forment de très bons profils.
+   - École étrangère reconnue dans son pays (IIT en Inde, FUOYE/UI au Nigeria, ITAM/ITESM au Mexique,
+     NUS/NTU à Singapour, FUTO en Afrique, USP/UNICAMP au Brésil...) = équivalent d'une bonne école FR.
+   - Tu n'as PAS le droit de baisser le pedigree parce que l'école est étrangère ou peu connue du
+     recruteur français. Le test = "le candidat a-t-il un cursus tech complet ?" Si oui → OK.
+   - Si tu ne connais pas une école, tu NE pénalises pas — tu marques "diplôme international" en neutre.
 
 5. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
 
@@ -1387,6 +1422,22 @@ Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-10
   PAS le défaut quand on hésite — le défaut c'est "passed" si les signaux supportent.
 - "failed" = profil CONTREDIT le critère (domaine totalement différent).
 Mieux vaut faire confiance qu'écarter un bon profil sur un manque de preuve explicite.
+
+🌍 RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE — pedigree (NON NÉGOCIABLE) :
+Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT de l'entreprise — PAS de sa
+géographie. Une scale-up africaine (Andela, Flutterwave, Wave, Yassir...), latino-américaine (MercadoLibre,
+Rappi, Nubank, Kavak...), asiatique (Grab, Gojek, Razorpay, Shopee...) ou moyen-orientale (Careem, Talabat,
+Tabby...) reconnue dans son marché vaut autant qu'une scale-up FR/US équivalente. Tu n'as PAS le droit
+de baisser le pedigree parce qu'une entreprise est "moins connue du recruteur français" — tu reconnais
+son statut local. En cas de doute → regarde le rôle et la taille (Lead Engineer dans une boîte de
+1000+ personnes = pedigree fort, peu importe le pays).
+
+🎓 RÈGLE D'ÉQUITÉ DIPLÔME — NE JAMAIS pénaliser un diplôme étranger reconnu dans son pays (IIT en Inde,
+ITESM au Mexique, NUS à Singapour, FUOYE/UI au Nigeria, USP au Brésil...). Pas de bias sur l'origine.
+
+⚠️ Le terme "offshore" comme signal négatif est LIMITÉ aux profils qui ont fait du body shopping (rotation
+3-6 mois chez 5 clients en 2 ans dans une grosse SSII). Un profil basé à l'étranger qui a un rôle
+Engineer/Lead/Architect dans une boîte qui livre du software = expérience valide, PAS un offshore négatif.
 
 ⚠️ VÉRIFICATIONS DE COMPATIBILITÉ (impactent le score global ET les concerns) :
 - **Contrat** : si le poste est en CDI mais le candidat se présente comme freelance/indépendant dans son headline ou son À propos → score global plafonné à 45, concern "Profil freelance vs poste CDI". Inversement si poste freelance et profil "carrière CDI 10+ ans en grand groupe", concern "Risque attractivité freelance".
