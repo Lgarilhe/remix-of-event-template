@@ -122,18 +122,23 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
         </div>
       )}
 
-      {/* AI Search Agent button */}
+      {/* AI Coach button — chat conversationnel (≠ "Analyser avec l'IA"
+          du brief qui génère des filtres). Ce bouton ouvre un drawer où
+          l'user discute avec l'IA pour affiner sa stratégie : élargir
+          les critères, suggérer des synonymes, débloquer une recherche
+          qui ne ramène rien, etc. */}
       <div className="border-b border-border px-3 sm:px-4 py-2.5 flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Recherche par filtres ou via l'assistant IA conversationnel.
+          Besoin d'aide pour affiner la recherche ? Discute avec l'assistant.
         </p>
         <button
           onClick={handleOpenSearchAgent}
           className="shrink-0 flex items-center gap-2 h-8 px-3 text-xs font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors rounded-md"
+          title="Ouvrir l'assistant pour échanger sur ta stratégie de sourcing"
         >
           <MessageSquare className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Recherche IA</span>
-          <span className="sm:hidden">IA</span>
+          <span className="hidden sm:inline">Demander conseil</span>
+          <span className="sm:hidden">Conseil</span>
         </button>
       </div>
 
