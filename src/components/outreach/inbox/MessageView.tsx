@@ -46,7 +46,7 @@ import {
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Chat, Message, SequenceEnrollmentInfo, JobData } from '@/hooks/useMessagesInbox';
+import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
   getChatDisplayName, getChatHeadline, getChatSubject, getChatAvatar,
@@ -69,6 +69,10 @@ interface MessageViewProps {
   suggestionsLoaded: boolean;
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   availableJobs: JobData[];
+  /** Liste des missions actives (sourcing_projects) avec leur outreach_config.
+   *  Utilisée pour afficher le contexte mission même quand le candidat n'est
+   *  pas dans une séquence (conv manuelle), via matching subject/contenu. */
+  activeMissions?: ActiveMissionLite[];
   messagesEndRef: React.RefObject<HTMLDivElement>;
   messagesContainerRef: React.RefObject<HTMLDivElement>;
   analysisData?: any;
@@ -109,6 +113,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   replySuggestions: replySuggestionsRaw,
   enrollmentsMap,
   availableJobs,
+  activeMissions = [],
   messagesEndRef,
   selectedTone = 'casual',
   onToneChange,
@@ -419,6 +424,69 @@ export const MessageView: React.FC<MessageViewProps> = ({
     ? availableJobs.find(j => j.id === jobInfo.job_id)
     : undefined;
 
+  // Si pas d'enrollment (conv manuelle), on essaie d'inférer la mission à
+  // partir du subject InMail et des premiers messages envoyés. Permet
+  // d'afficher le contexte (mission + outreach_config) même sans séquence.
+  const inferredMission = useMemo<ActiveMissionLite | null>(() => {
+    if (jobInfo) return null; // Déjà couvert par enrollment
+    if (!activeMissions.length || !selectedChat) return null;
+
+    const sentTexts = messages
+      .filter(m => m.is_sender)
+      .slice(0, 5)
+      .map(m => (m.text || m.text_content || ''))
+      .filter(Boolean);
+    const haystack = [
+      selectedChat.subject,
+      selectedChat.name,
+      ...sentTexts,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    if (haystack.length < 5) return null;
+
+    // Match par job_title > name > client_name. On exige >5 chars pour
+    // éviter les faux positifs sur des titres trop courts (ex: "AI").
+    const norm = (s: string | null | undefined) => (s || '').toLowerCase().trim();
+    return (
+      activeMissions.find(m => {
+        const t = norm(m.job_title);
+        return t.length > 5 && haystack.includes(t);
+      })
+      || activeMissions.find(m => {
+        const n = norm(m.name);
+        return n.length > 5 && haystack.includes(n);
+      })
+      || null
+    );
+  }, [jobInfo, activeMissions, selectedChat, messages]);
+
+  // Source unifiée pour les badges contextuels. Préfère jobInfo (séquence)
+  // sinon utilise inferredMission (conv manuelle matchée).
+  const displayContext = jobInfo
+    ? {
+        title: jobInfo.job_title,
+        stepOrder: jobInfo.current_step_order,
+        status: jobInfo.status,
+        repliedAt: jobInfo.replied_at,
+        outreachConfig: jobInfo.outreach_config || null,
+        clientName: jobInfo.client_name || null,
+        inSequence: true,
+      }
+    : inferredMission
+    ? {
+        title: inferredMission.job_title || inferredMission.name,
+        stepOrder: null,
+        status: inferredMission.status,
+        repliedAt: null,
+        outreachConfig: inferredMission.outreach_config,
+        clientName: inferredMission.client_name,
+        inSequence: false,
+      }
+    : null;
+
   // Données mémoïsées pour le bouton "Réponse + CTA". Sans memo, ces
   // structures sont recalculées à chaque render (poll auto 20s,
   // keystroke dans le composer) → MessageComposer et CtaReplyButton
@@ -535,6 +603,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
               {jobInfo && jobInfo.status && (
                 <SequenceStatusBadge status={jobInfo.status} repliedAt={jobInfo.replied_at} />
               )}
+              {/* Si pas en séquence mais mission inférée → badge "Hors séquence" */}
+              {!jobInfo && inferredMission && (
+                <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md border bg-muted/40 text-muted-foreground border-border whitespace-nowrap">
+                  Hors séquence
+                </span>
+              )}
             </div>
             {headline && (
               <p className="text-[13px] text-muted-foreground truncate mt-0.5 leading-tight">
@@ -542,35 +616,43 @@ export const MessageView: React.FC<MessageViewProps> = ({
               </p>
             )}
             {/* Bandeau contexte mission : poste + statut séquence + mode outreach + anonymisation */}
-            {jobInfo && (
+            {displayContext && (
               <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                {jobInfo.job_title && (
+                {displayContext.title && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground bg-foreground/8 border border-border px-2 py-0.5 rounded-md">
                     <Briefcase className="w-3 h-3 text-muted-foreground" />
-                    {jobInfo.job_title}
+                    {displayContext.title}
                   </span>
                 )}
-                {jobInfo.current_step_order != null && jobInfo.status === 'active' && (
+                {displayContext.stepOrder != null && displayContext.status === 'active' && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-info bg-info/10 border border-info/30 px-2 py-0.5 rounded-md">
-                    Étape {(jobInfo.current_step_order ?? 0) + 1}
+                    Étape {(displayContext.stepOrder ?? 0) + 1}
                   </span>
                 )}
-                {jobInfo.outreach_config?.recruitment_mode && (
+                {displayContext.outreachConfig?.recruitment_mode && (
                   <span
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md"
-                    title={jobInfo.outreach_config.recruitment_mode === 'internal'
+                    title={displayContext.outreachConfig.recruitment_mode === 'internal'
                       ? 'L\'IA parle en "on / nous / chez nous"'
                       : 'L\'IA parle en cabinet externe'}
                   >
-                    {jobInfo.outreach_config.recruitment_mode === 'internal' ? '🏢 Interne' : '🤝 Cabinet'}
+                    {displayContext.outreachConfig.recruitment_mode === 'internal' ? '🏢 Interne' : '🤝 Cabinet'}
                   </span>
                 )}
-                {jobInfo.outreach_config?.anonymize_client && (
+                {displayContext.outreachConfig?.anonymize_client && (
                   <span
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded-md"
-                    title={`Le nom du client est masqué dans les réponses générées (alias : ${jobInfo.outreach_config.anonymized_alias || 'défaut'})`}
+                    title={`Le nom du client est masqué dans les réponses générées (alias : ${displayContext.outreachConfig.anonymized_alias || 'défaut'})`}
                   >
                     🕶 Anonyme
+                  </span>
+                )}
+                {displayContext.clientName && !displayContext.outreachConfig?.anonymize_client && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/30 border border-border px-2 py-0.5 rounded-md"
+                    title="Client de la mission"
+                  >
+                    {displayContext.clientName}
                   </span>
                 )}
               </div>

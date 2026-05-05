@@ -143,6 +143,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             suggestionsLoaded={inbox.suggestionsLoaded}
             enrollmentsMap={inbox.enrollmentsMap}
             availableJobs={inbox.availableJobs}
+            activeMissions={inbox.activeMissions}
             messagesEndRef={inbox.messagesEndRef}
             messagesContainerRef={inbox.messagesContainerRef}
             analysisData={inbox.analysisData}
@@ -236,6 +237,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             suggestionsLoaded={inbox.suggestionsLoaded}
             enrollmentsMap={inbox.enrollmentsMap}
             availableJobs={inbox.availableJobs}
+            activeMissions={inbox.activeMissions}
             messagesEndRef={inbox.messagesEndRef}
             messagesContainerRef={inbox.messagesContainerRef}
             analysisData={inbox.analysisData}

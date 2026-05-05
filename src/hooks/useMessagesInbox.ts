@@ -152,6 +152,27 @@ export interface JobData {
   };
 }
 
+/**
+ * Mission "lite" pour l'inbox — utilisée pour matcher une conversation
+ * non-enrollée (manuelle) à une mission via le subject ou le contenu des
+ * messages envoyés. Inclut le outreach_config pour pouvoir afficher le
+ * contexte d'incarnation IA même sans sequence_enrollment.
+ */
+export interface ActiveMissionLite {
+  id: string;
+  name: string;
+  job_id: string | null;
+  job_title: string | null;
+  client_name: string | null;
+  status: string;
+  outreach_config: {
+    recruitment_mode?: 'internal' | 'client';
+    sender_role?: string;
+    anonymize_client?: boolean;
+    anonymized_alias?: string;
+  } | null;
+}
+
 // ── Merge chats by candidate ─────────────────────────────
 // Groups chats with the same attendee (same LinkedIn profile) into a single entry
 function mergeChatsByCandidate(chats: Chat[]): Chat[] {
@@ -359,6 +380,7 @@ type AnalysisData = {
 interface ContextState {
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   availableJobs: JobData[];
+  activeMissions: ActiveMissionLite[];
   sequences: Array<{ id: string; name: string; steps: any[] }>;
   replySuggestions: Array<{ text: string; type: string }>;
   loadingSuggestions: boolean;
@@ -370,6 +392,7 @@ interface ContextState {
 type ContextAction =
   | { type: 'SET_ENROLLMENTS_MAP'; map: Map<string, SequenceEnrollmentInfo> }
   | { type: 'SET_AVAILABLE_JOBS'; jobs: JobData[] }
+  | { type: 'SET_ACTIVE_MISSIONS'; missions: ActiveMissionLite[] }
   | { type: 'SET_SEQUENCES'; sequences: Array<{ id: string; name: string; steps: any[] }> }
   | { type: 'SET_REPLY_SUGGESTIONS'; suggestions: Array<{ text: string; type: string }> }
   | { type: 'SET_LOADING_SUGGESTIONS'; loading: boolean }
@@ -382,6 +405,7 @@ function contextReducer(state: ContextState, action: ContextAction): ContextStat
   switch (action.type) {
     case 'SET_ENROLLMENTS_MAP': return { ...state, enrollmentsMap: action.map };
     case 'SET_AVAILABLE_JOBS': return { ...state, availableJobs: action.jobs };
+    case 'SET_ACTIVE_MISSIONS': return { ...state, activeMissions: action.missions };
     case 'SET_SEQUENCES': return { ...state, sequences: action.sequences };
     case 'SET_REPLY_SUGGESTIONS': return { ...state, replySuggestions: action.suggestions };
     case 'SET_LOADING_SUGGESTIONS': return { ...state, loadingSuggestions: action.loading };
@@ -500,6 +524,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const [ctxState, ctxDispatch] = useReducer(contextReducer, {
     enrollmentsMap: new Map(),
     availableJobs: [],
+    activeMissions: [],
     sequences: [],
     replySuggestions: [],
     loadingSuggestions: false,
@@ -507,11 +532,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     analysisData: null,
     loadingAnalysis: false,
   });
-  const { enrollmentsMap, availableJobs, sequences, replySuggestions, loadingSuggestions, suggestionsLoaded, analysisData, loadingAnalysis } = ctxState;
+  const { enrollmentsMap, availableJobs, activeMissions, sequences, replySuggestions, loadingSuggestions, suggestionsLoaded, analysisData, loadingAnalysis } = ctxState;
 
   // Backward-compatible set* wrappers for context state
   const setEnrollmentsMap = useCallback((m: Map<string, SequenceEnrollmentInfo>) => ctxDispatch({ type: 'SET_ENROLLMENTS_MAP', map: m }), []);
   const setAvailableJobs = useCallback((j: JobData[]) => ctxDispatch({ type: 'SET_AVAILABLE_JOBS', jobs: j }), []);
+  const setActiveMissions = useCallback((m: ActiveMissionLite[]) => ctxDispatch({ type: 'SET_ACTIVE_MISSIONS', missions: m }), []);
   const setSequences = useCallback((s: Array<{ id: string; name: string; steps: any[] }>) => ctxDispatch({ type: 'SET_SEQUENCES', sequences: s }), []);
   const setReplySuggestions = useCallback((s: Array<{ text: string; type: string }>) => ctxDispatch({ type: 'SET_REPLY_SUGGESTIONS', suggestions: s }), []);
   const setLoadingSuggestions = useCallback((v: boolean) => ctxDispatch({ type: 'SET_LOADING_SUGGESTIONS', loading: v }), []);
@@ -574,6 +600,41 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       setEnrollmentsMap(map);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
+    }
+  }, [organizationId]);
+
+  // Fetch active missions (sourcing_projects) avec leur outreach_config.
+  // Sert à afficher le contexte mission/incarnation IA dans l'inbox même
+  // pour les conversations MANUELLES (pas en séquence) — typiquement un
+  // InMail envoyé à la main dont le subject mentionne "Lead AI Engineer
+  // chez Theodo". En matchant le subject contre mission.name / job_title /
+  // client_name, on peut afficher les badges contextuels même sans
+  // sequence_enrollment.
+  const fetchActiveMissions = useCallback(async () => {
+    if (!organizationId) return;
+    try {
+      const { data, error } = await supabase
+        .from('sourcing_projects')
+        .select('id, name, job_id, job_title, client_name, status, job_details')
+        .eq('organization_id', organizationId)
+        .in('status', ['active', 'paused'])
+        .order('updated_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      const missions: ActiveMissionLite[] = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || 'Mission',
+        job_id: p.job_id || null,
+        job_title: p.job_title || null,
+        client_name: p.client_name || (p.job_details as any)?.client?.name || null,
+        status: p.status || 'active',
+        outreach_config: (p.job_details as any)?.outreach_config || null,
+      }));
+      setActiveMissions(missions);
+    } catch (error) {
+      console.error('Error fetching active missions:', error);
     }
   }, [organizationId]);
 
@@ -1545,6 +1606,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     if (isReady && user && selectedAccount) {
       fetchChats();
       fetchEnrollments();
+      fetchActiveMissions();
       fetchAvailableJobs();
       fetchSequences();
 
@@ -1554,7 +1616,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setMessages([]);
       }
     }
-  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchAvailableJobs, fetchSequences, user]);
+  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchActiveMissions, fetchAvailableJobs, fetchSequences, user]);
 
   // Auto-poll chat list every 30s to detect new messages / conversations
   useEffect(() => {
@@ -1797,6 +1859,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     // Context data
     enrollmentsMap,
     availableJobs,
+    activeMissions,
     sequences,
     
     // Suggestions
