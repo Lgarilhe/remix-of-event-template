@@ -387,17 +387,39 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     setIsBulkGenerating(false);
   }, []);
 
-  // Get overrides for enrollment (edited messages)
-  const getMessageOverrides = useCallback((candidateId: string): Record<string, { subject?: string; message?: string }> => {
-    const overrides: Record<string, { subject?: string; message?: string }> = {};
+  // Get overrides for enrollment.
+  //
+  // Important : on inclut ICI tous les messages prévisualisés (générés
+  // par l'IA ET édités manuellement). Avant on n'incluait que les
+  // édits manuels — du coup les previews IA étaient régénérées à zéro
+  // par le cron au moment d'envoyer, et la preview montrée à l'user
+  // dans la modal n'avait AUCUN impact sur ce qui partait vraiment.
+  //
+  // Le cron process-sequences lit enrollment.tracking_data.message_overrides
+  // avant d'appeler generatePersonalizedMessage : si un override existe
+  // pour le step_id courant → il est utilisé tel quel comme final_message
+  // (avec juste le replacement de variables non résolues). Sinon il
+  // tombe dans le pipeline de génération from-scratch (legacy).
+  const getMessageOverrides = useCallback((candidateId: string): Record<string, {
+    subject?: string;
+    message?: string;
+    /** isEdited=true : l'user a édité manuellement la preview avant
+     *  enrollment. Le cron doit JAMAIS la regénérer (intention user
+     *  explicite). */
+    isEdited?: boolean;
+  }> => {
+    const overrides: Record<string, { subject?: string; message?: string; isEdited?: boolean }> = {};
     const candidateMap = previews.get(candidateId);
     if (!candidateMap) return overrides;
 
     candidateMap.forEach((msg, stepId) => {
-      if (msg.isEdited) {
+      if (msg.isGenerated || msg.isEdited) {
+        // Convertit les <br> de l'éditeur en \n pour le stockage propre.
+        const cleanMessage = (msg.message || '').replace(/<br\s*\/?>(\s*)/gi, '\n');
         overrides[stepId] = {
           subject: msg.subject,
-          message: msg.message,
+          message: cleanMessage,
+          isEdited: msg.isEdited,
         };
       }
     });

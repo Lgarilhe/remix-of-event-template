@@ -616,10 +616,46 @@ async function handleProcess(supabase: any, force = false) {
         let finalMessage = snapshotMessage;
         let finalSubject = snapshotSubject;
 
+        // ⭐ Override depuis la preview du modal d'enrollment ⭐
+        // Si l'user a vu/validé/édité une preview pour ce step dans
+        // EnrollmentPreviewModal, elle a été stockée dans
+        // enrollment.tracking_data.message_overrides[step_id]. On la
+        // privilégie comme source de vérité pour respecter le WYSIWYG :
+        // ce que l'user voit dans la modal = ce qu'on envoie.
+        //
+        // - Si l'override est `isEdited` (édité à la main) → on l'utilise
+        //   tel quel SANS regénérer, point.
+        // - Si l'override est juste une preview IA non-éditée → on
+        //   l'utilise aussi pour respecter le WYSIWYG (la preview IA
+        //   incluait déjà template + sequenceContext + anti-flatterie,
+        //   donc elle est cohérente avec ce qu'aurait généré le cron).
+        let usedPreviewOverride = false;
+        try {
+          const trackingData = enrollment.tracking_data as Record<string, unknown> | null | undefined;
+          const overrides = (trackingData?.message_overrides ?? null) as Record<string, {
+            subject?: string;
+            message?: string;
+            isEdited?: boolean;
+          }> | null;
+          const stepId = step.id as string | undefined;
+          const override = stepId && overrides ? overrides[stepId] : null;
+          if (override && (override.message?.trim() || override.subject?.trim())) {
+            if (override.message?.trim()) finalMessage = override.message.trim();
+            if (override.subject?.trim()) finalSubject = override.subject.trim();
+            usedPreviewOverride = true;
+            console.log(`[process] ✅ Using preview override for enrollment ${enrollment.id} step ${stepId} (isEdited=${!!override.isEdited})`);
+          }
+        } catch (e) {
+          console.warn('[process] Failed to read message_overrides:', e);
+        }
+
         // AI personalization: use the rich pipeline for ALL message types including email
-        // SKIP if already generated on a previous attempt (retry) — avoids double billing
+        // SKIP if :
+        //  1. Already generated on a previous attempt (retry) → avoids double billing
+        //  2. Preview override was used (the user has already seen and approved
+        //     this exact message in the modal — regenerating would betray the WYSIWYG)
         const alreadyPersonalized = !!(exec.final_message && (exec.retry_count || 0) > 0);
-        if (step.use_ai_personalization && needsMessage(step.action_type) && !alreadyPersonalized) {
+        if (step.use_ai_personalization && needsMessage(step.action_type) && !alreadyPersonalized && !usedPreviewOverride) {
           const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec, uCreds.apiKey, uCreds.dsn);
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
