@@ -11,16 +11,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
+import {
   Users,
   GitBranch,
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
+import { checkProfilesCompat } from '@/lib/sequenceCompatibility';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -57,6 +59,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 }) => {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [results, setResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
+  const [excludeIncompatible, setExcludeIncompatible] = useState(true);
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -68,6 +71,20 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       return MESSAGE_ACTION_TYPES.includes(actionType) && template.trim();
     });
   }, [sequence.steps]);
+
+  // Pré-flight check : détecte les profils incompatibles avec la séquence
+  // (1st degree + connection_request, etc.). Affiche un warning panel
+  // dans le modal et permet de filtrer avant l'enrollment.
+  const compat = useMemo(
+    () => checkProfilesCompat(profiles, sequence.steps),
+    [profiles, sequence.steps],
+  );
+  const profilesToEnroll = useMemo(
+    () => excludeIncompatible
+      ? compat.compatible.map(c => c.profile as LinkedInProfile)
+      : profiles,
+    [compat.compatible, profiles, excludeIncompatible],
+  );
 
   if (hasMessageSteps) {
     return (
@@ -99,8 +116,19 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
       const firstStep = sequence.steps.find((s: any) => s.step_order === 0) || sequence.steps[0];
 
+      // Source des profils à enrôler : on respecte le toggle "exclure les
+      // incompatibles" pour éviter les échecs silencieux (1st degree +
+      // connection_request, etc.).
+      const enrollSet = profilesToEnroll;
+
+      if (enrollSet.length === 0) {
+        toast.error('Aucun profil compatible avec cette séquence');
+        setIsEnrolling(false);
+        return;
+      }
+
       // 1. Batch check existing enrollments for all profiles in one query
-      const profileIds = profiles.map(p => p.id);
+      const profileIds = enrollSet.map(p => p.id);
       const { data: existingEnrollments } = await supabase
         .from('sequence_enrollments')
         .select('profile_id')
@@ -109,8 +137,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         .in('status', ['active', 'completed', 'replied']);
 
       const existingIds = new Set((existingEnrollments || []).map(e => e.profile_id));
-      const newProfiles = profiles.filter(p => !existingIds.has(p.id));
-      enrollmentResults.skipped = profiles.length - newProfiles.length;
+      const newProfiles = enrollSet.filter(p => !existingIds.has(p.id));
+      enrollmentResults.skipped = enrollSet.length - newProfiles.length;
 
       if (newProfiles.length === 0) {
         setResults(enrollmentResults);
@@ -260,9 +288,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           <div className="p-4 bg-muted/50 border border-border space-y-3">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-foreground" />
-              <span className="font-medium">{profiles.length} candidat(s)</span>
+              <span className="font-medium">
+                {profilesToEnroll.length} / {profiles.length} candidat(s) à inscrire
+              </span>
             </div>
-            
+
             {job && (
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{job.title}</Badge>
@@ -273,6 +303,47 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               Séquence de {sequence.steps.length} étape(s)
             </div>
           </div>
+
+          {/* Warning compat — détecte 1st degree + connection_request,
+              hors réseau, etc. Évite les échecs silencieux à l'envoi. */}
+          {(compat.blockers.length > 0 || compat.warnings.length > 0) && (
+            <div className="p-3 border border-warning/40 bg-warning/5 rounded-md space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <p className="text-xs font-semibold text-warning">
+                    {compat.blockers.length > 0
+                      ? `${compat.blockers.length} profil(s) incompatibles avec cette séquence`
+                      : `${compat.warnings.length} profil(s) avec un avertissement`}
+                  </p>
+                  <ul className="text-[11px] text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
+                    {[...compat.blockers, ...compat.warnings].slice(0, 5).map(r => (
+                      <li key={r.profile.id} className="truncate">
+                        <span className="font-medium text-foreground">{r.profile.name}</span>
+                        {' — '}{r.message}
+                      </li>
+                    ))}
+                    {compat.blockers.length + compat.warnings.length > 5 && (
+                      <li className="italic">
+                        … et {compat.blockers.length + compat.warnings.length - 5} autre(s)
+                      </li>
+                    )}
+                  </ul>
+                  <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={excludeIncompatible}
+                      onChange={(e) => setExcludeIncompatible(e.target.checked)}
+                      className="h-3 w-3 rounded border-border"
+                    />
+                    <span className="text-foreground">
+                      Exclure les profils incompatibles ({compat.blockers.length + compat.warnings.length})
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Profiles preview */}
           <ScrollArea className="h-[200px] sm:h-[240px] border border-border bg-muted/30 p-1">
@@ -340,7 +411,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             <div className="flex items-center gap-2">
               <Button
                  onClick={handleEnroll}
-                 disabled={isEnrolling}
+                 disabled={isEnrolling || profilesToEnroll.length === 0}
                  className="bg-foreground text-background rounded-lg"
               >
                 {isEnrolling ? (
@@ -351,7 +422,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                 ) : (
                   <>
                     <GitBranch className="w-4 h-4 mr-2" />
-                    Inscrire {profiles.length} candidat(s)
+                    Inscrire {profilesToEnroll.length} candidat(s)
                   </>
                 )}
               </Button>

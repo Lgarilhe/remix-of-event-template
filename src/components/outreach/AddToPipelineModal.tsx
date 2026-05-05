@@ -209,7 +209,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-blue-600" />
-            Ajouter au pipeline
+            Shortlister
           </DialogTitle>
           <DialogDescription>
             Associez <strong>{candidate.name}</strong> à un poste pour compléter la shortlist.
@@ -331,7 +331,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
             ) : (
               <>
                 <Check className="w-4 h-4 mr-2" />
-                Ajouter au pipeline
+                Shortlister
               </>
             )}
           </Button>

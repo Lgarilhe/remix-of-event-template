@@ -587,7 +587,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-    toast.success(`${profilesToAdd.length} profil(s) ajouté(s) au projet`);
+    toast.success(`${profilesToAdd.length} profil(s) shortlisté(s)`);
   }, [activeProject, search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles, queryClient]);
 
   // Handle archive for single profile

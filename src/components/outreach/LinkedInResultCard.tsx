@@ -54,6 +54,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   candidateStatus,
   airtableMatch,
   notionMatch,
+  enrollmentInfo,
   onOpenDetail,
   isBatchScoring = false,
   viewMode = 'detailed',
@@ -351,6 +352,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     historyLoading={historyLoading}
                     jobScore={jobScore}
                     isLikelyToRespond={isLikelyToRespond}
+                    enrollmentInfo={enrollmentInfo}
                   />
                 </div>
               </div>

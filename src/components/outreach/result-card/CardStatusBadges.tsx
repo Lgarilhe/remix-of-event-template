@@ -1,9 +1,10 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { MessageSquare, CheckCircle2, Star, Zap, Loader2, Target, Archive, Sparkles } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Star, Zap, Loader2, Target, Archive, Sparkles, GitBranch } from 'lucide-react';
 import airtableLogo from '@/assets/airtable-logo.svg';
 import notionLogo from '@/assets/notion-logo.webp';
+import { ProjectEnrollmentInfo } from '@/hooks/useProjectEnrollments';
 
 interface CardStatusBadgesProps {
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null } | null;
@@ -16,6 +17,8 @@ interface CardStatusBadgesProps {
   jobScore?: { match_score: number } | null;
   /** LinkedIn signal "Likely to respond" — affiché en badge "Réactif" si true */
   isLikelyToRespond?: boolean;
+  /** Si le candidat est déjà dans une séquence pour cette mission. */
+  enrollmentInfo?: ProjectEnrollmentInfo | null;
 }
 
 export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
@@ -27,13 +30,71 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
   historyLoading,
   jobScore,
   isLikelyToRespond,
+  enrollmentInfo,
 }) => {
   const historyTotal = historyData
     ? historyData.placements.length + historyData.shortlists.length + historyData.notes.length + historyData.appointments.length
     : 0;
 
+  // Mapping statut enrollment → label/couleur. Réutilisé pour le tooltip.
+  const enrollmentLabel = enrollmentInfo
+    ? enrollmentInfo.replied_at
+      ? 'A répondu'
+      : enrollmentInfo.status === 'paused'
+      ? 'En pause'
+      : enrollmentInfo.status === 'completed'
+      ? 'Séquence terminée'
+      : enrollmentInfo.status === 'cancelled' || enrollmentInfo.status === 'stopped'
+      ? 'Stoppé'
+      : `Étape ${(enrollmentInfo.current_step_order ?? 0) + 1}`
+    : null;
+
+  const enrollmentTone = enrollmentInfo
+    ? enrollmentInfo.replied_at
+      ? 'success'
+      : enrollmentInfo.status === 'paused'
+      ? 'warning'
+      : enrollmentInfo.status === 'cancelled' || enrollmentInfo.status === 'stopped'
+      ? 'destructive'
+      : 'info'
+    : null;
+
   return (
     <>
+      {/* Badge "En séquence" — affiché en priorité quand le candidat est
+          déjà tracké dans une séquence pour cette mission. Évite les
+          enrollments en double et signale visuellement les conv en cours. */}
+      {enrollmentInfo && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              className={`text-xs px-1.5 py-0 h-4 sm:h-5 gap-1 shrink-0 cursor-default border ${
+                enrollmentTone === 'success'
+                  ? 'bg-success/10 text-success border-success/30'
+                  : enrollmentTone === 'warning'
+                  ? 'bg-warning/10 text-warning border-warning/30'
+                  : enrollmentTone === 'destructive'
+                  ? 'bg-destructive/10 text-destructive border-destructive/30'
+                  : 'bg-info/10 text-info border-info/30'
+              }`}
+            >
+              <GitBranch className="w-3 h-3" />
+              <span className="hidden sm:inline">{enrollmentLabel}</span>
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs">
+            <p className="text-xs font-medium">
+              {enrollmentInfo.sequence_name || 'Séquence'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {enrollmentLabel}
+              {enrollmentInfo.replied_at && (
+                <> · le {new Date(enrollmentInfo.replied_at).toLocaleDateString('fr-FR')}</>
+              )}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      )}
       {candidateStatus && (
         <>
           {candidateStatus.status === 'messaged' && (

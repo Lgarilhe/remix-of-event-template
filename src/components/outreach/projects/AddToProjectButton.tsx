@@ -121,11 +121,11 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
       queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-      toast.success(`${candidateName} ajouté au projet "${project.name}"`);
+      toast.success(`${candidateName} shortlisté pour "${project.name}"`);
       onAdded?.();
     } catch (error) {
       console.error('Error adding to project:', error);
-      toast.error("Erreur lors de l'ajout au projet");
+      toast.error('Erreur lors de la shortlist');
     } finally {
       setIsAdding(false);
     }
@@ -140,7 +140,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         <Button
           variant={isAdded ? "ghost" : "outline"}
           size="sm"
-          title={isAdded ? `Déjà dans le pipeline "${activeProject.name}"` : `Ajouter au pipeline "${activeProject.name}"`}
+          title={isAdded ? `Déjà shortlisté pour "${activeProject.name}"` : `Shortlister pour "${activeProject.name}"`}
           className={`h-7 gap-1.5 text-xs rounded-lg border px-2.5 font-medium shrink-0 ${isAdded ? 'text-success border-success/40' : 'border-border text-foreground hover:bg-muted'}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
@@ -152,7 +152,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           ) : (
             <FolderPlus className="w-3.5 h-3.5" />
           )}
-          {isAdded ? 'Ajouté' : 'Pipeline'}
+          {isAdded ? 'Shortlisté' : 'Shortlister'}
         </Button>
       );
     }
@@ -172,7 +172,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         ) : (
           <FolderPlus className="w-3.5 h-3.5" />
         )}
-        {isAdded ? 'Ajouté' : 'Ajouter au projet'}
+        {isAdded ? 'Shortlisté' : 'Shortlister'}
       </Button>
     );
   }
@@ -189,11 +189,11 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             disabled
           >
             <FolderOpen className="w-3.5 h-3.5" />
-            {!compact && 'Aucun projet'}
+            {!compact && 'Aucune mission'}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          Créez un projet pour organiser vos candidats
+          Créez une mission pour shortlister vos candidats
         </TooltipContent>
       </Tooltip>
     );
@@ -213,12 +213,12 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           ) : (
             <FolderPlus className="w-3.5 h-3.5" />
           )}
-          {!compact && 'Ajouter au projet'}
+          {!compact && 'Shortlister'}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-          Choisir un projet
+          Choisir une mission
         </div>
         <DropdownMenuSeparator />
         {relevantProjects.slice(0, 5).map((project) => (

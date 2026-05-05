@@ -20,6 +20,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useNotionMatch } from '@/hooks/useNotionMatch';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
+import { useProjectEnrollments } from '@/hooks/useProjectEnrollments';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -327,6 +328,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
   // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
   useNotionShortlist();
+  // Enrollments existants pour cette mission → permet d'afficher un badge
+  // "En séquence X · Étape N" sur les cards. L'user voit immédiatement
+  // qu'un candidat est déjà en séquence avant d'agir dessus.
+  const enrollmentJobId = activeProject?.job_id || activeProject?.id || null;
+  const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
   // Count by status for filter badges — based on renderable profiles only
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
@@ -487,38 +493,62 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </Button>
           )}
 
-          {/* Bulk action icons (when profiles selected) */}
+          {/* Bulk actions — pattern Gmail/Notion : compteur + actions
+              avec labels visibles à partir de md (pas juste des icônes). */}
           {selectedProfiles.size > 0 && (
-            <div className="flex items-center gap-0.5 shrink-0">
-              <span className="text-xs font-semibold text-primary px-1">{selectedProfiles.size}</span>
-              <button onClick={onBatchScore} disabled={scoringInProgress} className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-40" title="Scorer">
+            <div className="flex items-center gap-1 shrink-0 bg-foreground/[0.04] rounded-lg border border-border px-2 py-1">
+              <span className="text-[11px] font-semibold text-foreground px-1.5 py-0.5 rounded-md bg-foreground/10">
+                {selectedProfiles.size} sélectionné{selectedProfiles.size > 1 ? 's' : ''}
+              </span>
+              <div className="w-px h-4 bg-border mx-0.5" aria-hidden="true" />
+              <button
+                onClick={onBatchScore}
+                disabled={scoringInProgress}
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-40"
+                title="Scorer les profils sélectionnés"
+              >
                 {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
+                <span className="hidden md:inline">Scorer</span>
               </button>
-              {/* Enrichment bulk : email + phone via cascade waterfall */}
               <BulkEnrichButton
                 profiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
               />
               {activeProject && (
-                <button onClick={onBulkAddToProject} className="p-1 hover:bg-muted rounded-sm text-emerald-600 hover:text-emerald-700" title="Ajouter au projet">
+                <button
+                  onClick={onBulkAddToProject}
+                  className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-success hover:bg-success/10 transition-colors"
+                  title="Shortlister pour cette mission"
+                >
                   <FolderPlus className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Shortlister</span>
                 </button>
               )}
-              <button onClick={onBulkDismiss} className="p-1 hover:bg-muted rounded-sm text-destructive hover:text-destructive/80" title="Archiver">
-                <Archive className="w-3.5 h-3.5" />
-              </button>
               {selectedAccount && (
-                <>
-                  <button onClick={() => onSetShowBulkInMailModal(true)} className="p-1 hover:bg-muted rounded-sm text-muted-foreground hover:text-foreground" title="InMail groupé">
-                    <Mail className="w-3.5 h-3.5" />
-                  </button>
-                  <SequenceEnrollButton
-                    selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
-                    accountId={selectedAccount}
-                    selectedJob={selectedJob}
-                    onSuccess={onSequenceEnrollSuccess}
-                  />
-                </>
+                <SequenceEnrollButton
+                  selectedProfiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
+                  accountId={selectedAccount}
+                  selectedJob={selectedJob}
+                  onSuccess={onSequenceEnrollSuccess}
+                />
               )}
+              {selectedAccount && (
+                <button
+                  onClick={() => onSetShowBulkInMailModal(true)}
+                  className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors"
+                  title="Envoyer un InMail groupé"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">InMail</span>
+                </button>
+              )}
+              <button
+                onClick={onBulkDismiss}
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-destructive hover:bg-destructive/10 transition-colors"
+                title="Archiver les profils sélectionnés"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Archiver</span>
+              </button>
             </div>
           )}
 
@@ -907,6 +937,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                     recommendation: treatedCandidates.get(profile.id)!.recommendation,
                     updated_at: treatedCandidates.get(profile.id)!.updated_at,
                   } : null}
+                  enrollmentInfo={projectEnrollments.get(profile.id) || null}
                   airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
                   notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
                   onOpenDetail={() => openProfileDetail(profile)}
