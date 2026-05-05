@@ -433,7 +433,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
     const sentTexts = messages
       .filter(m => m.is_sender)
-      .slice(0, 5)
+      .slice(0, 8)
       .map(m => (m.text || m.text_content || ''))
       .filter(Boolean);
     const haystack = [
@@ -445,22 +445,48 @@ export const MessageView: React.FC<MessageViewProps> = ({
       .join(' ')
       .toLowerCase();
 
-    if (haystack.length < 5) return null;
-
-    // Match par job_title > name > client_name. On exige >5 chars pour
-    // éviter les faux positifs sur des titres trop courts (ex: "AI").
     const norm = (s: string | null | undefined) => (s || '').toLowerCase().trim();
-    return (
-      activeMissions.find(m => {
+
+    if (haystack.length >= 5) {
+      // 1. Match exact sur job_title (>4 chars pour éviter "AI")
+      const byJobTitle = activeMissions.find(m => {
         const t = norm(m.job_title);
-        return t.length > 5 && haystack.includes(t);
-      })
-      || activeMissions.find(m => {
+        return t.length > 4 && haystack.includes(t);
+      });
+      if (byJobTitle) return byJobTitle;
+
+      // 2. Match sur le name de la mission
+      const byName = activeMissions.find(m => {
         const n = norm(m.name);
-        return n.length > 5 && haystack.includes(n);
-      })
-      || null
-    );
+        return n.length > 4 && haystack.includes(n);
+      });
+      if (byName) return byName;
+
+      // 3. Match par client_name (ex: "Theodo Group" mentionné dans le msg)
+      const byClient = activeMissions.find(m => {
+        const c = norm(m.client_name);
+        return c.length > 3 && haystack.includes(c);
+      });
+      if (byClient) return byClient;
+
+      // 4. Match fuzzy : >=2 mots significatifs (>3 chars) du job_title
+      //    présents dans le haystack — capture les variantes de titres
+      //    ("Lead AI Engineer" vs "Senior AI Engineer Lead")
+      const byFuzzyTitle = activeMissions.find(m => {
+        const t = norm(m.job_title);
+        if (t.length < 5) return false;
+        const words = t.split(/\s+/).filter(w => w.length > 3);
+        if (words.length < 2) return false;
+        const hits = words.filter(w => haystack.includes(w)).length;
+        return hits >= 2;
+      });
+      if (byFuzzyTitle) return byFuzzyTitle;
+    }
+
+    // 5. Fallback : une seule mission active dans l'org → on l'utilise
+    //    par défaut. Hypothèse safe : si le user n'a qu'une seule mission,
+    //    toutes les conv portent dessus.
+    return activeMissions.length === 1 ? activeMissions[0] : null;
   }, [jobInfo, activeMissions, selectedChat, messages]);
 
   // Source unifiée pour les badges contextuels. Préfère jobInfo (séquence)

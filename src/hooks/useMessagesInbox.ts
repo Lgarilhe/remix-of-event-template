@@ -617,7 +617,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         .from('sourcing_projects')
         .select('id, name, job_id, job_title, client_name, status, job_details')
         .eq('organization_id', organizationId)
-        .in('status', ['active', 'paused'])
+        .neq('status', 'archived')
         .order('updated_at', { ascending: false })
         .limit(100);
 
