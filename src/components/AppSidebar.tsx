@@ -45,22 +45,18 @@ interface NavItem {
   icon: React.ComponentType<any>;
   badgeKey?: 'unread';
   feature?: Feature;
-  /** Couleur de l'icône (le tile est uniforme pour tous les items). */
-  iconColor: string;
 }
 
-// Pattern Qonto : tile background uniforme pour tous les items, mais icônes
-// color-coded par section. Le tile reste calme/neutre, ce qui crée un rythme
-// visuel régulier ; la couleur de l'icône signale la nature de la section
-// sans surcharger la sidebar.
+// Couleur unique pour tous les items — pas d'arc-en-ciel.
+// Tile : vert clair (bg-emerald-500/15), icône noire (text-foreground).
 const NAV_ITEMS: NavItem[] = [
-  { to: '/dashboard',   label: 'Dashboard',   icon: Home,      iconColor: 'text-blue-500'    },
-  { to: '/missions',    label: 'Missions',    icon: Briefcase, iconColor: 'text-violet-500'  },
-  { to: '/pipeline',    label: 'Pipeline',    icon: Columns3,  iconColor: 'text-cyan-500'    },
-  { to: '/calendar',    label: 'Calendrier',  icon: Calendar,  iconColor: 'text-amber-500'   },
-  { to: '/tasks',       label: 'Tâches',      icon: ListTodo,  iconColor: 'text-emerald-500' },
-  { to: '/inbox',       label: 'Messages',    icon: Inbox,     iconColor: 'text-rose-500',   badgeKey: 'unread' },
-  { to: '/marketplace', label: 'Marketplace', icon: Store,     iconColor: 'text-indigo-500', feature: 'marketplace_browse' },
+  { to: '/dashboard',   label: 'Dashboard',   icon: Home      },
+  { to: '/missions',    label: 'Missions',    icon: Briefcase },
+  { to: '/pipeline',    label: 'Pipeline',    icon: Columns3  },
+  { to: '/calendar',    label: 'Calendrier',  icon: Calendar  },
+  { to: '/tasks',       label: 'Tâches',      icon: ListTodo  },
+  { to: '/inbox',       label: 'Messages',    icon: Inbox,    badgeKey: 'unread' },
+  { to: '/marketplace', label: 'Marketplace', icon: Store,    feature: 'marketplace_browse' },
 ];
 
 export function AppSidebar() {
@@ -189,20 +185,19 @@ export function AppSidebar() {
                       collapsed ? 'justify-center' : 'gap-3 w-full',
                     )}
                   >
-                    {/* Tile uniforme (pattern Qonto) — bg neutre identique
-                        pour tous les items, seule l'icône est color-coded. */}
+                    {/* Tile uniforme — vert clair pour tous les items,
+                        icône noire (foreground). Saturation +25% si actif. */}
                     <span
                       className={cn(
                         'flex items-center justify-center rounded-lg shrink-0 transition-colors',
                         collapsed ? 'h-7 w-7' : 'h-8 w-8',
-                        active ? 'bg-foreground/[0.10]' : 'bg-foreground/[0.05]',
+                        active ? 'bg-emerald-500/30' : 'bg-emerald-500/15',
                       )}
                     >
                       <item.icon
                         className={cn(
-                          'shrink-0',
+                          'shrink-0 text-foreground',
                           collapsed ? 'h-[18px] w-[18px]' : 'h-[19px] w-[19px]',
-                          item.iconColor,
                         )}
                         strokeWidth={2}
                         aria-hidden="true"
