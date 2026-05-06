@@ -5,13 +5,15 @@
  * cards cliquables avec :
  * - Nom + client + status pill
  * - Mini progress bar visuelle des stats clés (sourced → contacted → replied → won)
- * - Compteurs inline
+ * - Compteurs inline (animés à l'entrée)
  * - Dernière activité (relative time)
  *
- * CTA en bas : "Voir toutes mes missions" si > 5, sinon "Créer une mission".
+ * V2 anim : stagger entrance des cards, progress bars qui se remplissent
+ * en glissant à l'entrée (clip-path animation), hover lift.
  */
 
 import React, { useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -26,6 +28,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useCountUp } from '@/hooks/useCountUp';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 
 interface DashboardMissionsPanelProps {
@@ -40,10 +43,37 @@ const STATUS_LABELS: Record<SourcingProject['status'], { label: string; tone: st
   archived: { label: 'Archivée', tone: 'border-border bg-muted/40 text-muted-foreground' },
 };
 
+const ProgressRow: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  pct: number;
+  barColor: string;
+  delay: number;
+}> = ({ icon, label, value, pct, barColor, delay }) => {
+  const animValue = useCountUp(value, { duration: 700 });
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      <span className="text-muted-foreground flex-shrink-0">{label}</span>
+      <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden">
+        <motion.div
+          className={cn('h-full rounded-full', barColor)}
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.7, ease: 'easeOut', delay }}
+        />
+      </div>
+      <span className="font-bold tabular-nums w-8 text-right shrink-0">{animValue}</span>
+    </div>
+  );
+};
+
 const MissionCard: React.FC<{
   project: SourcingProject;
   onClick: () => void;
-}> = ({ project, onClick }) => {
+  index: number;
+}> = ({ project, onClick, index }) => {
   const status = STATUS_LABELS[project.status];
   const total = project.stats_total_found || 0;
   const messaged = project.stats_messaged || 0;
@@ -61,10 +91,18 @@ const MissionCard: React.FC<{
     }
   })();
 
+  const baseDelay = 0.1 + index * 0.07;
+
   return (
-    <button
+    <motion.button
       onClick={onClick}
-      className="group w-full text-left rounded-xl bg-card border border-border p-4 transition-all hover:shadow-md hover:border-foreground/20"
+      variants={{
+        hidden: { opacity: 0, y: 10 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+      }}
+      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+      whileTap={{ scale: 0.99 }}
+      className="group w-full text-left rounded-xl bg-card border border-border p-4 transition-shadow hover:shadow-md hover:border-foreground/20"
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0 flex-1">
@@ -90,41 +128,30 @@ const MissionCard: React.FC<{
 
       {/* Progress strip */}
       <div className="space-y-1.5 mt-3">
-        <div className="flex items-center gap-2 text-xs">
-          <Users className="w-3 h-3 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground flex-shrink-0">Sourcés</span>
-          <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-foreground/60 rounded-full transition-all"
-              style={{ width: `${sourcedPct}%` }}
-            />
-          </div>
-          <span className="font-bold tabular-nums w-8 text-right shrink-0">{total}</span>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <Send className="w-3 h-3 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground flex-shrink-0">Contactés</span>
-          <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-info/60 rounded-full transition-all"
-              style={{ width: `${messagedPct}%` }}
-            />
-          </div>
-          <span className="font-bold tabular-nums w-8 text-right shrink-0">{messaged}</span>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <CheckCircle2 className="w-3 h-3 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground flex-shrink-0">Shortlist</span>
-          <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-success/60 rounded-full transition-all"
-              style={{ width: `${shortlistedPct}%` }}
-            />
-          </div>
-          <span className="font-bold tabular-nums w-8 text-right shrink-0">{shortlisted}</span>
-        </div>
+        <ProgressRow
+          icon={<Users className="w-3 h-3" />}
+          label="Sourcés"
+          value={total}
+          pct={sourcedPct}
+          barColor="bg-foreground/60"
+          delay={baseDelay}
+        />
+        <ProgressRow
+          icon={<Send className="w-3 h-3" />}
+          label="Contactés"
+          value={messaged}
+          pct={messagedPct}
+          barColor="bg-info/60"
+          delay={baseDelay + 0.1}
+        />
+        <ProgressRow
+          icon={<CheckCircle2 className="w-3 h-3" />}
+          label="Shortlist"
+          value={shortlisted}
+          pct={shortlistedPct}
+          barColor="bg-success/60"
+          delay={baseDelay + 0.2}
+        />
       </div>
 
       {lastActivityLabel && (
@@ -133,7 +160,7 @@ const MissionCard: React.FC<{
           {lastActivityLabel}
         </div>
       )}
-    </button>
+    </motion.button>
   );
 };
 
@@ -145,7 +172,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
 
   const activeProjects = useMemo(() => {
     return projects
-      .filter(p => p.status === 'active')
+      .filter((p) => p.status === 'active')
       .sort((a, b) => {
         const aTime = new Date(a.last_search_at || a.updated_at).getTime();
         const bTime = new Date(b.last_search_at || b.updated_at).getTime();
@@ -155,7 +182,12 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
   }, [projects]);
 
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden">
+    <motion.div
+      className="rounded-xl bg-card border border-border overflow-hidden"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1 }}
+    >
       <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-muted/20">
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] text-foreground flex items-center justify-center shrink-0">
@@ -181,21 +213,32 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
         </button>
       </div>
 
-      <div className="p-3 space-y-2">
+      <motion.div
+        className="p-3 space-y-2"
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: {},
+          visible: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } },
+        }}
+      >
         {isLoading ? (
           <>
-            {[1, 2, 3].map(i => (
+            {[1, 2, 3].map((i) => (
               <div key={i} className="h-[140px] rounded-xl bg-muted/40 animate-pulse" />
             ))}
           </>
         ) : activeProjects.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border p-8 text-center">
+          <motion.div
+            className="rounded-xl border border-dashed border-border p-8 text-center"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+          >
             <div className="h-10 w-10 rounded-full bg-foreground/[0.06] text-muted-foreground flex items-center justify-center mx-auto mb-3">
               <Sparkles className="w-5 h-5" />
             </div>
-            <p className="text-sm text-foreground font-medium">
-              Aucune mission active
-            </p>
+            <p className="text-sm text-foreground font-medium">Aucune mission active</p>
             <p className="text-xs text-muted-foreground mt-1 mb-4">
               Créez une mission pour commencer à sourcer
             </p>
@@ -206,17 +249,18 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
               <Plus className="w-3.5 h-3.5" />
               Créer une mission
             </button>
-          </div>
+          </motion.div>
         ) : (
-          activeProjects.map(project => (
+          activeProjects.map((project, i) => (
             <MissionCard
               key={project.id}
               project={project}
+              index={i}
               onClick={() => navigate(`/missions/${project.id}`)}
             />
           ))
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };

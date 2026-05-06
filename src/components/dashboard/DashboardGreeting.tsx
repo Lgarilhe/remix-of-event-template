@@ -6,16 +6,18 @@
  * de l'activité ("12 candidats actifs sur 3 missions"). À droite, 2-3 CTAs
  * pour les actions rapides les plus fréquentes.
  *
- * On évite le piège du wall-of-stats : l'objectif est qu'en 1 seconde l'user
- * sente "je suis bien, je sais ce qui m'attend", pas "qu'est-ce que je fais
- * de tout ça ?".
+ * V2 anim : staggered entrance (title → subtitle → CTAs), gradient subtle
+ * en background pour donner du peps sans être bling-bling, counter animation
+ * sur les chiffres clés.
  */
 
 import React from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Plus, Search, ArrowRight, Sparkles } from 'lucide-react';
+import { useCountUp } from '@/hooks/useCountUp';
 
 interface DashboardGreetingProps {
   userName: string | null;
@@ -40,56 +42,126 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
   const { greeting, emoji } = greetingFor(now.getHours());
   const firstName = userName?.split(' ')[0] || null;
 
-  return (
-    <header className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
-      <div className="min-w-0">
-        <h1 className="font-display font-bold text-foreground text-2xl sm:text-3xl tracking-tight leading-tight">
-          {greeting}{firstName ? `, ${firstName}` : ''} <span aria-hidden="true">{emoji}</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1.5">
-          {format(now, "EEEE d MMMM", { locale: fr }).replace(/^./, c => c.toUpperCase())}
-          {activeCandidatesCount > 0 && (
-            <>
-              {' · '}
-              <span className="text-foreground font-medium">{activeCandidatesCount}</span> candidat
-              {activeCandidatesCount > 1 ? 's' : ''} actif{activeCandidatesCount > 1 ? 's' : ''}
-              {activeMissionsCount > 0 && (
-                <>
-                  {' sur '}
-                  <span className="text-foreground font-medium">{activeMissionsCount}</span> mission
-                  {activeMissionsCount > 1 ? 's' : ''}
-                </>
-              )}
-            </>
-          )}
-        </p>
-      </div>
+  const candidatesAnim = useCountUp(activeCandidatesCount, { duration: 900 });
+  const missionsAnim = useCountUp(activeMissionsCount, { duration: 900 });
 
-      {/* Quick action pills */}
-      <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-        <button
-          onClick={() => navigate('/missions?new=1')}
-          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
+  return (
+    <motion.header
+      className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-foreground/[0.04] via-card to-card mb-6"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+    >
+      {/* Subtle decorative blob top-right */}
+      <motion.div
+        aria-hidden="true"
+        className="absolute -top-24 -right-16 h-64 w-64 rounded-full bg-foreground/[0.04] blur-3xl pointer-events-none"
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 1.2, ease: 'easeOut', delay: 0.1 }}
+      />
+
+      <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 px-6 py-6 sm:py-7">
+        <div className="min-w-0">
+          <motion.h1
+            className="font-display font-bold text-foreground text-2xl sm:text-3xl tracking-tight leading-tight"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.05 }}
+          >
+            {greeting}
+            {firstName ? `, ${firstName}` : ''}{' '}
+            <motion.span
+              aria-hidden="true"
+              className="inline-block"
+              initial={{ rotate: -25, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
+              transition={{ duration: 0.6, ease: 'easeOut', delay: 0.4, type: 'spring', stiffness: 220 }}
+            >
+              {emoji}
+            </motion.span>
+          </motion.h1>
+          <motion.p
+            className="text-sm text-muted-foreground mt-1.5"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
+          >
+            {format(now, 'EEEE d MMMM', { locale: fr }).replace(/^./, (c) => c.toUpperCase())}
+            {activeCandidatesCount > 0 && (
+              <>
+                {' · '}
+                <span className="text-foreground font-medium tabular-nums">{candidatesAnim}</span>{' '}
+                candidat{activeCandidatesCount > 1 ? 's' : ''} actif
+                {activeCandidatesCount > 1 ? 's' : ''}
+                {activeMissionsCount > 0 && (
+                  <>
+                    {' sur '}
+                    <span className="text-foreground font-medium tabular-nums">{missionsAnim}</span>{' '}
+                    mission{activeMissionsCount > 1 ? 's' : ''}
+                  </>
+                )}
+              </>
+            )}
+          </motion.p>
+        </div>
+
+        {/* Quick action pills */}
+        <motion.div
+          className="flex items-center gap-1.5 shrink-0 flex-wrap"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.07, delayChildren: 0.25 } },
+          }}
         >
-          <Plus className="w-3.5 h-3.5" />
-          Nouvelle mission
-        </button>
-        <button
-          onClick={() => navigate('/missions')}
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-border bg-background hover:bg-accent text-[12px] font-medium text-foreground transition-colors"
-        >
-          <Search className="w-3.5 h-3.5" />
-          Rechercher
-        </button>
-        <button
-          onClick={() => navigate('/inbox')}
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-border bg-background hover:bg-accent text-[12px] font-medium text-foreground transition-colors"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          Inbox
-          <ArrowRight className="w-3 h-3 opacity-60" />
-        </button>
+          {[
+            {
+              key: 'create',
+              icon: <Plus className="w-3.5 h-3.5" />,
+              label: 'Nouvelle mission',
+              primary: true,
+              onClick: () => navigate('/missions?new=1'),
+            },
+            {
+              key: 'search',
+              icon: <Search className="w-3.5 h-3.5" />,
+              label: 'Rechercher',
+              primary: false,
+              onClick: () => navigate('/missions'),
+            },
+            {
+              key: 'inbox',
+              icon: <Sparkles className="w-3.5 h-3.5" />,
+              label: 'Inbox',
+              primary: false,
+              suffix: <ArrowRight className="w-3 h-3 opacity-60" />,
+              onClick: () => navigate('/inbox'),
+            },
+          ].map((action) => (
+            <motion.button
+              key={action.key}
+              onClick={action.onClick}
+              variants={{
+                hidden: { opacity: 0, y: 6 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+              }}
+              whileHover={{ scale: 1.03, transition: { duration: 0.15 } }}
+              whileTap={{ scale: 0.97 }}
+              className={
+                action.primary
+                  ? 'inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity shadow-sm'
+                  : 'inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-border bg-background hover:bg-accent text-[12px] font-medium text-foreground transition-colors'
+              }
+            >
+              {action.icon}
+              {action.label}
+              {action.suffix}
+            </motion.button>
+          ))}
+        </motion.div>
       </div>
-    </header>
+    </motion.header>
   );
 };
