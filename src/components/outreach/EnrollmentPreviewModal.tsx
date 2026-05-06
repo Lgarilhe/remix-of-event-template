@@ -156,6 +156,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     estimatedCredits, candidateAnalysis,
     getPreview, generateForCandidateById, regenerateStep,
     editMessage, generateAll, cancelBulkGeneration, getMessageOverrides,
+    getStepConfig, setStepConfig, getStepConfigOverrides,
   } = useEnrollmentPreview({ steps, profiles, job, accountId });
 
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>(firstProfileId);
@@ -377,6 +378,20 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             : typeof networkDist === 'string' ? networkDist : null;
 
           const overrides = getMessageOverrides(profile.id);
+          // Overrides de timing per-step (delays, timeouts) éditées par
+          // l'user dans la tree view → stockées dans tracking_data, lues
+          // par process-sequences au scheduling du step suivant.
+          const stepConfigOverrides = getStepConfigOverrides();
+
+          // Construit tracking_data uniquement si on a au moins un override
+          // (sinon on laisse la colonne null pour rester clean).
+          const trackingData: Record<string, unknown> = {};
+          if (Object.keys(overrides).length > 0) {
+            trackingData.message_overrides = overrides;
+          }
+          if (Object.keys(stepConfigOverrides).length > 0) {
+            trackingData.step_config_overrides = stepConfigOverrides;
+          }
 
           const { data: enrollment, error: enrollError } = await supabase
             .from('sequence_enrollments')
@@ -394,7 +409,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               current_step_order: 0,
               status: 'active',
               network_distance: normalizedDistance,
-              ...(Object.keys(overrides).length > 0 ? { tracking_data: { message_overrides: overrides } } : {}),
+              ...(Object.keys(trackingData).length > 0 ? { tracking_data: trackingData } : {}),
             })
             .select()
             .single();
@@ -404,11 +419,18 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
           if (firstStep) {
             const stepId = firstStep.id;
+            // Applique l'override de timing s'il existe pour le 1er step.
+            // Sinon utilise les valeurs du template séquence.
+            const firstStepOverride = stepConfigOverrides[stepId];
+            const effDelayDays = firstStepOverride?.delayDays ?? firstStep.delay_days ?? 0;
+            const effDelayHours = firstStepOverride?.delayHours ?? firstStep.delay_hours ?? 0;
+            const effDelayMinutes = firstStep.delay_minutes ?? 0; // pas exposé en UI pour le moment
+
             const scheduledAt = new Date();
             scheduledAt.setTime(scheduledAt.getTime()
-              + (firstStep.delay_days || 0) * 86400000
-              + (firstStep.delay_hours || 0) * 3600000
-              + (firstStep.delay_minutes || 0) * 60000
+              + effDelayDays * 86400000
+              + effDelayHours * 3600000
+              + effDelayMinutes * 60000
             );
 
             await supabase
@@ -814,9 +836,13 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                           + connecteurs avec labels (si accepté / si réponse...)
                           + flèches entre étapes. Les steps message gardent
                           leur card complète (avec preview AI), les autres
-                          (visite, invitation, etc.) sont compactés. */}
+                          (visite, invitation, etc.) sont compactés.
+                          Les délais et timeouts sont éditables PER step
+                          pour cette inscription (override stocké côté hook). */}
                       <SequenceTreeView
                         steps={steps}
+                        getStepConfig={getStepConfig}
+                        setStepConfig={setStepConfig}
                         renderStep={(step, idx) => {
                           const isMessageStep = MESSAGE_ACTIONS.includes(step.actionType) && !!step.messageTemplate?.trim();
                           const Icon = ACTION_ICONS[step.actionType] || MessageSquare;

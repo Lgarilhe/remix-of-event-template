@@ -953,9 +953,18 @@ async function handleCheckTimeouts(supabase: any) {
   for (const exec of waitingExecutions || []) {
     const step = exec.step, enrollment = exec.enrollment;
     if (!step?.timeout_days || !enrollment) continue;
+    // Per-enrollment override : si l'user a édité le timeout pour ce
+    // step dans la modal d'enrollment, on l'applique ici.
+    const trackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
+    const stepConfigOverrides = (trackingData?.step_config_overrides ?? null) as Record<string, {
+      timeoutDays?: number;
+    }> | null;
+    const overrideTimeout = stepConfigOverrides?.[step.id]?.timeoutDays;
+    const effectiveTimeout = overrideTimeout ?? step.timeout_days;
     const daysPassed = Math.floor((Date.now() - new Date(exec.created_at).getTime()) / 86400000);
-    if (daysPassed >= step.timeout_days) {
-      await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Timeout ${step.timeout_days}d`, executed_at: new Date().toISOString() }).eq('id', exec.id);
+    if (daysPassed >= effectiveTimeout) {
+      const reasonSuffix = overrideTimeout != null ? ` (override ${overrideTimeout}d, default ${step.timeout_days}d)` : '';
+      await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Timeout ${effectiveTimeout}d${reasonSuffix}`, executed_at: new Date().toISOString() }).eq('id', exec.id);
       await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id, undefined, 0, step.id);
       branched++;
     }
@@ -1891,11 +1900,34 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     return;
   }
 
+  // Read per-enrollment step config overrides (set by user in the
+  // enrollment preview modal — e.g. "wait 3 days instead of 5 for this
+  // specific step, only for this candidate"). Stored on
+  // enrollment.tracking_data.step_config_overrides[stepId].
+  // Falls back to the sequence template values when no override is set.
+  const trackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
+  const stepConfigOverrides = (trackingData?.step_config_overrides ?? null) as Record<string, {
+    delayDays?: number;
+    delayHours?: number;
+    timeoutDays?: number;
+  }> | null;
+  const nextStepOverride = stepConfigOverrides?.[nextStep.id] ?? null;
+  const effectiveDelayDays = nextStepOverride?.delayDays ?? nextStep.delay_days ?? 0;
+  const effectiveDelayHours = nextStepOverride?.delayHours ?? nextStep.delay_hours ?? 0;
+  if (nextStepOverride) {
+    console.log(`[scheduleNextStep] Applying timing override for step ${nextStep.id} on enrollment ${enrollment.id}:`, {
+      delayDays: nextStepOverride.delayDays,
+      delayHours: nextStepOverride.delayHours,
+      effective: `${effectiveDelayDays}j ${effectiveDelayHours}h`,
+      defaults: `${nextStep.delay_days ?? 0}j ${nextStep.delay_hours ?? 0}h`,
+    });
+  }
+
   let scheduledAt = new Date();
   // Use time-based arithmetic to avoid setHours/setDate timezone pitfalls
   scheduledAt.setTime(scheduledAt.getTime()
-    + (nextStep.delay_days || 0) * 86400000
-    + (nextStep.delay_hours || 0) * 3600000
+    + effectiveDelayDays * 86400000
+    + effectiveDelayHours * 3600000
     + (nextStep.delay_minutes || 0) * 60000
   );
   // Add human-like jitter: 0 to +3 minutes (never negative, to avoid going before preferred_hour_start)

@@ -43,6 +43,27 @@ export interface GeneratedMessage {
 
 export type PreviewMap = Map<string, Map<string, GeneratedMessage>>; // candidateId -> stepId -> message
 
+/**
+ * Override des règles de timing d'un step pour CETTE inscription
+ * uniquement (sans toucher au template global de la séquence).
+ *
+ * Ex : la séquence prévoit un délai de 5 jours avant le 2e message,
+ * mais pour ce candidat précis on veut relancer plus vite (3 jours).
+ * → stepConfigOverrides[stepId] = { delayDays: 3 }
+ *
+ * Stocké sur sequence_enrollments.tracking_data.step_config_overrides.
+ * Lu par le cron process-sequences au moment de scheduler le step :
+ *   override.delayDays ?? step.delay_days
+ */
+export interface StepConfigOverride {
+  /** Délai en jours avant l'exécution du step (override de step.delay_days). */
+  delayDays?: number;
+  /** Délai en heures additionnel (override de step.delay_hours). */
+  delayHours?: number;
+  /** Pour les steps wait_* : nombre de jours avant timeout (override de step.timeout_days). */
+  timeoutDays?: number;
+}
+
 interface UseEnrollmentPreviewOptions {
   steps: SequenceStepPreview[];
   profiles: LinkedInProfile[];
@@ -75,6 +96,44 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const abortRef = useRef(false);
   const { user } = useAuthReady();
+
+  // Overrides des règles de timing par step pour CETTE inscription.
+  // Map<stepId, { delayDays?, delayHours?, timeoutDays? }>.
+  // Vide par défaut → utilise les valeurs du template séquence.
+  // Mis à jour quand l'user clique "Modifier le délai" sur un step.
+  // Inclus dans tracking_data.step_config_overrides à l'enrôlement,
+  // lu par process-sequences au scheduling.
+  const [stepConfigOverrides, setStepConfigOverrides] = useState<Map<string, StepConfigOverride>>(new Map());
+
+  const setStepConfig = useCallback((stepId: string, config: StepConfigOverride | null) => {
+    setStepConfigOverrides(prev => {
+      const next = new Map(prev);
+      // Si config = null OU object vide → on retire l'override (revient au défaut)
+      if (!config || (config.delayDays === undefined && config.delayHours === undefined && config.timeoutDays === undefined)) {
+        next.delete(stepId);
+      } else {
+        next.set(stepId, config);
+      }
+      return next;
+    });
+  }, []);
+
+  const getStepConfig = useCallback((stepId: string): StepConfigOverride | undefined => {
+    return stepConfigOverrides.get(stepId);
+  }, [stepConfigOverrides]);
+
+  /**
+   * Sérialise les overrides en objet plat compatible JSONB pour
+   * sequence_enrollments.tracking_data.step_config_overrides.
+   * Format : { [stepId]: { delayDays?, delayHours?, timeoutDays? } }
+   */
+  const getStepConfigOverrides = useCallback((): Record<string, StepConfigOverride> => {
+    const result: Record<string, StepConfigOverride> = {};
+    stepConfigOverrides.forEach((cfg, stepId) => {
+      result[stepId] = cfg;
+    });
+    return result;
+  }, [stepConfigOverrides]);
 
   // Fetch outreach_config de la mission depuis sourcing_projects.job_details.
   // Sans ça, l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet
@@ -719,5 +778,9 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     generateAll,
     cancelBulkGeneration,
     getMessageOverrides,
+    // Per-step rule overrides (delays, timeouts) for this enrollment only.
+    getStepConfig,
+    setStepConfig,
+    getStepConfigOverrides,
   };
 }

@@ -12,15 +12,18 @@
  * rendues compactes.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import type { SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
+import type { SequenceStepPreview, StepConfigOverride } from '@/hooks/useEnrollmentPreview';
 import {
   Mail, MessageSquare, Eye, Clock, GitBranch,
-  ArrowDown, CheckCheck, XCircle, type LucideIcon,
+  ArrowDown, CheckCheck, XCircle, Pencil, RotateCcw,
+  type LucideIcon,
 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 /**
  * Wrapper pour utiliser un asset SVG comme une icône Lucide-like
@@ -87,9 +90,14 @@ const MESSAGE_TYPES = new Set([
 interface Props {
   steps: SequenceStepPreview[];
   renderStep?: (step: SequenceStepPreview, idx: number) => React.ReactNode;
+  /** Lit l'override de timing pour un step (s'il existe). Si non fourni,
+   *  les valeurs par défaut du template sont utilisées. */
+  getStepConfig?: (stepId: string) => StepConfigOverride | undefined;
+  /** Persist un override de timing pour un step (passer null pour reset). */
+  setStepConfig?: (stepId: string, config: StepConfigOverride | null) => void;
 }
 
-export function SequenceTreeView({ steps, renderStep }: Props) {
+export function SequenceTreeView({ steps, renderStep, getStepConfig, setStepConfig }: Props) {
   const sortedSteps = useMemo(
     () => [...steps].sort((a, b) => a.stepOrder - b.stepOrder),
     [steps],
@@ -116,6 +124,28 @@ export function SequenceTreeView({ steps, renderStep }: Props) {
 
   // Render items
   const items: React.ReactNode[] = [];
+
+  // Délai initial AVANT le 1er step : si l'user veut décaler le démarrage
+  // de la séquence, c'est ICI qu'il édite (pas dans un connecteur entre
+  // 2 steps puisqu'il n'y a pas de step précédent).
+  if (sortedSteps.length > 0) {
+    const firstStep = sortedSteps[0];
+    const firstHasDelay = (firstStep.delayDays || 0) > 0 || (firstStep.delayHours || 0) > 0;
+    const firstHasOverride = !!getStepConfig?.(firstStep.stepId);
+    if (firstHasDelay || firstHasOverride || setStepConfig) {
+      items.push(
+        <InitialDelayChip
+          key="initial-delay"
+          stepId={firstStep.stepId}
+          delayDays={firstStep.delayDays}
+          delayHours={firstStep.delayHours}
+          override={getStepConfig?.(firstStep.stepId)}
+          onChange={setStepConfig}
+        />
+      );
+    }
+  }
+
   for (let idx = 0; idx < sortedSteps.length; idx++) {
     const step = sortedSteps[idx];
     if (consumed.has(step.stepId)) continue;
@@ -144,16 +174,22 @@ export function SequenceTreeView({ steps, renderStep }: Props) {
           mainStep={mainStep}
           fallbackInmailStep={fallbackStep}
           renderStep={renderStep}
+          getStepConfig={getStepConfig}
+          setStepConfig={setStepConfig}
         />
       );
 
-      // Connector vers la suite (si encore des steps après le mainStep)
+      // Connector vers la suite (si encore des steps après le mainStep).
+      // Le délai éditable porte sur nextNext (= step après le mainStep).
       if (mainStep && nextNext) {
         items.push(
           <SimpleConnector
             key={`conn-after-fork-${step.stepId}`}
+            stepId={nextNext.stepId}
             delayDays={nextNext.delayDays}
             delayHours={nextNext.delayHours}
+            override={getStepConfig?.(nextNext.stepId)}
+            onChange={setStepConfig}
           />
         );
       }
@@ -170,13 +206,17 @@ export function SequenceTreeView({ steps, renderStep }: Props) {
     );
 
     // Connector vers le step suivant si pas la fin et le suivant n'est pas une décision
-    // (les décisions ont leur propre fork qui inclut son propre connector)
+    // (les décisions ont leur propre fork qui inclut son propre connector).
+    // Le délai éditable porte sur le NEXT step (= ce qu'on attend avant qu'il fire).
     if (next && !DECISION_TYPES.has(next.actionType) && !consumed.has(next.stepId)) {
       items.push(
         <SimpleConnector
           key={`conn-${step.stepId}`}
+          stepId={next.stepId}
           delayDays={next.delayDays}
           delayHours={next.delayHours}
+          override={getStepConfig?.(next.stepId)}
+          onChange={setStepConfig}
         />
       );
     }
@@ -228,12 +268,15 @@ function ActionCard({
 
 function DecisionFork({
   step, index, mainStep, fallbackInmailStep, renderStep,
+  getStepConfig, setStepConfig,
 }: {
   step: SequenceStepPreview;
   index: number;
   mainStep: SequenceStepPreview | null;
   fallbackInmailStep: SequenceStepPreview | null;
   renderStep?: (step: SequenceStepPreview, idx: number) => React.ReactNode;
+  getStepConfig?: (stepId: string) => StepConfigOverride | undefined;
+  setStepConfig?: (stepId: string, config: StepConfigOverride | null) => void;
 }) {
   const Icon = ACTION_ICONS[step.actionType] || GitBranch;
   const label = ACTION_LABELS[step.actionType] || 'Décision';
@@ -283,11 +326,15 @@ function DecisionFork({
                   {description}
                 </p>
               )}
-              {step.timeoutDays && (
-                <p className="text-[10px] text-warning mt-1.5 inline-flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5" />
-                  Timeout après {step.timeoutDays} jour{step.timeoutDays > 1 ? 's' : ''}
-                </p>
+              {step.timeoutDays != null && step.timeoutDays > 0 && (
+                <div className="mt-1.5">
+                  <TimeoutEditor
+                    stepId={step.stepId}
+                    timeoutDays={step.timeoutDays}
+                    override={getStepConfig?.(step.stepId)}
+                    onChange={setStepConfig}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -416,32 +463,422 @@ function FallbackHint() {
 }
 
 // ─── SimpleConnector — flèche entre 2 actions consécutives ───────────
+// Le label "+5j 2h" est cliquable → ouvre un popover pour éditer le délai
+// AVANT le step suivant, juste pour cette inscription. L'override est
+// stocké côté hook (puis tracking_data sur sequence_enrollments) — pas
+// de mutation du template séquence.
 
 function SimpleConnector({
-  delayDays, delayHours,
+  stepId, delayDays, delayHours, override, onChange,
 }: {
+  stepId?: string;
   delayDays?: number;
   delayHours?: number;
+  override?: StepConfigOverride;
+  onChange?: (stepId: string, config: StepConfigOverride | null) => void;
 }) {
-  const delayText = (() => {
-    if (!delayDays && !delayHours) return null;
-    const parts = [];
-    if (delayDays) parts.push(`${delayDays}j`);
-    if (delayHours) parts.push(`${delayHours}h`);
+  // Valeurs effectives = override si défini, sinon défaut du template.
+  const effDays = override?.delayDays ?? delayDays ?? 0;
+  const effHours = override?.delayHours ?? delayHours ?? 0;
+  const isOverridden =
+    override !== undefined &&
+    (override.delayDays !== undefined || override.delayHours !== undefined);
+
+  const hasDelay = effDays > 0 || effHours > 0;
+  const editable = !!stepId && !!onChange;
+
+  const formatDelay = (d: number, h: number): string => {
+    if (!d && !h) return 'immédiat';
+    const parts: string[] = [];
+    if (d) parts.push(`${d}j`);
+    if (h) parts.push(`${h}h`);
     return `+${parts.join(' ')}`;
-  })();
+  };
 
   return (
     <div className="flex items-center justify-center py-1 gap-2 -my-1">
       <div className="flex-1 h-px bg-border/40" />
       <ArrowDown className="w-3.5 h-3.5 text-muted-foreground/60" strokeWidth={2} />
-      {delayText && (
-        <span className="text-[10px] text-muted-foreground tabular-nums">
-          {delayText}
-        </span>
+      {(hasDelay || editable) && (
+        editable ? (
+          <DelayEditor
+            stepId={stepId!}
+            currentDays={effDays}
+            currentHours={effHours}
+            defaultDays={delayDays ?? 0}
+            defaultHours={delayHours ?? 0}
+            isOverridden={isOverridden}
+            onChange={onChange!}
+          >
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center gap-1 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full border transition-colors',
+                isOverridden
+                  ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/30 font-semibold'
+                  : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted hover:border-border hover:text-foreground'
+              )}
+              title={isOverridden ? `Délai modifié pour cette inscription (défaut : ${formatDelay(delayDays ?? 0, delayHours ?? 0)})` : 'Modifier le délai pour cette inscription'}
+            >
+              {formatDelay(effDays, effHours)}
+              <Pencil className="w-2.5 h-2.5 opacity-60" />
+            </button>
+          </DelayEditor>
+        ) : (
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {formatDelay(effDays, effHours)}
+          </span>
+        )
       )}
       <div className="flex-1 h-px bg-border/40" />
     </div>
+  );
+}
+
+// ─── InitialDelayChip — délai avant le 1er step (démarrage séquence) ─
+
+function InitialDelayChip({
+  stepId, delayDays, delayHours, override, onChange,
+}: {
+  stepId: string;
+  delayDays?: number;
+  delayHours?: number;
+  override?: StepConfigOverride;
+  onChange?: (stepId: string, config: StepConfigOverride | null) => void;
+}) {
+  const effDays = override?.delayDays ?? delayDays ?? 0;
+  const effHours = override?.delayHours ?? delayHours ?? 0;
+  const isOverridden =
+    override !== undefined &&
+    (override.delayDays !== undefined || override.delayHours !== undefined);
+
+  const formatDelay = (d: number, h: number): string => {
+    if (!d && !h) return 'démarre immédiatement';
+    const parts: string[] = [];
+    if (d) parts.push(`${d}j`);
+    if (h) parts.push(`${h}h`);
+    return `démarre dans ${parts.join(' ')}`;
+  };
+
+  if (!onChange) {
+    // Pas d'éditeur → simple texte
+    return (
+      <p className="text-[10.5px] uppercase tracking-wider text-muted-foreground text-center mb-1">
+        {formatDelay(effDays, effHours)}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex justify-center mb-1">
+      <DelayEditor
+        stepId={stepId}
+        currentDays={effDays}
+        currentHours={effHours}
+        defaultDays={delayDays ?? 0}
+        defaultHours={delayHours ?? 0}
+        isOverridden={isOverridden}
+        onChange={onChange}
+        title="Délai avant le premier step"
+      >
+        <button
+          type="button"
+          className={cn(
+            'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full border transition-colors',
+            isOverridden
+              ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/40'
+              : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
+          )}
+        >
+          <Clock className="w-2.5 h-2.5" strokeWidth={2.5} />
+          {formatDelay(effDays, effHours)}
+          <Pencil className="w-2.5 h-2.5 opacity-60" />
+        </button>
+      </DelayEditor>
+    </div>
+  );
+}
+
+// ─── DelayEditor — popover pour éditer days + hours ──────────────────
+
+function DelayEditor({
+  stepId, currentDays, currentHours, defaultDays, defaultHours,
+  isOverridden, onChange, children, title,
+}: {
+  stepId: string;
+  currentDays: number;
+  currentHours: number;
+  defaultDays: number;
+  defaultHours: number;
+  isOverridden: boolean;
+  onChange: (stepId: string, config: StepConfigOverride | null) => void;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(currentDays);
+  const [hours, setHours] = useState(currentHours);
+
+  // Quand le popover s'ouvre, on resync les valeurs locales avec le state
+  // courant (au cas où l'override aurait été modifié ailleurs entre-temps).
+  React.useEffect(() => {
+    if (open) {
+      setDays(currentDays);
+      setHours(currentHours);
+    }
+  }, [open, currentDays, currentHours]);
+
+  const handleSave = () => {
+    // Si l'user a remis les valeurs par défaut → on retire l'override
+    if (days === defaultDays && hours === defaultHours) {
+      onChange(stepId, null);
+    } else {
+      onChange(stepId, { delayDays: days, delayHours: hours });
+    }
+    setOpen(false);
+  };
+
+  const handleReset = () => {
+    onChange(stepId, null);
+    setDays(defaultDays);
+    setHours(defaultHours);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+        {children}
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1">
+            {title || 'Délai avant ce step'}
+          </p>
+          <p className="text-[11.5px] text-muted-foreground leading-snug">
+            Modifie le délai pour <span className="font-semibold text-foreground">cette inscription uniquement</span>. Le template de la séquence n'est pas modifié.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
+              Jours
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={90}
+              value={days}
+              onChange={e => setDays(Math.max(0, Math.min(90, Number(e.target.value) || 0)))}
+              className="w-full h-9 px-2.5 text-[13px] font-semibold tabular-nums bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/30"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
+              Heures
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={23}
+              value={hours}
+              onChange={e => setHours(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
+              className="w-full h-9 px-2.5 text-[13px] font-semibold tabular-nums bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/30"
+            />
+          </div>
+        </div>
+
+        {isOverridden && (
+          <div className="text-[10.5px] text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1.5">
+            Défaut séquence : <span className="font-semibold tabular-nums">{defaultDays}j {defaultHours}h</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          {isOverridden && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
+              title="Revenir au délai du template"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Réinitialiser
+            </button>
+          )}
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="text-[11px] font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors"
+          >
+            Appliquer
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── TimeoutEditor — popover pour éditer le timeout des steps wait_* ─
+
+function TimeoutEditor({
+  stepId, timeoutDays, override, onChange,
+}: {
+  stepId: string;
+  timeoutDays: number;
+  override?: StepConfigOverride;
+  onChange?: (stepId: string, config: StepConfigOverride | null) => void;
+}) {
+  const effTimeout = override?.timeoutDays ?? timeoutDays;
+  const isOverridden = override?.timeoutDays !== undefined;
+
+  if (!onChange) {
+    return (
+      <p className="text-[10px] text-warning inline-flex items-center gap-1">
+        <Clock className="w-2.5 h-2.5" />
+        Timeout après {effTimeout} jour{effTimeout > 1 ? 's' : ''}
+      </p>
+    );
+  }
+
+  return (
+    <TimeoutEditorPopover
+      stepId={stepId}
+      currentDays={effTimeout}
+      defaultDays={timeoutDays}
+      isOverridden={isOverridden}
+      onChange={onChange}
+    >
+      <button
+        type="button"
+        className={cn(
+          'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors',
+          isOverridden
+            ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/30 font-semibold'
+            : 'bg-warning/10 text-warning border-warning/30 hover:bg-warning/15'
+        )}
+        title={isOverridden ? `Timeout modifié (défaut : ${timeoutDays}j)` : 'Modifier le timeout'}
+      >
+        <Clock className="w-2.5 h-2.5" />
+        Timeout : {effTimeout} jour{effTimeout > 1 ? 's' : ''}
+        <Pencil className="w-2.5 h-2.5 opacity-60" />
+      </button>
+    </TimeoutEditorPopover>
+  );
+}
+
+function TimeoutEditorPopover({
+  stepId, currentDays, defaultDays, isOverridden, onChange, children,
+}: {
+  stepId: string;
+  currentDays: number;
+  defaultDays: number;
+  isOverridden: boolean;
+  onChange: (stepId: string, config: StepConfigOverride | null) => void;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(currentDays);
+
+  React.useEffect(() => {
+    if (open) setDays(currentDays);
+  }, [open, currentDays]);
+
+  const handleSave = () => {
+    if (days === defaultDays) {
+      // Reset à défaut
+      onChange(stepId, null);
+    } else {
+      onChange(stepId, { timeoutDays: days });
+    }
+    setOpen(false);
+  };
+
+  const handleReset = () => {
+    onChange(stepId, null);
+    setDays(defaultDays);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+        {children}
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1">
+            Timeout
+          </p>
+          <p className="text-[11.5px] text-muted-foreground leading-snug">
+            Nombre de jours d'attente avant de basculer sur la branche alternative (ex : InMail si l'invitation n'est pas acceptée).
+          </p>
+        </div>
+
+        <div>
+          <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
+            Jours d'attente
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={90}
+            value={days}
+            onChange={e => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+            className="w-full h-9 px-2.5 text-[13px] font-semibold tabular-nums bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/30"
+          />
+        </div>
+
+        {isOverridden && (
+          <div className="text-[10.5px] text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1.5">
+            Défaut séquence : <span className="font-semibold tabular-nums">{defaultDays} jour{defaultDays > 1 ? 's' : ''}</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          {isOverridden && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Réinitialiser
+            </button>
+          )}
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="text-[11px] font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors"
+          >
+            Appliquer
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
