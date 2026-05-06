@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import {
   X, Check, CheckCircle, AlertTriangle, AlertCircle,
   Sparkles, RefreshCw, Pencil, Eye, Send, Users, Mail, MessageSquare,
-  Linkedin, Loader2, ChevronLeft, ChevronRight, Search, Zap,
+  Loader2, ChevronLeft, ChevronRight, Search, Zap,
   Clock, GitBranch, ListChecks,
 } from 'lucide-react';
 import { CandidateSidebarCard } from './enrollment-preview/CandidateSidebarCard';
@@ -47,13 +47,34 @@ interface EnrollmentPreviewModalProps {
 
 // ── Helpers ──
 
+// Logos officiels pour LinkedIn et WhatsApp (cohérence avec le reste du
+// site qui utilise les vrais logos plutôt que les icônes génériques Lucide).
+import linkedinLogo from '@/assets/linkedin-logo.svg';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
+
+const makeBrandIcon = (src: string): typeof Mail => {
+  const BrandIcon: any = ({ className }: { className?: string }) => (
+    <img
+      src={src}
+      alt=""
+      className={`object-contain ${className || ''}`}
+      aria-hidden="true"
+    />
+  );
+  BrandIcon.displayName = 'BrandIcon';
+  return BrandIcon as typeof Mail;
+};
+
+const LinkedInBrand = makeBrandIcon(linkedinLogo);
+const WhatsAppBrand = makeBrandIcon(whatsappLogo);
+
 const ACTION_ICONS: Record<string, typeof Mail> = {
   email: Mail,
-  message: MessageSquare,
-  smart_message: MessageSquare,
-  inmail: Linkedin,
-  connection_request: Linkedin,
-  whatsapp_message: MessageSquare,
+  message: LinkedInBrand,
+  smart_message: LinkedInBrand,
+  inmail: LinkedInBrand,
+  connection_request: LinkedInBrand,
+  whatsapp_message: WhatsAppBrand,
   profile_visit: Eye,
   wait_connection: Clock,
   wait_reply: Clock,
@@ -77,15 +98,16 @@ const ACTION_LABELS: Record<string, string> = {
   condition_branch: 'Condition',
 };
 
-// Channel colors via design tokens (plus de couleurs hardcoded sky-400/indigo-400 etc.)
-// Le header utilise une icon-tile colorée + le border standard pour tous.
+// Channel colors via design tokens. Backgrounds harmonisés avec les
+// vrais logos de marque (LinkedIn = bleu/info, WhatsApp = vert/success,
+// Email = neutre).
 const CHANNEL_COLORS: Record<string, { header: string; border: string }> = {
-  email: { header: 'bg-info/15 text-info', border: 'border-border' },
-  message: { header: 'bg-info/15 text-info', border: 'border-border' },
-  smart_message: { header: 'bg-info/15 text-info', border: 'border-border' },
-  inmail: { header: 'bg-brand-purple/15 text-brand-purple', border: 'border-border' },
-  connection_request: { header: 'bg-brand-purple/15 text-brand-purple', border: 'border-border' },
-  whatsapp_message: { header: 'bg-success/15 text-success', border: 'border-border' },
+  email: { header: 'bg-foreground/[0.06] text-foreground/70', border: 'border-border' },
+  message: { header: 'bg-info/10 text-info', border: 'border-border' },
+  smart_message: { header: 'bg-info/10 text-info', border: 'border-border' },
+  inmail: { header: 'bg-info/10 text-info', border: 'border-border' },
+  connection_request: { header: 'bg-info/10 text-info', border: 'border-border' },
+  whatsapp_message: { header: 'bg-success/10 text-success', border: 'border-border' },
 };
 
 function mapSteps(rawSteps: any[]): SequenceStepPreview[] {

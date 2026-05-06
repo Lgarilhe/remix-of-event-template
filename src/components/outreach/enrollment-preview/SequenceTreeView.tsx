@@ -16,17 +16,39 @@ import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
 import {
-  Mail, MessageSquare, Linkedin, Eye, Clock, GitBranch,
+  Mail, MessageSquare, Eye, Clock, GitBranch,
   ArrowDown, CheckCheck, XCircle, Send, type LucideIcon,
 } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.svg';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
+
+/**
+ * Wrapper pour utiliser un asset SVG comme une icône Lucide-like
+ * (accepte className pour styling).
+ */
+const makeBrandIcon = (src: string): LucideIcon => {
+  const BrandIcon: any = ({ className }: { className?: string }) => (
+    <img
+      src={src}
+      alt=""
+      className={`object-contain ${className || ''}`}
+      aria-hidden="true"
+    />
+  );
+  BrandIcon.displayName = 'BrandIcon';
+  return BrandIcon as LucideIcon;
+};
+
+const LinkedInBrand = makeBrandIcon(linkedinLogo);
+const WhatsAppBrand = makeBrandIcon(whatsappLogo);
 
 const ACTION_ICONS: Record<string, LucideIcon> = {
   email: Mail,
-  message: MessageSquare,
-  smart_message: MessageSquare,
-  inmail: Linkedin,
-  connection_request: Linkedin,
-  whatsapp_message: MessageSquare,
+  message: LinkedInBrand,
+  smart_message: LinkedInBrand,
+  inmail: LinkedInBrand,
+  connection_request: LinkedInBrand,
+  whatsapp_message: WhatsAppBrand,
   profile_visit: Eye,
   wait_connection: Clock,
   wait_reply: Clock,
