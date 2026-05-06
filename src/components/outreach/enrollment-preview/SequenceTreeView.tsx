@@ -17,7 +17,7 @@ import { motion } from 'framer-motion';
 import type { SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
 import {
   Mail, MessageSquare, Eye, Clock, GitBranch,
-  ArrowDown, CheckCheck, XCircle, Send, type LucideIcon,
+  ArrowDown, CheckCheck, XCircle, type LucideIcon,
 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
@@ -324,11 +324,22 @@ function DecisionFork({
             )}
           </div>
 
-          {/* Colonne droite : branche alternative */}
+          {/* Colonne droite : branche alternative.
+              Si fallbackInmailStep existe → on rend le step InMail
+              comme une vraie carte (avec preview AI), précédée d'une
+              petite annotation expliquant que c'est la branche timeout.
+              Sinon → placeholder info contextuelle. */}
           <div className="min-w-0 space-y-2">
             <BranchHeader label={branches.alt.label} variant="secondary" />
             {fallbackInmailStep ? (
-              <FallbackInmailCard step={fallbackInmailStep} />
+              <>
+                <FallbackHint />
+                <ActionCard
+                  step={fallbackInmailStep}
+                  index={index + 99}
+                  renderStep={renderStep}
+                />
+              </>
             ) : (
               <BranchPlaceholder
                 text={branches.alt.placeholder}
@@ -391,26 +402,14 @@ function BranchPlaceholder({
   );
 }
 
-// ─── FallbackInmailCard — card spéciale pour l'InMail de fallback ────
+// ─── FallbackHint — petit bandeau au-dessus de l'InMail fallback ────
+// Indique que ce step n'est utilisé QUE dans le cas timeout.
 
-function FallbackInmailCard({ step }: { step: SequenceStepPreview }) {
+function FallbackHint() {
   return (
-    <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
-      <div className="flex items-center gap-2 mb-1.5">
-        <div className="h-7 w-7 rounded-lg bg-warning/15 grid place-items-center shrink-0">
-          <Send className="w-3.5 h-3.5 text-warning" strokeWidth={2.25} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] uppercase tracking-wider font-bold text-warning">
-            Fallback InMail
-          </p>
-          <p className="text-[12px] font-semibold text-foreground tracking-tight">
-            Étape {step.stepOrder + 1}
-          </p>
-        </div>
-      </div>
-      <p className="text-[11px] text-muted-foreground leading-snug">
-        Si le candidat n'accepte pas la connexion dans le délai, on bascule sur un InMail Recruiter.
+    <div className="rounded-lg bg-warning/5 border border-warning/30 px-2.5 py-1.5">
+      <p className="text-[10.5px] text-warning leading-snug">
+        ⓘ Utilisé uniquement si le candidat n'accepte pas la connexion dans le délai
       </p>
     </div>
   );
