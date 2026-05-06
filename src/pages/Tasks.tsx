@@ -46,6 +46,7 @@ import {
 import { useCountUp } from '@/hooks/useCountUp';
 import { useCandidateAvatarsByCandidateId } from '@/hooks/useCandidateAvatars';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
+import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 
 const BUCKET_META: Record<ReminderBucket, {
   label: string;
@@ -431,19 +432,24 @@ const TaskRow = React.memo(function TaskRow({
         aria-label={isCompleted ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
       />
 
-      {/* Avatar candidat (si présent) */}
+      {/* Avatar candidat avec logo société overlay (style Calendar EventCard) */}
       {reminder.candidate_name && (
         <button
           type="button"
           onClick={() => onNavigate(reminder.candidate_id)}
-          className="shrink-0 mt-0.5 hover:scale-105 transition-transform"
+          className="shrink-0 mt-0.5 hover:scale-105 transition-transform relative"
           aria-label={`Voir ${reminder.candidate_name}`}
         >
           <CandidateAvatar
             name={reminder.candidate_name}
             avatarUrl={avatarUrl}
-            size={32}
+            size={36}
           />
+          {reminder.job_title && (
+            <span className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card rounded-md inline-flex">
+              <MissionCompanyLogo company={reminder.job_title} size={16} />
+            </span>
+          )}
         </button>
       )}
 

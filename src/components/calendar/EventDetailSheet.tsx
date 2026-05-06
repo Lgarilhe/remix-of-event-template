@@ -41,6 +41,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
+import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { cn } from '@/lib/utils';
 import type { CalendarEvent } from '@/hooks/useCalendarEvents';
 
@@ -275,7 +276,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
             </Section>
           )}
 
-          {/* Mission */}
+          {/* Mission — avec logo société client (Clearbit) */}
           {(meta.projectName || meta.jobTitle || meta.clientName) && (
             <Section title="Mission" icon={<Briefcase className="w-3.5 h-3.5" />}>
               <button
@@ -290,30 +291,31 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
                 className="w-full text-left rounded-xl border border-border bg-card p-3 hover:bg-muted/30 transition-colors group disabled:cursor-default"
               >
                 <div className="flex items-start gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
-                    <Building2 className="w-4 h-4" />
-                  </div>
+                  <MissionCompanyLogo
+                    company={meta.clientName || meta.projectName || '?'}
+                    size={40}
+                  />
                   <div className="min-w-0 flex-1">
                     {meta.projectName && (
-                      <div className="font-display font-semibold text-foreground text-sm tracking-tight">
+                      <div className="font-display font-semibold text-foreground text-sm tracking-tight truncate">
                         {meta.projectName}
                       </div>
                     )}
                     {meta.jobTitle && !meta.projectName && (
-                      <div className="font-display font-semibold text-foreground text-sm tracking-tight">
+                      <div className="font-display font-semibold text-foreground text-sm tracking-tight truncate">
                         {meta.jobTitle}
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                       {meta.clientName && (
-                        <span className="inline-flex items-center gap-1">
+                        <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
                           <Building2 className="w-3 h-3" />
                           {meta.clientName}
                         </span>
                       )}
                       {meta.jobTitle && meta.projectName && (
                         <>
-                          <span>·</span>
+                          <span className="text-muted-foreground/40">·</span>
                           <span>{meta.jobTitle}</span>
                         </>
                       )}

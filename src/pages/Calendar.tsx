@@ -51,6 +51,7 @@ import {
 import { cn } from '@/lib/utils';
 import { PageLayout } from '@/components/layout';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
+import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
 
 const TYPE_STYLES: Record<
@@ -457,31 +458,55 @@ const EventCard = React.memo(function EventCard({
         </div>
       </div>
 
-      {/* Candidate row (qualifs) — avatar + name */}
+      {/* Candidate row (qualifs) — avatar + name + société sur la même ligne */}
       {isQualif && meta.candidateName && (
         <div className="flex items-center gap-2 mb-1.5">
-          <CandidateAvatar
-            name={meta.candidateName}
-            avatarUrl={meta.candidateAvatarUrl ?? null}
-            size={24}
-          />
-          <span className="text-xs font-display font-semibold text-foreground truncate flex-1 tracking-tight">
-            {meta.candidateName}
-          </span>
+          {/* Avatar candidat avec logo société overlay en bas-droite (style "qui x qui") */}
+          <div className="relative shrink-0">
+            <CandidateAvatar
+              name={meta.candidateName}
+              avatarUrl={meta.candidateAvatarUrl ?? null}
+              size={32}
+            />
+            {meta.clientName && (
+              <div className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card rounded-md">
+                <MissionCompanyLogo
+                  company={meta.clientName}
+                  size={16}
+                />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-display font-semibold text-foreground truncate tracking-tight leading-tight">
+              {meta.candidateName}
+            </div>
+            {(meta.clientName || meta.jobTitle) && (
+              <div className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
+                {meta.clientName && (
+                  <span className="font-medium text-foreground/80">{meta.clientName}</span>
+                )}
+                {meta.clientName && meta.jobTitle && <span className="text-muted-foreground/40"> · </span>}
+                {meta.jobTitle && <span>{meta.jobTitle}</span>}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Mission / job line */}
-      {(meta.clientName || meta.jobTitle || meta.projectName) && (
-        <div className="flex items-center gap-1 text-[10.5px] text-muted-foreground truncate mb-1">
+      {/* Mission / job line — uniquement si ni qualif (pas déjà affiché ci-dessus) */}
+      {!isQualif && (meta.clientName || meta.jobTitle) && (
+        <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground truncate mb-1">
           {meta.clientName && (
-            <span className="inline-flex items-center gap-0.5">
-              <Building2 className="w-2.5 h-2.5" />
-              <span className="truncate font-medium text-foreground/80">{meta.clientName}</span>
-            </span>
+            <MissionCompanyLogo company={meta.clientName} size={16} />
           )}
-          {meta.clientName && meta.jobTitle && <span className="text-muted-foreground/40">·</span>}
-          {meta.jobTitle && <span className="truncate">{meta.jobTitle}</span>}
+          <span className="truncate">
+            {meta.clientName && (
+              <span className="font-medium text-foreground/80">{meta.clientName}</span>
+            )}
+            {meta.clientName && meta.jobTitle && <span className="text-muted-foreground/40"> · </span>}
+            {meta.jobTitle && <span>{meta.jobTitle}</span>}
+          </span>
         </div>
       )}
 
