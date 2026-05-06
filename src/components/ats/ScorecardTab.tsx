@@ -8,7 +8,7 @@ import { ModelPicker } from '@/components/ai/ModelPicker';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { useOrganization } from '@/hooks/useOrganization';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic } from 'lucide-react';
+import { Loader2, Sparkles, Star, RotateCcw, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Pencil, Check, Plus, Trash2, AlertTriangle, MessageSquare, Copy, Mic, Maximize2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -683,6 +683,47 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-destructive/40 text-destructive bg-destructive/5 hover:bg-destructive/10 transition-colors">
               <Mic className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Coaching Live</span>
+            </button>
+            <button
+              onClick={async () => {
+                // Auto-save avant de naviguer en plein écran (sans coaching)
+                if (activeEval) {
+                  try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      const now = new Date().toISOString();
+                      const payload: any = {
+                        candidate_id: candidate.candidateId,
+                        job_id: candidate.jobId,
+                        job_title: candidate.jobTitle,
+                        criteria: activeEval.criteria as any,
+                        ratings: activeEval.ratings as any,
+                        comments: activeEval.comments as any,
+                        overall_score: activeEval.overallScore,
+                        created_by: user.id,
+                        updated_at: now,
+                        recommendation: activeEval.recommendation || null,
+                        summary: activeEval.summary || null,
+                        follow_up_notes: activeEval.followUpNotes || null,
+                        interview_stage: activeEval.interviewStage || null,
+                        organization_id: organizationId || null,
+                      };
+                      if (activeEval.id) {
+                        await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
+                      } else {
+                        const { data } = await supabase.from('candidate_evaluations').insert(payload).select('id').single();
+                        if (data) updateActiveEval(ev => ({ ...ev, id: data.id }));
+                      }
+                    }
+                  } catch (e) { console.warn('Auto-save before fullscreen failed:', e); }
+                }
+                navigate(`/ats/scorecard/${candidate.candidateId}`);
+              }}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent text-foreground transition-colors"
+              title="Ouvrir la scorecard en plein écran avec sidebar candidat + poste"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Plein écran</span>
             </button>
             <button onClick={handleGenerate} disabled={generating}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent text-foreground disabled:opacity-50 transition-colors">

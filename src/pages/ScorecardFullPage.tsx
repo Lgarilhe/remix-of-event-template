@@ -1,15 +1,34 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+/**
+ * ScorecardFullPage — vue plein écran de la scorecard d'évaluation.
+ *
+ * Refonte 2026-05-06 :
+ * - Layout 2-col propre (vs ancien header sticky + drawers en bas)
+ * - Sidebar gauche persistante avec : candidat (avatar/meta/skills) +
+ *   poste (titre/client/seniority) + onglets compacts
+ * - Main area : ScorecardTab plein cadre, plus de place pour évaluer
+ * - Mobile : tabs en haut pour switcher candidat/poste/scorecard
+ * - Style V2 cohérent (rounded-xl, font-display, icon-tile)
+ */
+
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { ScorecardTab } from '@/components/ats/ScorecardTab';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
-import { ArrowLeft, User, ChevronUp, ChevronDown, ExternalLink, MapPin, Building2, Briefcase, GraduationCap, Wrench, X } from 'lucide-react';
+import {
+  ArrowLeft, ExternalLink, MapPin, Building2, Briefcase,
+  GraduationCap, Mic, Loader2, Mail, Phone, User, Target,
+  Sparkles, ChevronDown,
+} from 'lucide-react';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
-import iconProfile3d from '@/assets/icon-profile-3d.webp';
-import iconJob3d from '@/assets/icon-job-3d.webp';
+import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+type SidebarTab = 'candidate' | 'job';
 
 export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
@@ -18,11 +37,12 @@ export default function ScorecardFullPage() {
   const navigate = useNavigate();
   const [candidate, setCandidate] = useState<ATSCandidate | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileSection, setProfileSection] = useState<'exp' | 'edu' | 'skills'>('exp');
-  const [expandedExp, setExpandedExp] = useState<Set<number>>(new Set());
-  const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
   const [jobOpen, setJobOpen] = useState(false);
+  const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('candidate');
+  const [mobilePane, setMobilePane] = useState<'sidebar' | 'scorecard'>('scorecard');
+
+  const { data: notionJobs } = useNotionJobs();
 
   useEffect(() => {
     if (!candidateId) return;
@@ -135,10 +155,16 @@ export default function ScorecardFullPage() {
     };
   }, [candidate]);
 
+  // Notion job details si disponible
+  const jobDetails = useMemo(() => {
+    if (!candidate?.jobId) return null;
+    return notionJobs?.find(j => j.id === candidate.jobId) || null;
+  }, [candidate?.jobId, notionJobs]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border border-border border-t-foreground rounded-full animate-spin" />
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -146,281 +172,464 @@ export default function ScorecardFullPage() {
   if (!candidate) return null;
 
   const profileData = candidate.linkedinProfileData as any;
+  const avatarUrl = profileData?.profile_picture_url;
+  const initials = candidate.name.split(' ').slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
 
   return (
-    <div className="min-h-screen bg-background text-foreground pb-16">
-      {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-background border-b-2 border-border px-4 py-3">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={() => navigate(-1)}
-              className="h-8 w-8 flex items-center justify-center border border-border text-foreground hover:bg-foreground hover:text-background transition-colors shrink-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div className="min-w-0">
-              <h1 className="text-sm font-bold uppercase tracking-wider truncate">
-                Scorecard — {candidate.name}
-              </h1>
-              <p className="text-xs text-muted-foreground truncate">
-                {candidate.jobTitle || 'Poste non spécifié'}
-                {candidate.headline && ` · ${candidate.headline}`}
-              </p>
-            </div>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* ═══ Header sticky ═══ */}
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="flex items-center gap-3 px-4 sm:px-6 h-14">
+          <button
+            onClick={() => navigate(-1)}
+            className="h-9 w-9 grid place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0"
+            aria-label="Retour"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 hidden sm:block">
+              Scorecard d'entretien · plein écran
+            </p>
+            <h1 className="font-display text-[15px] sm:text-base font-bold truncate leading-tight">
+              {candidate.name}
+              {candidate.jobTitle && <span className="text-muted-foreground font-medium"> · {candidate.jobTitle}</span>}
+            </h1>
           </div>
+
           {autoCoaching && (
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full bg-destructive/10 border border-destructive/30">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
               </span>
-              <span className="text-xs text-red-500 uppercase tracking-wider font-bold hidden sm:inline">Coaching Live</span>
+              <span className="text-[10.5px] text-destructive uppercase tracking-wider font-bold inline-flex items-center gap-1">
+                <Mic className="w-3 h-3" />
+                Coaching Live
+              </span>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Scorecard content */}
-      <div className="max-w-3xl mx-auto px-4 py-6">
-        <ScorecardTab
-          candidate={candidate}
-          enrichedProfile={enrichedProfile}
-          onOpenProfile={() => setProfileOpen(true)}
-          autoStartCoaching={autoCoaching}
-        />
-      </div>
+        {/* Mobile pane toggle */}
+        <div className="sm:hidden flex items-center border-t border-border bg-muted/10">
+          <button
+            onClick={() => setMobilePane('sidebar')}
+            className={cn(
+              'flex-1 py-2 text-[11px] font-medium text-center transition-colors',
+              mobilePane === 'sidebar' ? 'text-foreground border-b-2 border-foreground' : 'text-muted-foreground',
+            )}
+          >
+            Profil & Poste
+          </button>
+          <button
+            onClick={() => setMobilePane('scorecard')}
+            className={cn(
+              'flex-1 py-2 text-[11px] font-medium text-center transition-colors',
+              mobilePane === 'scorecard' ? 'text-foreground border-b-2 border-foreground' : 'text-muted-foreground',
+            )}
+          >
+            Scorecard
+          </button>
+        </div>
+      </header>
 
-      {/* Fixed bottom toolbar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 bg-background/70 backdrop-blur-xl border-t border-border px-4 py-2 flex items-center justify-between">
-        <button
-          onClick={() => { setJobOpen(!jobOpen); if (!jobOpen) setProfileOpen(false); }}
+      {/* ═══ Body 2-col ═══ */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar gauche : candidat + poste */}
+        <aside
           className={cn(
-            "h-9 flex items-center gap-2 px-4 border border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
-            jobOpen
-              ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
-              : "bg-background text-foreground hover:bg-foreground hover:text-background"
+            'w-full sm:w-[320px] lg:w-[360px] border-r border-border bg-muted/10 flex-col shrink-0',
+            'sm:flex',
+            mobilePane === 'sidebar' ? 'flex flex-1 sm:flex-none' : 'hidden sm:flex',
           )}
         >
-          <img src={iconJob3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
-          Poste
-          {jobOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-        </button>
-        <button
-          onClick={() => { setProfileOpen(!profileOpen); if (!profileOpen) setJobOpen(false); }}
-          className={cn(
-            "h-9 flex items-center gap-2 px-4 border border-border shadow-sm transition-all text-xs font-bold uppercase tracking-wider",
-            profileOpen
-              ? "bg-foreground text-background shadow-none translate-x-[1px] translate-y-[1px]"
-              : "bg-background text-foreground hover:bg-foreground hover:text-background"
-          )}
-        >
-          <img src={iconProfile3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
-          Profil
-          {profileOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-        </button>
-      </div>
+          {/* Tabs candidat/poste */}
+          <div className="border-b border-border p-2 flex items-center gap-1">
+            <button
+              onClick={() => setSidebarTab('candidate')}
+              className={cn(
+                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-colors',
+                sidebarTab === 'candidate'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+              )}
+            >
+              <User className="w-3.5 h-3.5" />
+              Candidat
+            </button>
+            <button
+              onClick={() => setSidebarTab('job')}
+              className={cn(
+                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-colors',
+                sidebarTab === 'job'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+              )}
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              Poste
+            </button>
+          </div>
 
-      {/* Profile preview drawer (bottom sheet) */}
-      {profileOpen && (
-        <div className="fixed inset-x-0 bottom-[52px] z-20 bg-background border-t-2 border-border shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-200">
-          {/* Sticky profile header + nav */}
-          <div className="shrink-0 border-b border-border">
-            <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
-              {/* Identity row */}
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{candidate.name}</h3>
-                  {enrichedProfile?.headline && (
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{enrichedProfile.headline}</p>
-                  )}
-                  <div className="flex items-center gap-3 mt-1 flex-wrap">
-                    {enrichedProfile?.location && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <MapPin className="w-3 h-3" /> {enrichedProfile.location}
-                      </span>
-                    )}
-                    {enrichedProfile?.currentCompany && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Building2 className="w-3 h-3" /> {enrichedProfile.currentCompany}
-                      </span>
-                    )}
-                    {enrichedProfile?.yearsOfExperience && (
-                      <span className="text-xs text-muted-foreground">{enrichedProfile.yearsOfExperience} ans d'XP</span>
+          <ScrollArea className="flex-1">
+            {sidebarTab === 'candidate' ? (
+              <div className="p-4 space-y-4">
+                {/* Identity */}
+                <div className="flex items-start gap-3">
+                  <Avatar className="w-12 h-12 ring-2 ring-border shadow-sm">
+                    <AvatarImage src={avatarUrl} alt={candidate.name} />
+                    <AvatarFallback className="bg-gradient-to-br from-foreground/20 to-foreground/10 text-foreground font-bold">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <h2 className="font-display font-bold text-[15px] tracking-tight leading-tight truncate">
+                      {candidate.name}
+                    </h2>
+                    {enrichedProfile?.headline && (
+                      <p className="text-[11.5px] text-muted-foreground line-clamp-2 leading-snug mt-0.5">
+                        {enrichedProfile.headline}
+                      </p>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {candidate.linkedin && (
-                    <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer"
-                      className="h-7 px-2.5 flex items-center gap-1 border border-border text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
-                      <ExternalLink className="w-3 h-3" /> LinkedIn
-                    </a>
-                  )}
-                  <button onClick={() => setProfileOpen(false)}
-                    className="h-7 w-7 flex items-center justify-center border border-border text-muted-foreground hover:text-foreground transition-colors">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
 
-              {/* Section nav tabs */}
-              <div className="flex gap-0">
-                {([
-                  { key: 'exp' as const, label: 'Experience', icon: Briefcase, count: enrichedProfile?.experiences?.length || 0 },
-                  { key: 'edu' as const, label: 'Education', icon: GraduationCap, count: enrichedProfile?.education?.length || 0 },
-                  { key: 'skills' as const, label: 'Skills', icon: Wrench, count: enrichedProfile?.skills?.length || 0 },
-                ]).map(tab => (
-                  <button key={tab.key} onClick={() => setProfileSection(tab.key)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border transition-colors -mr-px",
-                      profileSection === tab.key
-                        ? "bg-foreground text-background border-border"
-                        : "border-border text-muted-foreground hover:border-border"
+                {/* Score IA */}
+                {candidate.score != null && candidate.score > 0 && (
+                  <div className={cn(
+                    'rounded-xl border px-3 py-2.5 flex items-center gap-3',
+                    candidate.score >= 70 ? 'border-success/30 bg-success/5' :
+                    candidate.score >= 50 ? 'border-warning/30 bg-warning/5' :
+                    'border-destructive/30 bg-destructive/5',
+                  )}>
+                    <div className={cn(
+                      'h-10 w-10 rounded-lg grid place-items-center font-display font-bold tabular-nums shrink-0',
+                      candidate.score >= 70 ? 'bg-success/15 text-success' :
+                      candidate.score >= 50 ? 'bg-warning/15 text-warning' :
+                      'bg-destructive/15 text-destructive',
                     )}>
-                    <tab.icon className="w-3 h-3" />
-                    {tab.label}
-                    {tab.count > 0 && <span className="text-[8px] opacity-60">{tab.count}</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+                      {candidate.score}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                        Score IA
+                      </p>
+                      <p className="text-[11.5px] font-medium text-foreground truncate">
+                        {candidate.recommendation === 'shortlist' ? 'Recommandé' :
+                         candidate.recommendation === 'skip' ? 'Non recommandé' :
+                         'À évaluer'}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-4 py-4">
+                {/* Meta row */}
+                <div className="flex flex-wrap gap-1.5">
+                  {enrichedProfile?.currentCompany && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                      <Building2 className="w-3 h-3" />
+                      {enrichedProfile.currentCompany}
+                    </span>
+                  )}
+                  {enrichedProfile?.location && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                      <MapPin className="w-3 h-3" />
+                      {enrichedProfile.location.split(',')[0]}
+                    </span>
+                  )}
+                  {enrichedProfile?.yearsOfExperience && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
+                      <Sparkles className="w-3 h-3" />
+                      {enrichedProfile.yearsOfExperience} ans
+                    </span>
+                  )}
+                </div>
 
-              {/* Experience section */}
-              {profileSection === 'exp' && (
-                <div className="space-y-1">
-                  {(!enrichedProfile?.experiences || enrichedProfile.experiences.length === 0) ? (
-                    <p className="text-xs text-muted-foreground py-4 text-center">Aucune expérience disponible</p>
-                  ) : (
-                    enrichedProfile.experiences.map((exp, i) => {
-                      const isExpanded = expandedExp.has(i);
-                      const companySlug = (exp.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                      const logoKey = `exp-${companySlug}`;
-                      const dataLogo = (exp as any).logo;
-                      const clearbitUrl = companySlug ? `https://logo.clearbit.com/${companySlug}.com` : null;
-                      const hasLogoError = logoErrors.has(logoKey);
-                      const logoSrc = dataLogo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
+                {/* Quick actions */}
+                {candidate.linkedin && (
+                  <a
+                    href={candidate.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Ouvrir LinkedIn
+                  </a>
+                )}
 
-                      return (
-                        <div key={i} className={cn(
-                          "border-l-2 pl-3 py-2 cursor-pointer hover:bg-foreground/[0.02] transition-colors",
-                          exp.isCurrent ? "border-emerald-400" : "border-border"
-                        )}
-                          onClick={() => setExpandedExp(prev => {
-                            const next = new Set(prev);
-                            next.has(i) ? next.delete(i) : next.add(i);
-                            return next;
-                          })}
-                        >
-                          <div className="flex items-start gap-2.5">
-                            <div className="w-8 h-8 shrink-0 border border-border bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
-                              {logoSrc ? (
-                                <img src={logoSrc} alt={exp.company || ''} className="w-6 h-6 object-contain"
-                                  onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
-                              ) : (
-                                <Building2 className="w-3.5 h-3.5 text-muted-foreground/40" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-bold text-foreground leading-tight">{exp.title}</p>
-                              <p className="text-xs text-muted-foreground">{exp.company}</p>
-                              {exp.startDate && (
-                                <p className="text-xs text-muted-foreground/60 mt-0.5">
-                                  {typeof exp.startDate === 'string' ? exp.startDate : ''}
-                                  {exp.endDate ? ` → ${typeof exp.endDate === 'string' ? exp.endDate : ''}` : ' → Présent'}
-                                </p>
-                              )}
-                            </div>
-                            {exp.description && (
-                              <ChevronDown className={cn("w-3 h-3 text-muted-foreground/40 shrink-0 mt-1 transition-transform", isExpanded && "rotate-180")} />
+                {/* Expérience compact */}
+                {(enrichedProfile?.experiences?.length || 0) > 0 && (
+                  <SidebarSection
+                    icon={Briefcase}
+                    title="Expérience"
+                    eyebrow={`${enrichedProfile!.experiences.length} positions`}
+                  >
+                    <div className="space-y-2.5">
+                      {enrichedProfile!.experiences.slice(0, 4).map((exp, i) => (
+                        <CompactExperienceItem
+                          key={i}
+                          exp={exp}
+                          logoErrors={logoErrors}
+                          setLogoErrors={setLogoErrors}
+                        />
+                      ))}
+                      {enrichedProfile!.experiences.length > 4 && (
+                        <p className="text-[10.5px] text-muted-foreground/70 italic pl-9">
+                          +{enrichedProfile!.experiences.length - 4} autres
+                        </p>
+                      )}
+                    </div>
+                  </SidebarSection>
+                )}
+
+                {/* Formation */}
+                {(enrichedProfile?.education?.length || 0) > 0 && (
+                  <SidebarSection
+                    icon={GraduationCap}
+                    title="Formation"
+                    eyebrow={`${enrichedProfile!.education.length} école${enrichedProfile!.education.length > 1 ? 's' : ''}`}
+                  >
+                    <div className="space-y-2">
+                      {enrichedProfile!.education.slice(0, 3).map((edu, i) => (
+                        <div key={i} className="flex items-start gap-2.5">
+                          <div className="h-7 w-7 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
+                            {edu.logo ? (
+                              <img src={edu.logo} alt="" className="w-5 h-5 object-contain rounded" />
+                            ) : (
+                              <GraduationCap className="w-3.5 h-3.5 text-foreground/60" />
                             )}
                           </div>
-                          {isExpanded && exp.description && (
-                            <p className="text-xs text-muted-foreground leading-relaxed mt-2 ml-[42px] whitespace-pre-line">
-                              {exp.description}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* Education section */}
-              {profileSection === 'edu' && (
-                <div className="space-y-1">
-                  {(!enrichedProfile?.education || enrichedProfile.education.length === 0) ? (
-                    <p className="text-xs text-muted-foreground py-4 text-center">Aucune formation disponible</p>
-                  ) : (
-                    enrichedProfile.education.map((edu, i) => {
-                      const schoolSlug = (edu.school || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                      const logoKey = `edu-${schoolSlug}`;
-                      const dataLogo = (edu as any).logo;
-                      const clearbitUrl = schoolSlug ? `https://logo.clearbit.com/${schoolSlug}.com` : null;
-                      const hasLogoError = logoErrors.has(logoKey);
-                      const logoSrc = dataLogo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
-
-                      return (
-                        <div key={i} className="border-l-2 border-border pl-3 py-2">
-                          <div className="flex items-start gap-2.5">
-                            <div className="w-8 h-8 shrink-0 border border-border bg-foreground/[0.03] flex items-center justify-center overflow-hidden">
-                              {logoSrc ? (
-                                <img src={logoSrc} alt={edu.school || ''} className="w-6 h-6 object-contain"
-                                  onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))} />
-                              ) : (
-                                <GraduationCap className="w-3.5 h-3.5 text-muted-foreground/40" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-foreground">{edu.school}</p>
-                              {edu.degree && <p className="text-xs text-muted-foreground">{edu.degree}</p>}
-                              {edu.field && <p className="text-xs text-muted-foreground/60">{edu.field}</p>}
-                            </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11.5px] font-semibold truncate">{edu.school}</p>
+                            {(edu.degree || edu.field) && (
+                              <p className="text-[10.5px] text-muted-foreground truncate">
+                                {[edu.degree, edu.field].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
                           </div>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* Skills section */}
-              {profileSection === 'skills' && (
-                <div>
-                  {(!enrichedProfile?.skills || enrichedProfile.skills.length === 0) ? (
-                    <p className="text-xs text-muted-foreground py-4 text-center">Aucune compétence disponible</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {enrichedProfile.skills.map((skill, i) => {
-                        const name = typeof skill === 'string' ? skill : (skill as any).name || '';
-                        return (
-                          <span key={i} className="px-2.5 py-1 border border-border text-xs font-medium text-muted-foreground hover:border-border transition-colors">
-                            {name}
-                          </span>
-                        );
-                      })}
+                      ))}
                     </div>
+                  </SidebarSection>
+                )}
+
+                {/* Skills */}
+                {(enrichedProfile?.skills?.length || 0) > 0 && (
+                  <SidebarSection
+                    icon={Sparkles}
+                    title="Compétences"
+                    eyebrow={`${enrichedProfile!.skills.length} skills`}
+                  >
+                    <div className="flex flex-wrap gap-1">
+                      {enrichedProfile!.skills.slice(0, 14).map((skill, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                      {enrichedProfile!.skills.length > 14 && (
+                        <span className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
+                          +{enrichedProfile!.skills.length - 14}
+                        </span>
+                      )}
+                    </div>
+                  </SidebarSection>
+                )}
+              </div>
+            ) : (
+              // ═══ Job sidebar ═══
+              <div className="p-4 space-y-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                    Mission
+                  </p>
+                  <h2 className="font-display font-bold text-[15px] tracking-tight leading-tight">
+                    {candidate.jobTitle || jobDetails?.title || 'Poste non spécifié'}
+                  </h2>
+                  {jobDetails?.client?.name && (
+                    <p className="text-[11.5px] text-muted-foreground mt-0.5">
+                      {jobDetails.client.name}
+                      {jobDetails.location && ` · ${jobDetails.location}`}
+                    </p>
                   )}
                 </div>
-              )}
 
+                {/* Quick stats du poste */}
+                {jobDetails && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {jobDetails.seniority && (
+                      <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30 font-medium">
+                        {jobDetails.seniority}
+                      </span>
+                    )}
+                    {jobDetails.contractType && (
+                      <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                        {jobDetails.contractType}
+                      </span>
+                    )}
+                    {jobDetails.remote && (
+                      <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
+                        Remote
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Bouton "Voir détails complets" */}
+                {candidate.jobId && (
+                  <button
+                    onClick={() => setJobOpen(true)}
+                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Voir tous les détails
+                  </button>
+                )}
+
+                {/* Skills must-have */}
+                {(jobDetails as any)?.mustHave && Array.isArray((jobDetails as any).mustHave) && (jobDetails as any).mustHave.length > 0 && (
+                  <SidebarSection
+                    icon={Target}
+                    title="Compétences obligatoires"
+                    eyebrow={`${(jobDetails as any).mustHave.length} skills`}
+                  >
+                    <div className="flex flex-wrap gap-1">
+                      {(jobDetails as any).mustHave.map((s: string, i: number) => (
+                        <span key={i} className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </SidebarSection>
+                )}
+
+                {/* Description résumée */}
+                {jobDetails?.description && (
+                  <SidebarSection icon={Briefcase} title="Description du poste">
+                    <p className="text-[11.5px] text-foreground/85 leading-relaxed line-clamp-8 whitespace-pre-line">
+                      {jobDetails.description}
+                    </p>
+                  </SidebarSection>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </aside>
+
+        {/* Main area : ScorecardTab */}
+        <main
+          className={cn(
+            'flex-1 min-w-0 overflow-hidden',
+            'sm:block',
+            mobilePane === 'scorecard' ? 'block' : 'hidden sm:block',
+          )}
+        >
+          <ScrollArea className="h-full">
+            <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
+              <ScorecardTab
+                candidate={candidate}
+                enrichedProfile={enrichedProfile}
+                onOpenProfile={() => setMobilePane('sidebar')}
+                autoStartCoaching={autoCoaching}
+              />
             </div>
-          </div>
-        </div>
-      )}
+          </ScrollArea>
+        </main>
+      </div>
 
-      {/* Job detail sheet */}
+      {/* Job detail sheet (modal complet si user clique "Voir détails") */}
       <JobDetailSheet
         jobId={candidate.jobId}
         open={jobOpen}
         onOpenChange={setJobOpen}
       />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Sub-components
+// ═══════════════════════════════════════════════════════════════════
+
+function SidebarSection({
+  icon: Icon, title, eyebrow, children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  eyebrow?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="h-6 w-6 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
+          <Icon className="w-3 h-3 text-foreground/70" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-display font-bold text-[12px] tracking-tight text-foreground">
+            {title}
+          </h3>
+          {eyebrow && (
+            <p className="text-[9.5px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+              {eyebrow}
+            </p>
+          )}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CompactExperienceItem({
+  exp, logoErrors, setLogoErrors,
+}: {
+  exp: { title: string; company: string; logo?: string; startDate?: string; endDate?: string; isCurrent?: boolean };
+  logoErrors: Set<string>;
+  setLogoErrors: React.Dispatch<React.SetStateAction<Set<string>>>;
+}) {
+  const companySlug = (exp.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const logoKey = `exp-${companySlug}`;
+  const clearbitUrl = companySlug ? `https://logo.clearbit.com/${companySlug}.com` : null;
+  const hasLogoError = logoErrors.has(logoKey);
+  const logoSrc = exp.logo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
+
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className="h-7 w-7 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0 overflow-hidden">
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            alt=""
+            className="w-5 h-5 object-contain rounded-sm"
+            onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))}
+          />
+        ) : (
+          <Building2 className="w-3.5 h-3.5 text-foreground/60" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11.5px] font-semibold leading-tight truncate">
+          {exp.title}
+          {exp.isCurrent && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1 py-0 rounded-full bg-success/10 text-success border border-success/30 ml-1.5 align-middle">
+              <span className="h-1 w-1 rounded-full bg-success animate-pulse" />
+              Actuel
+            </span>
+          )}
+        </p>
+        <p className="text-[10.5px] text-muted-foreground truncate">{exp.company}</p>
+        {(exp.startDate || exp.endDate) && (
+          <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-0.5">
+            {exp.startDate} {exp.endDate ? `→ ${exp.endDate}` : '→ Présent'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
