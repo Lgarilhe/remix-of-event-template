@@ -583,8 +583,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           Retour aux scorecards
         </button>
 
-        {/* Header card — score + meta + actions, rounded-xl bg-card cohérent V2 */}
-        <div className="rounded-xl border border-border bg-card p-3 sm:p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Header card — stack vertical jusqu'à xl (1280px) car contient
+            beaucoup d'éléments (score + 4 cat bars + 4 boutons actions)
+            qui ne tiennent pas en row sur viewport moyen. */}
+        <div className="rounded-xl border border-border bg-card p-3 sm:p-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3 min-w-0">
             {activeEval.overallScore != null ? (
               <div className={cn(
@@ -628,9 +630,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 }).filter(Boolean) as { cat: string; avg: number; conf: { label: string; color: string } }[];
                 if (visible.length === 0) return null;
                 return (
-                  <div className="flex gap-3 mt-2">
+                  <div className="flex gap-2 mt-2 flex-wrap">
                     {visible.map(({ cat, avg, conf }) => (
-                      <div key={cat} className="flex flex-col gap-1 min-w-[60px]">
+                      <div key={cat} className="flex flex-col gap-1 min-w-[44px]">
                         <div className="flex justify-between items-center gap-1">
                           <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: conf.color }}>{conf.label}</span>
                           <span className="text-[9px] tabular-nums text-muted-foreground font-semibold">{avg.toFixed(1)}</span>
@@ -648,7 +650,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+          <div className="flex items-center gap-1.5 self-end xl:self-auto shrink-0 flex-wrap">
             <button onClick={async () => {
                 // Auto-save before navigating to fullscreen coaching
                 if (activeEval) {
@@ -686,7 +688,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               }}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-destructive/40 text-destructive bg-destructive/5 hover:bg-destructive/10 transition-colors">
               <Mic className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Coaching Live</span>
+              <span className="hidden md:inline">Coaching Live</span>
             </button>
             <button
               onClick={async () => {
@@ -727,17 +729,17 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               title="Ouvrir la scorecard en plein écran avec sidebar candidat + poste"
             >
               <Maximize2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Plein écran</span>
+              <span className="hidden md:inline">Plein écran</span>
             </button>
             <button onClick={handleGenerate} disabled={generating}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent text-foreground disabled:opacity-50 transition-colors">
               {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">Régénérer</span>
+              <span className="hidden md:inline">Régénérer</span>
             </button>
             <button onClick={handleSave} disabled={saving}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-bold bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm">
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">Sauvegarder</span>
+              <span className="hidden md:inline">Sauvegarder</span>
             </button>
           </div>
         </div>
