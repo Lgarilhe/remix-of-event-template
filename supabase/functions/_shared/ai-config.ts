@@ -164,7 +164,13 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     label: "Génération scorecard",
     floor: 2,
     typicalTokens: 4_000,
-    routingTier: "default",
+    // 🔧 'fast' (Haiku) au lieu de 'default' (Sonnet) car :
+    // - La scorecard est un format structuré contenu (6-8 critères × rubric × questions)
+    //   que Haiku 4.5 maîtrise parfaitement.
+    // - Sonnet timeoute fréquemment sur ce volume d'output (~30-40s) avec tool_use.
+    // - Haiku répond en 10-15s, ~10x moins cher.
+    // - L'user peut forcer Sonnet/Opus via le ModelPicker si besoin.
+    routingTier: "fast",
     category: "qualification",
   },
   call_report: {

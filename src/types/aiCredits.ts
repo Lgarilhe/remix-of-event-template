@@ -107,7 +107,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   outreach_message: { action: "outreach_message", label: "Message d'approche", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "outreach" },
   analyze_response: { action: "analyze_response", label: "Analyse réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   screen_candidate: { action: "screen_candidate", label: "Screening rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
-  generate_scorecard: { action: "generate_scorecard", label: "Scorecard", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
+  generate_scorecard: { action: "generate_scorecard", label: "Scorecard", floor: 2, typicalTokens: 4_000, routingTier: "fast", category: "qualification" },
   call_report: { action: "call_report", label: "Compte-rendu d'appel", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   live_coaching: { action: "live_coaching", label: "Coaching live (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
   agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 6_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },

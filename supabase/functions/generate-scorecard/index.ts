@@ -114,16 +114,15 @@ ${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
-    // Modèle utilisé pour la génération : on prend celui résolu côté
-    // frontend (extractAIParams.modelId) si l'user a explicitement choisi
-    // Sonnet/Opus dans le ModelPicker. Sinon, défaut Haiku (rapide).
-    // Pourquoi Haiku par défaut : la scorecard est un format structuré
-    // contenu (6-8 critères + rubric + questions), Haiku 4.5 le fait très
-    // bien et beaucoup plus vite. Sonnet/Opus ajoutent ~30s sans gain réel
-    // pour ce use-case.
-    const modelToUse = _aiParams.modelId && _aiParams.modelId.startsWith('claude-')
-      ? _aiParams.modelId
-      : 'claude-haiku-4-5-20251001';
+    // Modèle utilisé pour la génération.
+    // Le routing tier de generate_scorecard est passé à 'fast' dans
+    // ai-config.ts → ROUTING_DEFAULTS.fast = 'claude-haiku-4-5'.
+    // Donc _aiParams.modelId = 'claude-haiku-4-5' par défaut, sauf si
+    // l'user a explicitement choisi Sonnet/Opus dans le ModelPicker.
+    // callClaudeCompat → mapModel → getAnthropicModelId résoud le model
+    // ID complet pour l'API Anthropic.
+    const modelToUse = _aiParams.modelId || 'claude-haiku-4-5';
+    console.log('[generate-scorecard] Using model:', modelToUse);
 
     let aiResult;
     try {
