@@ -37,8 +37,7 @@ import {
 } from './candidate-detail';
 import { CVTab } from './candidate-detail/CVTab';
 import { OverviewTab } from './candidate-detail/OverviewTab';
-import { ProfileExperienceList } from '@/components/outreach/result-card/ProfileExperienceList';
-import { ProfileEducationList } from '@/components/outreach/result-card/ProfileEducationList';
+import { ProfileDetailedTab } from './candidate-detail/ProfileDetailedTab';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -323,76 +322,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       shortLabel: 'Profil',
       icon: UserIcon,
       content: (
-        <div className="space-y-4">
-          {/* Summary LinkedIn — utile en haut du tab Profil */}
-          {(enrichedProfile?.summary || (candidateWithProfileData.linkedinProfileData as any)?.summary) && (
-            <div className="rounded-xl border border-border bg-muted/10 p-3">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">
-                À propos
-              </p>
-              <p className="text-[12.5px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                {enrichedProfile?.summary || (candidateWithProfileData.linkedinProfileData as any)?.summary}
-              </p>
-            </div>
-          )}
-
-          {/* Expérience pro */}
-          {(candidateWithProfileData.linkedinProfileData?.work_experience?.length || 0) > 0 && (
-            <div>
-              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2 flex items-center gap-1.5">
-                <UserIcon className="w-3 h-3" />
-                Expérience
-              </h3>
-              <ProfileExperienceList
-                experiences={candidateWithProfileData.linkedinProfileData.work_experience}
-              />
-            </div>
-          )}
-
-          {/* Formation */}
-          {(candidateWithProfileData.linkedinProfileData?.education?.length || 0) > 0 && (
-            <div>
-              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2">
-                Formation
-              </h3>
-              <ProfileEducationList
-                education={candidateWithProfileData.linkedinProfileData.education}
-              />
-            </div>
-          )}
-
-          {/* Compétences */}
-          {(enrichedProfile?.skills?.length || 0) > 0 && (
-            <div>
-              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2">
-                Compétences ({enrichedProfile!.skills.length})
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {enrichedProfile!.skills.map((skill, i) => (
-                  <span key={i} className="inline-flex items-center text-[11.5px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Langues */}
-          {(enrichedProfile?.languages?.length || 0) > 0 && (
-            <div>
-              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2">
-                Langues
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {enrichedProfile!.languages.map((lang, i) => (
-                  <span key={i} className="inline-flex items-center text-[11.5px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
-                    {lang}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <ProfileDetailedTab
+          linkedinProfileData={candidateWithProfileData.linkedinProfileData}
+          enrichedProfile={enrichedProfile}
+        />
       ),
     },
     {

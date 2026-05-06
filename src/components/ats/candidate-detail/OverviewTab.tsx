@@ -296,16 +296,19 @@ export const OverviewTab: React.FC<Props> = ({
       {/* ═══ 0. ALERTES — bandeau prioritaire si problèmes détectés ═══ */}
       {alerts.length > 0 && <AlertsPanel alerts={alerts} />}
 
-      {/* ═══ 1. SCORE HERO (si score dispo) ═══ */}
-      {candidate.score != null && candidate.score > 0 && (
-        <ScoreHero
-          score={candidate.score}
-          recommendation={candidate.recommendation || null}
-          summary={summaryFromAI}
-          strengths={strengths}
-          concerns={concerns}
-        />
-      )}
+      {/* ═══ 1. RÉSUMÉ PROFIL — synthèse candidat-level (PAS job-fit) ═══
+          Ne parle JAMAIS d'un poste précis : un candidat peut être
+          shortlisté sur plusieurs missions à la fois. C'est juste qui
+          est cette personne, ses points forts généraux et points
+          d'attention sur le profil global. */}
+      <ProfileSummaryCard
+        candidate={candidate}
+        enrichedProfile={enrichedProfile}
+        linkedinSummary={summary}
+        strengths={strengths}
+        concerns={concerns}
+      />
+
 
       {/* ═══ 2. STATS GRID — 4 cards en 2x2 sm / 4-cols lg ═══ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
@@ -611,108 +614,112 @@ function AlertRow({ alert }: { alert: Alert }) {
   );
 }
 
-function ScoreHero({
-  score, recommendation, summary, strengths, concerns,
+/**
+ * ProfileSummaryCard — synthèse candidat-level (PAS job-fit).
+ *
+ * Pourquoi : un candidat peut être shortlisté sur plusieurs missions
+ * en parallèle. Mentionner "bon profil pour ce poste" est trompeur car
+ * "ce poste" change selon la mission depuis laquelle on ouvre la modale.
+ *
+ * Cette card affiche donc :
+ *   - Synthèse en 1 paragraphe : qui est cette personne (rôle, années
+ *     XP, stack principale) — soit depuis le summary LinkedIn, soit
+ *     auto-généré depuis les facts
+ *   - Points forts génériques (du profil, pas du fit)
+ *   - Points d'attention génériques
+ *
+ * Pas de score ici (il est dans le badge header + Postes liés). Pas de
+ * mention de "ce poste" / "cette mission" / nom de client.
+ */
+function ProfileSummaryCard({
+  candidate, enrichedProfile, linkedinSummary, strengths, concerns,
 }: {
-  score: number;
-  recommendation: string | null;
-  summary?: string;
+  candidate: ATSCandidate;
+  enrichedProfile: EnrichedProfile | null;
+  linkedinSummary?: string;
   strengths?: string[];
   concerns?: string[];
 }) {
-  const tone = score >= 70 ? 'success' : score >= 50 ? 'warning' : 'destructive';
-  const colors = {
-    success: { ring: 'hsl(142 76% 36%)', text: 'hsl(142 76% 36%)', bg: 'hsl(142 76% 36% / 0.08)', border: 'hsl(142 76% 36% / 0.3)' },
-    warning: { ring: 'hsl(38 92% 50%)', text: 'hsl(38 92% 50%)', bg: 'hsl(38 92% 50% / 0.08)', border: 'hsl(38 92% 50% / 0.3)' },
-    destructive: { ring: 'hsl(0 84% 60%)', text: 'hsl(0 84% 60%)', bg: 'hsl(0 84% 60% / 0.08)', border: 'hsl(0 84% 60% / 0.3)' },
-  }[tone];
+  // Synthèse 1-paragraphe : ordre de priorité
+  //   1. Résumé LinkedIn (s'il existe — c'est ce que le candidat dit
+  //      lui-même, neutre par construction)
+  //   2. Auto-généré depuis facts (rôle + entreprise + années XP)
+  //   3. Headline simple
+  const synthesis = (() => {
+    if (linkedinSummary && linkedinSummary.trim().length > 30) {
+      return linkedinSummary.trim();
+    }
+    const role = enrichedProfile?.currentRole;
+    const company = enrichedProfile?.currentCompany;
+    const years = enrichedProfile?.yearsOfExperience;
+    const skills = enrichedProfile?.skills?.slice(0, 4) || [];
+    const parts: string[] = [];
+    if (role) parts.push(`${role}${company ? ` chez ${company}` : ''}`);
+    else if (candidate.headline) parts.push(candidate.headline);
+    if (years && years >= 1) parts.push(`${years} an${years > 1 ? 's' : ''} d'expérience`);
+    if (skills.length > 0) parts.push(`stack : ${skills.join(', ')}`);
+    return parts.length > 0 ? parts.join(' · ') : null;
+  })();
 
-  const recoLabel =
-    recommendation === 'shortlist' ? 'Recommandé' :
-    recommendation === 'skip' ? 'Non recommandé' :
-    recommendation === 'maybe' ? 'À évaluer' : null;
-
-  const size = 72;
-  const stroke = 6;
-  const radius = (size - stroke) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (Math.min(score, 100) / 100) * circumference;
+  // Si on n'a strictement rien (ni summary, ni xp, ni rôle), on n'affiche
+  // simplement pas la card — éviter une carte vide bizarre.
+  if (!synthesis && (strengths?.length ?? 0) === 0 && (concerns?.length ?? 0) === 0) {
+    return null;
+  }
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-xl border p-4 sm:p-5"
-      style={{ background: colors.bg, borderColor: colors.border }}
+      className="rounded-xl border border-border bg-card p-4 sm:p-5"
     >
-      <div className="flex items-start gap-4">
-        <div className="relative shrink-0" style={{ width: size, height: size }}>
-          <svg width={size} height={size} className="-rotate-90">
-            <circle cx={size / 2} cy={size / 2} r={radius} stroke="hsl(var(--border))" strokeWidth={stroke} fill="none" />
-            <motion.circle
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              stroke={colors.ring}
-              strokeWidth={stroke}
-              fill="none"
-              strokeLinecap="round"
-              initial={{ strokeDashoffset: circumference }}
-              animate={{ strokeDashoffset: offset }}
-              transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
-              style={{ strokeDasharray: circumference }}
-            />
-          </svg>
-          <div className="absolute inset-0 grid place-items-center">
-            <span className="font-display font-bold text-[18px] tabular-nums" style={{ color: colors.text }}>
-              {score}
-            </span>
-          </div>
+      <div className="flex items-start gap-3">
+        <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
+          <Sparkles className="w-4 h-4 text-foreground/70" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-              Score IA · sur 100
-            </span>
-            {recoLabel && (
-              <span
-                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider"
-                style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
-              >
-                <Target className="w-2.5 h-2.5" />
-                {recoLabel}
-              </span>
-            )}
-          </div>
-          <h3 className="font-display font-bold text-[15px] sm:text-[16px] tracking-tight mt-0.5" style={{ color: colors.text }}>
-            {score >= 70 ? 'Bon profil pour ce poste' :
-             score >= 50 ? 'Profil à examiner plus en détail' :
-             'Profil peu adapté'}
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+            Résumé du profil
+          </p>
+          <h3 className="font-display font-bold text-[15px] sm:text-[16px] tracking-tight text-foreground leading-tight mt-0.5">
+            {candidate.name}
           </h3>
-          {summary && (
-            <p className="text-[12.5px] leading-relaxed text-foreground/85 mt-1.5 line-clamp-3">{summary}</p>
-          )}
         </div>
       </div>
-      {(strengths.length > 0 || concerns.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t" style={{ borderColor: colors.border }}>
-          {strengths.length > 0 && (
+
+      {synthesis && (
+        <p className="text-[13px] leading-relaxed text-foreground/85 mt-3 whitespace-pre-line line-clamp-5">
+          {synthesis}
+        </p>
+      )}
+
+      {((strengths?.length ?? 0) > 0 || (concerns?.length ?? 0) > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-border/60">
+          {(strengths?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-success mb-1">✓ Points forts</p>
-              <ul className="space-y-0.5">
-                {strengths.slice(0, 3).map((s, i) => (
-                  <li key={i} className="text-[11.5px] text-foreground/80 leading-snug pl-1">• {s}</li>
+              <p className="text-[10px] uppercase tracking-wider font-bold text-success mb-1.5">
+                ✓ À retenir
+              </p>
+              <ul className="space-y-1">
+                {strengths!.slice(0, 4).map((s, i) => (
+                  <li key={i} className="text-[12px] text-foreground/85 leading-snug pl-1">
+                    • {s}
+                  </li>
                 ))}
               </ul>
             </div>
           )}
-          {concerns.length > 0 && (
+          {(concerns?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-warning mb-1">⚠ Points d'attention</p>
-              <ul className="space-y-0.5">
-                {concerns.slice(0, 3).map((s, i) => (
-                  <li key={i} className="text-[11.5px] text-foreground/80 leading-snug pl-1">• {s}</li>
+              <p className="text-[10px] uppercase tracking-wider font-bold text-warning mb-1.5">
+                ⚠ Points d'attention
+              </p>
+              <ul className="space-y-1">
+                {concerns!.slice(0, 4).map((s, i) => (
+                  <li key={i} className="text-[12px] text-foreground/85 leading-snug pl-1">
+                    • {s}
+                  </li>
                 ))}
               </ul>
             </div>
