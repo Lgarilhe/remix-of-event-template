@@ -13,10 +13,8 @@
  * via /pipeline?view=analytics — pas dupliqué ici.
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User } from '@supabase/supabase-js';
-import { differenceInDays, isToday, parseISO } from 'date-fns';
+import React, { useMemo, useState } from 'react';
+import { differenceInDays, parseISO } from 'date-fns';
 import { SEOHead } from '@/components/SEOHead';
 import { PageLayout } from '@/components/layout';
 import { useATSData, type ATSCandidate } from '@/hooks/useATSData';
@@ -24,6 +22,7 @@ import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
+import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
@@ -65,18 +64,10 @@ export default function Dashboard() {
   const { data: scheduledMessages = [], isLoading: messagesLoading } = useTodayScheduledMessages();
   const { grouped: groupedReminders, isLoading: remindersLoading } = useAllReminders();
   const unreadMessages = useUnreadMessageNotifications();
+  const { displayName } = useCurrentProfile();
 
-  const [user, setUser] = useState<User | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) =>
-      setUser(session?.user ?? null),
-    );
-    return () => subscription.unsubscribe();
-  }, []);
 
   // Derived counters for the Focus Panel
   const focusCounters = useMemo(() => {
@@ -101,7 +92,8 @@ export default function Dashboard() {
     [projects],
   );
 
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || null;
+  // displayName vient de useCurrentProfile (cascade : profiles.display_name →
+  // user_metadata.full_name → user_metadata.first_name+last_name → email parsé).
 
   // Reminders due today (today + overdue, not done)
   const remindersToday = useMemo(
@@ -118,7 +110,7 @@ export default function Dashboard() {
 
       {/* 1. Greeting */}
       <DashboardGreeting
-        userName={userName}
+        userName={displayName}
         activeCandidatesCount={activeCandidatesCount}
         activeMissionsCount={activeMissionsCount}
       />

@@ -40,7 +40,21 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
   const navigate = useNavigate();
   const now = new Date();
   const { greeting, emoji } = greetingFor(now.getHours());
-  const firstName = userName?.split(' ')[0] || null;
+
+  // Pour le greeting :
+  // - "Laurent" / "Laurent Garilhe"      → "Laurent"
+  // - "L. Garilhe" (parsé d'email)       → "L. Garilhe" (on garde le full,
+  //                                       "Bonjour L." seul serait trop court)
+  // - "Garilhe"                           → "Garilhe"
+  const firstName = (() => {
+    if (!userName) return null;
+    const tokens = userName.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return null;
+    const first = tokens[0];
+    // Initiale type "L." → on garde le nom complet (ne pas tronquer à "L.")
+    if (/^[A-Z]\.?$/.test(first)) return userName;
+    return first;
+  })();
 
   const candidatesAnim = useCountUp(activeCandidatesCount, { duration: 900 });
   const missionsAnim = useCountUp(activeMissionsCount, { duration: 900 });
