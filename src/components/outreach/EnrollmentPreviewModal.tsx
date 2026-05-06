@@ -840,7 +840,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                               onToggleEdit={() => toggleEditing(step.stepId)}
                               onRegenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
                               onEditMessage={(field, value) => editMessage(selectedCandidateId, step.stepId, field, value)}
-                              onGenerate={() => generateForCandidateById(selectedCandidateId)}
+                              // Génération INDIVIDUELLE de ce step (pas de toute la séquence) :
+                              // l'user clique le bouton sur la card du step, on génère juste
+                              // ce step. Sinon "Générer toutes les previews" (bulk) reste
+                              // disponible en haut pour tout générer d'un coup.
+                              onGenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
                             />
                           );
                         }}

@@ -81,12 +81,44 @@ export function computeMessageTypeContext(
     toneInstructions = "Note d'invitation courte. MAX 50 caractères.";
   } else if (isInMail) {
     if (prevInMails.length === 0) {
-      msgType = 'INMAIL INITIAL';
-      toneInstructions = `TON FORMEL ET DIRECT. C'est un InMail (le candidat n'est pas connecté).
+      // Cas spécial : InMail FALLBACK après une invitation non acceptée.
+      // Détecté quand : prevSentSteps contient une connection_request (invite
+      // envoyée) mais ZÉRO message direct (donc l'invite n'a pas été
+      // acceptée → pas eu accès aux DM → on bascule sur InMail).
+      const hadConnectionRequest = prevSentSteps.some(p => p.actionType === 'connection_request');
+      const hadDirectMsg = prevSentSteps.some(p => p.actionType === 'message');
+      const isInmailAfterUnacceptedInvite = hadConnectionRequest && !hadDirectMsg;
+
+      if (isInmailAfterUnacceptedInvite) {
+        msgType = 'INMAIL APRÈS INVITATION NON ACCEPTÉE';
+        toneInstructions = `C'est un InMail FALLBACK : tu as envoyé une demande de connexion qui n'a PAS été acceptée dans le délai. Tu bascules donc sur InMail pour passer le mur.
+
+⚠️ ÉTAT DE LA RELATION (CRITIQUE) :
+- Vous N'ÊTES PAS CONNECTÉS sur LinkedIn (l'invite n'a pas été acceptée)
+- Le candidat n'a JAMAIS reçu de message direct de toi
+- Tu n'as PAS échangé avec lui par messagerie LinkedIn
+- Donc NE DIS JAMAIS :
+  ❌ "J'avais tenté de te joindre via LinkedIn à plusieurs reprises, sans retour" (FAUX, aucun message envoyé)
+  ❌ "Mes messages ne sont peut-être pas passés" (il n'y avait pas de message)
+  ❌ "Suite à mon précédent message" (il n'y a pas eu de message)
+  ❌ "Je relance" (aucune relance possible, c'est le 1er contact écrit)
+
+✅ ANGLE À ADOPTER :
+- C'est ton PREMIER vrai message au candidat
+- Tu peux mentionner subtilement la non-connexion ("vu qu'on n'est pas connectés", "comme on n'est pas en lien")
+- OU aller direct au pitch sans en parler (recommandé : reste pragmatique)
+- Pose ton hook personnalisé + ton pitch, comme un INMAIL INITIAL classique
+- Objet < 40 caractères, mobile-first
+- 200-400 caractères pour le corps
+- Direct et factuel, sans s'excuser ni se justifier`;
+      } else {
+        msgType = 'INMAIL INITIAL';
+        toneInstructions = `TON FORMEL ET DIRECT. C'est un InMail (le candidat n'est pas connecté).
 - Objet obligatoire, < 40 caractères, mobile-first
 - Proposition de valeur claire et concise
 - CTA non-engageant: demande d'avis, PAS de proposition de call/rdv
 - 200-400 caractères pour le corps`;
+      }
     } else {
       msgType = 'INMAIL DE RELANCE';
       toneInstructions = `C'est une RELANCE. Le candidat a déjà reçu un premier InMail.

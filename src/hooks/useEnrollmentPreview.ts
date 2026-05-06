@@ -270,17 +270,34 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
       setPreview(profile.id, step.stepId, { isGenerating: true, error: undefined });
 
-      // Construit prevSentSteps simulés pour ce step : on liste tous
-      // les steps "reach" précédents + leur message déjà généré dans
-      // localPreviews (= synchrone, à jour). Ça permet à l'edge function
-      // de typer correctement le message (PREMIER MESSAGE / RELANCE 1
-      // / INMAIL DE RELANCE) ET de fournir le texte du message précédent
-      // à l'IA pour qu'elle puisse vraiment référencer.
+      // Détecte si ce step est l'InMail FALLBACK (= dernier inmail de la
+      // séquence + il y a un wait_connection avant lui). Dans ce cas, le
+      // candidat n'a accepté NI la connexion NI reçu de message direct
+      // (les messages dans le linéaire de la séquence appartiennent à la
+      // branche "si accepté" et n'ont jamais été envoyés).
+      // → prevSentSteps doit refléter la VRAIE histoire : seulement le
+      // connection_request (qui n'a pas été accepté).
+      const isLastInmail =
+        step.actionType === 'inmail' &&
+        !steps.some(s => s.actionType === 'inmail' && s.stepOrder > step.stepOrder);
+      const waitConnectionBefore = steps.find(s =>
+        s.actionType === 'wait_connection' && s.stepOrder < step.stepOrder
+      );
+      const isInmailFallback = isLastInmail && !!waitConnectionBefore;
+
+      // Construit prevSentSteps simulés pour ce step :
+      // - Cas normal : tous les steps "reach" linéairement avant
+      // - Cas InMail FALLBACK : SEULEMENT les steps avant le wait_connection
+      //   (= profile_visit + connection_request) car les messages "if accepted"
+      //   n'ont jamais été envoyés
+      const reachActionTypes = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
+      const upperBound = isInmailFallback
+        ? waitConnectionBefore!.stepOrder
+        : step.stepOrder;
       const prevSentSteps = steps
         .filter(s =>
-          s.stepOrder < step.stepOrder &&
-          ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
-            .includes(s.actionType)
+          s.stepOrder < upperBound &&
+          reachActionTypes.includes(s.actionType)
         )
         .sort((a, b) => a.stepOrder - b.stepOrder)
         .map(s => {
@@ -503,12 +520,24 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           premium: !!(profile as any).premium,
         };
 
-        // Idem qu'au-dessus : on simule prevSentSteps pour que le LLM
-        // sache si c'est un 1er message, une RELANCE 1, un INMAIL de
-        // relance, etc.
+        // Idem qu'au-dessus : on simule prevSentSteps + détection
+        // InMail fallback (cas où la connexion n'a pas été acceptée,
+        // donc les messages de la branche "accepté" n'ont pas été
+        // envoyés en réalité — l'IA ne doit pas les inclure).
+        const isLastInmail =
+          step.actionType === 'inmail' &&
+          !steps.some(s => s.actionType === 'inmail' && s.stepOrder > step.stepOrder);
+        const waitConnectionBefore = steps.find(s =>
+          s.actionType === 'wait_connection' && s.stepOrder < step.stepOrder
+        );
+        const isInmailFallback = isLastInmail && !!waitConnectionBefore;
+        const upperBound = isInmailFallback
+          ? waitConnectionBefore!.stepOrder
+          : step.stepOrder;
+
         const prevSentSteps = steps
           .filter(s =>
-            s.stepOrder < step.stepOrder &&
+            s.stepOrder < upperBound &&
             ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
               .includes(s.actionType)
           )
