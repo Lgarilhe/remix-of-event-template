@@ -1,22 +1,21 @@
 /**
- * SidebarUserMenu — bloc profil utilisateur en bas du sidebar avec menu
- * dropdown pour les actions secondaires.
+ * SidebarUserMenu — bloc profil utilisateur en bas du sidebar.
  *
- * Pattern Linear / Notion : avatar + nom + role visible, click → dropdown
- * avec settings, theme, help, logout. Évite la footer cramée d'icônes.
+ * V3 minimaliste : juste avatar + nom + chevron. Tout le reste (settings,
+ * theme, logout, notifs) dans un dropdown qui s'ouvre vers le haut.
  *
- * Avatar prioritaire : LinkedIn (photo réelle via Unipile) > profile.avatar_url
- * (custom upload) > initiales sur palette deterministe.
+ * Pattern Linear / Vercel : 1 ligne, pas de sous-titre encombrant.
  */
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Bell } from 'lucide-react';
+import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Bell, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAICredits } from '@/hooks/useAICredits';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,13 +33,6 @@ interface SidebarUserMenuProps {
   onToggleTheme: () => void;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Propriétaire',
-  admin: 'Admin',
-  member: 'Membre',
-  collaborator: 'Collaborateur',
-};
-
 export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   collapsed,
   isDark,
@@ -49,12 +41,15 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   const navigate = useNavigate();
   const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
   const connections = useDashboardConnections();
-  const { userRole, organizationName } = useOrganization();
+  const { organizationName } = useOrganization();
   const { unreadCount } = useNotifications();
+  const { creditsRemaining, isLow, isOut } = useAICredits();
 
   const avatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl || null;
-  const roleLabel = userRole ? ROLE_LABEL[userRole] || userRole : null;
-  const subtitle = [organizationName, roleLabel].filter(Boolean).join(' · ');
+
+  const compactCredits = creditsRemaining > 9999
+    ? `${(creditsRemaining / 1000).toFixed(creditsRemaining > 99999 ? 0 : 1)}k`
+    : creditsRemaining.toLocaleString('fr-FR');
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -66,16 +61,15 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
         <button
           className={cn(
             'group w-full flex items-center rounded-lg transition-colors hover:bg-sidebar-accent/60',
-            collapsed ? 'h-10 w-10 justify-center mx-auto' : 'gap-2.5 p-2',
+            collapsed ? 'h-10 w-10 justify-center mx-auto' : 'gap-2.5 px-2 py-1.5',
           )}
           aria-label="Menu utilisateur"
         >
-          {/* Avatar (relatif pour le badge unread) */}
           <div className="relative shrink-0">
             <CandidateAvatar
               name={displayName || '?'}
               avatarUrl={avatarUrl}
-              size={collapsed ? 28 : 32}
+              size={collapsed ? 28 : 28}
             />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold tabular-nums ring-2 ring-sidebar">
@@ -86,16 +80,9 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
 
           {!collapsed && (
             <>
-              <div className="min-w-0 flex-1 text-left">
-                <div className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">
-                  {displayName || 'Utilisateur'}
-                </div>
-                {subtitle && (
-                  <div className="text-[10.5px] text-muted-foreground truncate leading-tight mt-0.5">
-                    {subtitle}
-                  </div>
-                )}
-              </div>
+              <span className="text-[13px] font-medium text-sidebar-foreground truncate flex-1 text-left">
+                {displayName || 'Utilisateur'}
+              </span>
               <ChevronsUpDown
                 className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
                 aria-hidden="true"
@@ -122,12 +109,36 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
               <div className="text-sm font-semibold text-foreground truncate">
                 {displayName || 'Utilisateur'}
               </div>
-              {subtitle && (
-                <div className="text-xs text-muted-foreground truncate">{subtitle}</div>
+              {organizationName && (
+                <div className="text-xs text-muted-foreground truncate">{organizationName}</div>
               )}
             </div>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+
+        {/* Credits inline */}
+        <DropdownMenuItem
+          onClick={() => navigate('/settings?tab=credits')}
+          className="cursor-pointer"
+        >
+          <Sparkles
+            className={cn(
+              'w-4 h-4 mr-2',
+              isOut ? 'text-destructive' : isLow ? 'text-warning' : '',
+            )}
+          />
+          <span className="flex-1">Crédits IA</span>
+          <span
+            className={cn(
+              'text-xs font-bold tabular-nums',
+              isOut ? 'text-destructive' : isLow ? 'text-warning' : 'text-muted-foreground',
+            )}
+          >
+            {compactCredits}
+          </span>
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
           <UserIcon className="w-4 h-4 mr-2" />
@@ -149,7 +160,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
             </span>
           )}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onToggleTheme} className="cursor-pointer">
           {isDark ? (
             <Sun className="w-4 h-4 mr-2" />
