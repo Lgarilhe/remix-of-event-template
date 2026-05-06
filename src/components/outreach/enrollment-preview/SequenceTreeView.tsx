@@ -1,25 +1,23 @@
 /**
  * SequenceTreeView — visualisation arborescente d'une séquence outreach.
  *
- * Gère 2 cas :
- *  1. Séquences LINÉAIRES : timeline verticale avec décisions stylées
- *     (wait_connection, wait_reply, check_connection, condition_branch)
- *     rendues comme des "diamants" entre les actions.
- *  2. Séquences BRANCHÉES (parent_step_id + branch='yes'/'no'/'timeout') :
- *     vraie arbo avec splits horizontaux et labels OUI/NON.
+ * Pour chaque décision (wait_connection, wait_reply, check_connection,
+ * condition_branch), on rend un VRAI fork à 2 branches :
+ *   - Branche principale (à gauche) : le step suivant en ordre linéaire
+ *   - Branche alternative (à droite) : info contextuelle sur ce qui se
+ *     passe dans l'autre cas (timeout / réponse reçue / etc.)
  *
- * Pour le moment l'app traite les séquences en linéaire (pas de
- * parent_step_id en DB), mais on visualise quand même les décisions
- * implicites pour donner du sens au parcours.
+ * Les actions message sont rendues via renderStep callback (= MessageStepCard
+ * complète avec preview IA). Les autres actions (visite, invitation) sont
+ * rendues compactes.
  */
 
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
 import type { SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
 import {
   Mail, MessageSquare, Linkedin, Eye, Clock, GitBranch,
-  ArrowDown, type LucideIcon,
+  ArrowDown, CheckCheck, XCircle, Send, type LucideIcon,
 } from 'lucide-react';
 
 const ACTION_ICONS: Record<string, LucideIcon> = {
@@ -64,82 +62,122 @@ const MESSAGE_TYPES = new Set([
   'message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message',
 ]);
 
-type StepNode = {
-  step: SequenceStepPreview;
-  isDecision: boolean;
-  isMessage: boolean;
-};
-
 interface Props {
   steps: SequenceStepPreview[];
-  /** Renderer custom pour chaque step (utilisé pour montrer les previews
-   *  IA des steps message). Si non fourni, on affiche juste un summary. */
   renderStep?: (step: SequenceStepPreview, idx: number) => React.ReactNode;
 }
 
 export function SequenceTreeView({ steps, renderStep }: Props) {
-  const nodes: StepNode[] = useMemo(() => {
-    return [...steps]
-      .sort((a, b) => a.stepOrder - b.stepOrder)
-      .map(step => ({
-        step,
-        isDecision: DECISION_TYPES.has(step.actionType),
-        isMessage: MESSAGE_TYPES.has(step.actionType),
-      }));
-  }, [steps]);
-
-  return (
-    <div className="relative space-y-2">
-      {nodes.map((node, idx) => {
-        const isLast = idx === nodes.length - 1;
-        const next = nodes[idx + 1];
-        // Si le step courant est une décision et qu'on a un step suivant,
-        // on dessine un connecteur "branche" (avec label OUI/NON ou similaire).
-        const showBranchLabel = node.isDecision && next;
-
-        return (
-          <React.Fragment key={node.step.stepId}>
-            {node.isDecision ? (
-              <DecisionNode node={node} index={idx} />
-            ) : (
-              <ActionNode node={node} index={idx} renderStep={renderStep} />
-            )}
-
-            {!isLast && (
-              <Connector
-                fromDecision={node.isDecision}
-                toDecision={next?.isDecision || false}
-                branchLabel={showBranchLabel ? getBranchLabel(node.step.actionType) : undefined}
-                delayDays={next?.step.delayDays}
-                delayHours={next?.step.delayHours}
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
+  const sortedSteps = useMemo(
+    () => [...steps].sort((a, b) => a.stepOrder - b.stepOrder),
+    [steps],
   );
+
+  // Trouve le step InMail final (souvent fallback de la branche timeout
+  // d'un wait_connection). On le détache du flux principal pour le placer
+  // dans la branche droite du fork.
+  const fallbackInmailIdx = useMemo(() => {
+    const hasWaitConnection = sortedSteps.some(s => s.actionType === 'wait_connection');
+    if (!hasWaitConnection) return -1;
+    for (let i = sortedSteps.length - 1; i >= 0; i--) {
+      if (sortedSteps[i].actionType === 'inmail') return i;
+    }
+    return -1;
+  }, [sortedSteps]);
+
+  // Construit la liste de "consumed" : steps déjà affichés dans une fork
+  // (ne pas re-render dans le flux principal).
+  const consumed = new Set<string>();
+  if (fallbackInmailIdx >= 0) {
+    consumed.add(sortedSteps[fallbackInmailIdx].stepId);
+  }
+
+  // Render items
+  const items: React.ReactNode[] = [];
+  for (let idx = 0; idx < sortedSteps.length; idx++) {
+    const step = sortedSteps[idx];
+    if (consumed.has(step.stepId)) continue;
+
+    const isDecision = DECISION_TYPES.has(step.actionType);
+    const next = sortedSteps[idx + 1];
+    const nextNext = sortedSteps[idx + 2];
+
+    if (isDecision) {
+      // Trouve le step "main path" (next step non-décision)
+      // ET le step "alt path" (pour wait_connection : le fallback InMail)
+      const mainStep = next && !DECISION_TYPES.has(next.actionType) ? next : null;
+      const fallbackStep =
+        step.actionType === 'wait_connection' && fallbackInmailIdx > idx
+          ? sortedSteps[fallbackInmailIdx]
+          : null;
+
+      // Marque le mainStep comme consommé (rendu dans la fork)
+      if (mainStep) consumed.add(mainStep.stepId);
+
+      items.push(
+        <DecisionFork
+          key={step.stepId}
+          step={step}
+          index={idx}
+          mainStep={mainStep}
+          fallbackInmailStep={fallbackStep}
+          renderStep={renderStep}
+        />
+      );
+
+      // Connector vers la suite (si encore des steps après le mainStep)
+      if (mainStep && nextNext) {
+        items.push(
+          <SimpleConnector
+            key={`conn-after-fork-${step.stepId}`}
+            delayDays={nextNext.delayDays}
+            delayHours={nextNext.delayHours}
+          />
+        );
+      }
+      continue;
+    }
+
+    items.push(
+      <ActionCard
+        key={step.stepId}
+        step={step}
+        index={idx}
+        renderStep={renderStep}
+      />
+    );
+
+    // Connector vers le step suivant si pas la fin et le suivant n'est pas une décision
+    // (les décisions ont leur propre fork qui inclut son propre connector)
+    if (next && !DECISION_TYPES.has(next.actionType) && !consumed.has(next.stepId)) {
+      items.push(
+        <SimpleConnector
+          key={`conn-${step.stepId}`}
+          delayDays={next.delayDays}
+          delayHours={next.delayHours}
+        />
+      );
+    }
+  }
+
+  return <div className="space-y-2">{items}</div>;
 }
 
-// ─── ActionNode (message / invitation / visite) ─────────────────────
+// ─── ActionCard (rendu d'un step action — message, visite, invitation) ──
 
-function ActionNode({
-  node, index, renderStep,
+function ActionCard({
+  step, index, renderStep,
 }: {
-  node: StepNode;
+  step: SequenceStepPreview;
   index: number;
   renderStep?: (step: SequenceStepPreview, idx: number) => React.ReactNode;
 }) {
-  // Si renderStep retourne quelque chose (typiquement MessageStepCard
-  // pour les steps message), on l'utilise. Sinon (renderStep null/undefined
-  // → c'est un step non-message comme profile_visit / connection_request),
-  // on tombe sur le rendu compact par défaut.
-  const custom = renderStep?.(node.step, index);
+  const custom = renderStep?.(step, index);
   if (custom !== null && custom !== undefined && custom !== false) {
     return <>{custom}</>;
   }
 
-  const Icon = ACTION_ICONS[node.step.actionType] || MessageSquare;
+  const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -153,10 +191,10 @@ function ActionNode({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-semibold text-foreground tracking-tight">
-            {ACTION_LABELS[node.step.actionType] || node.step.actionType}
+            {ACTION_LABELS[step.actionType] || step.actionType}
           </p>
           <p className="text-[10.5px] text-muted-foreground tabular-nums uppercase tracking-wider mt-0.5">
-            Étape {node.step.stepOrder + 1}
+            Étape {step.stepOrder + 1}
           </p>
         </div>
       </div>
@@ -164,14 +202,22 @@ function ActionNode({
   );
 }
 
-// ─── DecisionNode (wait_connection / check_connection / wait_reply) ──
+// ─── DecisionFork — décision + 2 branches côte à côte ────────────────
 
-function DecisionNode({ node, index }: { node: StepNode; index: number }) {
-  const Icon = ACTION_ICONS[node.step.actionType] || GitBranch;
-  const label = ACTION_LABELS[node.step.actionType] || 'Décision';
-  // Description contextuelle du point de décision
+function DecisionFork({
+  step, index, mainStep, fallbackInmailStep, renderStep,
+}: {
+  step: SequenceStepPreview;
+  index: number;
+  mainStep: SequenceStepPreview | null;
+  fallbackInmailStep: SequenceStepPreview | null;
+  renderStep?: (step: SequenceStepPreview, idx: number) => React.ReactNode;
+}) {
+  const Icon = ACTION_ICONS[step.actionType] || GitBranch;
+  const label = ACTION_LABELS[step.actionType] || 'Décision';
+  const branches = getBranches(step.actionType);
   const description = (() => {
-    switch (node.step.actionType) {
+    switch (step.actionType) {
       case 'wait_connection':
         return 'Attend que le candidat accepte la demande de connexion';
       case 'wait_reply':
@@ -181,68 +227,206 @@ function DecisionNode({ node, index }: { node: StepNode; index: number }) {
       case 'check_connection':
         return 'Vérifie si une connexion existe déjà';
       case 'condition_branch':
-        return node.step.condition || 'Branchement conditionnel';
+        return step.condition || 'Branchement conditionnel';
       default:
         return '';
     }
   })();
-  const timeoutDays = node.step.timeoutDays;
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: index * 0.04 }}
-      className="relative my-1"
+      className="space-y-0"
     >
-      {/* Diamant en background avec dashed border */}
-      <div className="rounded-2xl border border-dashed border-brand-purple/30 bg-brand-purple/[0.04] px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-brand-purple/10 grid place-items-center shrink-0 rotate-45">
-            <Icon className="w-4 h-4 text-brand-purple -rotate-45" strokeWidth={2.25} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-brand-purple">
-                Décision
-              </p>
-              <span className="text-[10px] text-muted-foreground tabular-nums uppercase tracking-wider">
-                · Étape {node.step.stepOrder + 1}
-              </span>
+      {/* Diamant DÉCISION (full width, centré) */}
+      <div className="relative mx-auto max-w-md">
+        <div className="rounded-2xl border-2 border-dashed border-brand-purple/40 bg-gradient-to-br from-brand-purple/[0.07] to-brand-pink/[0.04] px-5 py-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-lg bg-brand-purple/15 grid place-items-center shrink-0 rotate-45 shadow-sm">
+              <Icon className="w-4 h-4 text-brand-purple -rotate-45" strokeWidth={2.5} />
             </div>
-            <p className="text-[13px] font-semibold text-foreground tracking-tight mt-0.5">
-              {label}
-            </p>
-            {description && (
-              <p className="text-[11.5px] text-muted-foreground mt-0.5 leading-snug">
-                {description}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-brand-purple">
+                  Décision
+                </p>
+                <span className="text-[10px] text-muted-foreground tabular-nums uppercase tracking-wider">
+                  · Étape {step.stepOrder + 1}
+                </span>
+              </div>
+              <p className="text-[14px] font-bold text-foreground tracking-tight mt-1 font-display">
+                {label}
               </p>
-            )}
-            {timeoutDays && (
-              <p className="text-[10.5px] text-warning mt-1.5 inline-flex items-center gap-1">
-                <Clock className="w-2.5 h-2.5" />
-                Timeout après {timeoutDays} jour{timeoutDays > 1 ? 's' : ''}
-              </p>
-            )}
+              {description && (
+                <p className="text-[12px] text-muted-foreground mt-1 leading-snug">
+                  {description}
+                </p>
+              )}
+              {step.timeoutDays && (
+                <p className="text-[10.5px] text-warning mt-2 inline-flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  Timeout après {step.timeoutDays} jour{step.timeoutDays > 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Fork visuel : 2 lignes courbes qui partent du diamant */}
+      <ForkSplitter />
+
+      {/* 2 colonnes : branche principale (next step) + branche alternative (fallback/end) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_auto_1fr] gap-3 lg:gap-4 items-start">
+        {/* Colonne gauche (LARGE) : branche principale */}
+        <div className="space-y-2 min-w-0">
+          <BranchHeader label={branches.main.label} variant="primary" />
+          {mainStep ? (
+            <ActionCard step={mainStep} index={index + 1} renderStep={renderStep} />
+          ) : (
+            <BranchPlaceholder text="Continue le parcours principal" tone="info" />
+          )}
+        </div>
+
+        {/* Séparateur vertical pointillé (visible seulement desktop) */}
+        <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-border/60 to-transparent self-stretch min-h-[80px]" aria-hidden="true" />
+
+        {/* Colonne droite (étroite) : branche alternative */}
+        <div className="space-y-2 min-w-0">
+          <BranchHeader label={branches.alt.label} variant="secondary" />
+          {fallbackInmailStep ? (
+            <FallbackInmailCard step={fallbackInmailStep} />
+          ) : (
+            <BranchPlaceholder
+              text={branches.alt.placeholder}
+              tone={branches.alt.tone}
+            />
+          )}
         </div>
       </div>
     </motion.div>
   );
 }
 
-// ─── Connector — flèche/ligne entre 2 steps ─────────────────────────
+// ─── ForkSplitter — SVG qui dessine le fork visuel ───────────────────
 
-function Connector({
-  fromDecision,
-  toDecision,
-  branchLabel,
-  delayDays,
-  delayHours,
+function ForkSplitter() {
+  return (
+    <div className="h-8 relative" aria-hidden="true">
+      <svg
+        className="absolute inset-0 w-full h-full"
+        viewBox="0 0 200 32"
+        preserveAspectRatio="none"
+      >
+        {/* Ligne centrale qui descend du diamant */}
+        <line
+          x1="100" y1="0" x2="100" y2="12"
+          stroke="hsl(var(--border))" strokeWidth="1.5"
+        />
+        {/* Branche gauche en courbe */}
+        <path
+          d="M 100 12 Q 100 24 50 24 L 25 24 L 25 32"
+          stroke="hsl(271 81% 56% / 0.5)"
+          strokeWidth="1.5"
+          fill="none"
+        />
+        {/* Branche droite en courbe */}
+        <path
+          d="M 100 12 Q 100 24 150 24 L 175 24 L 175 32"
+          stroke="hsl(271 81% 56% / 0.5)"
+          strokeWidth="1.5"
+          fill="none"
+          strokeDasharray="3 3"
+        />
+        {/* Petits triangles flèches en bas */}
+        <polygon points="22,30 28,30 25,34" fill="hsl(271 81% 56% / 0.5)" />
+        <polygon points="172,30 178,30 175,34" fill="hsl(271 81% 56% / 0.5)" />
+      </svg>
+    </div>
+  );
+}
+
+// ─── BranchHeader — label "SI ACCEPTÉ" / "SI TIMEOUT" ────────────────
+
+function BranchHeader({
+  label, variant,
 }: {
-  fromDecision: boolean;
-  toDecision: boolean;
-  branchLabel?: string;
+  label: string;
+  variant: 'primary' | 'secondary';
+}) {
+  return (
+    <div className="flex justify-center">
+      <span className={
+        variant === 'primary'
+          ? 'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-brand-purple bg-brand-purple/10 border border-brand-purple/40 rounded-full px-2.5 py-1'
+          : 'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-muted/40 border border-border rounded-full px-2.5 py-1'
+      }>
+        {variant === 'primary' ? (
+          <CheckCheck className="w-3 h-3" strokeWidth={2.5} />
+        ) : (
+          <XCircle className="w-3 h-3" strokeWidth={2.5} />
+        )}
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─── BranchPlaceholder — info "fallback" pour la branche secondaire ──
+
+function BranchPlaceholder({
+  text, tone,
+}: {
+  text: string;
+  tone: 'info' | 'muted' | 'success' | 'warning';
+}) {
+  const colors = {
+    info: 'border-info/30 bg-info/5 text-info',
+    muted: 'border-border bg-muted/20 text-muted-foreground',
+    success: 'border-success/30 bg-success/5 text-success',
+    warning: 'border-warning/30 bg-warning/5 text-warning',
+  }[tone];
+  return (
+    <div className={`rounded-xl border border-dashed ${colors} px-3 py-3 text-center`}>
+      <p className="text-[11.5px] font-medium leading-snug">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+// ─── FallbackInmailCard — card spéciale pour l'InMail de fallback ────
+
+function FallbackInmailCard({ step }: { step: SequenceStepPreview }) {
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="h-7 w-7 rounded-lg bg-warning/15 grid place-items-center shrink-0">
+          <Send className="w-3.5 h-3.5 text-warning" strokeWidth={2.25} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-wider font-bold text-warning">
+            Fallback InMail
+          </p>
+          <p className="text-[12px] font-semibold text-foreground tracking-tight">
+            Étape {step.stepOrder + 1}
+          </p>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-snug">
+        Si le candidat n'accepte pas la connexion dans le délai, on bascule sur un InMail Recruiter.
+      </p>
+    </div>
+  );
+}
+
+// ─── SimpleConnector — flèche entre 2 actions consécutives ───────────
+
+function SimpleConnector({
+  delayDays, delayHours,
+}: {
   delayDays?: number;
   delayHours?: number;
 }) {
@@ -257,39 +441,73 @@ function Connector({
   return (
     <div className="flex items-center justify-center py-1 gap-2 -my-1">
       <div className="flex-1 h-px bg-border/40" />
-      <div className="flex items-center gap-1.5">
-        {branchLabel && (
-          <span className="text-[10px] uppercase tracking-wider font-bold text-brand-purple bg-brand-purple/10 border border-brand-purple/30 rounded-full px-2 py-0.5">
-            {branchLabel}
-          </span>
-        )}
-        <ArrowDown className="w-3.5 h-3.5 text-muted-foreground/60" strokeWidth={2} />
-        {delayText && (
-          <span className="text-[10px] text-muted-foreground tabular-nums">
-            {delayText}
-          </span>
-        )}
-      </div>
+      <ArrowDown className="w-3.5 h-3.5 text-muted-foreground/60" strokeWidth={2} />
+      {delayText && (
+        <span className="text-[10px] text-muted-foreground tabular-nums">
+          {delayText}
+        </span>
+      )}
       <div className="flex-1 h-px bg-border/40" />
     </div>
   );
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
+// ─── Helpers : labels des branches selon le type de décision ────────
 
-function getBranchLabel(actionType: string): string {
+function getBranches(actionType: string): {
+  main: { label: string };
+  alt: { label: string; placeholder: string; tone: 'info' | 'muted' | 'success' | 'warning' };
+} {
   switch (actionType) {
     case 'wait_connection':
-      return 'si accepté';
+      return {
+        main: { label: 'si accepté' },
+        alt: {
+          label: 'si timeout',
+          placeholder: 'Si le candidat n\'accepte pas, la séquence passe à l\'InMail de fallback.',
+          tone: 'warning',
+        },
+      };
     case 'wait_reply':
-      return 'si réponse';
+      return {
+        main: { label: 'pas de réponse' },
+        alt: {
+          label: 'si réponse',
+          placeholder: 'Le candidat a répondu : la séquence s\'arrête, conversation ouverte.',
+          tone: 'success',
+        },
+      };
     case 'wait_profile_visit':
-      return 'si visite';
+      return {
+        main: { label: 'si visite' },
+        alt: {
+          label: 'sinon',
+          placeholder: 'Si le candidat ne visite pas, la séquence continue normalement.',
+          tone: 'muted',
+        },
+      };
     case 'check_connection':
-      return 'résultat';
+      return {
+        main: { label: 'connecté' },
+        alt: {
+          label: 'pas connecté',
+          placeholder: 'Si pas connecté, le step suivant est skippé ou l\'InMail est utilisé.',
+          tone: 'info',
+        },
+      };
     case 'condition_branch':
-      return 'oui';
+      return {
+        main: { label: 'oui' },
+        alt: {
+          label: 'non',
+          placeholder: 'Branche alternative non définie dans cette séquence.',
+          tone: 'muted',
+        },
+      };
     default:
-      return '';
+      return {
+        main: { label: 'oui' },
+        alt: { label: 'non', placeholder: '—', tone: 'muted' },
+      };
   }
 }
