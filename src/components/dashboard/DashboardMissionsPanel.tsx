@@ -8,12 +8,16 @@
  * - Compteurs inline (animés à l'entrée)
  * - Dernière activité (relative time)
  *
- * V2 anim : stagger entrance des cards, progress bars qui se remplissent
- * en glissant à l'entrée (clip-path animation), hover lift.
+ * V2 anim : stagger entrance des cards, progress bars qui se remplissent,
+ * hover lift, AnimatePresence pour l'expand/collapse fluide.
+ *
+ * V3 (mai 2026) : mode compact par défaut + chevron par card pour expand,
+ * + bouton "Tout déplier / Tout réduire" en header. Persistance localStorage
+ * de la préférence (compact vs détaillé) ET du set des cards expanded.
  */
 
-import React, { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -26,6 +30,9 @@ import {
   Users,
   Send,
   CheckCircle2,
+  ChevronDown,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCountUp } from '@/hooks/useCountUp';
@@ -74,7 +81,9 @@ const MissionCard: React.FC<{
   project: SourcingProject;
   onClick: () => void;
   index: number;
-}> = ({ project, onClick, index }) => {
+  expanded: boolean;
+  onToggleExpand: () => void;
+}> = ({ project, onClick, index, expanded, onToggleExpand }) => {
   const status = STATUS_LABELS[project.status];
   const total = project.stats_total_found || 0;
   const messaged = project.stats_messaged || 0;
@@ -95,24 +104,28 @@ const MissionCard: React.FC<{
   const baseDelay = 0.1 + index * 0.07;
 
   return (
-    <motion.button
-      onClick={onClick}
+    <motion.div
       variants={{
         hidden: { opacity: 0, y: 10 },
         visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
       }}
       whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      whileTap={{ scale: 0.99 }}
-      className="group w-full text-left rounded-xl bg-card border border-border p-4 transition-shadow hover:shadow-md hover:border-foreground/20"
+      className="group rounded-xl bg-card border border-border transition-shadow hover:shadow-md hover:border-foreground/20 overflow-hidden"
     >
-      <div className="flex items-start gap-3 mb-2">
-        {/* Logo société client — Clearbit/Google avec fallback initiales colorées */}
+      {/* Row principale — toujours visible, cliquable pour ouvrir la mission */}
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full text-left p-3 flex items-center gap-3"
+      >
+        {/* Logo société client */}
         <MissionCompanyLogo
           company={project.client_name || project.name}
-          size={44}
+          size={40}
         />
+
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <h3 className="font-display font-bold text-foreground text-[14px] tracking-tight leading-tight truncate">
               {project.name}
             </h3>
@@ -125,49 +138,122 @@ const MissionCard: React.FC<{
               {status.label}
             </span>
           </div>
-          {project.client_name && (
-            <p className="text-xs text-muted-foreground truncate">{project.client_name}</p>
+          {/* Compact summary inline — visible quand collapsed */}
+          {!expanded ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {project.client_name && (
+                <>
+                  <span className="truncate">{project.client_name}</span>
+                  <span className="text-muted-foreground/40">·</span>
+                </>
+              )}
+              <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
+                <Users className="w-3 h-3" />
+                {total}
+              </span>
+              <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
+                <Send className="w-3 h-3" />
+                {messaged}
+              </span>
+              <span className="inline-flex items-center gap-1 tabular-nums shrink-0">
+                <CheckCircle2 className="w-3 h-3 text-success/70" />
+                {shortlisted}
+              </span>
+            </div>
+          ) : (
+            project.client_name && (
+              <p className="text-xs text-muted-foreground truncate">{project.client_name}</p>
+            )
           )}
         </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all shrink-0 mt-0.5" />
-      </div>
 
-      {/* Progress strip */}
-      <div className="space-y-1.5 mt-3">
-        <ProgressRow
-          icon={<Users className="w-3 h-3" />}
-          label="Sourcés"
-          value={total}
-          pct={sourcedPct}
-          barColor="bg-foreground/60"
-          delay={baseDelay}
-        />
-        <ProgressRow
-          icon={<Send className="w-3 h-3" />}
-          label="Contactés"
-          value={messaged}
-          pct={messagedPct}
-          barColor="bg-info/60"
-          delay={baseDelay + 0.1}
-        />
-        <ProgressRow
-          icon={<CheckCircle2 className="w-3 h-3" />}
-          label="Shortlist"
-          value={shortlisted}
-          pct={shortlistedPct}
-          barColor="bg-success/60"
-          delay={baseDelay + 0.2}
-        />
-      </div>
+        <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all shrink-0" />
+      </button>
 
-      {lastActivityLabel && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground/70 mt-3 pt-3 border-t border-border">
-          <Clock className="w-3 h-3" />
-          {lastActivityLabel}
-        </div>
-      )}
-    </motion.button>
+      {/* Bouton chevron — toggle expand, séparé pour ne pas trigger le navigate */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleExpand();
+        }}
+        aria-label={expanded ? 'Réduire' : 'Voir le détail'}
+        aria-expanded={expanded}
+        className="absolute right-3 bottom-3 h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors opacity-0 group-hover:opacity-100"
+      >
+        <ChevronDown className={cn('w-4 h-4 transition-transform', expanded && 'rotate-180')} />
+      </button>
+
+      {/* Détails expandables — progress bars + last activity */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 space-y-1.5 pt-1 border-t border-border">
+              <ProgressRow
+                icon={<Users className="w-3 h-3" />}
+                label="Sourcés"
+                value={total}
+                pct={sourcedPct}
+                barColor="bg-foreground/60"
+                delay={baseDelay}
+              />
+              <ProgressRow
+                icon={<Send className="w-3 h-3" />}
+                label="Contactés"
+                value={messaged}
+                pct={messagedPct}
+                barColor="bg-info/60"
+                delay={baseDelay + 0.1}
+              />
+              <ProgressRow
+                icon={<CheckCircle2 className="w-3 h-3" />}
+                label="Shortlist"
+                value={shortlisted}
+                pct={shortlistedPct}
+                barColor="bg-success/60"
+                delay={baseDelay + 0.2}
+              />
+              {lastActivityLabel && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground/70 pt-2 mt-2 border-t border-border/60">
+                  <Clock className="w-3 h-3" />
+                  {lastActivityLabel}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
+};
+
+// ─── Persistance des préférences (localStorage) ───────────────────────────
+const STORAGE_KEY = 'dashboard-missions-expanded';
+const readExpanded = (): Set<string> => {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+const writeExpanded = (ids: Set<string>) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // localStorage plein → ignore
+  }
 };
 
 export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
@@ -175,6 +261,12 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
   isLoading,
 }) => {
   const navigate = useNavigate();
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => readExpanded());
+
+  // Persiste à chaque changement
+  useEffect(() => {
+    writeExpanded(expandedIds);
+  }, [expandedIds]);
 
   const activeProjects = useMemo(() => {
     return projects
@@ -186,6 +278,25 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
       })
       .slice(0, 5);
   }, [projects]);
+
+  const allExpanded =
+    activeProjects.length > 0 && activeProjects.every((p) => expandedIds.has(p.id));
+
+  const toggleAll = useCallback(() => {
+    setExpandedIds((prev) => {
+      if (allExpanded) return new Set();
+      return new Set(activeProjects.map((p) => p.id));
+    });
+  }, [allExpanded, activeProjects]);
+
+  const toggleOne = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   return (
     <motion.div
@@ -210,13 +321,35 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
             </p>
           </div>
         </div>
-        <button
-          onClick={() => navigate('/missions')}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors shrink-0"
-        >
-          Voir tout
-          <ArrowRight className="w-3 h-3" />
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {activeProjects.length > 0 && (
+            <button
+              onClick={toggleAll}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border bg-background hover:bg-accent text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={allExpanded ? 'Tout réduire' : 'Tout déplier'}
+              title={allExpanded ? 'Tout réduire' : 'Tout déplier'}
+            >
+              {allExpanded ? (
+                <>
+                  <Minimize2 className="w-3 h-3" />
+                  Réduire
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3 h-3" />
+                  Déplier
+                </>
+              )}
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/missions')}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+          >
+            Voir tout
+            <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       <motion.div
@@ -231,7 +364,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
         {isLoading ? (
           <>
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-[140px] rounded-xl bg-muted/40 animate-pulse" />
+              <div key={i} className="h-[60px] rounded-xl bg-muted/40 animate-pulse" />
             ))}
           </>
         ) : activeProjects.length === 0 ? (
@@ -258,12 +391,15 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
           </motion.div>
         ) : (
           activeProjects.map((project, i) => (
-            <MissionCard
-              key={project.id}
-              project={project}
-              index={i}
-              onClick={() => navigate(`/missions/${project.id}`)}
-            />
+            <div key={project.id} className="relative">
+              <MissionCard
+                project={project}
+                index={i}
+                expanded={expandedIds.has(project.id)}
+                onToggleExpand={() => toggleOne(project.id)}
+                onClick={() => navigate(`/missions/${project.id}`)}
+              />
+            </div>
           ))
         )}
       </motion.div>
