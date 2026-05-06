@@ -237,10 +237,12 @@ export default function ScorecardFullPage() {
 
       {/* ═══ Body 2-col ═══ */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar gauche : candidat + poste */}
+        {/* Sidebar gauche : candidat + poste.
+            min-w-0 sur le aside ET les enfants pour éviter que des chips/
+            textes longs (skills, summary) cassent le layout en débordant. */}
         <aside
           className={cn(
-            'w-full sm:w-[320px] lg:w-[360px] border-r border-border bg-muted/10 flex-col shrink-0',
+            'w-full sm:w-[320px] lg:w-[360px] border-r border-border bg-muted/10 flex-col shrink-0 min-w-0',
             'sm:flex',
             mobilePane === 'sidebar' ? 'flex flex-1 sm:flex-none' : 'hidden sm:flex',
           )}
@@ -416,18 +418,20 @@ export default function ScorecardFullPage() {
                   </SidebarSection>
                 )}
 
-                {/* Skills */}
+                {/* Skills — chips avec max-w pour éviter overflow horizontal
+                    sur les noms longs ("Continuous Integration..."). Le min-w-0
+                    + break-words gèrent les cas extrêmes. */}
                 {(enrichedProfile?.skills?.length || 0) > 0 && (
                   <SidebarSection
                     icon={Sparkles}
                     title="Compétences"
                     eyebrow={`${enrichedProfile!.skills.length} skills`}
                   >
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 min-w-0">
                       {enrichedProfile!.skills.slice(0, 14).map((skill, i) => (
                         <span
                           key={i}
-                          className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
+                          className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border max-w-full break-words"
                         >
                           {skill}
                         </span>

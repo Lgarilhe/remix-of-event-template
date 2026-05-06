@@ -88,6 +88,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
   const [selectedStage, setSelectedStage] = useState<InterviewStage | ''>('');
   const [showCoaching, setShowCoaching] = useState(false);
   const [currentCriterionIdx, setCurrentCriterionIdx] = useState(0);
+  // Toggle "Voir l'échelle complète" pour montrer les 5 niveaux du rubric
+  // sous les boutons rating. Reset à chaque changement de critère.
+  const [showFullRubric, setShowFullRubric] = useState(false);
+  React.useEffect(() => { setShowFullRubric(false); }, [currentCriterionIdx]);
   const [coachingAutoNav, setCoachingAutoNav] = useState(true);
   const lastAutoNavCriterionRef = React.useRef<string | null>(null);
   const autoSaveTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -886,17 +890,28 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
           return (
             <div className="rounded-xl border border-border bg-card overflow-hidden">
-              {/* Card header — badges catégorie + critique + compteur */}
+              {/* Card header — badges catégorie + poids + compteur */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/15">
                 <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                   <span className={cn('inline-flex items-center text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border', catConfig.color)}>
                     <span className={cn('inline-block w-1.5 h-1.5 rounded-full mr-1.5', catConfig.dotColor)} />
                     {catConfig.label}
                   </span>
-                  {isCritical && (
+                  {/* Weight badge — toujours visible, color-coded selon importance */}
+                  {criterion.weight === 3 ? (
                     <span className="inline-flex items-center text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/40">
                       <AlertTriangle className="w-2.5 h-2.5 mr-1" />
                       Critique
+                    </span>
+                  ) : criterion.weight === 2 ? (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/40">
+                      <span className="w-1.5 h-1.5 rounded-full bg-warning" />
+                      Important
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-success/15 text-success border border-success/40">
+                      <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                      Bonus
                     </span>
                   )}
                 </div>
@@ -951,8 +966,10 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   </div>
                 </div>
 
-                {/* Rubric pour la note sélectionnée */}
-                {rating && criterion.ratingRubric?.[String(rating)] && (
+                {/* Rubric pour la note sélectionnée — affichée seulement si
+                    une note est choisie ET que l'échelle complète n'est pas
+                    déployée (sinon on évite la duplication). */}
+                {rating && !showFullRubric && criterion.ratingRubric?.[String(rating)] && (
                   <div className={cn(
                     'rounded-xl border px-3 py-2.5 flex items-start gap-2.5',
                     ratingTone(rating) === 'success' ? 'border-success/30 bg-success/5' :
@@ -970,6 +987,47 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     <p className="text-[12.5px] leading-relaxed text-foreground/85 flex-1">
                       {criterion.ratingRubric[String(rating)]}
                     </p>
+                  </div>
+                )}
+
+                {/* Toggle "Voir l'échelle complète" — utile pour comparer
+                    les 5 niveaux avant de noter, ou comme aide-mémoire. */}
+                {criterion.ratingRubric && Object.keys(criterion.ratingRubric).length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowFullRubric(v => !v)}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <ChevronDown className={cn('w-3 h-3 transition-transform', showFullRubric && 'rotate-180')} />
+                      {showFullRubric ? "Masquer l'échelle complète" : "Voir l'échelle complète"}
+                    </button>
+                    {showFullRubric && (
+                      <div className="mt-2 rounded-xl border border-border bg-muted/10 p-3 space-y-1">
+                        {Object.entries(criterion.ratingRubric).sort(([a], [b]) => Number(a) - Number(b)).map(([score, desc]) => {
+                          const isActive = String(rating) === score;
+                          return (
+                            <div
+                              key={score}
+                              className={cn(
+                                'flex items-start gap-2.5 text-[11.5px] px-2 py-1.5 rounded-md leading-relaxed transition-colors',
+                                isActive
+                                  ? 'bg-foreground/[0.06] text-foreground font-medium'
+                                  : 'text-muted-foreground/85',
+                              )}
+                            >
+                              <span className={cn(
+                                'inline-flex items-center justify-center w-5 h-5 rounded-md text-[10.5px] font-bold tabular-nums shrink-0',
+                                isActive ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground/70',
+                              )}>
+                                {score}
+                              </span>
+                              <span>{desc as string}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1055,10 +1113,11 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         })()}
           </div>{/* end card column */}
 
-          {/* Context panel — right side (desktop only) */}
-          <div className="hidden lg:block w-[300px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto space-y-3">
-            {/* Live Coaching — desktop: inline in context panel */}
-            {showCoaching && activeEval && (
+          {/* Live Coaching panel desktop — uniquement si activé.
+              Le contexte de critère (questions/redflags/rubric/poids) est
+              maintenant dans la card centrale, pas dupliqué ici. */}
+          {showCoaching && activeEval && (
+            <div className="hidden lg:block w-[300px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto">
               <LiveCoachingPanel
                 candidateId={candidate.candidateId}
                 candidateName={candidate.name}
@@ -1085,156 +1144,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 onClose={() => setShowCoaching(false)}
                 onOpenProfile={onOpenProfile}
               />
-            )}
-            {/* Current criterion context */}
-            {(() => {
-              const currentCriterion = activeEval.criteria[currentCriterionIdx];
-              if (!currentCriterion) return null;
-              const rating = activeEval.ratings[currentCriterion.id];
-
-              return (
-                <>
-                  {/* Progression card — barre + score actuel */}
-                  <div className="rounded-xl border border-border bg-card p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="h-7 w-7 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-                        <Check className="w-3.5 h-3.5 text-foreground/70" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                          Progression
-                        </p>
-                      </div>
-                      <span className="text-[12px] font-display font-bold tabular-nums">
-                        {ratedCount}/{totalCriteria}
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-foreground/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-foreground transition-all duration-500 rounded-full"
-                        style={{ width: `${(ratedCount / totalCriteria) * 100}%` }}
-                      />
-                    </div>
-                    {activeEval.overallScore != null && (
-                      <p className="text-[11.5px] text-muted-foreground mt-2">
-                        Score moyen : <strong className="text-foreground tabular-nums">{activeEval.overallScore}/5</strong>
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Suggested questions card */}
-                  {currentCriterion.suggestedQuestions && currentCriterion.suggestedQuestions.length > 0 && (
-                    <div className="rounded-xl border border-border bg-card p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="h-7 w-7 rounded-lg bg-info/10 grid place-items-center shrink-0">
-                          <MessageSquare className="w-3.5 h-3.5 text-info" />
-                        </div>
-                        <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                          Questions suggérées
-                        </p>
-                      </div>
-                      <ul className="space-y-1.5">
-                        {currentCriterion.suggestedQuestions.map((q: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2 text-[12px] text-foreground/85 leading-relaxed">
-                            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-info/10 text-info text-[9.5px] font-bold shrink-0 mt-0.5 tabular-nums">
-                              {i + 1}
-                            </span>
-                            <span>{q}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Red flags card */}
-                  {currentCriterion.redFlags && currentCriterion.redFlags.length > 0 && (
-                    <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="h-7 w-7 rounded-lg bg-destructive/15 grid place-items-center shrink-0">
-                          <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
-                        </div>
-                        <p className="text-[10px] uppercase tracking-wider font-bold text-destructive">
-                          Red flags
-                        </p>
-                      </div>
-                      <ul className="space-y-1.5">
-                        {currentCriterion.redFlags.map((rf: string, i: number) => (
-                          <li key={i} className="text-[12px] text-foreground/85 leading-relaxed pl-1">
-                            • {rf}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Rating rubric card */}
-                  {rating != null && currentCriterion.ratingRubric && (
-                    <div className="rounded-xl border border-border bg-card p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="h-7 w-7 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-                          <Star className="w-3.5 h-3.5 text-foreground/70" />
-                        </div>
-                        <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                          Échelle de notation
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        {Object.entries(currentCriterion.ratingRubric).map(([score, desc]) => {
-                          const isActive = String(rating) === score;
-                          return (
-                            <div
-                              key={score}
-                              className={cn(
-                                'flex items-start gap-2 text-[11.5px] px-2 py-1.5 rounded-md leading-relaxed',
-                                isActive
-                                  ? 'bg-foreground/[0.06] text-foreground font-medium'
-                                  : 'text-muted-foreground/85',
-                              )}
-                            >
-                              <span className={cn(
-                                'inline-flex items-center justify-center w-5 h-5 rounded-md text-[10.5px] font-bold tabular-nums shrink-0',
-                                isActive ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground/70',
-                              )}>
-                                {score}
-                              </span>
-                              <span>{desc as string}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Criterion weight info — pill design cohérent V2 */}
-                  <div className="rounded-xl border border-border bg-muted/15 px-3 py-2.5 flex items-center justify-between text-[11.5px]">
-                    <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                      Poids :
-                      {currentCriterion.weight === 3 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/30 font-semibold text-[10.5px]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
-                          Critique
-                        </span>
-                      ) : currentCriterion.weight === 2 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/30 font-semibold text-[10.5px]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-                          Important
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-semibold text-[10.5px]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                          Bonus
-                        </span>
-                      )}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground/70 font-semibold">
-                      {currentCriterionIdx + 1}/{totalCriteria}
-                    </span>
-                  </div>
-                </>
-              );
-            })()}
-          </div>{/* end context panel */}
-        </div>{/* end flex rail+card+context */}
+            </div>
+          )}
+        </div>{/* end flex rail+card */}
 
         {/* ─── Verdict Section ─── */}
         <div className="border-t-2 border-border pt-4 mt-6 space-y-4">
