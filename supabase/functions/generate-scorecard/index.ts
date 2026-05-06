@@ -114,9 +114,21 @@ ${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
+    // Modèle utilisé pour la génération : on prend celui résolu côté
+    // frontend (extractAIParams.modelId) si l'user a explicitement choisi
+    // Sonnet/Opus dans le ModelPicker. Sinon, défaut Haiku (rapide).
+    // Pourquoi Haiku par défaut : la scorecard est un format structuré
+    // contenu (6-8 critères + rubric + questions), Haiku 4.5 le fait très
+    // bien et beaucoup plus vite. Sonnet/Opus ajoutent ~30s sans gain réel
+    // pour ce use-case.
+    const modelToUse = _aiParams.modelId && _aiParams.modelId.startsWith('claude-')
+      ? _aiParams.modelId
+      : 'claude-haiku-4-5-20251001';
+
     let aiResult;
     try {
       aiResult = await callClaudeCompat({
+        model: modelToUse,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -174,12 +186,28 @@ Génère la scorecard d'évaluation sur mesure.`;
         ],
         tool_choice: { type: "function", function: { name: "generate_scorecard" } },
         max_tokens: 4000,
-        timeoutMs: 30000,
+        // Timeout augmenté à 50s (était 30s, qui timeoutait avec Sonnet
+        // sur des prompts contenant tout le contexte mission + candidat).
+        // 50s reste sous la limite Supabase edge function (60s) avec marge.
+        timeoutMs: 50000,
+        // Pas de retry sur timeout : si l'IA est lente, retry coûte 50s
+        // de plus → préfère une erreur immédiate avec retry user-driven.
+        maxRetries: 1,
       });
     } catch (e) {
       if (e instanceof ClaudeCompatError && e.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Détection timeout pour message plus clair côté user
+      const errMsg = e instanceof Error ? e.message : String(e);
+      if (errMsg.includes('abort') || errMsg.includes('timeout') || errMsg.includes('signal')) {
+        console.error('[generate-scorecard] Timeout:', errMsg);
+        return new Response(JSON.stringify({
+          error: "L'IA a mis trop de temps à répondre. Réessaie dans quelques secondes."
+        }), {
+          status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       console.error("[generate-scorecard] Claude error:", e);
