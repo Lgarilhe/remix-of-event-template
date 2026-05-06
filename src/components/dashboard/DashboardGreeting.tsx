@@ -21,9 +21,20 @@ import { useCountUp } from '@/hooks/useCountUp';
 
 interface DashboardGreetingProps {
   userName: string | null;
+  /** Avatar LinkedIn (ou autre) — si fourni, affiché dans le hero. */
+  avatarUrl?: string | null;
   activeCandidatesCount: number;
   activeMissionsCount: number;
 }
+
+/** Génère les initiales pour le fallback avatar (ex: "Laurent Garilhe" → "LG"). */
+const getInitials = (name: string | null): string => {
+  if (!name) return '?';
+  const tokens = name.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return '?';
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+  return (tokens[0][0] + tokens[tokens.length - 1][0]).toUpperCase();
+};
 
 const greetingFor = (hour: number): { greeting: string; emoji: string } => {
   if (hour < 5) return { greeting: 'Bonsoir', emoji: '🌙' };
@@ -34,6 +45,7 @@ const greetingFor = (hour: number): { greeting: string; emoji: string } => {
 
 export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
   userName,
+  avatarUrl,
   activeCandidatesCount,
   activeMissionsCount,
 }) => {
@@ -76,7 +88,48 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
       />
 
       <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 px-6 py-6 sm:py-7">
-        <div className="min-w-0">
+        <div className="flex items-center gap-4 min-w-0">
+          {/* Avatar — photo LinkedIn si dispo, sinon initiales sur tile */}
+          <motion.div
+            className="relative shrink-0"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1, type: 'spring', stiffness: 200 }}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                aria-hidden="true"
+                className="h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover ring-2 ring-card shadow-sm"
+                onError={(e) => {
+                  // Si le lien casse (token expiré côté Unipile), on bascule sur les initiales
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  const fallback = (e.currentTarget.nextElementSibling as HTMLElement | null);
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+              />
+            ) : null}
+            <div
+              className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-foreground/[0.06] flex items-center justify-center font-display font-bold text-foreground text-base sm:text-lg ring-2 ring-card shadow-sm"
+              style={{ display: avatarUrl ? 'none' : 'flex' }}
+              aria-hidden="true"
+            >
+              {getInitials(userName)}
+            </div>
+            {/* Live dot — signal "session active" */}
+            <span className="absolute bottom-0 right-0 flex h-3 w-3">
+              <motion.span
+                className="absolute inset-0 rounded-full bg-success"
+                initial={{ opacity: 0.6, scale: 1 }}
+                animate={{ opacity: 0, scale: 2.4 }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
+              />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-success ring-2 ring-card" />
+            </span>
+          </motion.div>
+
+          <div className="min-w-0">
           <motion.h1
             className="font-display font-bold text-foreground text-2xl sm:text-3xl tracking-tight leading-tight"
             initial={{ opacity: 0, y: 8 }}
@@ -118,6 +171,7 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
               </>
             )}
           </motion.p>
+          </div>
         </div>
 
         {/* Quick action pills */}

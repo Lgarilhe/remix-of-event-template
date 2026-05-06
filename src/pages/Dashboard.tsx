@@ -23,10 +23,12 @@ import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
+import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
 import { DashboardFocusPanel } from '@/components/dashboard/DashboardFocusPanel';
+import { DashboardConnections } from '@/components/dashboard/DashboardConnections';
 import { DashboardMissionsPanel } from '@/components/dashboard/DashboardMissionsPanel';
 import { DashboardTodayPanel } from '@/components/dashboard/DashboardTodayPanel';
 import { DashboardWeekHighlight } from '@/components/dashboard/DashboardWeekHighlight';
@@ -64,7 +66,10 @@ export default function Dashboard() {
   const { data: scheduledMessages = [], isLoading: messagesLoading } = useTodayScheduledMessages();
   const { grouped: groupedReminders, isLoading: remindersLoading } = useAllReminders();
   const unreadMessages = useUnreadMessageNotifications();
-  const { displayName } = useCurrentProfile();
+  const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
+  const connections = useDashboardConnections();
+  // Avatar prioritaire : LinkedIn (photo réelle) > profil custom upload > fallback initiales
+  const greetingAvatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl;
 
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -111,11 +116,23 @@ export default function Dashboard() {
       {/* 1. Greeting */}
       <DashboardGreeting
         userName={displayName}
+        avatarUrl={greetingAvatarUrl}
         activeCandidatesCount={activeCandidatesCount}
         activeMissionsCount={activeMissionsCount}
       />
 
-      {/* 2. Focus du jour */}
+      {/* 2a. État des canaux outreach (LinkedIn / Email / WhatsApp) */}
+      {!connections.isLoading && (
+        <DashboardConnections
+          linkedin={connections.linkedin}
+          whatsapp={connections.whatsapp}
+          email={connections.email}
+          hasIssue={connections.hasIssue}
+          allConnected={connections.allConnected}
+        />
+      )}
+
+      {/* 2b. Focus du jour */}
       {!loading && (
         <DashboardFocusPanel
           unreadMessages={unreadMessages}
