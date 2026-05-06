@@ -27,24 +27,18 @@ import {
   Target, Activity as ActivityIcon, StickyNote, Zap,
   GitBranch, FileText, LayoutDashboard, User as UserIcon, MessageSquare,
 } from 'lucide-react';
-import { ScorecardTab } from './ScorecardTab';
-import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
-import { FraudDetectionTab } from './FraudDetectionTab';
 import { CandidateSequencesPanel } from '@/components/outreach/CandidateSequencesPanel';
-import {
-  ActivityTab, NotesTab, ActionsTab, ScoringCard,
-  CollapsibleSection,
-} from './candidate-detail';
+import { ActivityTab, NotesTab, ActionsTab } from './candidate-detail';
 import { CVTab } from './candidate-detail/CVTab';
 import { OverviewTab } from './candidate-detail/OverviewTab';
 import { ProfileDetailedTab } from './candidate-detail/ProfileDetailedTab';
+import { EvaluationTab } from './candidate-detail/EvaluationTab';
 import { ManualContactsEditor } from './candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { getCandidateContacts, type CandidateContacts } from '@/lib/candidateContacts';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 // Single-modal architecture : on réutilise ProfileDetailSheet (sourcing)
 import { ProfileDetailSheet, ProfileDetailExtraTab } from '@/components/outreach/result-card/ProfileDetailSheet';
@@ -345,34 +339,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       shortLabel: 'Eval',
       icon: Target,
       content: (
-        <div className="space-y-4">
-          {candidate.score != null && <ScoreSummary candidate={candidate} />}
-          <ScorecardTab
-            candidate={candidate}
-            enrichedProfile={enrichedProfile}
-            onOpenProfile={() => setMobileProfileOpen(true)}
-          />
-          {/* Préparer mergé dans Évaluation comme section collapsible */}
-          <CollapsibleSection title="📞 Préparer le call" defaultOpen={false}>
-            <PrepSheetTab
-              candidateId={candidate.candidateId}
-              jobId={candidate.jobId}
-              candidateName={candidate.name}
-            />
-          </CollapsibleSection>
-          <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
-            <FraudDetectionTab candidate={candidateWithProfileData} />
-          </CollapsibleSection>
-          {fullProfile.scoringHistory.length > 0 && (
-            <CollapsibleSection title={`📊 Historique des scorings (${fullProfile.scoringHistory.length})`} defaultOpen={false}>
-              <div className="space-y-3">
-                {fullProfile.scoringHistory.map((sr) => (
-                  <ScoringCard key={sr.id} scoring={sr} />
-                ))}
-              </div>
-            </CollapsibleSection>
-          )}
-        </div>
+        <EvaluationTab
+          candidate={candidate}
+          candidateWithProfileData={candidateWithProfileData}
+          enrichedProfile={enrichedProfile}
+          fullProfile={fullProfile}
+          onOpenMobileProfile={() => setMobileProfileOpen(true)}
+        />
       ),
     },
     {
@@ -498,36 +471,3 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// Sub-components inline (gardés ici pour pas créer 2 fichiers de plus)
-// ═══════════════════════════════════════════════════════════════════
-
-const ScoreSummary = React.memo<{ candidate: ATSCandidate }>(({ candidate }) => (
-  <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-foreground/[0.03]">
-    <div className={cn(
-      "h-14 w-14 flex items-center justify-center rounded-xl border-2 text-xl font-black shrink-0 tabular-nums",
-      (candidate.score ?? 0) >= 70 ? 'border-success/40 bg-success/10 text-success' :
-      (candidate.score ?? 0) >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
-      'border-destructive/40 bg-destructive/5 text-destructive'
-    )}>
-      {candidate.score}
-    </div>
-    <div className="flex-1 min-w-0">
-      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-        Score global /100
-      </span>
-      {candidate.recommendation && (
-        <span className={cn(
-          "text-xs px-2 py-0.5 rounded-md border font-medium uppercase tracking-wider mt-1 inline-block",
-          candidate.recommendation === 'shortlist' ? 'border-success/40 text-success bg-success/10' :
-          candidate.recommendation === 'skip' ? 'border-destructive/30 text-destructive bg-destructive/5' :
-          'border-warning/40 text-warning bg-warning/10'
-        )}>
-          {candidate.recommendation === 'shortlist' ? 'Recommandé' :
-           candidate.recommendation === 'skip' ? 'Non recommandé' : 'À évaluer'}
-        </span>
-      )}
-    </div>
-  </div>
-));
-ScoreSummary.displayName = 'ScoreSummary';
