@@ -917,16 +917,74 @@ CTA :
 - Simple, non-engageant ("Dispo 15 min cette semaine ?", "Curieux d'avoir ton avis", "Ça te parle ?").
 - Banni : "Es-tu intéressé ?", "Tu serais ouvert ?", "Ça t'intéresserait ?".
 
-OBJET (InMail uniquement) :
-- < 40 chars, mobile-first. Ex : "${job.title} chez ${clientName}", "Ton avis m'intéresse".
-
 TON : ${toneInstructions[tone]}
 ADAPTATION : si le candidat utilise un style décontracté/formel/technique → adapte-toi. But = un message de pair.
 
-FORMAT FINAL :
-- Salutation : "Salut [Prénom]," si prénom fiable. Sinon "Salut," ou "Hey," sans prénom.
-- 2-3 paragraphes courts séparés par \\n\\n. Pas de bloc massif. Pas de tirets/puces.
-- Signature : ${senderName ? `EXACTEMENT "${senderName}" (prénom seul). JAMAIS "${senderName.charAt(0)}. NomDeFamille" ni nom complet ni titre.` : 'prénom seul, jamais nom de famille ni titre.'}
+⚠️ FORMAT SELON LE CANAL — RÈGLE CRITIQUE
+${(() => {
+  const at = sequenceContext?.currentActionType?.toLowerCase() || '';
+  const isInMail = at === 'inmail' || at === 'smart_message';
+  const isInvite = at === 'connection_request';
+  const isEmail = at === 'email';
+  const isLinkedInDM = at === 'message';
+  const isWhatsapp = at === 'whatsapp_message';
+
+  if (isInvite) {
+    return `📩 NOTE D'INVITATION LINKEDIN (canal: connection_request)
+- LIMITE STRICTE : 280 caractères MAX (limite LinkedIn = 300, marge sécurité).
+- Format : 1 phrase d'observation perso + 1 phrase de pitch ultra-courte. C'est tout.
+- PAS de salutation type "Salut Prénom," (gaspille des chars), tu peux commencer direct.
+- PAS de signature (limite chars).
+- PAS de paragraphes / sauts de ligne — 1 bloc compact.
+- Exemple : "Ton parcours infra cloud chez Doctolib m'a fait penser à un poste Lead Go qu'on monte. Curieux d'en parler 15 min ?"`;
+  }
+
+  if (isInMail) {
+    return `✉️ INMAIL RECRUITER (canal: inmail / smart_message)
+- Format proche d'un email PRO : OBJET (< 40 chars) + corps structuré.
+- LONGUEUR corps : 200-400 caractères.
+- Salutation : "Bonjour [Prénom]," (l'InMail est plus formel qu'un DM).
+- 2-3 paragraphes courts séparés par \\n\\n (lisible comme un mini email).
+- Signature avec prénom à la fin sur sa propre ligne.
+- Le candidat reçoit l'InMail comme un email, peut prendre 30s pour le lire.`;
+  }
+
+  if (isEmail) {
+    return `📧 EMAIL (canal: email)
+- Format email classique : OBJET + corps structuré.
+- LONGUEUR corps : 200-400 caractères.
+- Salutation : "Bonjour [Prénom]," (mail = formel par défaut, sauf si le tone est casual).
+- 2-3 paragraphes courts séparés par \\n\\n.
+- Signature avec prénom à la fin sur sa propre ligne.`;
+  }
+
+  if (isWhatsapp) {
+    return `💬 WHATSAPP (canal: whatsapp_message)
+- Style SMS / chat : ULTRA compact, direct, casual.
+- LONGUEUR : 100-250 caractères.
+- PAS de salutation formelle ("Bonjour" ❌), tu peux commencer par "Hey" ou direct le prénom.
+- 1 seul bloc, 1-2 sauts de ligne MAX si vraiment nécessaire.
+- PAS de signature (le candidat te voit dans son contact WhatsApp).
+- Direct, comme un message à un pote du métier.`;
+  }
+
+  if (isLinkedInDM) {
+    return `💬 MESSAGE LINKEDIN DIRECT (canal: message — DM, pas InMail)
+- Style chat / messagerie LinkedIn — PROCHE D'UN SMS/WHATSAPP, PAS d'un email.
+- LONGUEUR : 200-350 caractères.
+- "Salut [Prénom]," puis directement l'observation (pas de saut de ligne avant).
+- COMPACT : 1 saut de ligne MAX entre l'accroche et le CTA. JAMAIS 2-3 paragraphes séparés comme un email.
+- Le candidat lit ça comme un chat — pas comme un mail. Pas de structure email.
+- Signature minimale : juste ton prénom à la fin (pas obligé sur sa propre ligne, peut être inline si court).
+- Exemple format souhaité (compact) :
+  "Salut Théotime, ton parcours Principal Engineer à Back Market sur l'archi cloud-native, c'est exactement le type de profil qu'on cherche pour le poste Lead Go chez Numspot — archi greenfield, latitude tech.\\nDispo 15 min cette semaine ? Laurent"
+- Exemple à NE PAS faire (trop email) :
+  "Salut Théotime,\\n\\nTon parcours [...]\\n\\nDispo 15 min ?\\n\\nLaurent"`;
+  }
+
+  // Fallback default
+  return `Format LinkedIn classique : 200-400 caractères, salutation + corps + signature.`;
+})()}
 ${calendlyWithPrefill ? `
 === LIEN CALENDLY DISPONIBLE ===
 Lien de prise de RDV: ${calendlyWithPrefill}
