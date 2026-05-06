@@ -13,15 +13,14 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Target,
-  Kanban,
-  MessageSquare,
-  Sparkles,
+  Home,
+  Briefcase,
+  Columns3,
+  Inbox,
   Search,
-  CalendarDays,
-  CheckSquare,
-  ShoppingBag,
+  Calendar,
+  ListTodo,
+  Store,
 } from 'lucide-react';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -49,13 +48,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/missions', label: 'Missions', icon: Target },
-  { to: '/pipeline', label: 'Pipeline', icon: Kanban },
-  { to: '/calendar', label: 'Calendrier', icon: CalendarDays },
-  { to: '/tasks', label: 'Tâches', icon: CheckSquare },
-  { to: '/inbox', label: 'Messages', icon: MessageSquare, badgeKey: 'unread' },
-  { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag, feature: 'marketplace_browse' },
+  { to: '/dashboard', label: 'Dashboard', icon: Home },
+  { to: '/missions', label: 'Missions', icon: Briefcase },
+  { to: '/pipeline', label: 'Pipeline', icon: Columns3 },
+  { to: '/calendar', label: 'Calendrier', icon: Calendar },
+  { to: '/tasks', label: 'Tâches', icon: ListTodo },
+  { to: '/inbox', label: 'Messages', icon: Inbox, badgeKey: 'unread' },
+  { to: '/marketplace', label: 'Marketplace', icon: Store, feature: 'marketplace_browse' },
 ];
 
 export function AppSidebar() {
@@ -140,7 +139,7 @@ export function AppSidebar() {
             className="w-full flex items-center gap-2 h-8 px-2.5 mb-2 rounded-md bg-sidebar-accent/40 text-muted-foreground text-[12px] hover:bg-sidebar-accent/60 transition-colors"
             aria-label="Rechercher (Ctrl+K)"
           >
-            <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+            <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
             <span className="flex-1 text-left">Rechercher…</span>
             <kbd className="text-[10px] font-mono text-muted-foreground/70">⌘K</kbd>
           </button>
@@ -151,7 +150,7 @@ export function AppSidebar() {
             aria-label="Rechercher"
             title="Rechercher (⌘K)"
           >
-            <Search className="h-4 w-4" strokeWidth={2} />
+            <Search className="h-4 w-4" strokeWidth={1.5} />
           </button>
         )}
 
@@ -183,8 +182,8 @@ export function AppSidebar() {
                     )}
                   >
                     <item.icon
-                      className="h-4 w-4 shrink-0"
-                      strokeWidth={1.75}
+                      className="h-[18px] w-[18px] shrink-0"
+                      strokeWidth={1.5}
                       aria-hidden="true"
                     />
                     {!collapsed && (
