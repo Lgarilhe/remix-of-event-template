@@ -11,7 +11,7 @@ import {
 
 export const ATSTableSkeleton: React.FC = () => {
   return (
-    <div className="bg-background border border-border overflow-hidden">
+    <div className="rounded-xl bg-card border border-border overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-accent/50 border-b border-border">
