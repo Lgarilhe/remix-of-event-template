@@ -275,9 +275,14 @@ export default function ScorecardFullPage() {
             </button>
           </div>
 
-          <ScrollArea className="flex-1">
+          {/* ScrollArea Radix utilise display:table en interne sur son
+              viewport ce qui peut faire pousser le contenu au-delà du
+              parent. On force w-full + min-w-0 sur le wrapper interne
+              pour contrer ce comportement et garantir le truncate des
+              chips/textes longs. */}
+          <ScrollArea className="flex-1 w-full">
             {sidebarTab === 'candidate' ? (
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-4 w-full min-w-0 max-w-full">
                 {/* Identity */}
                 <div className="flex items-start gap-3">
                   <Avatar className="w-12 h-12 ring-2 ring-border shadow-sm">
@@ -447,7 +452,7 @@ export default function ScorecardFullPage() {
               </div>
             ) : (
               // ═══ Job sidebar ═══
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-4 w-full min-w-0 max-w-full">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
                     Mission
@@ -572,23 +577,25 @@ function SidebarSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <div className="flex items-center gap-2 mb-2">
+    <div className="rounded-xl border border-border bg-card p-3 w-full min-w-0 max-w-full overflow-hidden">
+      <div className="flex items-center gap-2 mb-2 min-w-0">
         <div className="h-6 w-6 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
           <Icon className="w-3 h-3 text-foreground/70" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-[12px] tracking-tight text-foreground">
+          <h3 className="font-display font-bold text-[12px] tracking-tight text-foreground truncate">
             {title}
           </h3>
           {eyebrow && (
-            <p className="text-[9.5px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+            <p className="text-[9.5px] uppercase tracking-wider font-semibold text-muted-foreground/70 truncate">
               {eyebrow}
             </p>
           )}
         </div>
       </div>
-      {children}
+      <div className="min-w-0 max-w-full">
+        {children}
+      </div>
     </div>
   );
 }
