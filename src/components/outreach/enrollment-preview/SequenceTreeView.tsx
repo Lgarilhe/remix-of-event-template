@@ -238,34 +238,31 @@ function DecisionFork({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: index * 0.04 }}
-      className="space-y-0"
+      className="relative"
     >
-      {/* Diamant DÉCISION (full width, centré) */}
-      <div className="relative mx-auto max-w-md">
-        <div className="rounded-2xl border-2 border-dashed border-brand-purple/40 bg-gradient-to-br from-brand-purple/[0.07] to-brand-pink/[0.04] px-5 py-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-lg bg-brand-purple/15 grid place-items-center shrink-0 rotate-45 shadow-sm">
-              <Icon className="w-4 h-4 text-brand-purple -rotate-45" strokeWidth={2.5} />
+      {/* Diamant DÉCISION (centré, max-w plus serré) */}
+      <div className="flex justify-center mb-2">
+        <div className="rounded-xl border-2 border-dashed border-brand-purple/40 bg-gradient-to-br from-brand-purple/[0.07] to-brand-pink/[0.04] px-4 py-3 shadow-sm w-full max-w-sm">
+          <div className="flex items-start gap-2.5">
+            <div className="h-9 w-9 rounded-lg bg-brand-purple/15 grid place-items-center shrink-0 rotate-45 shadow-sm">
+              <Icon className="w-3.5 h-3.5 text-brand-purple -rotate-45" strokeWidth={2.5} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-brand-purple">
-                  Décision
+                <p className="text-[9.5px] uppercase tracking-wider font-bold text-brand-purple">
+                  Décision · Étape {step.stepOrder + 1}
                 </p>
-                <span className="text-[10px] text-muted-foreground tabular-nums uppercase tracking-wider">
-                  · Étape {step.stepOrder + 1}
-                </span>
               </div>
-              <p className="text-[14px] font-bold text-foreground tracking-tight mt-1 font-display">
+              <p className="text-[13.5px] font-bold text-foreground tracking-tight font-display leading-tight mt-0.5">
                 {label}
               </p>
               {description && (
-                <p className="text-[12px] text-muted-foreground mt-1 leading-snug">
+                <p className="text-[11.5px] text-muted-foreground mt-1 leading-snug">
                   {description}
                 </p>
               )}
               {step.timeoutDays && (
-                <p className="text-[10.5px] text-warning mt-2 inline-flex items-center gap-1">
+                <p className="text-[10px] text-warning mt-1.5 inline-flex items-center gap-1">
                   <Clock className="w-2.5 h-2.5" />
                   Timeout après {step.timeoutDays} jour{step.timeoutDays > 1 ? 's' : ''}
                 </p>
@@ -275,76 +272,51 @@ function DecisionFork({
         </div>
       </div>
 
-      {/* Fork visuel : 2 lignes courbes qui partent du diamant */}
-      <ForkSplitter />
-
-      {/* 2 colonnes : branche principale (next step) + branche alternative (fallback/end) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[2fr_auto_1fr] gap-3 lg:gap-4 items-start">
-        {/* Colonne gauche (LARGE) : branche principale */}
-        <div className="space-y-2 min-w-0">
-          <BranchHeader label={branches.main.label} variant="primary" />
-          {mainStep ? (
-            <ActionCard step={mainStep} index={index + 1} renderStep={renderStep} />
-          ) : (
-            <BranchPlaceholder text="Continue le parcours principal" tone="info" />
-          )}
+      {/* Wrapper du fork : layout 2-cols avec connecteurs CSS purs (plus de SVG bizarre).
+          La structure : chaque colonne a une "branche" qui démarre par une ligne
+          verticale courte + le label pill, puis le contenu. Les 2 colonnes sont
+          connectées en haut par un T-fork CSS (border-top + border-l + border-r). */}
+      <div className="relative">
+        {/* T-fork CSS : ligne horizontale en haut qui relie les 2 colonnes,
+            avec petites lignes verticales descendant vers chaque label */}
+        <div className="absolute top-0 left-1/4 right-1/4 h-3 pointer-events-none" aria-hidden="true">
+          {/* Ligne horizontale qui couvre la largeur entre le centre des 2 colonnes */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-brand-purple/40" />
+          {/* Verticale gauche (solide) */}
+          <div className="absolute top-0 bottom-0 left-0 w-px bg-brand-purple/40" />
+          {/* Verticale droite (dashed) */}
+          <div
+            className="absolute top-0 bottom-0 right-0 w-px"
+            style={{ backgroundImage: 'linear-gradient(to bottom, hsl(271 81% 56% / 0.4) 50%, transparent 50%)', backgroundSize: '1px 4px' }}
+          />
         </div>
 
-        {/* Séparateur vertical pointillé (visible seulement desktop) */}
-        <div className="hidden lg:block w-px bg-gradient-to-b from-transparent via-border/60 to-transparent self-stretch min-h-[80px]" aria-hidden="true" />
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4 lg:gap-6 pt-4 items-start">
+          {/* Colonne gauche : branche principale */}
+          <div className="min-w-0 space-y-2">
+            <BranchHeader label={branches.main.label} variant="primary" />
+            {mainStep ? (
+              <ActionCard step={mainStep} index={index + 1} renderStep={renderStep} />
+            ) : (
+              <BranchPlaceholder text="Continue le parcours principal" tone="info" />
+            )}
+          </div>
 
-        {/* Colonne droite (étroite) : branche alternative */}
-        <div className="space-y-2 min-w-0">
-          <BranchHeader label={branches.alt.label} variant="secondary" />
-          {fallbackInmailStep ? (
-            <FallbackInmailCard step={fallbackInmailStep} />
-          ) : (
-            <BranchPlaceholder
-              text={branches.alt.placeholder}
-              tone={branches.alt.tone}
-            />
-          )}
+          {/* Colonne droite : branche alternative */}
+          <div className="min-w-0 space-y-2">
+            <BranchHeader label={branches.alt.label} variant="secondary" />
+            {fallbackInmailStep ? (
+              <FallbackInmailCard step={fallbackInmailStep} />
+            ) : (
+              <BranchPlaceholder
+                text={branches.alt.placeholder}
+                tone={branches.alt.tone}
+              />
+            )}
+          </div>
         </div>
       </div>
     </motion.div>
-  );
-}
-
-// ─── ForkSplitter — SVG qui dessine le fork visuel ───────────────────
-
-function ForkSplitter() {
-  return (
-    <div className="h-8 relative" aria-hidden="true">
-      <svg
-        className="absolute inset-0 w-full h-full"
-        viewBox="0 0 200 32"
-        preserveAspectRatio="none"
-      >
-        {/* Ligne centrale qui descend du diamant */}
-        <line
-          x1="100" y1="0" x2="100" y2="12"
-          stroke="hsl(var(--border))" strokeWidth="1.5"
-        />
-        {/* Branche gauche en courbe */}
-        <path
-          d="M 100 12 Q 100 24 50 24 L 25 24 L 25 32"
-          stroke="hsl(271 81% 56% / 0.5)"
-          strokeWidth="1.5"
-          fill="none"
-        />
-        {/* Branche droite en courbe */}
-        <path
-          d="M 100 12 Q 100 24 150 24 L 175 24 L 175 32"
-          stroke="hsl(271 81% 56% / 0.5)"
-          strokeWidth="1.5"
-          fill="none"
-          strokeDasharray="3 3"
-        />
-        {/* Petits triangles flèches en bas */}
-        <polygon points="22,30 28,30 25,34" fill="hsl(271 81% 56% / 0.5)" />
-        <polygon points="172,30 178,30 175,34" fill="hsl(271 81% 56% / 0.5)" />
-      </svg>
-    </div>
   );
 }
 
