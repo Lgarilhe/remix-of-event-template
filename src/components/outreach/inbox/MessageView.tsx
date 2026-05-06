@@ -41,11 +41,12 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft, User, Loader2, MessageSquare, Clock, CheckCheck, Check, Trash2,
-  FileText, ChevronDown, ArrowRight, Briefcase,
+  FileText, ChevronDown, ArrowRight, Briefcase, StopCircle,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
@@ -356,6 +357,66 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [summary, setSummary] = useState<SummarizeResult | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
 
+  // Stop séquence depuis l'inbox : workflow naturel quand on prend la
+  // conversation à la main et qu'on veut éviter les relances auto qui
+  // partent encore. Lookup l'enrollment actif via profile_id (pas dans
+  // SequenceEnrollmentInfo qui ne porte pas l'ID), update status='paused'
+  // + cancel les executions schedulées.
+  const [stopSeqConfirm, setStopSeqConfirm] = useState(false);
+  const [stoppingSeq, setStoppingSeq] = useState(false);
+  const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
+
+  // Reset le flag local quand on change de chat (sinon on garde "stoppé"
+  // affiché en allant sur un autre candidat actif)
+  useEffect(() => {
+    setSeqStoppedLocal(false);
+  }, [selectedChat?.id]);
+
+  const handleStopSequence = async () => {
+    if (!selectedChat) return;
+    const profileId = getAttendeeProfileId(selectedChat);
+    if (!profileId) {
+      toast.error('Profil candidat introuvable');
+      return;
+    }
+    setStoppingSeq(true);
+    try {
+      const { data: active, error: fetchErr } = await supabase
+        .from('sequence_enrollments')
+        .select('id')
+        .eq('profile_id', profileId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      if (fetchErr) throw fetchErr;
+      const ids = (active || []).map(e => e.id);
+      if (ids.length === 0) {
+        toast.info('Aucune séquence active pour ce candidat');
+        setStopSeqConfirm(false);
+        return;
+      }
+      // Pause toutes les inscriptions actives (cas rare où il y en aurait plusieurs)
+      const { error: pauseErr } = await supabase
+        .from('sequence_enrollments')
+        .update({ status: 'paused' })
+        .in('id', ids);
+      if (pauseErr) throw pauseErr;
+      // Cancel les executions schedulées
+      await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: 'Stoppé depuis Inbox' })
+        .in('enrollment_id', ids)
+        .eq('status', 'scheduled');
+      setSeqStoppedLocal(true);
+      toast.success(ids.length > 1 ? `${ids.length} séquences arrêtées` : 'Séquence arrêtée');
+    } catch (err) {
+      console.error('[MessageView] stopSequence error:', err);
+      toast.error("Erreur lors de l'arrêt");
+    } finally {
+      setStoppingSeq(false);
+      setStopSeqConfirm(false);
+    }
+  };
+
   /** Wrapper du re-fetch qui toaste selon le résultat.
       Si la 1ère tentative (fetch normal) renvoie 0, le parent enchaîne
       automatiquement avec un sync_chat_history (peut prendre 10-30s). */
@@ -650,9 +711,30 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     {displayContext.title}
                   </span>
                 )}
-                {displayContext.stepOrder != null && displayContext.status === 'active' && (
+                {displayContext.stepOrder != null && displayContext.status === 'active' && !seqStoppedLocal && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-info bg-info/10 border border-info/30 px-2 py-0.5 rounded-md">
                     Étape {(displayContext.stepOrder ?? 0) + 1}
+                  </span>
+                )}
+                {/* Bouton Stop séquence inline — visible uniquement si une
+                    séquence est ACTIVE pour ce candidat. UX : workflow
+                    naturel quand l'user veut prendre la conv à la main et
+                    couper les relances auto qui partent encore. */}
+                {displayContext.status === 'active' && !seqStoppedLocal && (
+                  <button
+                    type="button"
+                    onClick={() => setStopSeqConfirm(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive bg-destructive/8 border border-destructive/30 px-2 py-0.5 rounded-md hover:bg-destructive/15 transition-colors"
+                    title="Arrêter la séquence — annule toutes les relances programmées pour ce candidat"
+                  >
+                    <StopCircle className="w-3 h-3" />
+                    Arrêter
+                  </button>
+                )}
+                {seqStoppedLocal && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md">
+                    <StopCircle className="w-3 h-3" />
+                    Séquence stoppée
                   </span>
                 )}
                 {displayContext.outreachConfig?.recruitment_mode && (
@@ -1199,6 +1281,29 @@ export const MessageView: React.FC<MessageViewProps> = ({
             >
               {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Stop sequence confirmation dialog */}
+      <AlertDialog open={stopSeqConfirm} onOpenChange={(open) => !open && setStopSeqConfirm(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arrêter la séquence ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Toutes les actions programmées pour ce candidat (relances, InMails, emails) seront annulées.
+              Tu pourras reprendre la séquence depuis l'écran de gestion outreach si besoin.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={stoppingSeq}
+              onClick={handleStopSequence}
+            >
+              {stoppingSeq ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <StopCircle className="w-4 h-4 mr-2" />}
+              Arrêter la séquence
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

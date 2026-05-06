@@ -755,36 +755,46 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     )}
                   </div>
                 </div>
-                <button 
+                <button
                   className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-muted text-foreground hover:bg-accent/20 transition-colors cursor-pointer border border-border"
                   onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
-                  title="Voir et gérer les candidats inscrits"
+                  title={`${seq.enrollments.active} actif(s) • ${seq.enrollments.replied} répondu(s) • ${seq.enrollments.completed} terminé(s) — clic pour voir le détail`}
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span className="font-medium">{seq.enrollments.active}</span>
+                  <span className="font-medium tabular-nums">{seq.enrollments.active}</span>
                   <span className="text-muted-foreground">/</span>
-                  <span>{seq.enrollments.total}</span>
+                  <span className="tabular-nums">{seq.enrollments.total}</span>
                 </button>
-                {/* Mini conversion funnel */}
-                {seq.enrollments.total > 0 && (
-                  <div className="flex items-center gap-0.5 h-2.5 w-[80px]" title={`${seq.enrollments.active} actifs • ${seq.enrollments.completed} terminés • ${seq.enrollments.replied} répondus`}>
-                    {seq.steps.map((_, i) => {
-                      const total = seq.enrollments.total || 1;
-                      // Simple decay: each step retains ~70% of the previous
-                      const pct = Math.max(10, Math.round(100 * Math.pow(0.7, i)));
-                      return (
-                        <div
-                          key={i}
-                          className="flex-1 h-full bg-foreground/15"
-                        >
-                          <div
-                            className="h-full bg-foreground/60"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      );
-                    })}
+                {/* Status pills : breakdown réel par état d'inscription.
+                    Remplace l'ancien faux "funnel décroissance ~70%" qui ne
+                    reflétait AUCUNE donnée réelle (juste de la déco).
+                    Maintenant on lit vraiment seq.enrollments.{active,replied,completed}. */}
+                {seq.enrollments.total > 0 ? (
+                  <div className="flex items-center gap-1 flex-wrap" title="Statuts des inscriptions">
+                    {seq.enrollments.active > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                        {seq.enrollments.active} actif{seq.enrollments.active > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {seq.enrollments.replied > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
+                        💬 {seq.enrollments.replied}
+                      </span>
+                    )}
+                    {seq.enrollments.completed > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-foreground/8 text-foreground/70 border border-border"
+                        title={`${seq.enrollments.completed} candidat(s) ont parcouru toute la séquence sans répondre`}
+                      >
+                        ✓ {seq.enrollments.completed}
+                      </span>
+                    )}
                   </div>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground/60 italic">
+                    Aucune inscription
+                  </span>
                 )}
                 <div className="text-center text-sm text-muted-foreground">
                   {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
@@ -896,15 +906,26 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     </DropdownMenu>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button 
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
                     className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-muted text-foreground hover:bg-accent/20 border border-border"
                     onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
                   >
                     <Users className="w-3 h-3" />
-                    <span className="font-medium">{seq.enrollments.active}/{seq.enrollments.total}</span>
+                    <span className="font-medium tabular-nums">{seq.enrollments.active}/{seq.enrollments.total}</span>
                   </button>
-                  <span className="text-xs text-muted-foreground">
+                  {/* Breakdown statuses (mobile) — pills compacts */}
+                  {seq.enrollments.replied > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
+                      💬 {seq.enrollments.replied}
+                    </span>
+                  )}
+                  {seq.enrollments.completed > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-foreground/8 text-foreground/70 border border-border">
+                      ✓ {seq.enrollments.completed}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground ml-auto">
                     {formatDistanceToNow(new Date(seq.created_at), { addSuffix: true, locale: fr })}
                   </span>
                 </div>

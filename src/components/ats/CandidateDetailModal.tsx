@@ -12,11 +12,12 @@ import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
   X, Mail, User, Target, CheckCircle2, AlertTriangle,
   MapPin, Briefcase, TrendingUp, Building2, Link2, Zap,
-  Activity, StickyNote, Phone
+  Activity, StickyNote, Phone, GitBranch
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
+import { CandidateSequencesPanel } from '@/components/outreach/CandidateSequencesPanel';
 import { useAgent } from '@/contexts/AgentContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -55,6 +56,7 @@ const tabsConfig = [
   { key: 'profile', label: 'Profil', icon: User, emoji: '👤' },
   { key: 'prep', label: 'Préparer', icon: Phone, emoji: '📞' },
   { key: 'evaluation', label: 'Évaluation', icon: Target, emoji: '🎯' },
+  { key: 'sequences', label: 'Séquences', icon: GitBranch, emoji: '🔀' },
   { key: 'activity', label: 'Activité', icon: Activity, emoji: '⚡' },
   { key: 'notes', label: 'Notes', icon: StickyNote, emoji: '📝' },
   { key: 'actions', label: 'Actions', icon: Zap, emoji: '🚀' },
@@ -587,6 +589,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
                   </CollapsibleSection>
                 )}
               </div>
+            )}
+            {activeTab === 'sequences' && (
+              <CandidateSequencesPanel profileId={candidate.candidateId} hideTitle />
             )}
             {activeTab === 'activity' && (
               <ActivityTab loading={fullProfile.loading} timeline={fullProfile.timeline} />
