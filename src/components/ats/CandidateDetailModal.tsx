@@ -25,7 +25,7 @@ import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
   Phone as PhoneIcon, Target, Activity as ActivityIcon, StickyNote, Zap,
-  GitBranch, ShieldCheck,
+  GitBranch, FileText,
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
@@ -35,7 +35,9 @@ import {
   ProfileTab, ActivityTab, NotesTab, ActionsTab, ScoringCard,
   CollapsibleSection,
 } from './candidate-detail';
+import { CVTab } from './candidate-detail/CVTab';
 import { useAgent } from '@/contexts/AgentContext';
+import { useOrganization } from '@/hooks/useOrganization';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -73,6 +75,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(false);
   const { openAgent } = useAgent();
+  const { organizationId } = useOrganization();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const { data: notionJobs } = useNotionJobs();
@@ -316,6 +319,19 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       ),
     },
     {
+      key: 'cv',
+      label: 'CV',
+      shortLabel: 'CV',
+      icon: FileText,
+      content: (
+        <CVTab
+          candidateId={candidate.candidateId}
+          organizationId={organizationId}
+          candidateName={candidate.name}
+        />
+      ),
+    },
+    {
       key: 'sequences',
       label: 'Séquences',
       shortLabel: 'Séq.',
@@ -380,7 +396,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
-    reminders, loading, activeRemindersCount, openAgent,
+    reminders, loading, activeRemindersCount, openAgent, organizationId,
   ]);
 
   return (

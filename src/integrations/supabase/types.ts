@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -10,7 +11,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -105,6 +131,85 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "agent_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_tool_executions: {
+        Row: {
+          approved_at: string | null
+          conversation_id: string | null
+          created_at: string
+          dry_run_result: Json | null
+          executed_at: string | null
+          id: string
+          message_id: string | null
+          organization_id: string
+          params: Json
+          proposed_at: string
+          real_result: Json | null
+          status: string
+          tool_name: string
+          updated_at: string
+          user_id: string
+          user_note: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          dry_run_result?: Json | null
+          executed_at?: string | null
+          id?: string
+          message_id?: string | null
+          organization_id: string
+          params?: Json
+          proposed_at?: string
+          real_result?: Json | null
+          status?: string
+          tool_name: string
+          updated_at?: string
+          user_id: string
+          user_note?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          dry_run_result?: Json | null
+          executed_at?: string | null
+          id?: string
+          message_id?: string | null
+          organization_id?: string
+          params?: Json
+          proposed_at?: string
+          real_result?: Json | null
+          status?: string
+          tool_name?: string
+          updated_at?: string
+          user_id?: string
+          user_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tool_executions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "agent_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_executions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "agent_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_executions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1216,6 +1321,142 @@ export type Database = {
           },
         ]
       }
+      candidate_cvs: {
+        Row: {
+          candidate_id: string
+          content_type: string
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          is_primary: boolean
+          notes: string | null
+          organization_id: string
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          candidate_id: string
+          content_type?: string
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          is_primary?: boolean
+          notes?: string | null
+          organization_id: string
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          candidate_id?: string
+          content_type?: string
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          is_primary?: boolean
+          notes?: string | null
+          organization_id?: string
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_cvs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_enrichments: {
+        Row: {
+          company: string | null
+          company_domain: string | null
+          completed_at: string | null
+          contact_email: string | null
+          contact_email_status: string | null
+          contact_phone: string | null
+          contact_phone_type: string | null
+          credits_consumed: number
+          email_provider_source: string | null
+          error_message: string | null
+          expires_at: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          linkedin_url: string
+          organization_id: string
+          phone_provider_source: string | null
+          provider: string
+          provider_request_id: string | null
+          raw_response: Json | null
+          requested_at: string
+          requested_by_user_id: string | null
+          status: string
+        }
+        Insert: {
+          company?: string | null
+          company_domain?: string | null
+          completed_at?: string | null
+          contact_email?: string | null
+          contact_email_status?: string | null
+          contact_phone?: string | null
+          contact_phone_type?: string | null
+          credits_consumed?: number
+          email_provider_source?: string | null
+          error_message?: string | null
+          expires_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          linkedin_url: string
+          organization_id: string
+          phone_provider_source?: string | null
+          provider?: string
+          provider_request_id?: string | null
+          raw_response?: Json | null
+          requested_at?: string
+          requested_by_user_id?: string | null
+          status?: string
+        }
+        Update: {
+          company?: string | null
+          company_domain?: string | null
+          completed_at?: string | null
+          contact_email?: string | null
+          contact_email_status?: string | null
+          contact_phone?: string | null
+          contact_phone_type?: string | null
+          credits_consumed?: number
+          email_provider_source?: string | null
+          error_message?: string | null
+          expires_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          linkedin_url?: string
+          organization_id?: string
+          phone_provider_source?: string | null
+          provider?: string
+          provider_request_id?: string | null
+          raw_response?: Json | null
+          requested_at?: string
+          requested_by_user_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_enrichments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_evaluations: {
         Row: {
           ai_generated: boolean
@@ -1375,7 +1616,7 @@ export type Database = {
           recruiter_name?: string | null
           recruiter_phone?: string | null
           stage_updated_at?: string | null
-          token?: string
+          token: string
           updated_at?: string
         }
         Update: {
@@ -1561,32 +1802,38 @@ export type Database = {
       chat_categories: {
         Row: {
           account_id: string
-          category: string
+          archived_at: string | null
+          category: string | null
           chat_id: string
           created_at: string
           created_by: string
           id: string
           organization_id: string | null
+          snoozed_until: string | null
           updated_at: string
         }
         Insert: {
           account_id: string
-          category: string
+          archived_at?: string | null
+          category?: string | null
           chat_id: string
           created_at?: string
           created_by: string
           id?: string
           organization_id?: string | null
+          snoozed_until?: string | null
           updated_at?: string
         }
         Update: {
           account_id?: string
-          category?: string
+          archived_at?: string | null
+          category?: string | null
           chat_id?: string
           created_at?: string
           created_by?: string
           id?: string
           organization_id?: string | null
+          snoozed_until?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1622,7 +1869,7 @@ export type Database = {
           organization_id: string
           permissions?: Json | null
           project_ids?: string[] | null
-          token?: string
+          token: string
         }
         Update: {
           client_email?: string | null
@@ -1804,6 +2051,36 @@ export type Database = {
           },
         ]
       }
+      cron_heartbeat: {
+        Row: {
+          error_count: number
+          job_name: string
+          last_error: string | null
+          last_run_at: string
+          last_status: string
+          run_count: number
+          updated_at: string
+        }
+        Insert: {
+          error_count?: number
+          job_name: string
+          last_error?: string | null
+          last_run_at?: string
+          last_status?: string
+          run_count?: number
+          updated_at?: string
+        }
+        Update: {
+          error_count?: number
+          job_name?: string
+          last_error?: string | null
+          last_run_at?: string
+          last_status?: string
+          run_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_send_log: {
         Row: {
           created_at: string
@@ -1850,7 +2127,7 @@ export type Database = {
         Insert: {
           auth_email_ttl_minutes?: number
           batch_size?: number
-          id?: number
+          id: number
           retry_after_until?: string | null
           send_delay_ms?: number
           transactional_email_ttl_minutes?: number
@@ -1941,7 +2218,7 @@ export type Database = {
         Insert: {
           cache_key: string
           created_at?: string
-          result: Json
+          result?: Json
         }
         Update: {
           cache_key?: string
@@ -1949,6 +2226,50 @@ export type Database = {
           result?: Json
         }
         Relationships: []
+      }
+      enrichment_user_quotas: {
+        Row: {
+          created_at: string
+          emails_consumed: number
+          id: string
+          organization_id: string
+          period_month: string
+          phones_consumed: number
+          total_credits_used: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emails_consumed?: number
+          id?: string
+          organization_id: string
+          period_month: string
+          phones_consumed?: number
+          total_credits_used?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emails_consumed?: number
+          id?: string
+          organization_id?: string
+          period_month?: string
+          phones_consumed?: number
+          total_credits_used?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_user_quotas_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       event_registrations: {
         Row: {
@@ -2018,6 +2339,56 @@ export type Database = {
         }
         Relationships: []
       }
+      extension_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          ip_address: string | null
+          label: string
+          last_used_at: string | null
+          organization_id: string
+          revoked_at: string | null
+          token_hash: string
+          token_prefix: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          label?: string
+          last_used_at?: string | null
+          organization_id: string
+          revoked_at?: string | null
+          token_hash: string
+          token_prefix: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          label?: string
+          last_used_at?: string | null
+          organization_id?: string
+          revoked_at?: string | null
+          token_hash?: string
+          token_prefix?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extension_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_activations: {
         Row: {
           checklist: Json | null
@@ -2070,6 +2441,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      gdpr_erasures: {
+        Row: {
+          email_hash: string | null
+          erased_at: string
+          id: string
+          linkedin_url_hash: string | null
+          notes: string | null
+          reason: string
+          source: string | null
+        }
+        Insert: {
+          email_hash?: string | null
+          erased_at?: string
+          id?: string
+          linkedin_url_hash?: string | null
+          notes?: string | null
+          reason?: string
+          source?: string | null
+        }
+        Update: {
+          email_hash?: string | null
+          erased_at?: string
+          id?: string
+          linkedin_url_hash?: string | null
+          notes?: string | null
+          reason?: string
+          source?: string | null
+        }
+        Relationships: []
       }
       hunt_applications: {
         Row: {
@@ -2727,6 +3128,59 @@ export type Database = {
           },
         ]
       }
+      message_templates: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          emoji: string | null
+          id: string
+          last_used_at: string | null
+          name: string
+          organization_id: string
+          shortcut: string | null
+          updated_at: string
+          usage_count: number
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          last_used_at?: string | null
+          name: string
+          organization_id: string
+          shortcut?: string | null
+          updated_at?: string
+          usage_count?: number
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          organization_id?: string
+          shortcut?: string | null
+          updated_at?: string
+          usage_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mission_invitations: {
         Row: {
           accepted_at: string | null
@@ -2756,7 +3210,7 @@ export type Database = {
           project_id: string
           role?: string
           status?: string | null
-          token?: string
+          token: string
         }
         Update: {
           accepted_at?: string | null
@@ -2952,7 +3406,7 @@ export type Database = {
         }
         Insert: {
           cache_key: string
-          payload: Json
+          payload?: Json
           updated_at?: string
         }
         Update: {
@@ -3166,7 +3620,7 @@ export type Database = {
           organization_id: string
           role?: string
           status?: string
-          token?: string
+          token: string
         }
         Update: {
           accepted_at?: string | null
@@ -3192,21 +3646,27 @@ export type Database = {
       }
       organization_members: {
         Row: {
+          can_enrich_contacts: boolean
           created_at: string
+          enrichment_quota_monthly: number
           id: string
           organization_id: string
           role: string
           user_id: string
         }
         Insert: {
+          can_enrich_contacts?: boolean
           created_at?: string
+          enrichment_quota_monthly?: number
           id?: string
           organization_id: string
           role?: string
           user_id: string
         }
         Update: {
+          can_enrich_contacts?: boolean
           created_at?: string
+          enrichment_quota_monthly?: number
           id?: string
           organization_id?: string
           role?: string
@@ -3245,7 +3705,7 @@ export type Database = {
           current_period_start?: string | null
           id?: string
           organization_id: string
-          plan_id?: string
+          plan_id: string
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -3414,6 +3874,50 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "sequence_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdl_profile_cache: {
+        Row: {
+          credits_consumed: number
+          expires_at: string
+          fetched_at: string
+          id: string
+          linkedin_url: string | null
+          organization_id: string
+          pdl_id: string
+          profile_data: Json
+          source_query_hash: string | null
+        }
+        Insert: {
+          credits_consumed?: number
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          linkedin_url?: string | null
+          organization_id: string
+          pdl_id: string
+          profile_data: Json
+          source_query_hash?: string | null
+        }
+        Update: {
+          credits_consumed?: number
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          linkedin_url?: string | null
+          organization_id?: string
+          pdl_id?: string
+          profile_data?: Json
+          source_query_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdl_profile_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4625,6 +5129,66 @@ export type Database = {
         }
         Relationships: []
       }
+      user_insights: {
+        Row: {
+          category: string
+          confidence: number
+          content: string
+          created_at: string
+          id: string
+          insight_type: string
+          last_used_at: string
+          organization_id: string
+          source_conversation_id: string | null
+          updated_at: string
+          use_count: number
+          user_id: string
+        }
+        Insert: {
+          category: string
+          confidence?: number
+          content: string
+          created_at?: string
+          id?: string
+          insight_type: string
+          last_used_at?: string
+          organization_id: string
+          source_conversation_id?: string | null
+          updated_at?: string
+          use_count?: number
+          user_id: string
+        }
+        Update: {
+          category?: string
+          confidence?: number
+          content?: string
+          created_at?: string
+          id?: string
+          insight_type?: string
+          last_used_at?: string
+          organization_id?: string
+          source_conversation_id?: string | null
+          updated_at?: string
+          use_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_insights_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_insights_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "agent_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -4635,7 +5199,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
-          role: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
@@ -4645,6 +5209,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_template_variables: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          key: string
+          organization_id: string
+          updated_at: string
+          user_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key: string
+          organization_id: string
+          updated_at?: string
+          user_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key?: string
+          organization_id?: string
+          updated_at?: string
+          user_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_template_variables_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vivier_enrichments: {
         Row: {
@@ -4726,6 +5331,30 @@ export type Database = {
           },
         ]
       }
+      webhook_event_log: {
+        Row: {
+          account_id: string | null
+          event_key: string
+          event_type: string | null
+          provider: string
+          received_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          event_key: string
+          event_type?: string | null
+          provider: string
+          received_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          event_key?: string
+          event_type?: string | null
+          provider?: string
+          received_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -4754,6 +5383,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      cleanup_old_webhook_events: { Args: never; Returns: number }
       cleanup_rate_limit_log: { Args: never; Returns: undefined }
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
@@ -4776,6 +5406,16 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      get_email_tracking_by_id: {
+        Args: { p_tracking_id: string }
+        Returns: {
+          created_at: string
+          email_message_id: string
+          execution_id: string
+          id: string
+          tracking_id: string
+        }[]
       }
       get_org_integration: {
         Args: { p_org_id: string }
@@ -4882,212 +5522,83 @@ export type Database = {
           total_count: number
         }[]
       }
-      get_vivier_companies:
-        | {
-            Args: {
-              p_city?: string
-              p_has_placements?: boolean
-              p_limit?: number
-              p_min_placements?: number
-              p_min_shortlists?: number
-              p_offset?: number
-              p_search?: string
-              p_sort_by?: string
-              p_source_base?: string
-            }
-            Returns: {
-              appointment_count: number
-              city: string
-              company_airtable_id: string
-              company_name: string
-              contact_count: number
-              description: string
-              headcount: string
-              last_interaction_date: string
-              note_count: number
-              placement_count: number
-              shortlist_count: number
-              source_base: string
-              total_count: number
-            }[]
-          }
-        | {
-            Args: {
-              p_city?: string
-              p_has_notes?: boolean
-              p_has_placements?: boolean
-              p_last_interaction_days?: number
-              p_limit?: number
-              p_min_contacts?: number
-              p_min_placements?: number
-              p_min_shortlists?: number
-              p_offset?: number
-              p_search?: string
-              p_sort_by?: string
-              p_source_base?: string
-            }
-            Returns: {
-              appointment_count: number
-              city: string
-              company_airtable_id: string
-              company_name: string
-              contact_count: number
-              description: string
-              headcount: string
-              last_interaction_date: string
-              note_count: number
-              placement_count: number
-              shortlist_count: number
-              source_base: string
-              total_count: number
-            }[]
-          }
-        | {
-            Args: {
-              p_city?: string
-              p_has_appointments?: boolean
-              p_has_notes?: boolean
-              p_has_placements?: boolean
-              p_headcount?: string
-              p_last_interaction_days?: number
-              p_limit?: number
-              p_min_appointments?: number
-              p_min_contacts?: number
-              p_min_notes?: number
-              p_min_placements?: number
-              p_min_shortlists?: number
-              p_offset?: number
-              p_search?: string
-              p_sort_by?: string
-              p_source_base?: string
-            }
-            Returns: {
-              appointment_count: number
-              city: string
-              company_airtable_id: string
-              company_name: string
-              contact_count: number
-              description: string
-              headcount: string
-              last_interaction_date: string
-              note_count: number
-              placement_count: number
-              shortlist_count: number
-              source_base: string
-              total_count: number
-            }[]
-          }
-      get_vivier_contacts:
-        | {
-            Args: {
-              p_city?: string
-              p_contact_type?: string
-              p_has_placements?: boolean
-              p_limit?: number
-              p_min_shortlists?: number
-              p_offset?: number
-              p_search?: string
-              p_sort_by?: string
-              p_source_base?: string
-            }
-            Returns: {
-              airtable_id: string
-              appointment_count: number
-              city: string
-              company_airtable_id: string
-              company_name: string
-              contact_type: string
-              email: string
-              full_name: string
-              last_interaction_date: string
-              note_count: number
-              placement_count: number
-              shortlist_count: number
-              source_base: string
-              status: string
-              title: string
-              total_count: number
-            }[]
-          }
-        | {
-            Args: {
-              p_city?: string
-              p_contact_type?: string
-              p_has_appointments?: boolean
-              p_has_email?: boolean
-              p_has_notes?: boolean
-              p_has_placements?: boolean
-              p_last_interaction_days?: number
-              p_limit?: number
-              p_min_shortlists?: number
-              p_offset?: number
-              p_search?: string
-              p_sort_by?: string
-              p_source_base?: string
-              p_status?: string
-              p_title?: string
-            }
-            Returns: {
-              airtable_id: string
-              appointment_count: number
-              city: string
-              company_airtable_id: string
-              company_name: string
-              contact_type: string
-              email: string
-              full_name: string
-              last_interaction_date: string
-              note_count: number
-              placement_count: number
-              shortlist_count: number
-              source_base: string
-              status: string
-              title: string
-              total_count: number
-            }[]
-          }
-        | {
-            Args: {
-              p_city?: string
-              p_company_name?: string
-              p_contact_type?: string
-              p_has_appointments?: boolean
-              p_has_email?: boolean
-              p_has_notes?: boolean
-              p_has_phone?: boolean
-              p_has_placements?: boolean
-              p_last_interaction_days?: number
-              p_limit?: number
-              p_min_appointments?: number
-              p_min_notes?: number
-              p_min_placements?: number
-              p_min_shortlists?: number
-              p_offset?: number
-              p_search?: string
-              p_sort_by?: string
-              p_source_base?: string
-              p_status?: string
-              p_title?: string
-            }
-            Returns: {
-              airtable_id: string
-              appointment_count: number
-              city: string
-              company_airtable_id: string
-              company_name: string
-              contact_type: string
-              email: string
-              full_name: string
-              last_interaction_date: string
-              note_count: number
-              placement_count: number
-              shortlist_count: number
-              source_base: string
-              status: string
-              title: string
-              total_count: number
-            }[]
-          }
+      get_vivier_companies: {
+        Args: {
+          p_city?: string
+          p_has_appointments?: boolean
+          p_has_notes?: boolean
+          p_has_placements?: boolean
+          p_headcount?: string
+          p_last_interaction_days?: number
+          p_limit?: number
+          p_min_appointments?: number
+          p_min_contacts?: number
+          p_min_notes?: number
+          p_min_placements?: number
+          p_min_shortlists?: number
+          p_offset?: number
+          p_search?: string
+          p_sort_by?: string
+          p_source_base?: string
+        }
+        Returns: {
+          appointment_count: number
+          city: string
+          company_airtable_id: string
+          company_name: string
+          contact_count: number
+          description: string
+          headcount: string
+          last_interaction_date: string
+          note_count: number
+          placement_count: number
+          shortlist_count: number
+          source_base: string
+          total_count: number
+        }[]
+      }
+      get_vivier_contacts: {
+        Args: {
+          p_city?: string
+          p_company_name?: string
+          p_contact_type?: string
+          p_has_appointments?: boolean
+          p_has_email?: boolean
+          p_has_notes?: boolean
+          p_has_phone?: boolean
+          p_has_placements?: boolean
+          p_last_interaction_days?: number
+          p_limit?: number
+          p_min_appointments?: number
+          p_min_notes?: number
+          p_min_placements?: number
+          p_min_shortlists?: number
+          p_offset?: number
+          p_search?: string
+          p_sort_by?: string
+          p_source_base?: string
+          p_status?: string
+          p_title?: string
+        }
+        Returns: {
+          airtable_id: string
+          appointment_count: number
+          city: string
+          company_airtable_id: string
+          company_name: string
+          contact_type: string
+          email: string
+          full_name: string
+          last_interaction_date: string
+          note_count: number
+          placement_count: number
+          shortlist_count: number
+          source_base: string
+          status: string
+          title: string
+          total_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -5095,11 +5606,44 @@ export type Database = {
         }
         Returns: boolean
       }
-      invoke_process_sequences:
-        | { Args: { p_action: string }; Returns: undefined }
-        | { Args: { p_action: string; p_force?: boolean }; Returns: undefined }
+      increment_enrichment_quota: {
+        Args: {
+          p_credits?: number
+          p_emails?: number
+          p_org_id: string
+          p_phones?: number
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string
+          emails_consumed: number
+          id: string
+          organization_id: string
+          period_month: string
+          phones_consumed: number
+          total_credits_used: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "enrichment_user_quotas"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      invoke_process_email_queue: { Args: never; Returns: undefined }
+      invoke_process_inmail_queue: { Args: never; Returns: undefined }
+      invoke_process_sequences: {
+        Args: { p_action: string; p_force?: boolean }
+        Returns: undefined
+      }
       is_mission_team_member: {
         Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_mission_team_member_for_candidate: {
+        Args: { _candidate_id: string; _user_id: string }
         Returns: boolean
       }
       is_mission_team_member_for_project: {
@@ -5126,6 +5670,19 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      record_cron_heartbeat: {
+        Args: { p_error?: string; p_job_name: string; p_status?: string }
+        Returns: undefined
+      }
+      record_webhook_event: {
+        Args: {
+          p_account_id?: string
+          p_event_key: string
+          p_event_type?: string
+          p_provider: string
+        }
+        Returns: boolean
       }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
       retrieve_context: {
@@ -5161,6 +5718,8 @@ export type Database = {
           similarity: number
         }[]
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
@@ -5290,9 +5849,14 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "user"],
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.98.2 (currently installed v2.90.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
