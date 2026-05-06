@@ -171,8 +171,11 @@ const AppContent = () => {
             <Route path="/ats" element={<Navigate to={withPreviewAccessToken('/pipeline')} replace />} />
           <Route path="/dashboard" element={<ProtectedRoute><OrganizationGuard><AppLayout><Dashboard /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/qualification/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><Qualification /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><AppLayout><ScorecardFullPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><AppLayout><ScorecardFullPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          {/* Scorecard fullscreen : SANS AppLayout pour vrai plein écran
+              (pas de sidebar app, vue immersive style logiciel d'évaluation).
+              ProtectedRoute + OrganizationGuard restent pour la sécurité. */}
+          <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><AppLayout><Pricing /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><AppLayout><Marketplace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
