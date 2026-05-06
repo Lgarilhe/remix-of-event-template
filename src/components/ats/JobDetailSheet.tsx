@@ -216,7 +216,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="sm:w-[540px] sm:max-w-[540px] w-full p-0 border-l-2 border-border flex flex-col">
+        <SheetContent side="right" className="sm:w-[540px] sm:max-w-[540px] w-full p-0 border-l border-border flex flex-col">
           {/* Header */}
           <div className="shrink-0 border-b-2 border-border p-4">
             <SheetHeader className="space-y-0">
@@ -257,7 +257,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                   </div>
                   {jobInfo?.calendlyLink && (
                     <a href={jobInfo.calendlyLink} target="_blank" rel="noopener noreferrer"
-                      className="h-7 px-2.5 flex items-center gap-1 border border-border text-foreground text-xs font-bold uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors shrink-0">
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-foreground text-[11px] font-medium hover:bg-accent transition-colors shrink-0">
                       <CalendarDays className="w-3 h-3" /> Calendly
                     </a>
                   )}
@@ -268,7 +268,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                   {TABS.map((t, i) => (
                     <button key={t.key} onClick={() => setTab(t.key)}
                       className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-border transition-colors",
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-full border border-border transition-colors",
                         i > 0 && "border-l-0",
                         tab === t.key
                           ? "bg-foreground text-background"
@@ -359,8 +359,8 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {infoGrid.length > 0 && (
         <div className="grid grid-cols-2 gap-2">
           {infoGrid.map(item => (
-            <div key={item.label} className="border border-border p-2.5">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{item.label}</p>
+            <div key={item.label} className="rounded-xl border border-border bg-card p-2.5">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-0.5">{item.label}</p>
               <p className="text-xs text-foreground font-medium">{item.value}</p>
             </div>
           ))}
@@ -370,10 +370,10 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Stack */}
       {jobInfo.stack && jobInfo.stack.length > 0 && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Stack technique</p>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Stack technique</p>
           <div className="flex flex-wrap gap-1.5">
             {jobInfo.stack.map((s, i) => (
-              <span key={i} className="px-2 py-0.5 border border-border text-xs font-medium">{s}</span>
+              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full border border-border text-[11px] font-medium bg-foreground/[0.06] text-foreground/85">{s}</span>
             ))}
           </div>
         </div>
@@ -382,7 +382,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Description */}
       {jobInfo.description ? (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Description</p>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Description</p>
           <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.description}</p>
         </div>
       ) : (
@@ -392,7 +392,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Criteria */}
       {(jobInfo.mustHave || jobInfo.shouldHave || jobInfo.niceToHave || jobInfo.criteria) && (
         <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Critères</p>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Critères</p>
           {jobInfo.mustHave && <CriteriaBlock label="Must-have" content={jobInfo.mustHave} color="border-red-300" />}
           {jobInfo.shouldHave && <CriteriaBlock label="Should-have" content={jobInfo.shouldHave} color="border-amber-300" />}
           {jobInfo.niceToHave && <CriteriaBlock label="Nice-to-have" content={jobInfo.niceToHave} color="border-green-300" />}
@@ -405,14 +405,14 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Filters snapshot */}
       {filters && typeof filters === 'object' && Object.keys(filters).length > 0 && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Filtres de recherche</p>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Filtres de recherche</p>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(filters).map(([key, value]) => {
               if (!value || (Array.isArray(value) && value.length === 0)) return null;
               const display = Array.isArray(value) ? (value as string[]).join(', ') : String(value);
               if (display.length > 100) return null;
               return (
-                <span key={key} className="px-2 py-1 border border-border text-xs text-muted-foreground">
+                <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-full border border-border text-[11px] text-muted-foreground">
                   <span className="font-semibold text-foreground">{key}:</span> {display}
                 </span>
               );
@@ -424,7 +424,7 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
       {/* Notes */}
       {jobInfo.notes && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Notes</p>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Notes</p>
           <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.notes}</p>
         </div>
       )}
@@ -434,8 +434,8 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
 
 function CriteriaBlock({ label, content, color }: { label: string; content: string; color: string }) {
   return (
-    <div className={cn("border-l-2 pl-3 py-1", color)}>
-      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{label}</p>
+    <div className={cn("rounded-lg border border-border bg-card px-3 py-2", color)}>
+      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-0.5">{label}</p>
       <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{content}</p>
     </div>
   );
@@ -469,14 +469,14 @@ function CandidatsTab({
       {/* Stage counters */}
       <div className="flex flex-wrap gap-1.5">
         {stageEntries.map(([stage, count]) => (
-          <span key={stage} className="text-xs px-2 py-0.5 border border-border font-medium">
+          <span key={stage} className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full border border-border font-medium">
             {count} {stage}
           </span>
         ))}
       </div>
 
       {/* Candidate list */}
-      <div className="border border-border divide-y divide-foreground/10">
+      <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
         {candidates.map(candidate => (
           <button
             key={candidate.id}
@@ -499,7 +499,7 @@ function CandidatsTab({
                 <p className="text-xs text-muted-foreground truncate">{candidate.headline}</p>
               )}
             </div>
-            <span className="text-xs px-1.5 py-0.5 border border-border uppercase tracking-wider font-medium shrink-0">
+            <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full border border-border uppercase tracking-wider font-semibold shrink-0">
               {candidate.stage}
             </span>
             <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -536,8 +536,8 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
       {sequences.map(seq => {
         const responseRate = seq.sentCount > 0 ? Math.round((seq.repliedCount / seq.sentCount) * 100) : 0;
         return (
-          <div key={seq.id} className="border border-border p-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-foreground mb-2">{seq.name}</p>
+          <div key={seq.id} className="rounded-xl border border-border bg-card p-3">
+            <p className="font-display font-bold text-[13px] tracking-tight text-foreground mb-2">{seq.name}</p>
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
                 <p className="text-lg font-bold text-foreground">{seq.enrolledCount}</p>
@@ -578,17 +578,17 @@ function IATab({
       {/* Analyze button */}
       <button
         onClick={() => jobId && openAgent(jobId)}
-        className="relative overflow-hidden w-full h-10 flex items-center justify-center gap-2 border border-border text-foreground text-xs font-bold uppercase tracking-wider group"
+        className="inline-flex items-center justify-center gap-2 w-full h-10 rounded-full border border-border text-foreground text-[12px] font-medium hover:bg-accent transition-colors"
       >
         <Brain className="w-4 h-4 relative z-10" />
         <span className="relative z-10">Analyser ce poste avec l'Agent</span>
       </button>
 
       {/* RAG context */}
-      <div className="border border-border p-3">
+      <div className="rounded-xl border border-border bg-card p-3">
         <div className="flex items-center gap-2 mb-2">
           <Database className="w-4 h-4 text-foreground" />
-          <p className="text-xs font-bold uppercase tracking-wider text-foreground">Contexte RAG</p>
+          <p className="font-display font-bold text-[13px] tracking-tight text-foreground">Contexte RAG</p>
         </div>
         {ragCount !== null ? (
           <p className="text-xs text-muted-foreground">
@@ -600,10 +600,10 @@ function IATab({
       </div>
 
       {/* Score summary */}
-      <div className="border border-border p-3">
+      <div className="rounded-xl border border-border bg-card p-3">
         <div className="flex items-center gap-2 mb-2">
           <BarChart3 className="w-4 h-4 text-foreground" />
-          <p className="text-xs font-bold uppercase tracking-wider text-foreground">Scoring candidats</p>
+          <p className="font-display font-bold text-[13px] tracking-tight text-foreground">Scoring candidats</p>
         </div>
         {scoreSummary ? (
           <div className="grid grid-cols-3 gap-2 text-center">

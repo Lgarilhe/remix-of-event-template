@@ -306,7 +306,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
                       {getMemberName(comment.created_by)}
                     </span>
                     <div className="flex items-center gap-1">

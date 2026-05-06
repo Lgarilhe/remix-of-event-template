@@ -228,7 +228,7 @@ const EditableChip: React.FC<{
   }
 
   return (
-    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border border-border text-xs font-bold uppercase tracking-wider text-foreground/80 hover:border-border transition-colors cursor-default">
+    <span className="group inline-flex items-center gap-0.5 px-2 py-1 border border-border font-display font-bold text-[13px] tracking-tight text-foreground/80 hover:border-border transition-colors cursor-default">
       <span className="max-w-[200px] truncate">{value}</span>
       <button
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
@@ -446,7 +446,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                             section.chips.map((chip, i) => (
                               <span
                                 key={`${chip}-${i}`}
-                                className="group inline-flex items-center gap-1 px-2 py-1 border border-border text-xs font-bold uppercase tracking-wider text-foreground/80 cursor-default"
+                                className="group inline-flex items-center gap-1 px-2 py-1 border border-border font-display font-bold text-[13px] tracking-tight text-foreground/80 cursor-default"
                               >
                                 <span className="max-w-[200px] truncate">{chip}</span>
                                 <button
@@ -463,7 +463,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                         {/* AI Suggestions */}
                         {section.suggestions && section.suggestions.length > 0 && (
                           <div className="pt-1.5 border-t border-border">
-                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
+                            <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5 flex items-center gap-1">
                               <Sparkle className="w-2.5 h-2.5" />
                               Suggestions IA
                             </p>
@@ -472,7 +472,7 @@ export const FilterReviewModal: React.FC<FilterReviewModalProps> = ({
                                 <button
                                   key={`sug-${suggestion}-${i}`}
                                   onClick={() => addChip(section.id, suggestion)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 border border-dashed border-border text-xs font-bold uppercase tracking-wider text-foreground/50 hover:border-border hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
+                                  className="inline-flex items-center gap-1 px-2 py-1 border border-dashed border-border font-display font-bold text-[13px] tracking-tight text-foreground/50 hover:border-border hover:text-foreground/80 hover:bg-foreground/[0.03] transition-all"
                                 >
                                   <Plus className="w-2.5 h-2.5" />
                                   <span>{suggestion}</span>

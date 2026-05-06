@@ -102,7 +102,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Info className="w-4 h-4 text-foreground" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Configuration audio</h3>
+          <h3 className="font-display font-bold text-[13px] tracking-tight text-foreground">Configuration audio</h3>
         </div>
         {onDismiss && (
           <button
@@ -142,7 +142,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
 
       {/* Scenario selector */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Votre situation</p>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-2">Votre situation</p>
         <div className="grid grid-cols-2 gap-2">
           {SCENARIOS.map(s => (
             <button
@@ -157,7 +157,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
             >
               <s.icon className="w-4 h-4 text-foreground shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-foreground">{s.label}</p>
+                <p className="font-display font-bold text-[13px] tracking-tight text-foreground">{s.label}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
               </div>
             </button>
@@ -174,7 +174,7 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
             ) : (
               <AlertTriangle className="w-4 h-4 text-amber-600" />
             )}
-            <p className="text-xs font-bold uppercase tracking-wider text-foreground">
+            <p className="font-display font-bold text-[13px] tracking-tight text-foreground">
               {scenario.capturesBoth
                 ? 'Les 2 voix seront captées automatiquement'
                 : 'Configuration nécessaire pour capter les 2 voix'}

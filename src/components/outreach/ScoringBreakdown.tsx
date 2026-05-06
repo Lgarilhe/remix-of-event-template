@@ -123,7 +123,7 @@ export const ScoringBreakdown: React.FC<ScoringBreakdownProps> = ({ result }) =>
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger className="w-full flex items-center justify-between py-1.5 px-2 -mx-2 rounded hover:bg-muted/50 transition-colors group cursor-pointer">
-        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
+        <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground group-hover:text-foreground transition-colors">
           Détail du scoring
         </span>
         <ChevronDown className={cn(

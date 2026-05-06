@@ -219,7 +219,7 @@ export const StepCard: React.FC<StepCardProps> = ({
         <div className="px-4 pb-4 pt-3 border-t border-border/50 space-y-4 bg-muted/20">
           {/* Description */}
           <div className="space-y-1">
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</label>
+            <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Description</label>
             <input
               defaultValue={step.description || ''}
               onBlur={(e) => onUpdate({ id: step.id, description: e.target.value || null })}
@@ -381,7 +381,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
           {/* Objectives */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Objectifs</label>
+            <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Objectifs</label>
             <div className="flex flex-wrap gap-1.5">
               {step.objectives.map((obj, i) => (
                 <span key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/50 border border-border text-xs font-medium text-foreground">
@@ -466,14 +466,14 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
             Équipe mission ({team.length})
           </h3>
         </div>
         {!readOnly && availableMembers.length > 0 && !showAssign && (
           <button
             onClick={() => setShowAssign(true)}
-            className="flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
           >
             <Plus className="w-3 h-3" /> Assigner
           </button>
@@ -496,7 +496,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
-            className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:border-border focus:outline-none"
+            className="h-9 px-3 rounded-lg text-[12px] font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
           >
             <option value="lead">Lead</option>
             <option value="sourcer">Sourcer</option>
@@ -507,13 +507,13 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <button
             onClick={handleAssign}
             disabled={!selectedUserId}
-            className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
           >
             OK
           </button>
           <button
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
-            className="h-9 px-3 text-muted-foreground hover:text-foreground border border-border text-xs uppercase"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             ×
           </button>
@@ -522,7 +522,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
 
       {loadingTeam ? (
         <div className="flex items-center justify-center py-6">
-          <div className="w-4 h-4 border border-border border-t-foreground animate-spin" />
+          <div className="w-4 h-4 rounded-full border-2 border-border border-t-foreground animate-spin" />
         </div>
       ) : team.length === 0 ? (
         <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
@@ -556,13 +556,13 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
       {!readOnly && (
         <div className="mt-4 pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
               Invitations externes ({invitations.filter(i => i.status === 'pending').length} en attente)
             </p>
             {!showInvite && (
               <button
                 onClick={() => setShowInvite(true)}
-                className="flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground hover:border-border transition-colors"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
               >
                 <Mail className="w-3 h-3" /> Inviter par email
               </button>
@@ -597,7 +597,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                   }
                 }}
                 disabled={!inviteEmail.trim() || isSending}
-                className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
               >
                 {isSending ? 'Envoi...' : 'Inviter'}
               </button>
@@ -613,7 +613,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           {invitations.length > 0 && (
             <div className="space-y-1.5">
               {invitations.map(inv => (
-                <div key={inv.id} className="flex items-center gap-3 px-3 py-2 border border-border">
+                <div key={inv.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-card">
                   <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-foreground truncate">{inv.email}</p>
@@ -949,7 +949,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
             <button
               onClick={handleAddStep}
               disabled={!newStepName.trim()}
-              className="h-9 px-4 bg-foreground text-background text-xs font-bold uppercase tracking-wider border border-border disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
             >
               Ajouter
             </button>

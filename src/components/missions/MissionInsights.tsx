@@ -34,7 +34,7 @@ const MetricCard = ({ label, value, sublabel, color }: {
   color: string;
 }) => (
   <div className="border border-border p-4 text-center">
-    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
+    <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1">{label}</p>
     <p className={cn("text-2xl font-bold", color)}>{value}</p>
     <p className="text-xs text-muted-foreground mt-0.5">{sublabel}</p>
   </div>
@@ -236,7 +236,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
         <>
           {/* Section 1: Funnel */}
           <div className="border border-border p-4 sm:p-6">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
+            <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">
               📊 Funnel de conversion
             </h3>
             <ProjectFunnel
@@ -279,7 +279,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           {/* Section 3: Recommandations */}
           {insights.length > 0 && (
             <div className="border border-border p-4 sm:p-6">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
+              <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">
                 🤖 Recommandations
               </h3>
               <div className="space-y-3">
@@ -312,7 +312,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           {/* Section 4: Timeline */}
           {recentActivity.length > 0 && (
             <div className="border border-border p-4 sm:p-6">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
+              <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">
                 🕐 Activité récente
               </h3>
               <div className="space-y-2">
