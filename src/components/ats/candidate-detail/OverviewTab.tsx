@@ -36,6 +36,9 @@ import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { CandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { listCVs, CandidateCV } from '@/lib/cvStorage';
+import { listDismissedAlerts, dismissAlert, type AlertKey } from '@/lib/candidateAlerts';
+import { Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface Note {
@@ -93,6 +96,34 @@ export const OverviewTab: React.FC<Props> = ({
       .finally(() => setCvLoading(false));
   }, [candidate.candidateId, organizationId]);
 
+  // Fetch alertes déjà dismissées (persisted dans candidate_alert_dismissals).
+  // L'user a cliqué "✓ Traité" sur ces alertes auparavant — on les filtre.
+  const [dismissedKeys, setDismissedKeys] = useState<Set<AlertKey>>(new Set());
+  useEffect(() => {
+    if (!organizationId) return;
+    listDismissedAlerts(candidate.candidateId, organizationId)
+      .then(setDismissedKeys)
+      .catch(err => console.warn('[OverviewTab] dismissed alerts fetch failed:', err));
+  }, [candidate.candidateId, organizationId]);
+
+  const handleDismissAlert = async (key: AlertKey) => {
+    if (!organizationId) return;
+    // Optimistic update — on ajoute à dismissedKeys avant le DB call
+    setDismissedKeys(prev => new Set([...prev, key]));
+    try {
+      await dismissAlert(candidate.candidateId, organizationId, key);
+      toast.success('Alerte traitée');
+    } catch (err: any) {
+      // Rollback en cas d'erreur
+      setDismissedKeys(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      toast.error(err?.message || 'Erreur');
+    }
+  };
+
   // ─── Compute alerts ─────────────────────────────────────────────
   const alerts = useMemo(() => {
     const result: Alert[] = [];
@@ -107,6 +138,7 @@ export const OverviewTab: React.FC<Props> = ({
       const threshold = STAGNATION_THRESHOLDS_DAYS[candidate.stage];
       if (daysIdle >= threshold) {
         result.push({
+          key: 'stagnation',
           severity: daysIdle >= threshold * 2 ? 'critical' : 'warning',
           icon: Clock,
           title: `Stagnation : ${daysIdle} jours sur "${candidate.stage}"`,
@@ -123,6 +155,7 @@ export const OverviewTab: React.FC<Props> = ({
       const daysSinceReply = differenceInDays(new Date(), parseISO(repliedEnrollment.repliedAt));
       if (daysSinceReply >= 1) {
         result.push({
+          key: 'unanswered_reply',
           severity: daysSinceReply >= 3 ? 'critical' : 'warning',
           icon: MailWarning,
           title: `Répondu il y a ${daysSinceReply}j — sans réponse de ta part`,
@@ -138,6 +171,7 @@ export const OverviewTab: React.FC<Props> = ({
     if (!cvLoading && cvs.length === 0) missing.push('CV');
     if (missing.length > 0) {
       result.push({
+        key: 'missing_contacts',
         severity: 'info',
         icon: FileQuestion,
         title: `Manque ${missing.join(' / ')}`,
@@ -148,6 +182,7 @@ export const OverviewTab: React.FC<Props> = ({
     // 4. Pas de score IA
     if ((candidate.score ?? 0) === 0 && fullProfile.scoringHistory.length === 0) {
       result.push({
+        key: 'no_score',
         severity: 'info',
         icon: Target,
         title: 'Pas encore scoré par l\'IA',
@@ -163,6 +198,7 @@ export const OverviewTab: React.FC<Props> = ({
       const daysWaiting = differenceInDays(new Date(), parseISO(activeNotConnected.createdAt));
       if (daysWaiting >= 7) {
         result.push({
+          key: 'invite_unaccepted',
           severity: 'warning',
           icon: PhoneOff,
           title: `Invitation LinkedIn pas acceptée depuis ${daysWaiting}j`,
@@ -171,8 +207,9 @@ export const OverviewTab: React.FC<Props> = ({
       }
     }
 
-    return result;
-  }, [candidate, fullProfile.sequenceEnrollments, fullProfile.scoringHistory, cvs, cvLoading]);
+    // Filtre les alertes déjà marquées comme "Traité" par l'user
+    return result.filter(a => !dismissedKeys.has(a.key));
+  }, [candidate, fullProfile.sequenceEnrollments, fullProfile.scoringHistory, cvs, cvLoading, dismissedKeys]);
 
   // ─── Compute "Postes" : missions où ce candidat apparaît ─────────
   const positions = useMemo(() => {
@@ -294,7 +331,7 @@ export const OverviewTab: React.FC<Props> = ({
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* ═══ 0. ALERTES — bandeau prioritaire si problèmes détectés ═══ */}
-      {alerts.length > 0 && <AlertsPanel alerts={alerts} />}
+      {alerts.length > 0 && <AlertsPanel alerts={alerts} onDismiss={handleDismissAlert} />}
 
       {/* ═══ 1. RÉSUMÉ PROFIL — synthèse candidat-level (PAS job-fit) ═══
           Ne parle JAMAIS d'un poste précis : un candidat peut être
@@ -548,13 +585,21 @@ export const OverviewTab: React.FC<Props> = ({
 // ═══════════════════════════════════════════════════════════════════
 
 interface Alert {
+  /** Identifiant unique pour persistance dismissal en DB. */
+  key: AlertKey;
   severity: 'critical' | 'warning' | 'info';
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   detail: string;
 }
 
-function AlertsPanel({ alerts }: { alerts: Alert[] }) {
+function AlertsPanel({
+  alerts,
+  onDismiss,
+}: {
+  alerts: Alert[];
+  onDismiss: (key: AlertKey) => void;
+}) {
   // Ordre par sévérité
   const sorted = [...alerts].sort((a, b) => {
     const order = { critical: 0, warning: 1, info: 2 };
@@ -580,15 +625,15 @@ function AlertsPanel({ alerts }: { alerts: Alert[] }) {
         </div>
       </div>
       <div className="divide-y divide-border/60">
-        {sorted.map((alert, i) => (
-          <AlertRow key={i} alert={alert} />
+        {sorted.map(alert => (
+          <AlertRow key={alert.key} alert={alert} onDismiss={() => onDismiss(alert.key)} />
         ))}
       </div>
     </motion.div>
   );
 }
 
-function AlertRow({ alert }: { alert: Alert }) {
+function AlertRow({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
   const Icon = alert.icon;
   const severityStyles = {
     critical: { tile: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
@@ -597,7 +642,7 @@ function AlertRow({ alert }: { alert: Alert }) {
   }[alert.severity];
 
   return (
-    <div className="flex items-start gap-2.5 px-3 sm:px-4 py-2.5">
+    <div className="flex items-start gap-2.5 px-3 sm:px-4 py-2.5 group">
       <div className={cn('h-7 w-7 rounded-lg grid place-items-center shrink-0', severityStyles.tile)}>
         <Icon className="w-3.5 h-3.5" />
       </div>
@@ -610,6 +655,17 @@ function AlertRow({ alert }: { alert: Alert }) {
           {alert.detail}
         </p>
       </div>
+      {/* Bouton "✓ Traité" — persiste le dismiss en DB.
+          Visible au hover ou tap mobile pour pas polluer l'UI. */}
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-[10.5px] font-semibold border border-border bg-background hover:bg-success/10 hover:text-success hover:border-success/30 transition-all sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
+        aria-label="Marquer cette alerte comme traitée"
+      >
+        <Check className="w-3 h-3" />
+        Traité
+      </button>
     </div>
   );
 }

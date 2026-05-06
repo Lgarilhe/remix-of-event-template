@@ -129,6 +129,15 @@ export interface ProfileDetailPipelineMeta {
   onTagsChange?: (tags: string[]) => void;
   /** Action "Générer lien portail" pour partager au client. */
   onCreatePortalLink?: () => void;
+  /** Slot pour rendre un éditeur de contacts manuels (email/phone) dans
+   *  la zone CONTACT INFO du header. Permet à l'user d'ajouter manuellement
+   *  ce que l'enrichissement auto n'a pas trouvé. */
+  contactsEditor?: React.ReactNode;
+  /** Contacts manuels supplémentaires à afficher en chips (en plus des
+   *  contacts venant de profile.contact_info). Typiquement le résultat
+   *  d'un fetch sur candidate_contacts. */
+  manualEmail?: string | null;
+  manualPhone?: string | null;
 }
 
 interface ProfileDetailSheetProps {
@@ -680,8 +689,35 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             )}
 
             {/* ─── CONTACT INFO ─── */}
-            {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
+            {/* En mode pipeline, on affiche TOUJOURS la ligne contacts
+                (même vide) pour donner accès au bouton "Ajouter contacts".
+                En sourcing, on garde l'ancien comportement (visible si
+                contacts présents). */}
+            {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0 || pipelineMeta?.manualEmail || pipelineMeta?.manualPhone || pipelineMeta?.contactsEditor) && (
               <div className="flex flex-wrap items-center gap-1.5 pt-2 mt-2 border-t border-border">
+                {/* Manual email/phone (saisis par le recruteur) — affichés en pills success */}
+                {pipelineMeta?.manualEmail && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 rounded-md border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success cursor-pointer hover:bg-success/15 transition-colors"
+                    onClick={() => { navigator.clipboard.writeText(pipelineMeta.manualEmail!); toast.success('Email copié'); }}
+                    title="Saisi manuellement"
+                  >
+                    <Mail className="h-3 w-3" />
+                    <span className="max-w-[160px] truncate">{pipelineMeta.manualEmail}</span>
+                  </Badge>
+                )}
+                {pipelineMeta?.manualPhone && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 rounded-md border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success cursor-pointer hover:bg-success/15 transition-colors"
+                    onClick={() => { navigator.clipboard.writeText(pipelineMeta.manualPhone!); toast.success('Téléphone copié'); }}
+                    title="Saisi manuellement"
+                  >
+                    <Phone className="h-3 w-3" />
+                    <span>{pipelineMeta.manualPhone}</span>
+                  </Badge>
+                )}
                 {contactInfo.emails.map((email) => (
                   <Badge
                     key={email}
@@ -704,6 +740,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     <span>{phone}</span>
                   </Badge>
                 ))}
+                {/* Editor manuel (pipeline mode) — bouton "Modifier" / "Ajouter contacts" */}
+                {pipelineMeta?.contactsEditor && (
+                  <div className="ml-auto">{pipelineMeta.contactsEditor}</div>
+                )}
               </div>
             )}
 

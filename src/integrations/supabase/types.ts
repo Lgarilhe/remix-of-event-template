@@ -1227,6 +1227,41 @@ export type Database = {
           },
         ]
       }
+      candidate_alert_dismissals: {
+        Row: {
+          alert_key: string
+          candidate_id: string
+          dismissed_at: string
+          dismissed_by: string | null
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          alert_key: string
+          candidate_id: string
+          dismissed_at?: string
+          dismissed_by?: string | null
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          alert_key?: string
+          candidate_id?: string
+          dismissed_at?: string
+          dismissed_by?: string | null
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_alert_dismissals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_assignments: {
         Row: {
           assigned_by: string | null
@@ -1314,6 +1349,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "candidate_comments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_contacts: {
+        Row: {
+          candidate_id: string
+          email: string | null
+          notes: string | null
+          organization_id: string
+          phone: string | null
+          source: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          candidate_id: string
+          email?: string | null
+          notes?: string | null
+          organization_id: string
+          phone?: string | null
+          source?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          candidate_id?: string
+          email?: string | null
+          notes?: string | null
+          organization_id?: string
+          phone?: string | null
+          source?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_contacts_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"

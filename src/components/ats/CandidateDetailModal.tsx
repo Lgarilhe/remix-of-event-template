@@ -38,9 +38,11 @@ import {
 import { CVTab } from './candidate-detail/CVTab';
 import { OverviewTab } from './candidate-detail/OverviewTab';
 import { ProfileDetailedTab } from './candidate-detail/ProfileDetailedTab';
+import { ManualContactsEditor } from './candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
+import { getCandidateContacts, type CandidateContacts } from '@/lib/candidateContacts';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -89,6 +91,15 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   // Mobile profile overlay : utile quand la modale rend le ProfileTab dans
   // un onglet (sur mobile l'écran est petit donc on l'ouvre full-screen).
   const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
+
+  // Manual contacts (email/phone saisis par l'user) — fetch on mount
+  const [manualContacts, setManualContacts] = useState<CandidateContacts | null>(null);
+  useEffect(() => {
+    if (!organizationId) return;
+    getCandidateContacts(candidate.candidateId, organizationId)
+      .then(setManualContacts)
+      .catch(err => console.warn('[CandidateDetailModal] manualContacts fetch failed:', err));
+  }, [candidate.candidateId, organizationId]);
 
   // Fetch LinkedIn snapshot si pas déjà sur le candidat
   useEffect(() => {
@@ -467,6 +478,19 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         tags: candidate.tags || [],
         onTagsChange: (tags) => onTagsChange?.(candidate.id, tags),
         onCreatePortalLink: handleCreatePortalLink,
+        // Manual contacts : email/phone saisis par le recruteur (en plus
+        // de ce que LinkedIn / enrichissement fournissent automatiquement).
+        manualEmail: manualContacts?.email || null,
+        manualPhone: manualContacts?.phone || null,
+        contactsEditor: organizationId ? (
+          <ManualContactsEditor
+            candidateId={candidate.candidateId}
+            organizationId={organizationId}
+            existingEmails={(profile.contact_info?.emails as string[] | undefined) || []}
+            existingPhones={(profile.contact_info?.phones as string[] | undefined) || []}
+            onContactsUpdated={setManualContacts}
+          />
+        ) : undefined,
       }}
       extraTabs={extraTabs}
       hideStandardTabs
