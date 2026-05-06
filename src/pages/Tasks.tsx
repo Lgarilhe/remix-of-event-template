@@ -44,6 +44,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useCountUp } from '@/hooks/useCountUp';
+import { useCandidateAvatarsByCandidateId } from '@/hooks/useCandidateAvatars';
+import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 
 const BUCKET_META: Record<ReminderBucket, {
   label: string;
@@ -137,7 +139,7 @@ const KPICard: React.FC<{
 
 export default function TasksPage() {
   const navigate = useNavigate();
-  const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder } = useAllReminders();
+  const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder, reminders } = useAllReminders();
   const [view, setView] = useState<'active' | 'all'>('active');
 
   const visibleBuckets: ReminderBucket[] = view === 'active'
@@ -145,6 +147,18 @@ export default function TasksPage() {
     : ['overdue', 'today', 'week', 'later', 'done'];
 
   const isEmpty = counts.active === 0 && (view === 'active' || counts.done === 0);
+
+  // Batch-fetch les avatars LinkedIn pour tous les candidats des reminders.
+  // On dédoublonne les candidate_ids, et on cap à 50 pour éviter une query
+  // trop large (au-delà l'utilité décroît, le user scrolle peu).
+  const candidateIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of reminders) {
+      if (r.candidate_id) set.add(r.candidate_id);
+    }
+    return Array.from(set).slice(0, 50);
+  }, [reminders]);
+  const avatarMap = useCandidateAvatarsByCandidateId(candidateIds);
 
   return (
     <PageLayout maxWidth="lg">
@@ -264,9 +278,11 @@ export default function TasksPage() {
                 bucket={bucket}
                 items={items}
                 meta={meta}
+                avatarMap={avatarMap}
                 onToggle={toggleComplete}
                 onDelete={deleteReminder}
                 onNavigate={(candidateId) => navigate(`/pipeline?candidate=${candidateId}`)}
+                onJobNavigate={(jobId) => navigate(`/missions/${jobId}`)}
               />
             );
           })}
@@ -280,16 +296,20 @@ function BucketSection({
   bucket,
   items,
   meta,
+  avatarMap,
   onToggle,
   onDelete,
   onNavigate,
+  onJobNavigate,
 }: {
   bucket: ReminderBucket;
   items: Reminder[];
   meta: typeof BUCKET_META[ReminderBucket];
+  avatarMap: Map<string, string | null>;
   onToggle: (r: Reminder) => void;
   onDelete: (id: string) => void;
   onNavigate: (candidateId: string) => void;
+  onJobNavigate: (jobId: string) => void;
 }) {
   const Icon = meta.icon;
   return (
@@ -327,9 +347,11 @@ function BucketSection({
             <TaskRow
               key={r.id}
               reminder={r}
+              avatarUrl={avatarMap.get(r.candidate_id) ?? null}
               onToggle={onToggle}
               onDelete={onDelete}
               onNavigate={onNavigate}
+              onJobNavigate={onJobNavigate}
             />
           ))}
         </AnimatePresence>
@@ -340,22 +362,47 @@ function BucketSection({
 
 const TaskRow = React.memo(function TaskRow({
   reminder,
+  avatarUrl,
   onToggle,
   onDelete,
   onNavigate,
+  onJobNavigate,
 }: {
   reminder: Reminder;
+  avatarUrl: string | null;
   onToggle: (r: Reminder) => void;
   onDelete: (id: string) => void;
   onNavigate: (candidateId: string) => void;
+  onJobNavigate: (jobId: string) => void;
 }) {
   const [loading, setLoading] = useState<'toggle' | 'delete' | null>(null);
   const isCompleted = !!reminder.completed_at;
-  const dueLabel = (() => {
+
+  // Date formatée : si dans la semaine en cours, format relatif court ;
+  // sinon date complète.
+  const { dueLabel, isOverdue, isDueToday } = (() => {
     try {
-      return format(parseISO(reminder.due_at), "d MMM yyyy 'à' HH:mm", { locale: fr });
+      const d = parseISO(reminder.due_at);
+      const now = new Date();
+      const diffMs = d.getTime() - now.getTime();
+      const isOverdue = diffMs < 0 && !isCompleted;
+      const isDueToday =
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear();
+
+      const time = format(d, 'HH:mm');
+      let label: string;
+      if (isDueToday) {
+        label = `Aujourd'hui · ${time}`;
+      } else if (Math.abs(diffMs) < 24 * 60 * 60 * 1000 && diffMs > 0) {
+        label = `Demain · ${time}`;
+      } else {
+        label = format(d, "d MMM 'à' HH:mm", { locale: fr });
+      }
+      return { dueLabel: label, isOverdue, isDueToday };
     } catch {
-      return '—';
+      return { dueLabel: '—', isOverdue: false, isDueToday: false };
     }
   })();
 
@@ -384,6 +431,22 @@ const TaskRow = React.memo(function TaskRow({
         aria-label={isCompleted ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
       />
 
+      {/* Avatar candidat (si présent) */}
+      {reminder.candidate_name && (
+        <button
+          type="button"
+          onClick={() => onNavigate(reminder.candidate_id)}
+          className="shrink-0 mt-0.5 hover:scale-105 transition-transform"
+          aria-label={`Voir ${reminder.candidate_name}`}
+        >
+          <CandidateAvatar
+            name={reminder.candidate_name}
+            avatarUrl={avatarUrl}
+            size={32}
+          />
+        </button>
+      )}
+
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-0.5">
           <p
@@ -394,7 +457,16 @@ const TaskRow = React.memo(function TaskRow({
           >
             {reminder.title}
           </p>
-          {reminder.job_title && (
+          {reminder.job_title && reminder.job_id && (
+            <button
+              type="button"
+              onClick={() => onJobNavigate(reminder.job_id!)}
+              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border bg-foreground/[0.04] text-muted-foreground hover:text-foreground hover:bg-muted/40 uppercase tracking-wider font-semibold transition-colors"
+            >
+              {reminder.job_title}
+            </button>
+          )}
+          {reminder.job_title && !reminder.job_id && (
             <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full border border-border bg-foreground/[0.04] text-muted-foreground uppercase tracking-wider font-semibold">
               {reminder.job_title}
             </span>
@@ -403,15 +475,24 @@ const TaskRow = React.memo(function TaskRow({
         {reminder.description && (
           <p className="text-xs text-muted-foreground line-clamp-2">{reminder.description}</p>
         )}
-        <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1 tabular-nums">
+        <div className="flex items-center gap-3 mt-1.5 text-xs flex-wrap">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 tabular-nums font-medium',
+              isOverdue
+                ? 'text-destructive'
+                : isDueToday
+                ? 'text-warning'
+                : 'text-muted-foreground',
+            )}
+          >
             <Clock className="w-3 h-3" aria-hidden="true" />
             {dueLabel}
           </span>
           {reminder.candidate_name && (
             <button
               onClick={() => onNavigate(reminder.candidate_id)}
-              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
             >
               <ExternalLink className="w-3 h-3" aria-hidden="true" />
               {reminder.candidate_name}

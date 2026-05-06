@@ -1,24 +1,38 @@
 /**
- * Calendar — vue calendrier interne.
+ * Calendar — vue calendrier interne V3.
  *
- * Affiche en lecture seule les événements à venir agrégés depuis 3 sources :
- * - qualification_sessions (entretiens)
+ * Affiche les événements à venir agrégés depuis :
+ * - qualification_sessions (entretiens, dont Calendly)
  * - inmail_queue (InMails programmés)
  * - sequence_step_executions (étapes de séquence)
  *
- * Vue par défaut : 7 jours roulants à partir d'aujourd'hui.
+ * V3 (mai 2026) : refonte complète avec cards riches qui montrent en 1 coup
+ * d'œil "qui voit qui pour quel poste avec quel manager", click → sheet
+ * détaillé avec actions (voir candidat, voir mission, ouvrir lien meet, etc.)
  *
- * V2 (mai 2026) : refonte design — passage du brutalism (border sharp,
- * font-mono uppercase, today bg-foreground full) au V2 (rounded-xl, font-display,
- * today subtle emerald accent, event cards rounded-lg avec couleurs sémantiques
- * conservées par type).
+ * Design : pattern Cal.com / Notion Calendar — tout est rounded, soft, les
+ * couleurs sémantiques sont préservées (entretiens=violet, inmails=info,
+ * séquences=cyan) pour distinction rapide.
  */
 
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { SEOHead } from '@/components/SEOHead';
-import { useCalendarEvents, groupEventsByDay, type CalendarEvent } from '@/hooks/useCalendarEvents';
-import { format, addDays, subDays, parseISO, isToday, isWeekend, startOfDay } from 'date-fns';
+import {
+  useCalendarEvents,
+  groupEventsByDay,
+  type CalendarEvent,
+} from '@/hooks/useCalendarEvents';
+import {
+  format,
+  addDays,
+  subDays,
+  parseISO,
+  isToday,
+  isWeekend,
+  startOfDay,
+  differenceInMinutes,
+} from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   ChevronLeft,
@@ -29,42 +43,70 @@ import {
   Briefcase,
   Clock,
   RefreshCw,
+  Video,
+  MapPin,
+  Sparkles,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PageLayout } from '@/components/layout';
+import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
+import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
 
 const TYPE_STYLES: Record<
   CalendarEvent['type'],
-  { icon: React.ElementType; bg: string; iconBg: string; iconColor: string; label: string }
+  {
+    icon: React.ElementType;
+    label: string;
+    bg: string;
+    border: string;
+    iconBg: string;
+    iconColor: string;
+  }
 > = {
   qualification: {
     icon: Briefcase,
-    bg: 'bg-violet-500/[0.06] hover:bg-violet-500/[0.12] border-violet-500/20',
+    label: 'Entretien',
+    bg: 'bg-violet-500/[0.08] hover:bg-violet-500/[0.14]',
+    border: 'border-violet-500/30',
     iconBg: 'bg-violet-500/15',
     iconColor: 'text-violet-600 dark:text-violet-400',
-    label: 'Qualif',
   },
   inmail: {
     icon: Mail,
-    bg: 'bg-info/[0.06] hover:bg-info/[0.12] border-info/20',
+    label: 'InMail',
+    bg: 'bg-info/[0.08] hover:bg-info/[0.14]',
+    border: 'border-info/30',
     iconBg: 'bg-info/15',
     iconColor: 'text-info',
-    label: 'InMail',
   },
   sequence_step: {
     icon: Zap,
-    bg: 'bg-cyan-500/[0.06] hover:bg-cyan-500/[0.12] border-cyan-500/20',
+    label: 'Séquence',
+    bg: 'bg-cyan-500/[0.08] hover:bg-cyan-500/[0.14]',
+    border: 'border-cyan-500/30',
     iconBg: 'bg-cyan-500/15',
     iconColor: 'text-cyan-600 dark:text-cyan-400',
-    label: 'Séquence',
   },
   reminder: {
     icon: Clock,
-    bg: 'bg-warning/[0.06] hover:bg-warning/[0.12] border-warning/20',
+    label: 'Rappel',
+    bg: 'bg-warning/[0.08] hover:bg-warning/[0.14]',
+    border: 'border-warning/30',
     iconBg: 'bg-warning/15',
     iconColor: 'text-warning',
-    label: 'Rappel',
   },
+};
+
+const isVisioLink = (loc: string | null | undefined) =>
+  !!loc && /^https?:\/\//i.test(loc);
+
+const getInitials = (name: string | null | undefined): string => {
+  if (!name) return '?';
+  const tokens = name.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return '?';
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+  return (tokens[0][0] + tokens[tokens.length - 1][0]).toUpperCase();
 };
 
 export default function CalendarPage() {
@@ -73,19 +115,37 @@ export default function CalendarPage() {
     from: weekStart,
     days: 7,
   });
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const days = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  }, [weekStart]);
-
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [
+    weekStart,
+  ]);
   const eventsByDay = useMemo(() => groupEventsByDay(events), [events]);
 
   const totalCount = events.length;
+
+  // Stats inline : entretiens / Calendly
+  const stats = useMemo(() => {
+    let interviews = 0;
+    let calendly = 0;
+    for (const e of events) {
+      if (e.type === 'qualification') interviews++;
+      if (e.meta?.calendlyEventId) calendly++;
+    }
+    return { interviews, calendly };
+  }, [events]);
+
   const weekRangeLabel = useMemo(() => {
     const start = weekStart;
     const end = addDays(weekStart, 6);
-    return `${format(start, 'd MMM', { locale: fr })} — ${format(end, 'd MMM yyyy', { locale: fr })}`;
+    return `${format(start, 'd MMM', { locale: fr })} – ${format(end, 'd MMM yyyy', { locale: fr })}`;
   }, [weekStart]);
+
+  const openEvent = (event: CalendarEvent) => {
+    setSelectedEvent(event);
+    setSheetOpen(true);
+  };
 
   return (
     <PageLayout maxWidth="2xl">
@@ -114,8 +174,24 @@ export default function CalendarPage() {
               {totalCount > 0 && (
                 <>
                   {' · '}
-                  <span className="text-foreground font-medium">{totalCount}</span>{' '}
-                  événement{totalCount > 1 ? 's' : ''}
+                  <span className="text-foreground font-medium">{totalCount}</span> événement
+                  {totalCount > 1 ? 's' : ''}
+                  {stats.interviews > 0 && (
+                    <>
+                      {' · '}
+                      <span className="text-foreground font-medium">{stats.interviews}</span>{' '}
+                      entretien{stats.interviews > 1 ? 's' : ''}
+                    </>
+                  )}
+                  {stats.calendly > 0 && (
+                    <>
+                      {' · '}
+                      <span className="inline-flex items-center gap-1 text-foreground font-medium">
+                        <Sparkles className="w-3 h-3 inline" />
+                        {stats.calendly} via Calendly
+                      </span>
+                    </>
+                  )}
                 </>
               )}
             </p>
@@ -129,11 +205,13 @@ export default function CalendarPage() {
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors disabled:opacity-50"
             aria-label="Rafraîchir le calendrier"
           >
-            <RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} aria-hidden="true" />
+            <RefreshCw
+              className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')}
+              aria-hidden="true"
+            />
             <span className="hidden sm:inline">Actualiser</span>
           </button>
 
-          {/* Navigation semaine */}
           <div
             className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border"
             role="group"
@@ -181,7 +259,7 @@ export default function CalendarPage() {
               <div
                 key={dayKey}
                 className={cn(
-                  'flex flex-col min-h-[200px] lg:min-h-[400px]',
+                  'flex flex-col min-h-[260px] lg:min-h-[440px]',
                   idx > 0 && 'lg:border-l lg:border-border',
                   idx > 0 && idx < 7 && 'sm:border-l sm:border-border max-lg:border-l-0',
                   idx >= 2 && 'max-sm:border-t max-sm:border-border',
@@ -204,12 +282,7 @@ export default function CalendarPage() {
                     >
                       {format(day, 'EEEE', { locale: fr })}
                     </p>
-                    <p
-                      className={cn(
-                        'font-display text-base font-bold leading-none mt-0.5 tabular-nums tracking-tight',
-                        'text-foreground',
-                      )}
-                    >
+                    <p className="font-display text-base font-bold leading-none mt-0.5 tabular-nums tracking-tight text-foreground">
                       {format(day, 'd MMM', { locale: fr })}
                     </p>
                   </div>
@@ -217,9 +290,7 @@ export default function CalendarPage() {
                     <span
                       className={cn(
                         'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums',
-                        today
-                          ? 'bg-foreground text-background'
-                          : 'bg-foreground/10 text-foreground',
+                        today ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground',
                       )}
                     >
                       {dayEvents.length}
@@ -228,11 +299,11 @@ export default function CalendarPage() {
                 </div>
 
                 {/* Events */}
-                <div className="flex-1 p-2 space-y-1.5 overflow-y-auto">
+                <div className="flex-1 p-2 space-y-2 overflow-y-auto">
                   {isLoading ? (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {[1, 2].map((i) => (
-                        <div key={i} className="h-12 rounded-lg bg-muted/40 animate-pulse" />
+                        <div key={i} className="h-24 rounded-xl bg-muted/40 animate-pulse" />
                       ))}
                     </div>
                   ) : dayEvents.length === 0 ? (
@@ -242,7 +313,13 @@ export default function CalendarPage() {
                       </span>
                     </div>
                   ) : (
-                    dayEvents.map((event) => <EventCard key={event.id} event={event} />)
+                    dayEvents.map((event) => (
+                      <EventCard
+                        key={event.id}
+                        event={event}
+                        onClick={() => openEvent(event)}
+                      />
+                    ))
                   )}
                 </div>
               </div>
@@ -289,66 +366,156 @@ export default function CalendarPage() {
             Pas d'événement cette semaine
           </p>
           <p className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto">
-            Les entretiens (qualifications), InMails programmés et étapes de séquence à
-            venir s'afficheront ici.
+            Les entretiens, InMails programmés et étapes de séquence à venir s'afficheront ici.
+            Les RDV pris via Calendly remontent automatiquement.
           </p>
         </motion.div>
       )}
+
+      {/* Detail sheet */}
+      <EventDetailSheet event={selectedEvent} open={sheetOpen} onOpenChange={setSheetOpen} />
     </PageLayout>
   );
 }
 
-const EventCard = React.memo(function EventCard({ event }: { event: CalendarEvent }) {
+const EventCard = React.memo(function EventCard({
+  event,
+  onClick,
+}: {
+  event: CalendarEvent;
+  onClick: () => void;
+}) {
   const style = TYPE_STYLES[event.type];
-  const Icon = style.icon;
-  const time = (() => {
+  const meta = event.meta || {};
+
+  const startDate = (() => {
     try {
-      return format(parseISO(event.startAt), 'HH:mm');
+      return parseISO(event.startAt);
     } catch {
-      return '—';
+      return null;
     }
   })();
-  const isPast = (() => {
-    try {
-      return new Date(event.startAt) < new Date();
-    } catch {
-      return false;
-    }
-  })();
+  const endDate = event.endAt
+    ? (() => {
+        try {
+          return parseISO(event.endAt);
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
+  const time = startDate ? format(startDate, 'HH:mm') : '—';
+  const durationMin = startDate && endDate ? differenceInMinutes(endDate, startDate) : null;
+  const isPast = startDate ? startDate < new Date() : false;
+  const isQualif = event.type === 'qualification';
+  const hasVisio = isVisioLink(meta.location);
 
   return (
     <button
       type="button"
+      onClick={onClick}
       className={cn(
-        'w-full text-left rounded-lg border p-2 transition-colors',
+        'group w-full text-left rounded-xl border p-2.5 transition-colors',
         style.bg,
+        style.border,
         isPast && 'opacity-50',
       )}
       title={event.title}
-      aria-label={`${style.label} à ${time}: ${event.title}${
-        event.subtitle ? ' — ' + event.subtitle : ''
-      }`}
+      aria-label={`${style.label} à ${time}: ${event.title}`}
     >
-      <div className="flex items-start gap-2">
-        <div
-          className={cn(
-            'h-5 w-5 rounded-md flex items-center justify-center shrink-0',
-            style.iconBg,
-          )}
-        >
-          <Icon className={cn('w-2.5 h-2.5', style.iconColor)} aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <span className="text-[10px] font-bold tabular-nums text-muted-foreground">
+      {/* Top row : time + duration + badges */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="font-display text-[12px] font-bold tabular-nums text-foreground tracking-tight">
             {time}
           </span>
-          <p className="text-xs font-medium truncate text-foreground leading-tight mt-0.5">
-            {event.title}
-          </p>
-          {event.subtitle && (
-            <p className="text-[10px] text-muted-foreground truncate">{event.subtitle}</p>
+          {durationMin && (
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              · {durationMin}min
+            </span>
           )}
         </div>
+        <div className="flex items-center gap-1">
+          {meta.calendlyEventId && (
+            <span
+              className="inline-flex items-center justify-center h-4 w-4 rounded bg-foreground/[0.08]"
+              title="Via Calendly"
+            >
+              <Sparkles className="w-2.5 h-2.5 text-foreground/70" />
+            </span>
+          )}
+          <div
+            className={cn(
+              'h-5 w-5 rounded-md flex items-center justify-center shrink-0',
+              style.iconBg,
+              style.iconColor,
+            )}
+          >
+            <style.icon className="w-3 h-3" aria-hidden="true" />
+          </div>
+        </div>
+      </div>
+
+      {/* Candidate row (qualifs) — avatar + name */}
+      {isQualif && meta.candidateName && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <CandidateAvatar
+            name={meta.candidateName}
+            avatarUrl={meta.candidateAvatarUrl ?? null}
+            size={24}
+          />
+          <span className="text-xs font-display font-semibold text-foreground truncate flex-1 tracking-tight">
+            {meta.candidateName}
+          </span>
+        </div>
+      )}
+
+      {/* Mission / job line */}
+      {(meta.clientName || meta.jobTitle || meta.projectName) && (
+        <div className="flex items-center gap-1 text-[10.5px] text-muted-foreground truncate mb-1">
+          {meta.clientName && (
+            <span className="inline-flex items-center gap-0.5">
+              <Building2 className="w-2.5 h-2.5" />
+              <span className="truncate font-medium text-foreground/80">{meta.clientName}</span>
+            </span>
+          )}
+          {meta.clientName && meta.jobTitle && <span className="text-muted-foreground/40">·</span>}
+          {meta.jobTitle && <span className="truncate">{meta.jobTitle}</span>}
+        </div>
+      )}
+
+      {/* Non-qualif (sequence/inmail) — show subtitle as candidate name */}
+      {!isQualif && event.subtitle && (
+        <div className="text-xs font-medium text-foreground truncate mb-0.5">
+          {event.subtitle}
+        </div>
+      )}
+
+      {/* Bottom : manager + location indicators */}
+      <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/40">
+        {meta.manager?.displayName ? (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground truncate"
+            title={`Animé par ${meta.manager.displayName}`}
+          >
+            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-foreground font-bold text-[8px]">
+              {getInitials(meta.manager.displayName)}
+            </span>
+            <span className="truncate">{meta.manager.displayName.split(' ')[0]}</span>
+          </span>
+        ) : (
+          <span />
+        )}
+
+        {meta.location && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
+            title={meta.location}
+          >
+            {hasVisio ? <Video className="w-2.5 h-2.5" /> : <MapPin className="w-2.5 h-2.5" />}
+          </span>
+        )}
       </div>
     </button>
   );
