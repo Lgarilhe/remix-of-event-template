@@ -186,6 +186,35 @@ function detectViolations(args: {
     v.push('cliché IA "j\'en profite pour te contacter"');
   }
 
+  // 🆕 Patterns d'accroche paresseuse — signal IA évident
+  // Détectés sur le DÉBUT du message uniquement (les 200 premiers chars)
+  // pour pas tagger une mention au milieu du message si pertinente.
+  const opener200 = (message || '').slice(0, 200);
+  // "ton parcours [...] c'est exactement / le type / le profil"
+  if (/\bton\s+parcours\s+(chez\s+\S+\s+)?[^.!?]*?(c'est|cest)\s+(exactement|précisément|pile|le\s+(type|profil|genre)|ce\s+qu['e]\s*on)/i.test(opener200)) {
+    v.push('accroche paresseuse "ton parcours... c\'est le type de profil/exactement"');
+  }
+  // "tu fais X, on cherche / on a / chez nous on"
+  if (/^(?:salut\s+\w+,\s*)?tu\s+fais\s+(du|de\s+la|de\s+l['e])\s+\S+[^.!?]*?(?:on\s+(cherche|a\s+un|recrute)|chez\s+nous)/i.test(opener200)) {
+    v.push('accroche paresseuse "tu fais X, on cherche..."');
+  }
+  // "vu ton expérience / vu ton parcours / vu que tu fais"
+  if (/^(?:salut\s+\w+,\s*)?vu\s+(ton\s+(parcours|expérience|expertise|profil)|que\s+tu\s+(fais|travailles|bosses))/i.test(opener200)) {
+    v.push('accroche paresseuse "vu ton expérience/parcours..."');
+  }
+  // "ton expertise / ton expérience en X m'a interpellé / a retenu"
+  if (/\bton\s+(expertise|expérience|profil|parcours)\s+(en|sur|chez)\s+\S+[^.!?]*?(m['e]\s*(a\s+)?(interpel|interess|tap[ée])|a\s+retenu)/i.test(opener200)) {
+    v.push('accroche paresseuse "ton expertise en X m\'a interpellé"');
+  }
+  // "tu as un profil intéressant / impressionnant / sympa"
+  if (/\btu\s+as\s+un\s+(profil|parcours)\s+(intéressant|impressionnant|sympa|cool|top|génial|riche|solide|rare)/i.test(opener200)) {
+    v.push('flatterie "tu as un profil [adjectif]"');
+  }
+  // "C'est exactement / précisément / pile-poil le profil que..."
+  if (/\bc'est\s+(exactement|précisément|pile(?:-poil)?|justement)\s+(le|un)\s+(profil|type|genre|candidat)/i.test(text)) {
+    v.push('flatterie "c\'est exactement le profil"');
+  }
+
   // 🆕 Mode interne (via outreach_config OU isRPO legacy) :
   //    bannit les formulations cabinet
   const internalModeActive = isRPO || isInternalMode;
@@ -904,10 +933,46 @@ ${statusInstructions[candidateStatus] || statusInstructions.other}`}
 
 === APPROCHE & STRUCTURE ===
 
-PERSONNALISATION (obligatoire) :
-- UN fait précis du candidat (À propos, post LinkedIn, parcours, ancien employeur commun, école commune, side project) traité comme une OBSERVATION FACTUELLE — jamais comme un compliment.
-- Si rien de spécifique trouvé → question ouverte plutôt que pitch ("Qu'est-ce qui te ferait bouger aujourd'hui ?").
-- Cite le contenu DIRECTEMENT, jamais la source ("dans ton À propos" ❌). Pas de "j'ai parcouru ton profil" ni "a retenu mon attention".
+PERSONNALISATION (obligatoire) — EFFORT INTELLECTUEL EXIGÉ :
+
+L'accroche est ce qui sépare un message qui obtient une réponse d'un message ignoré. Tu DOIS faire un effort réel — pas une observation paresseuse.
+
+❌ ACCROCHES PARESSEUSES INTERDITES (signaux IA évidents) :
+- "Ton parcours chez X, c'est exactement le type de profil qu'on cherche"
+- "Ton parcours [...] c'est le profil idéal / parfait / qu'il nous faut"
+- "Tu fais X chez Y, on cherche quelqu'un sur ce créneau"
+- "Vu ton expérience en X, [...]"
+- "Ton expertise en X m'a interpellé"
+- "Tu as un profil très intéressant"
+- Toute phrase qui RÉSUME le profil ("Tu es tech lead avec 8 ans d'XP en X et Y")
+- Toute phrase qui qualifie le profil ("c'est rare", "type de profil", "c'est impressionnant")
+
+✅ ACCROCHE MALINE = 1 des 4 patterns suivants :
+
+1. **Observation pointue sur UN détail spécifique** (pas le résumé du parcours)
+   Au lieu de "Ton parcours en SRE chez Back Market" → "4 ans à galérer avec les migrations Postgres chez Back Market, je devine"
+   Au lieu de "Tu fais du Go" → "Ton commit sur [projet open source] sur la gestion mémoire en Rust"
+
+2. **Question authentique sur UN choix de carrière**
+   "Tu es passé de [X] à [Y], qu'est-ce qui t'a motivé ?" (montre que tu as lu, ouvre le dialogue)
+   "Comment tu gères [problème spécifique au domaine] avec [contrainte précise] ?"
+
+3. **Référence à un signal concret** (post, article, talk, side project)
+   "Ton post sur [sujet précis] cette semaine m'a fait penser à [angle]"
+   "Vu ton talk sur [X] au [event], [...]"
+
+4. **Common ground inattendu** (qui montre que tu as creusé)
+   "Aussi passé par [entreprise ancien commun], dans ton temps c'était comment l'équipe [X] ?"
+   "On a [X en commun], donc je sais à quoi tu penses sur [Y]"
+
+🧠 TEST MENTAL OBLIGATOIRE avant de valider l'accroche :
+"Est-ce que 100 autres recruteurs IA pourraient écrire EXACTEMENT cette phrase pour ce candidat ?"
+- Si OUI → ton accroche est paresseuse, REFORMULE avec un détail plus spécifique
+- Si NON (la phrase ne marche QUE pour ce candidat) → c'est bon
+
+Cite le contenu DIRECTEMENT, jamais la source ("dans ton À propos" ❌). Pas de "j'ai parcouru ton profil" ni "a retenu mon attention".
+
+Si tu n'as VRAIMENT rien de spécifique → pose une question ouverte authentique ("Qu'est-ce qui te ferait bouger aujourd'hui ?") plutôt qu'une accroche générique paresseuse. Une question franche > un résumé creux.
 
 CE QUE LE CANDIDAT Y GAGNE :
 - Vends ce qu'il OBTIENT (latitude, équipe, mission), pas le poste.
@@ -1138,6 +1203,7 @@ Réponds UNIQUEMENT en JSON valide:
         '- Aucune flatterie ("parfait", "exactement le profil", "rare", "précieux").',
         '- JAMAIS mentionner le statut LinkedIn ("on est connectés", "on est en contact", "vu qu\'on est en lien"). Le candidat le voit déjà sur LinkedIn, c\'est une accroche faible. Va DIRECT à l\'observation personnalisée du profil.',
         '- AUCUNE justification de prise de contact ("je me permets de te contacter", "donc je me permets", "j\'en profite"). Tu n\'as pas à te justifier.',
+        '- L\'accroche NE DOIT PAS être un résumé du profil ("Ton parcours chez X... c\'est le type de profil que..."). Trouve UN détail spécifique (post, side project, choix de carrière, common ground inattendu) ou pose UNE question authentique. Test mental : "100 autres recruteurs IA pourraient-ils écrire exactement cette accroche pour ce candidat ?" Si OUI → reformule avec un détail unique.',
       ];
       if (isInternalMode || isRPO) {
         const cn = job.client?.name || 'nous';
