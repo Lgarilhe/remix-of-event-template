@@ -45,16 +45,90 @@ interface NavItem {
   icon: React.ComponentType<any>;
   badgeKey?: 'unread';
   feature?: Feature;
+  /**
+   * Tile color tokens. `tile` est appliqué au tile par défaut, `tileActive`
+   * quand l'item est actif (saturation plus forte). `text` colore l'icône.
+   */
+  color: {
+    tile: string;
+    tileActive: string;
+    text: string;
+  };
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: Home },
-  { to: '/missions', label: 'Missions', icon: Briefcase },
-  { to: '/pipeline', label: 'Pipeline', icon: Columns3 },
-  { to: '/calendar', label: 'Calendrier', icon: Calendar },
-  { to: '/tasks', label: 'Tâches', icon: ListTodo },
-  { to: '/inbox', label: 'Messages', icon: Inbox, badgeKey: 'unread' },
-  { to: '/marketplace', label: 'Marketplace', icon: Store, feature: 'marketplace_browse' },
+  {
+    to: '/dashboard',
+    label: 'Dashboard',
+    icon: Home,
+    color: {
+      tile: 'bg-blue-500/10',
+      tileActive: 'bg-blue-500/20',
+      text: 'text-blue-500',
+    },
+  },
+  {
+    to: '/missions',
+    label: 'Missions',
+    icon: Briefcase,
+    color: {
+      tile: 'bg-violet-500/10',
+      tileActive: 'bg-violet-500/20',
+      text: 'text-violet-500',
+    },
+  },
+  {
+    to: '/pipeline',
+    label: 'Pipeline',
+    icon: Columns3,
+    color: {
+      tile: 'bg-cyan-500/10',
+      tileActive: 'bg-cyan-500/20',
+      text: 'text-cyan-500',
+    },
+  },
+  {
+    to: '/calendar',
+    label: 'Calendrier',
+    icon: Calendar,
+    color: {
+      tile: 'bg-amber-500/10',
+      tileActive: 'bg-amber-500/20',
+      text: 'text-amber-500',
+    },
+  },
+  {
+    to: '/tasks',
+    label: 'Tâches',
+    icon: ListTodo,
+    color: {
+      tile: 'bg-emerald-500/10',
+      tileActive: 'bg-emerald-500/20',
+      text: 'text-emerald-500',
+    },
+  },
+  {
+    to: '/inbox',
+    label: 'Messages',
+    icon: Inbox,
+    badgeKey: 'unread',
+    color: {
+      tile: 'bg-rose-500/10',
+      tileActive: 'bg-rose-500/20',
+      text: 'text-rose-500',
+    },
+  },
+  {
+    to: '/marketplace',
+    label: 'Marketplace',
+    icon: Store,
+    feature: 'marketplace_browse',
+    color: {
+      tile: 'bg-indigo-500/10',
+      tileActive: 'bg-indigo-500/20',
+      text: 'text-indigo-500',
+    },
+  },
 ];
 
 export function AppSidebar() {
@@ -154,8 +228,10 @@ export function AppSidebar() {
           </button>
         )}
 
-        {/* Nav — pas d'eyebrow, juste les items */}
-        <SidebarMenu className={cn('gap-0.5', collapsed ? 'px-0 items-center' : 'px-0')}>
+        {/* Nav — pas d'eyebrow, juste les items.
+            Chaque item a un tile coloré (h-9 w-9) avec icône color-coded
+            par section. Saturation plus forte sur l'item actif. */}
+        <SidebarMenu className={cn('gap-1', collapsed ? 'px-0 items-center' : 'px-0')}>
           {filteredItems.map((item) => {
             const active = isActive(item.to);
             const showBadge = item.badgeKey === 'unread' && unreadMsgCount > 0;
@@ -166,11 +242,11 @@ export function AppSidebar() {
                   isActive={active}
                   tooltip={item.label}
                   className={cn(
-                    'h-9 rounded-md text-[13px] font-medium transition-colors',
-                    collapsed ? 'w-9 px-0 justify-center' : 'px-2.5',
+                    'rounded-lg text-[13.5px] font-medium transition-colors',
+                    collapsed ? 'h-10 w-10 px-0 justify-center' : 'h-11 px-2',
                     active
                       ? 'bg-sidebar-accent text-sidebar-foreground'
-                      : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/40',
+                      : 'text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50',
                   )}
                 >
                   <Link
@@ -178,26 +254,39 @@ export function AppSidebar() {
                     onClick={closeMobile}
                     className={cn(
                       'flex items-center',
-                      collapsed ? 'justify-center' : 'gap-2.5 w-full',
+                      collapsed ? 'justify-center' : 'gap-3 w-full',
                     )}
                   >
-                    <item.icon
-                      className="h-5 w-5 shrink-0"
-                      strokeWidth={1.5}
-                      aria-hidden="true"
-                    />
+                    {/* Tile coloré contenant l'icône */}
+                    <span
+                      className={cn(
+                        'flex items-center justify-center rounded-lg shrink-0 transition-colors',
+                        collapsed ? 'h-7 w-7' : 'h-8 w-8',
+                        active ? item.color.tileActive : item.color.tile,
+                      )}
+                    >
+                      <item.icon
+                        className={cn(
+                          'shrink-0',
+                          collapsed ? 'h-[18px] w-[18px]' : 'h-[19px] w-[19px]',
+                          item.color.text,
+                        )}
+                        strokeWidth={2}
+                        aria-hidden="true"
+                      />
+                    </span>
                     {!collapsed && (
                       <>
                         <span className="flex-1 truncate">{item.label}</span>
                         {showBadge && (
-                          <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold tabular-nums bg-sidebar-foreground text-sidebar-background rounded">
+                          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold tabular-nums bg-destructive text-destructive-foreground rounded-full">
                             {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                           </span>
                         )}
                       </>
                     )}
                     {showBadge && collapsed && (
-                      <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-destructive rounded-full" />
+                      <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-destructive rounded-full ring-2 ring-sidebar" />
                     )}
                   </Link>
                 </SidebarMenuButton>
