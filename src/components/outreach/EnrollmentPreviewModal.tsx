@@ -16,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
-  X, Check, CheckCircle, AlertTriangle,
+  X, Check, CheckCircle, AlertTriangle, AlertCircle,
   Sparkles, RefreshCw, Pencil, Eye, Send, Users, Mail, MessageSquare,
   Linkedin, Loader2, ChevronLeft, ChevronRight, Search, Zap,
   Clock, GitBranch, ListChecks,
@@ -478,33 +478,53 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // ── Render ──
 
   const content = (
-    <div className="fixed inset-0 z-[4000] bg-background/95 backdrop-blur-sm flex flex-col">
-      {/* Header */}
-      <div className="border-b border-border shrink-0 bg-background">
-        <div className="flex items-center justify-between px-3 sm:px-6 h-12 sm:h-14">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-            <button onClick={handleClose} className="p-1.5 hover:bg-muted rounded-md transition-colors shrink-0">
+    <motion.div
+      className="fixed inset-0 z-[4000] bg-background/95 backdrop-blur-md flex flex-col"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+    >
+      {/* Header — refonte avec font-display + bouton X circular + eyebrow */}
+      <motion.div
+        className="border-b border-border shrink-0 bg-background/80 backdrop-blur-md"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+      >
+        <div className="flex items-center justify-between px-4 sm:px-6 h-14 sm:h-16">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+            <button
+              onClick={handleClose}
+              className="h-9 w-9 grid place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0"
+              aria-label="Fermer"
+            >
               <X className="w-4 h-4" />
             </button>
             <div className="min-w-0 flex-1">
-              <h2 className="text-xs sm:text-sm font-semibold truncate">
-                Inscription · {sequence.name}
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 hidden sm:block">
+                Inscription en séquence
+              </p>
+              <h2 className="font-display text-[15px] sm:text-base font-semibold truncate leading-tight">
+                {sequence.name}
               </h2>
-              <p className="text-[10px] sm:text-[11px] text-muted-foreground">
-                {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''} · {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
+              <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
+                {' · '}
+                {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Compteur "Preview N/M" déplacé dans DynamicSummaryBanner
-                (pill IA en haut à droite) — évite la duplication. */}
             {hasMessageSteps && !enrollResults && (
-              <div className="flex items-center border border-border rounded-md overflow-hidden">
+              <div className="flex items-center bg-muted/40 p-0.5 rounded-full border border-border">
                 <button
                   onClick={() => setMode('summary')}
                   className={cn(
-                    "px-2.5 sm:px-3 h-7 text-[11px] font-medium transition-colors",
-                    mode === 'summary' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                    "px-3 sm:px-3.5 h-7 text-[11.5px] font-medium rounded-full transition-all",
+                    mode === 'summary'
+                      ? "bg-foreground text-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Résumé
@@ -512,8 +532,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 <button
                   onClick={() => setMode('preview')}
                   className={cn(
-                    "px-2.5 sm:px-3 h-7 text-[11px] font-medium transition-colors",
-                    mode === 'preview' ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                    "px-3 sm:px-3.5 h-7 text-[11.5px] font-medium rounded-full transition-all",
+                    mode === 'preview'
+                      ? "bg-foreground text-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Previews
@@ -522,7 +544,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Dynamic summary banner */}
       {mode === 'preview' && !enrollResults && !isSingle && (
@@ -740,7 +762,19 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                         linkedinUrl={selectedProfile.profile_url || selectedProfile.public_profile_url || null}
                       />
 
-                      {/* Steps */}
+                      {/* Steps en timeline verticale : rail à gauche +
+                          nodes numérotés. Donne un vrai sens de parcours
+                          au lieu de cards isolées flottantes. */}
+                      <div className="relative pl-7 sm:pl-9">
+                        {/* Rail vertical (la "ligne du temps") */}
+                        <div
+                          className="absolute left-3 sm:left-4 top-2 bottom-2 w-px"
+                          style={{
+                            background: 'linear-gradient(to bottom, hsl(var(--border) / 0.4), hsl(var(--border) / 0.8) 20%, hsl(var(--border) / 0.8) 80%, hsl(var(--border) / 0.4))',
+                          }}
+                          aria-hidden="true"
+                        />
+                        <div className="space-y-3">
                       {steps.map((step, idx) => {
                         const isMessageStep = MESSAGE_ACTIONS.includes(step.actionType) && !!step.messageTemplate?.trim();
                         const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
@@ -775,33 +809,44 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                           />
                         );
                       })}
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <PreviewPanelFallback hasProfiles={profiles.length > 0} />
                   )}
                 </ScrollArea>
 
-                {/* Bottom bar — 3 buttons */}
-                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
-                  <Button variant="ghost" onClick={handleClose} className="h-8 px-3 text-xs text-muted-foreground">
+                {/* Bottom bar — 3 buttons avec hierarchy claire :
+                    primary konekt-skalr-bg (Enrôler) + secondary outline (Shortlist)
+                    + tertiary ghost (Annuler). */}
+                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background/95 backdrop-blur-md flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="h-9 px-3 text-[12px] text-muted-foreground hover:text-foreground transition-colors rounded-full"
+                  >
                     Annuler
-                  </Button>
+                  </button>
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     {job?.id && (
-                      <Button
-                        variant="outline"
+                      <button
+                        type="button"
                         onClick={handleShortlist}
                         disabled={isEnrolling || activeProfiles.length === 0}
-                        className="h-8 px-3 text-xs gap-1.5"
+                        className="h-9 px-4 inline-flex items-center justify-center gap-1.5 text-[12px] font-medium rounded-full border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
                       >
                         <ListChecks className="w-3.5 h-3.5" />
                         Shortlister sans message
-                      </Button>
+                      </button>
                     )}
-                    <Button
+                    <motion.button
+                      type="button"
                       onClick={handleEnroll}
                       disabled={isEnrolling || activeProfiles.length === 0}
-                      className="h-8 px-4 text-xs gap-1.5 bg-foreground text-background hover:bg-foreground/90"
+                      whileHover={{ scale: isEnrolling ? 1 : 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="h-9 px-5 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine konekt-glow disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-shadow"
                     >
                       {isEnrolling ? (
                         <>
@@ -810,11 +855,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                         </>
                       ) : (
                         <>
-                          <Send className="w-3.5 h-3.5" />
+                          <Send className="w-3.5 h-3.5" strokeWidth={2.5} />
                           Enrôler {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
                         </>
                       )}
-                    </Button>
+                    </motion.button>
                   </div>
                 </div>
               </div>
@@ -822,7 +867,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 
   return createPortal(content, document.body);
@@ -832,19 +877,23 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
 function CompactStepCard({ step, Icon, index }: { step: SequenceStepPreview; Icon: typeof Mail; index: number }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-lg border border-border/50">
-      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
-        <Icon className="w-3 h-3 text-muted-foreground" />
+    <div className="relative">
+      {/* Node sur la timeline (placé sur le rail vertical à -7 pour l'aligner) */}
+      <div
+        className="absolute left-[-22px] sm:left-[-26px] top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-background border border-border grid place-items-center text-[10px] font-bold text-muted-foreground tabular-nums shadow-sm z-10"
+        aria-hidden="true"
+      >
+        {index + 1}
       </div>
-      <div className="flex-1 min-w-0">
-        <span className="text-[11px] font-medium">{ACTION_LABELS[step.actionType] || step.actionType}</span>
+      <div className="flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-lg border border-border/50">
+        <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        <span className="text-[11.5px] font-medium text-foreground/80">{ACTION_LABELS[step.actionType] || step.actionType}</span>
         {(step.delayDays || step.delayHours) ? (
-          <span className="text-[10px] text-muted-foreground ml-2">
+          <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
             +{step.delayDays ? `${step.delayDays}j` : ''}{step.delayHours ? `${step.delayHours}h` : ''}
           </span>
         ) : null}
       </div>
-      <span className="text-[10px] text-muted-foreground tabular-nums">#{index + 1}</span>
     </div>
   );
 }
@@ -865,14 +914,32 @@ function MessageStepCard({
   onGenerate: () => void;
 }) {
   const colors = CHANNEL_COLORS[step.actionType] || { header: 'text-foreground', border: 'border-border' };
+  const isPreviewActive = preview?.isGenerating || preview?.isGenerated;
 
   return (
-    <div className={cn("rounded-lg border overflow-hidden bg-card", colors.border)}>
+    <div className="relative">
+      {/* Node sur la timeline — couleur active si preview généré */}
+      <div
+        className={cn(
+          "absolute left-[-22px] sm:left-[-26px] top-4 h-6 w-6 rounded-full border-2 grid place-items-center text-[10px] font-bold tabular-nums z-10 transition-all",
+          isPreviewActive
+            ? "bg-foreground text-background border-foreground shadow-md"
+            : "bg-background text-muted-foreground border-border shadow-sm"
+        )}
+        aria-hidden="true"
+      >
+        {index + 1}
+      </div>
+      <motion.div
+        className={cn("rounded-xl border overflow-hidden bg-card", colors.border)}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      >
       <div className={cn("flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30", colors.header)}>
         <div className="flex items-center gap-1.5">
           <Icon className="w-3.5 h-3.5" />
-          <span className="text-[11px] font-semibold">{ACTION_LABELS[step.actionType]}</span>
-          <span className="text-[10px] opacity-60">#{index + 1}</span>
+          <span className="text-[11.5px] font-semibold tracking-tight">{ACTION_LABELS[step.actionType]}</span>
         </div>
         {step.useAiPersonalization && (
           <Badge className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-0 gap-0.5">
@@ -971,13 +1038,15 @@ function MessageStepCard({
         ) : (
           <button
             onClick={onGenerate}
-            className="w-full py-4 flex flex-col items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="w-full py-5 px-4 flex flex-col items-center gap-2 rounded-md text-muted-foreground hover:text-foreground border-2 border-dashed border-border hover:border-brand-purple/40 hover:bg-brand-purple/5 transition-all group"
           >
-            <Eye className="w-5 h-5" />
-            <span className="text-xs">Cliquez pour générer la preview</span>
+            <Sparkles className="w-5 h-5 group-hover:text-brand-purple transition-colors" />
+            <span className="text-[12px] font-medium">Générer la preview de ce step</span>
+            <span className="text-[10px] text-muted-foreground/70">~2 crédits</span>
           </button>
         )}
       </div>
+      </motion.div>
     </div>
   );
 }
@@ -1149,32 +1218,58 @@ function SummaryRow({ icon: Icon, color, label, count }: { icon: typeof Mail; co
 function EnrollmentResults({ results, onClose }: { results: { success: number; skipped: number; errors: string[] }; onClose: () => void }) {
   return (
     <div className="max-w-md w-full text-center space-y-6">
-      <div className="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
-        <CheckCircle className="w-8 h-8 text-success-foreground" />
-      </div>
-      <div className="space-y-2">
-        <h3 className="text-lg font-semibold">Enrollment terminé</h3>
+      <motion.div
+        className="w-20 h-20 mx-auto rounded-full bg-success/10 border-2 border-success/30 flex items-center justify-center shadow-lg"
+        initial={{ scale: 0, rotate: -90 }}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.15, type: 'spring', stiffness: 220, damping: 16 }}
+        >
+          <CheckCircle className="w-10 h-10 text-success" strokeWidth={2.5} />
+        </motion.div>
+      </motion.div>
+      <motion.div
+        className="space-y-2"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25, duration: 0.3 }}
+      >
+        <h3 className="font-display text-xl font-bold">Inscription terminée</h3>
         {results.success > 0 && (
-          <p className="text-sm text-success-foreground">
-            ✅ {results.success} candidat{results.success > 1 ? 's' : ''} inscrit{results.success > 1 ? 's' : ''} avec succès
+          <p className="text-sm text-success font-medium flex items-center justify-center gap-1.5">
+            <CheckCircle className="w-4 h-4" />
+            {results.success} candidat{results.success > 1 ? 's' : ''} inscrit{results.success > 1 ? 's' : ''}
           </p>
         )}
         {results.skipped > 0 && (
-          <p className="text-sm text-muted-foreground">
-            ⏭️ {results.skipped} déjà inscrit{results.skipped > 1 ? 's' : ''}
+          <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5">
+            <AlertCircle className="w-4 h-4" />
+            {results.skipped} déjà inscrit{results.skipped > 1 ? 's' : ''}
           </p>
         )}
         {results.errors.length > 0 && (
-          <div className="text-sm text-destructive text-left bg-destructive/5 rounded-lg p-3 mt-2">
+          <div className="text-sm text-destructive text-left bg-destructive/5 rounded-xl border border-destructive/30 p-3 mt-3">
             {results.errors.map((err, i) => (
               <p key={i} className="text-xs">{err}</p>
             ))}
           </div>
         )}
-      </div>
-      <Button onClick={onClose} className="bg-foreground text-background">
+      </motion.div>
+      <motion.button
+        onClick={onClose}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4, duration: 0.25 }}
+        className="h-9 px-5 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine konekt-glow shadow-md"
+      >
         Fermer
-      </Button>
+      </motion.button>
     </div>
   );
 }

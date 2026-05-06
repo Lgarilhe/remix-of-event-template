@@ -71,37 +71,54 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
         ) : null}
       </div>
 
-      {/* Quick info */}
-      <div className="space-y-1 pl-1">
+      {/* Quick info — refonte avec icons Lucide propres au lieu d'emojis */}
+      <div className="space-y-1.5 pl-1">
         {workSummary && (
-          <p className="text-[11px] text-muted-foreground">
-            💼 {workSummary} ({profile.work_experience?.length || 0} postes)
+          <p className="text-[11.5px] text-muted-foreground flex items-start gap-1.5">
+            <Briefcase className="w-3 h-3 mt-0.5 text-muted-foreground/70 shrink-0" />
+            <span>
+              {workSummary}{' '}
+              <span className="text-muted-foreground/60">({profile.work_experience?.length || 0} postes)</span>
+            </span>
           </p>
         )}
         {education && (
-          <p className="text-[11px] text-muted-foreground">
-            🎓 {education}
+          <p className="text-[11.5px] text-muted-foreground flex items-start gap-1.5">
+            <GraduationCap className="w-3 h-3 mt-0.5 text-muted-foreground/70 shrink-0" />
+            <span>{education}</span>
           </p>
         )}
         {skills.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap">
-            <Tag className="w-3 h-3 text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-1 flex-wrap pt-0.5">
+            <Tag className="w-3 h-3 text-muted-foreground/70 shrink-0" />
             {skills.map(s => (
-              <span key={s} className="text-[10px] px-1.5 py-0.5 bg-muted/50 rounded">{s}</span>
+              <span
+                key={s}
+                className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/40 border border-border text-foreground/80 hover:bg-muted/60 transition-colors"
+              >
+                {s}
+              </span>
             ))}
           </div>
         )}
-        {isOpenToWork && (
-          <Badge className="text-[10px] h-5 bg-success/10 text-emerald-400 border-emerald-500/30">
-            🟢 Open to work
-          </Badge>
-        )}
-        {score?.score != null && (
-          <p className="text-[11px]">
-            Score : <strong>{score.score}/100</strong>
-            {score.recommendation && <span className="text-muted-foreground"> — "{score.recommendation}"</span>}
-          </p>
-        )}
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          {isOpenToWork && (
+            <span className="inline-flex items-center gap-1.5 text-[10.5px] px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" style={{ animation: 'konektPulseDot 1.6s ease-in-out infinite' }} />
+              Open to Work
+            </span>
+          )}
+          {score?.score != null && (
+            <span className={`inline-flex items-center gap-1.5 text-[10.5px] px-2 py-0.5 rounded-full font-medium border ${
+              score.score >= 70 ? 'bg-success/10 text-success border-success/30'
+              : score.score >= 50 ? 'bg-warning/10 text-warning border-warning/30'
+              : 'bg-destructive/10 text-destructive border-destructive/30'
+            }`}>
+              Score {score.score}/100
+              {score.recommendation && <span className="opacity-70">· {score.recommendation}</span>}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Lazy-loaded history */}
