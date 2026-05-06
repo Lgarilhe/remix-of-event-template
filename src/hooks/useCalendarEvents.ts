@@ -30,6 +30,15 @@ export interface CalendarEventManager {
   avatarUrl: string | null;
 }
 
+/** Format du meeting détecté automatiquement depuis location/event_name. */
+export type CalendarEventFormat = 'video' | 'phone' | 'in_person' | 'unknown';
+
+/** Round/étape de l'entretien inféré depuis event_name + ordre chronologique. */
+export type CalendarEventRound =
+  | { kind: 'numbered'; n: number; label: string } // "1er", "2e", "3e", etc.
+  | { kind: 'final'; label: string }
+  | null;
+
 export interface CalendarEventMeta {
   candidateId?: string;
   candidateName?: string | null;
@@ -44,6 +53,10 @@ export interface CalendarEventMeta {
   manager?: CalendarEventManager | null;
   /** Lieu / link de l'event ("Google Meet", "Zoom", "Bureau Konekt", URL...) */
   location?: string | null;
+  /** Format détecté (visio / présentiel / téléphone) */
+  format?: CalendarEventFormat;
+  /** Round/étape de l'entretien (1er, 2e, final, etc.) — uniquement qualifs */
+  round?: CalendarEventRound;
   /** Calendly event id (si event créé via webhook Calendly) */
   calendlyEventId?: string | null;
   /** Notes de l'event (qualif notes, etc.) */
@@ -80,6 +93,69 @@ const HIDDEN_SEQUENCE_ACTIONS = new Set([
   'wait_reply',
   'wait_for_event',
 ]);
+
+/**
+ * Détecte le format d'un meeting depuis sa location.
+ * - URLs http(s) → 'video' (Meet/Zoom/Teams/etc.)
+ * - "téléphone" / "phone" / "tel" / "+33..." → 'phone'
+ * - "bureau" / adresse postale → 'in_person'
+ * - sinon → 'unknown'
+ */
+const detectFormat = (location: string | null | undefined): CalendarEventFormat => {
+  if (!location) return 'unknown';
+  const lower = location.toLowerCase();
+  if (/^https?:\/\//i.test(location)) return 'video';
+  if (/(téléphone|telephone|phone|appel|^\+\d|\d{2}[\s.]?\d{2}[\s.]?\d{2}[\s.]?\d{2}[\s.]?\d{2})/i.test(lower)) {
+    return 'phone';
+  }
+  if (/(bureau|office|adresse|rue|avenue|boulevard|paris|lyon|marseille|nantes|bordeaux|in person|in-person|sur place)/i.test(lower)) {
+    return 'in_person';
+  }
+  return 'unknown';
+};
+
+/**
+ * Infère le round/étape d'un entretien depuis event_name.
+ * Patterns reconnus :
+ * - "final", "last round" → final
+ * - "premier", "1er", "first", "initial", "découverte", "kickoff", "qualif" → 1
+ * - "deuxième", "2e", "second" → 2
+ * - "troisième", "3e" → 3
+ * - sinon null (pas inféré, l'UI cache le badge)
+ *
+ * Si on reconnaît clairement un round numbered, on retourne kind='numbered'.
+ * Si on reconnaît "final", on retourne kind='final'.
+ */
+const inferRound = (eventName: string | null | undefined): CalendarEventRound => {
+  if (!eventName) return null;
+  const lower = eventName.toLowerCase();
+
+  // Final round (avant les autres pour éviter conflit)
+  if (/(final|last round|dernier(?:[\s-]tour)?|final round)/i.test(lower)) {
+    return { kind: 'final', label: 'Final' };
+  }
+
+  // Round 3
+  if (/(troisième|trois[ièm]+e|3[èe]?me|3e[\s)]|round[\s-]?3|3rd)/i.test(lower)) {
+    return { kind: 'numbered', n: 3, label: '3e tour' };
+  }
+
+  // Round 2
+  if (/(deuxième|deux[ièm]+e|2[èe]?me|2e[\s)]|second|round[\s-]?2|2nd)/i.test(lower)) {
+    return { kind: 'numbered', n: 2, label: '2e tour' };
+  }
+
+  // Round 1 / qualif initiale
+  if (
+    /(premier|premi[èe]re|1er|1[èe]?re|first|initial|kickoff|d[ée]couverte|qualif|découv|caf[ée][\s-]?découverte)/i.test(
+      lower,
+    )
+  ) {
+    return { kind: 'numbered', n: 1, label: '1er tour' };
+  }
+
+  return null;
+};
 
 async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEvent[]> {
   const rangeStart = startOfDay(from).toISOString();
@@ -186,12 +262,15 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
       const candidateAvatar = q.candidate_profile_id
         ? candidateAvatarMap.get(q.candidate_profile_id) ?? null
         : null;
+      const eventName = q.event_name as string | null;
+      const format = detectFormat(q.event_location);
+      const round = inferRound(eventName);
       events.push({
         id: `qualif-${q.id}`,
         type: 'qualification',
         startAt: q.event_start_at,
         endAt: q.event_end_at ?? null,
-        title: q.event_name || (q.job_title ? `Qualif · ${q.job_title}` : 'Qualification'),
+        title: eventName || (q.job_title ? `Qualif · ${q.job_title}` : 'Qualification'),
         subtitle: q.candidate_name ?? null,
         status: q.status ?? 'scheduled',
         meta: {
@@ -206,6 +285,8 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
           projectName: project?.name ?? null,
           manager: manager ?? null,
           location: q.event_location ?? null,
+          format,
+          round,
           calendlyEventId: q.calendly_event_id ?? null,
           notes: q.notes ?? null,
         },

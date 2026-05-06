@@ -53,6 +53,13 @@ import { PageLayout } from '@/components/layout';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
+import {
+  CalendarFiltersBar,
+  applyCalendarFilters,
+  DEFAULT_FILTERS,
+  type CalendarFilters,
+} from '@/components/calendar/CalendarFiltersBar';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 const TYPE_STYLES: Record<
   CalendarEvent['type'],
@@ -112,12 +119,20 @@ const getInitials = (name: string | null | undefined): string => {
 
 export default function CalendarPage() {
   const [weekStart, setWeekStart] = useState(() => startOfDay(new Date()));
-  const { data: events = [], isLoading, isFetching, refetch } = useCalendarEvents({
+  const { data: rawEvents = [], isLoading, isFetching, refetch } = useCalendarEvents({
     from: weekStart,
     days: 7,
   });
+  const { user } = useAuthReady();
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [filters, setFilters] = useState<CalendarFilters>(DEFAULT_FILTERS);
+
+  // Filtre appliqué côté client (légère, ~50 events max sur 7j)
+  const events = useMemo(
+    () => applyCalendarFilters(rawEvents, filters, user?.id ?? null),
+    [rawEvents, filters, user?.id],
+  );
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [
     weekStart,
@@ -242,6 +257,21 @@ export default function CalendarPage() {
         </div>
       </motion.header>
 
+      {/* Filters bar */}
+      <motion.div
+        className="mb-4"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.05 }}
+      >
+        <CalendarFiltersBar
+          filters={filters}
+          onFiltersChange={setFilters}
+          allEvents={rawEvents}
+          currentUserId={user?.id ?? null}
+        />
+      </motion.div>
+
       {/* Week grid */}
       <motion.div
         className="rounded-xl bg-card border border-border overflow-hidden"
@@ -353,7 +383,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Empty state global */}
-      {!isLoading && totalCount === 0 && (
+      {!isLoading && totalCount === 0 && rawEvents.length === 0 && (
         <motion.div
           className="mt-6 rounded-xl bg-card border border-border p-10 text-center"
           initial={{ opacity: 0, scale: 0.97 }}
@@ -370,6 +400,33 @@ export default function CalendarPage() {
             Les entretiens, InMails programmés et étapes de séquence à venir s'afficheront ici.
             Les RDV pris via Calendly remontent automatiquement.
           </p>
+        </motion.div>
+      )}
+
+      {/* Empty state filtré (rawEvents > 0 mais après filtrage = 0) */}
+      {!isLoading && totalCount === 0 && rawEvents.length > 0 && (
+        <motion.div
+          className="mt-6 rounded-xl bg-card border border-border p-10 text-center"
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+        >
+          <div className="h-12 w-12 rounded-full bg-warning/10 text-warning flex items-center justify-center mx-auto mb-4">
+            <CalendarIcon className="w-6 h-6" />
+          </div>
+          <p className="font-display font-bold text-foreground text-base">
+            Aucun événement ne correspond à vos filtres
+          </p>
+          <p className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto mb-4">
+            {rawEvents.length} événement{rawEvents.length > 1 ? 's' : ''} cette semaine, mais
+            tous filtré{rawEvents.length > 1 ? 's' : ''}. Essayez de relâcher un filtre.
+          </p>
+          <button
+            onClick={() => setFilters(DEFAULT_FILTERS)}
+            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
+          >
+            Effacer les filtres
+          </button>
         </motion.div>
       )}
 
@@ -425,9 +482,9 @@ const EventCard = React.memo(function EventCard({
       title={event.title}
       aria-label={`${style.label} à ${time}: ${event.title}`}
     >
-      {/* Top row : time + duration + badges */}
+      {/* Top row : time + duration + badges (round, calendly, type) */}
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span className="font-display text-[12px] font-bold tabular-nums text-foreground tracking-tight">
             {time}
           </span>
@@ -436,8 +493,30 @@ const EventCard = React.memo(function EventCard({
               · {durationMin}min
             </span>
           )}
+          {/* Round badge — visuellement fort si c'est un final */}
+          {meta.round && (
+            <span
+              className={cn(
+                'inline-flex items-center text-[9.5px] font-bold uppercase tracking-wider px-1.5 h-4 rounded-full shrink-0',
+                meta.round.kind === 'final'
+                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/30'
+                  : meta.round.n === 1
+                  ? 'bg-foreground/[0.08] text-foreground/80'
+                  : meta.round.n === 2
+                  ? 'bg-info/10 text-info'
+                  : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
+              )}
+              title={meta.round.label}
+            >
+              {meta.round.kind === 'final'
+                ? 'Final'
+                : meta.round.n === 1
+                ? '1er'
+                : `${meta.round.n}e`}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           {meta.calendlyEventId && (
             <span
               className="inline-flex items-center justify-center h-4 w-4 rounded bg-foreground/[0.08]"

@@ -183,7 +183,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
           className={cn('px-6 pt-6 pb-5 space-y-3 border-b border-border', tone.bg)}
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div
                 className={cn(
                   'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
@@ -202,7 +202,12 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
                 )}
               </div>
               <div className="flex flex-col">
-                <span className={cn('text-[10px] uppercase tracking-wider font-bold', tone.iconColor)}>
+                <span
+                  className={cn(
+                    'text-[10px] uppercase tracking-wider font-bold',
+                    tone.iconColor,
+                  )}
+                >
                   {tone.label}
                 </span>
                 {isCalendly && (
@@ -212,6 +217,23 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
                   </span>
                 )}
               </div>
+              {/* Round badge */}
+              {meta.round && (
+                <span
+                  className={cn(
+                    'inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 h-5 rounded-full shrink-0',
+                    meta.round.kind === 'final'
+                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/30'
+                      : meta.round.n === 1
+                      ? 'bg-foreground/[0.08] text-foreground/80'
+                      : meta.round.n === 2
+                      ? 'bg-info/10 text-info'
+                      : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
+                  )}
+                >
+                  {meta.round.label}
+                </span>
+              )}
             </div>
           </div>
 
