@@ -574,7 +574,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     }
 
     return (
-      <div className="space-y-3 sm:space-y-4 pr-1">
+      <div className="space-y-3 sm:space-y-4 pr-1 max-w-full overflow-x-hidden">
         <button
           onClick={() => setActiveIndex(null)}
           className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors"
@@ -790,8 +790,9 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           </div>
         )}
 
-        {/* Mobile category tabs (horizontal scroll) */}
-        <div className="flex sm:hidden items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
+        {/* Tabs catégories (mobile + tablette : visible jusqu'à lg).
+            Sur lg+ (1024px+), le rail latéral prend le relais. */}
+        <div className="flex lg:hidden items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
           {activeEval.criteria.map((c, idx) => {
             const r = activeEval.ratings[c.id];
             const isCurrent = idx === currentCriterionIdx;
@@ -812,10 +813,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           })}
         </div>
 
-        {/* Side rail + Card + Context panel layout */}
-        <div className="flex gap-3 sm:gap-4">
-          {/* Criteria side rail — pills compactes avec dot couleur catégorie */}
-          <div className="hidden sm:flex flex-col gap-1 w-[160px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto pr-1">
+        {/* Side rail + Card layout */}
+        <div className="flex gap-3 sm:gap-4 max-w-full">
+          {/* Criteria side rail — pills compactes avec dot couleur catégorie.
+              Visible uniquement en lg+ (1024px+) pour pas écraser le card
+              sur viewports moyens où la rail prendrait trop de place.
+              Sur sm-md, l'user utilise les tabs horizontales en haut. */}
+          <div className="hidden lg:flex flex-col gap-1 w-[150px] shrink-0 sticky top-24 self-start max-h-[calc(100vh-120px)] overflow-y-auto pr-1">
             <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground/70 px-2 mb-1">
               Critères ({activeEval.criteria.length})
             </p>

@@ -525,7 +525,10 @@ export default function ScorecardFullPage() {
           </ScrollArea>
         </aside>
 
-        {/* Main area : ScorecardTab */}
+        {/* Main area : ScorecardTab.
+            min-w-0 + overflow-hidden pour garantir que le contenu interne
+            (rail + card) ne déborde pas horizontalement. ScrollArea avec
+            w-full pour bien remplir l'espace disponible. */}
         <main
           className={cn(
             'flex-1 min-w-0 overflow-hidden',
@@ -533,8 +536,8 @@ export default function ScorecardFullPage() {
             mobilePane === 'scorecard' ? 'block' : 'hidden sm:block',
           )}
         >
-          <ScrollArea className="h-full">
-            <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
+          <ScrollArea className="h-full w-full">
+            <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 min-w-0">
               <ScorecardTab
                 candidate={candidate}
                 enrichedProfile={enrichedProfile}
