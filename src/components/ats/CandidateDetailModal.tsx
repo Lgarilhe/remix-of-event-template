@@ -24,19 +24,22 @@ import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
-  Phone as PhoneIcon, Target, Activity as ActivityIcon, StickyNote, Zap,
-  GitBranch, FileText, LayoutDashboard,
+  Target, Activity as ActivityIcon, StickyNote, Zap,
+  GitBranch, FileText, LayoutDashboard, User as UserIcon, MessageSquare,
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
 import { CandidateSequencesPanel } from '@/components/outreach/CandidateSequencesPanel';
 import {
-  ProfileTab, ActivityTab, NotesTab, ActionsTab, ScoringCard,
+  ActivityTab, NotesTab, ActionsTab, ScoringCard,
   CollapsibleSection,
 } from './candidate-detail';
 import { CVTab } from './candidate-detail/CVTab';
 import { OverviewTab } from './candidate-detail/OverviewTab';
+import { ProfileExperienceList } from '@/components/outreach/result-card/ProfileExperienceList';
+import { ProfileEducationList } from '@/components/outreach/result-card/ProfileEducationList';
+import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { toast } from 'sonner';
@@ -282,15 +285,21 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const profile = React.useMemo(() => atsCandidateToProfile(candidateWithProfileData), [candidateWithProfileData]);
 
   // ─── Build extraTabs (pipeline-specific) ──
-  // Ordre voulu : Aperçu (default, vue d'ensemble) > Évaluation > CV >
-  // Séquences > Préparer > Activité > Notes > Actions. Affichés APRÈS les
-  // onglets standards (Expérience/Formation/Compétences/Messages/Posts).
+  // Refonte 2026-05-06 (cleanup) : 8 onglets pertinents au lieu de 13 :
   //
-  // Note : le defaultTab dans CardExpandedContent prend le PREMIER extraTab
-  // → on met "Aperçu" en tête : tableau de bord synthétique du candidat
-  // (score visuel + stats engagement/CV/séquences/rappels + about + skills
-  // + experience preview + notes preview). C'est ce que l'user veut voir
-  // en 1er coup d'œil sans cliquer dans 6 onglets.
+  //   Aperçu (default)  ← hub candidat synthétique
+  //   Profil            ← Expérience + Formation + Compétences combinés
+  //   Évaluation        ← Scoring + Préparer + Scorecard + Anti-fraude + Historique
+  //   CV                ← upload/preview PDF
+  //   Séquences         ← inscriptions outreach
+  //   Messages          ← LinkedIn DMs (CardMessageThread)
+  //   Activité          ← timeline complète
+  //   Notes             ← notes recruteur
+  //   Actions           ← rappels + agent IA
+  //
+  // Supprimés : Posts (placeholder vide), Préparer (mergé dans Évaluation
+  // comme section collapsible), tabs standards Exp/Form/Skills/Msg/Posts
+  // (remplacés par Profil + Messages reformulés ici, hideStandardTabs=true).
   const extraTabs: ProfileDetailExtraTab[] = React.useMemo(() => [
     {
       key: 'overview',
@@ -309,6 +318,84 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       ),
     },
     {
+      key: 'profile',
+      label: 'Profil',
+      shortLabel: 'Profil',
+      icon: UserIcon,
+      content: (
+        <div className="space-y-4">
+          {/* Summary LinkedIn — utile en haut du tab Profil */}
+          {(enrichedProfile?.summary || (candidateWithProfileData.linkedinProfileData as any)?.summary) && (
+            <div className="rounded-xl border border-border bg-muted/10 p-3">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">
+                À propos
+              </p>
+              <p className="text-[12.5px] leading-relaxed text-foreground/85 whitespace-pre-line">
+                {enrichedProfile?.summary || (candidateWithProfileData.linkedinProfileData as any)?.summary}
+              </p>
+            </div>
+          )}
+
+          {/* Expérience pro */}
+          {(candidateWithProfileData.linkedinProfileData?.work_experience?.length || 0) > 0 && (
+            <div>
+              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2 flex items-center gap-1.5">
+                <UserIcon className="w-3 h-3" />
+                Expérience
+              </h3>
+              <ProfileExperienceList
+                experiences={candidateWithProfileData.linkedinProfileData.work_experience}
+              />
+            </div>
+          )}
+
+          {/* Formation */}
+          {(candidateWithProfileData.linkedinProfileData?.education?.length || 0) > 0 && (
+            <div>
+              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2">
+                Formation
+              </h3>
+              <ProfileEducationList
+                education={candidateWithProfileData.linkedinProfileData.education}
+              />
+            </div>
+          )}
+
+          {/* Compétences */}
+          {(enrichedProfile?.skills?.length || 0) > 0 && (
+            <div>
+              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2">
+                Compétences ({enrichedProfile!.skills.length})
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {enrichedProfile!.skills.map((skill, i) => (
+                  <span key={i} className="inline-flex items-center text-[11.5px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Langues */}
+          {(enrichedProfile?.languages?.length || 0) > 0 && (
+            <div>
+              <h3 className="text-[11px] uppercase tracking-wider font-bold text-foreground/70 mb-2">
+                Langues
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {enrichedProfile!.languages.map((lang, i) => (
+                  <span key={i} className="inline-flex items-center text-[11.5px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
+                    {lang}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
       key: 'evaluation',
       label: 'Évaluation',
       shortLabel: 'Eval',
@@ -321,6 +408,14 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
             enrichedProfile={enrichedProfile}
             onOpenProfile={() => setMobileProfileOpen(true)}
           />
+          {/* Préparer mergé dans Évaluation comme section collapsible */}
+          <CollapsibleSection title="📞 Préparer le call" defaultOpen={false}>
+            <PrepSheetTab
+              candidateId={candidate.candidateId}
+              jobId={candidate.jobId}
+              candidateName={candidate.name}
+            />
+          </CollapsibleSection>
           <CollapsibleSection title="🛡️ Vérification du profil" defaultOpen={false}>
             <FraudDetectionTab candidate={candidateWithProfileData} />
           </CollapsibleSection>
@@ -358,15 +453,15 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       count: fullProfile.sequenceEnrollments?.length || 0,
     },
     {
-      key: 'prep',
-      label: 'Préparer',
-      shortLabel: 'Prep',
-      icon: PhoneIcon,
+      key: 'messages',
+      label: 'Messages',
+      shortLabel: 'Msg',
+      icon: MessageSquare,
       content: (
-        <PrepSheetTab
-          candidateId={candidate.candidateId}
-          jobId={candidate.jobId}
-          candidateName={candidate.name}
+        <CardMessageThread
+          accountId={fullProfile.accountId || undefined}
+          profileId={candidate.candidateId}
+          profileName={candidate.name}
         />
       ),
     },
@@ -441,6 +536,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         onCreatePortalLink: handleCreatePortalLink,
       }}
       extraTabs={extraTabs}
+      hideStandardTabs
     />
   );
 };

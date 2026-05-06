@@ -151,12 +151,17 @@ interface ProfileDetailSheetProps {
   onNavigateNext?: () => void;
   currentIndex?: number;
   totalCount?: number;
-  /** Tabs supplémentaires (pipeline-spécifiques) ajoutés après les tabs
-   *  standards (Expérience/Formation/Compétences/Messages/Posts). */
+  /** Tabs supplémentaires (pipeline-spécifiques) ajoutés en premier en
+   *  mode pipeline, ou après les tabs standards en mode sourcing. */
   extraTabs?: ProfileDetailExtraTab[];
   /** Métadonnées pipeline (stage, tags, score) à afficher dans le header.
    *  Si absent → modale en mode sourcing pur (comportement legacy). */
   pipelineMeta?: ProfileDetailPipelineMeta;
+  /** Si true, masque les tabs standards LinkedIn (Exp/Form/Skills/Msg/Posts).
+   *  Utilisé en mode pipeline pour les remplacer par des extraTabs reformulés
+   *  (ex: Profil = Exp+Form+Skills combinés). Réduit le bruit visuel de
+   *  13 tabs → 8 onglets pertinents. */
+  hideStandardTabs?: boolean;
 }
 
 export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
@@ -181,6 +186,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   totalCount,
   extraTabs,
   pipelineMeta,
+  hideStandardTabs,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
 
@@ -849,9 +855,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </div>
               )}
 
-              {/* Tabs: experience, education, skills, messages, posts
-                  + extraTabs si fournis (pipeline mode → injecte
-                  Évaluation / Séquences / Activité / Notes / Actions) */}
+              {/* Tabs : extraTabs en premier (pipeline) puis tabs
+                  standards LinkedIn (Exp/Form/Skills/Msg/Posts) sauf si
+                  hideStandardTabs (mode pipeline qui les remplace par
+                  Profil + Messages reformulés). */}
               <CardExpandedContent
                 profile={displayProfile}
                 profileData={profileData}
@@ -867,6 +874,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 onMessageSent={onMessageSent}
                 onProfileTreated={onProfileTreated}
                 extraTabs={extraTabs}
+                hideStandardTabs={hideStandardTabs}
               />
             </div>
           </div>

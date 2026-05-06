@@ -43,9 +43,13 @@ interface CardExpandedContentProps {
   onOpenMessage: () => void;
   onMessageSent?: () => void;
   onProfileTreated?: () => void;
-  /** Tabs supplémentaires injectés après les tabs standard (Exp/Form/Skills/Msg/Posts).
-   *  Utilisé par le pipeline pour ajouter Évaluation/Séquences/Activité/Notes/Actions. */
+  /** Tabs supplémentaires injectés (en premier en pipeline mode, en dernier en sourcing). */
   extraTabs?: ExpandedContentExtraTab[];
+  /** Si true, masque les tabs standard (Expérience/Formation/Skills/Messages/Posts).
+   *  Utilisé en mode pipeline où ces infos sont reformulées dans extraTabs
+   *  (Profil = Exp+Form+Skills, Messages = LinkedIn DMs) pour réduire le
+   *  bruit de 13 onglets → 8 onglets pertinents. Default false (sourcing). */
+  hideStandardTabs?: boolean;
 }
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
@@ -69,6 +73,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   onMessageSent,
   onProfileTreated,
   extraTabs,
+  hideStandardTabs,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
@@ -125,9 +130,10 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                 </TabsTrigger>
               );
             })}
-            {/* Onglets standards LinkedIn — secondaires en mode pipeline,
-                primaires en mode sourcing. */}
-            {standardTabs.map(tab => (
+            {/* Onglets standards LinkedIn — masqués en mode pipeline
+                (les infos sont reformulées dans extraTabs : Profil =
+                Exp+Form+Skills, Messages = LinkedIn DMs). */}
+            {!hideStandardTabs && standardTabs.map(tab => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
