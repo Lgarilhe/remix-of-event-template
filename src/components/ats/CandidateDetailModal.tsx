@@ -25,7 +25,7 @@ import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
   Phone as PhoneIcon, Target, Activity as ActivityIcon, StickyNote, Zap,
-  GitBranch, FileText,
+  GitBranch, FileText, LayoutDashboard,
 } from 'lucide-react';
 import { ScorecardTab } from './ScorecardTab';
 import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
@@ -36,6 +36,7 @@ import {
   CollapsibleSection,
 } from './candidate-detail';
 import { CVTab } from './candidate-detail/CVTab';
+import { OverviewTab } from './candidate-detail/OverviewTab';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { toast } from 'sonner';
@@ -281,15 +282,32 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const profile = React.useMemo(() => atsCandidateToProfile(candidateWithProfileData), [candidateWithProfileData]);
 
   // ─── Build extraTabs (pipeline-specific) ──
-  // Ordre voulu : Préparer (call prep) > Évaluation (scoring) > Séquences
-  // > Activité (timeline) > Notes > Actions. Affichés APRÈS les onglets
-  // standards (Expérience/Formation/Compétences/Messages/Posts) de la
-  // CardExpandedContent.
+  // Ordre voulu : Aperçu (default, vue d'ensemble) > Évaluation > CV >
+  // Séquences > Préparer > Activité > Notes > Actions. Affichés APRÈS les
+  // onglets standards (Expérience/Formation/Compétences/Messages/Posts).
   //
   // Note : le defaultTab dans CardExpandedContent prend le PREMIER extraTab
-  // → on met "Évaluation" en tête car c'est ce que l'user veut voir en
-  // premier quand il clique sur un candidat dans le pipeline (pas son XP brute).
+  // → on met "Aperçu" en tête : tableau de bord synthétique du candidat
+  // (score visuel + stats engagement/CV/séquences/rappels + about + skills
+  // + experience preview + notes preview). C'est ce que l'user veut voir
+  // en 1er coup d'œil sans cliquer dans 6 onglets.
   const extraTabs: ProfileDetailExtraTab[] = React.useMemo(() => [
+    {
+      key: 'overview',
+      label: 'Aperçu',
+      shortLabel: 'Aperçu',
+      icon: LayoutDashboard,
+      content: (
+        <OverviewTab
+          candidate={candidate}
+          enrichedProfile={enrichedProfile}
+          fullProfile={fullProfile}
+          notes={notes}
+          reminders={reminders}
+          organizationId={organizationId}
+        />
+      ),
+    },
     {
       key: 'evaluation',
       label: 'Évaluation',
