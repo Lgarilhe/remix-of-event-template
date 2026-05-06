@@ -2,19 +2,24 @@
  * Dashboard — page d'accueil de l'app Konekt.
  *
  * Pattern SaaS moderne (Linear / Pipedrive / Notion) : pas un wall of stats
- * mais une page d'**action** :
- * 1. Greeting personnalisé + CTAs rapides
- * 2. Focus du jour — 4 alertes color-coded "ce qui demande votre attention"
- * 3. Missions actives (gauche) + Programme du jour (droite)
- * 4. Performance hebdo highlight (1 phrase + 4 mini-stats) + lien analytics
- * 5. Activité récente (feed des derniers mouvements)
+ * mais une page d'**action** + **personnalisable** (drag-to-reorder).
  *
- * L'analytics complet (KPIs, conversion, charts détaillés) reste accessible
- * via /pipeline?view=analytics — pas dupliqué ici.
+ * Layout :
+ * - Greeting (fixe, en haut)
+ * - 5 sections sortables (drag handle au hover) :
+ *   1. Connections — état temps réel des 3 canaux outreach
+ *   2. Focus       — alertes color-coded "à traiter aujourd'hui"
+ *   3. Missions+Today — combo 2 colonnes (missions actives + agenda)
+ *   4. Week        — highlight perf hebdo
+ *   5. Activity    — feed des derniers mouvements candidats
+ *
+ * L'ordre est persisté par user dans localStorage via useDashboardLayout.
  */
 
 import React, { useMemo, useState } from 'react';
+import { Reorder } from 'framer-motion';
 import { differenceInDays, parseISO } from 'date-fns';
+import { Undo2 } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { PageLayout } from '@/components/layout';
 import { useATSData, type ATSCandidate } from '@/hooks/useATSData';
@@ -24,6 +29,7 @@ import { useAllReminders } from '@/hooks/useAllReminders';
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
+import { useDashboardLayout, type DashboardSectionKey } from '@/hooks/useDashboardLayout';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
@@ -33,6 +39,7 @@ import { DashboardMissionsPanel } from '@/components/dashboard/DashboardMissions
 import { DashboardTodayPanel } from '@/components/dashboard/DashboardTodayPanel';
 import { DashboardWeekHighlight } from '@/components/dashboard/DashboardWeekHighlight';
 import { DashboardActivityFeed } from '@/components/dashboard/DashboardActivityFeed';
+import { DashboardSortableItem } from '@/components/dashboard/DashboardSortableItem';
 
 // Helpers (used to derive focus panel counters)
 const STAGE_GUIDE_TIMES: Record<string, number> = {
@@ -68,6 +75,8 @@ export default function Dashboard() {
   const unreadMessages = useUnreadMessageNotifications();
   const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
   const connections = useDashboardConnections();
+  const { order, setOrder, resetOrder, isCustomized } = useDashboardLayout();
+
   // Avatar prioritaire : LinkedIn (photo réelle) > profil custom upload > fallback initiales
   const greetingAvatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl;
 
@@ -97,52 +106,36 @@ export default function Dashboard() {
     [projects],
   );
 
-  // displayName vient de useCurrentProfile (cascade : profiles.display_name →
-  // user_metadata.full_name → user_metadata.first_name+last_name → email parsé).
-
   // Reminders due today (today + overdue, not done)
   const remindersToday = useMemo(
     () => [...groupedReminders.overdue, ...groupedReminders.today],
     [groupedReminders.overdue, groupedReminders.today],
   );
 
-  return (
-    <PageLayout maxWidth="2xl">
-      <SEOHead
-        title="Dashboard | Konekt"
-        description="Votre point de départ : ce qui demande votre attention aujourd'hui."
+  /**
+   * Map clé → contenu rendu. Chaque section gère son propre skeleton/empty
+   * state en interne. Si une section n'a rien à afficher (loading initial,
+   * etc.), on retourne `null` pour la skipper du flux Reorder.
+   */
+  const sections: Record<DashboardSectionKey, React.ReactNode> = {
+    connections: !connections.isLoading ? (
+      <DashboardConnections
+        linkedin={connections.linkedin}
+        whatsapp={connections.whatsapp}
+        email={connections.email}
+        hasIssue={connections.hasIssue}
+        allConnected={connections.allConnected}
       />
-
-      {/* 1. Greeting */}
-      <DashboardGreeting
-        userName={displayName}
-        avatarUrl={greetingAvatarUrl}
-        activeCandidatesCount={activeCandidatesCount}
-        activeMissionsCount={activeMissionsCount}
+    ) : null,
+    focus: !loading ? (
+      <DashboardFocusPanel
+        unreadMessages={unreadMessages}
+        stagnantCandidates={focusCounters.stagnant}
+        remindersToday={focusCounters.remindersToday}
+        pendingResponses={focusCounters.pending}
       />
-
-      {/* 2a. État des canaux outreach (LinkedIn / Email / WhatsApp) */}
-      {!connections.isLoading && (
-        <DashboardConnections
-          linkedin={connections.linkedin}
-          whatsapp={connections.whatsapp}
-          email={connections.email}
-          hasIssue={connections.hasIssue}
-          allConnected={connections.allConnected}
-        />
-      )}
-
-      {/* 2b. Focus du jour */}
-      {!loading && (
-        <DashboardFocusPanel
-          unreadMessages={unreadMessages}
-          stagnantCandidates={focusCounters.stagnant}
-          remindersToday={focusCounters.remindersToday}
-          pendingResponses={focusCounters.pending}
-        />
-      )}
-
-      {/* 3. Missions + Aujourd'hui — 2 colonnes */}
+    ) : null,
+    'missions-today': (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div className="lg:col-span-2">
           <DashboardMissionsPanel projects={projects} isLoading={projectsLoading} />
@@ -155,20 +148,67 @@ export default function Dashboard() {
           />
         </div>
       </div>
-
-      {/* 4. Performance hebdo */}
-      {!loading && candidates.length > 0 && (
+    ),
+    week:
+      !loading && candidates.length > 0 ? (
         <div className="mb-6">
           <DashboardWeekHighlight candidates={candidates} />
         </div>
-      )}
-
-      {/* 5. Activité récente */}
-      {!loading && (
+      ) : null,
+    activity: !loading ? (
+      <div className="mb-6">
         <DashboardActivityFeed
           candidates={candidates}
           onCandidateClick={(c) => setSelectedCandidate(c)}
         />
+      </div>
+    ) : null,
+  };
+
+  return (
+    <PageLayout maxWidth="2xl">
+      <SEOHead
+        title="Dashboard | Konekt"
+        description="Votre point de départ : ce qui demande votre attention aujourd'hui."
+      />
+
+      {/* 1. Greeting (fixe en haut) */}
+      <DashboardGreeting
+        userName={displayName}
+        avatarUrl={greetingAvatarUrl}
+        activeCandidatesCount={activeCandidatesCount}
+        activeMissionsCount={activeMissionsCount}
+      />
+
+      {/* 2. Sections sortables — drag handle visible au hover */}
+      <Reorder.Group
+        axis="y"
+        values={order}
+        onReorder={setOrder}
+        className="space-y-0 list-none"
+      >
+        {order.map((key) => {
+          const content = sections[key];
+          if (!content) return null;
+          return (
+            <DashboardSortableItem key={key} value={key}>
+              {content}
+            </DashboardSortableItem>
+          );
+        })}
+      </Reorder.Group>
+
+      {/* Reset order — discret en bas, visible seulement si customisé */}
+      {isCustomized && (
+        <div className="flex justify-end mt-2">
+          <button
+            onClick={resetOrder}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Undo2 className="w-3 h-3" />
+            Réinitialiser l'ordre
+          </button>
+        </div>
       )}
 
       {/* Modals */}
