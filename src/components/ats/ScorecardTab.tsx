@@ -145,7 +145,22 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
 
   // Generate criteria via AI
   const handleGenerate = useCallback(async () => {
+    // 🛡️ Validation pré-génération : si on n'a vraiment AUCUNE info sur le
+    // candidat (ni nom, ni headline, ni job), inutile d'appeler l'IA, elle
+    // renverra des critères génériques sans valeur. Préviens l'user.
+    if (!candidate?.name && !candidate?.headline) {
+      toast.error('Profil candidat trop incomplet pour générer une scorecard');
+      return;
+    }
+
     setGenerating(true);
+    console.log('[ScorecardTab] Starting scorecard generation', {
+      candidateId: candidate.candidateId,
+      jobId: candidate.jobId,
+      stage: activeEval?.interviewStage || selectedStage,
+      hasEnrichedProfile: !!enrichedProfile,
+    });
+
     try {
       const candidateProfile = {
         name: candidate.name,
@@ -227,12 +242,30 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         } catch { /* Non-blocking */ }
       }
 
-      const { data, error } = await invokeWithCredits('generate-scorecard', 'generate_scorecard', {
+      // Note : selectedModel peut être null = utilisation du modèle par
+      // défaut. On NE passe PAS "AUTO" ou autre placeholder à l'edge
+      // function — c'est null/undefined qui dit à callClaudeCompat de
+      // tomber sur Haiku par défaut.
+      const { data, error } = await invokeWithCredits<{
+        success?: boolean;
+        criteria?: Criterion[];
+        error?: string;
+      }>('generate-scorecard', 'generate_scorecard', {
         candidateProfile, jobContext, scoringDetails: candidate.scoringDetails, interviewStage: stage,
       }, { modelOverride: selectedModel ?? undefined });
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Failed to generate scorecard');
+      if (error) {
+        console.error('[ScorecardTab] Edge function error:', error);
+        throw new Error(error.message || 'Erreur appel IA');
+      }
+      if (!data?.success) {
+        console.error('[ScorecardTab] Edge function returned non-success:', data);
+        throw new Error(data?.error || 'L\'IA n\'a pas pu générer la scorecard. Réessaie.');
+      }
+      if (!data.criteria || !Array.isArray(data.criteria) || data.criteria.length === 0) {
+        console.error('[ScorecardTab] Empty/invalid criteria response:', data);
+        throw new Error('L\'IA a renvoyé une réponse vide. Réessaie.');
+      }
 
       const criteria = data.criteria as Criterion[];
 
