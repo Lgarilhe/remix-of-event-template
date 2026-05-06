@@ -504,7 +504,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   const content = (
     <motion.div
-      className="fixed inset-0 z-[4000] bg-background/95 backdrop-blur-md flex flex-col"
+      className="fixed inset-0 z-[4000] bg-background flex flex-col"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -512,7 +512,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     >
       {/* Header — refonte avec font-display + bouton X circular + eyebrow */}
       <motion.div
-        className="border-b border-border shrink-0 bg-background/80 backdrop-blur-md"
+        className="border-b border-border shrink-0 bg-background"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
@@ -854,7 +854,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 {/* Bottom bar — 3 buttons avec hierarchy claire :
                     primary konekt-skalr-bg (Enrôler) + secondary outline (Shortlist)
                     + tertiary ghost (Annuler). */}
-                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background/95 backdrop-blur-md flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
+                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
                   <button
                     type="button"
                     onClick={handleClose}
@@ -1385,7 +1385,7 @@ function PreviewPanelFallback({ hasProfiles }: { hasProfiles: boolean }) {
           <div className="px-3 py-2 border-b border-border bg-muted/20">
             <Skeleton className="h-3 w-32" />
           </div>
-          <div className="px-3 py-3 space-y-2 bg-background/80">
+          <div className="px-3 py-3 space-y-2 bg-background">
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-3 w-full" />
             <Skeleton className="h-3 w-5/6" />
