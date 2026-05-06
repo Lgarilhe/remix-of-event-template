@@ -486,54 +486,83 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     // Empty criteria = needs generation
     if (totalCriteria === 0) {
       return (
-        <div className="space-y-4">
-          <button onClick={() => { setActiveIndex(null); setEvaluations(prev => prev[0]?.criteria.length === 0 && !prev[0]?.id ? prev.slice(1) : prev); }}
-            className="text-xs text-muted-foreground hover:text-foreground uppercase tracking-wider flex items-center gap-1">
-            ← Retour
+        <div className="space-y-3">
+          <button
+            onClick={() => { setActiveIndex(null); setEvaluations(prev => prev[0]?.criteria.length === 0 && !prev[0]?.id ? prev.slice(1) : prev); }}
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Retour
           </button>
-          <div className="text-center py-10">
-            <div className="h-14 w-14 bg-foreground text-background flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-7 h-7" />
-            </div>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-foreground mb-2">
-              Nouvelle scorecard
-            </h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4 leading-relaxed">
-              L'IA va analyser le profil et le poste pour générer une grille d'évaluation sur mesure.
-            </p>
 
-            {/* Interview stage selector */}
-            <div className="max-w-xs mx-auto mb-6">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Type d'entretien (optionnel)</p>
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                {INTERVIEW_STAGES.map(s => (
-                  <button key={s.value}
-                    onClick={() => setSelectedStage(selectedStage === s.value ? '' : s.value)}
-                    className={cn(
-                      "px-3 py-1.5 text-xs font-medium uppercase tracking-wider border transition-colors",
-                      selectedStage === s.value
-                        ? "bg-foreground text-background border-border"
-                        : "border-border text-muted-foreground hover:border-border"
-                    )}>
-                    {s.label}
-                  </button>
-                ))}
+          {/* Empty state hero — gradient skalr discret + icon-tile cohérent V2 */}
+          <div className="rounded-xl border border-border bg-gradient-to-br from-brand-purple/[0.04] via-brand-pink/[0.02] to-transparent p-6 sm:p-8">
+            <div className="text-center max-w-md mx-auto">
+              <div className="h-14 w-14 rounded-2xl bg-foreground/[0.06] border border-border grid place-items-center mx-auto mb-4 shadow-sm">
+                <Sparkles className="w-6 h-6 text-foreground/70" strokeWidth={2} />
               </div>
-            </div>
+              <h3 className="font-display font-bold text-[18px] sm:text-[20px] tracking-tight text-foreground mb-1.5">
+                Nouvelle scorecard
+              </h3>
+              <p className="text-[13px] text-muted-foreground leading-relaxed">
+                L'IA va analyser le profil et le poste pour générer une grille d'évaluation sur mesure (6-8 critères avec questions et red flags).
+              </p>
 
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="relative overflow-hidden h-[38px] px-6 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider disabled:opacity-50"
-            >
-              {generating ? (
-                <span className="flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Génération en cours...</span>
-              ) : (
-                <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" /> Générer la scorecard</span>
-              )}
-            </button>
-            <div className="mt-3 flex justify-center">
-              <ModelPicker actionId="generate_scorecard" value={selectedModel} onChange={setSelectedModel} compact />
+              {/* Interview stage selector — pills rounded-full color-coded selon stage */}
+              <div className="mt-5">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-2">
+                  Type d'entretien <span className="opacity-60 normal-case font-normal">— optionnel</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {INTERVIEW_STAGES.map(s => {
+                    const isSelected = selectedStage === s.value;
+                    return (
+                      <button
+                        key={s.value}
+                        onClick={() => setSelectedStage(selectedStage === s.value ? '' : s.value)}
+                        className={cn(
+                          'inline-flex items-center h-8 px-3 rounded-full text-[12px] font-medium border transition-all',
+                          isSelected
+                            ? 'bg-foreground text-background border-foreground shadow-sm scale-[1.02]'
+                            : 'bg-background border-border text-foreground/70 hover:bg-accent hover:text-foreground'
+                        )}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Génération CTA — gros bouton primary skalr-shine */}
+              <div className="mt-6 flex flex-col items-center gap-2">
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className={cn(
+                    'inline-flex items-center justify-center gap-2 h-10 px-6 rounded-full text-[13px] font-bold transition-all shadow-md',
+                    generating
+                      ? 'bg-foreground/40 text-background cursor-wait'
+                      : 'bg-foreground text-background hover:bg-foreground/90 hover:shadow-lg active:scale-[0.98]'
+                  )}
+                >
+                  {generating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Génération en cours…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" strokeWidth={2.5} />
+                      Générer la scorecard
+                    </>
+                  )}
+                </button>
+                <div className="flex items-center gap-2">
+                  <CreditCostBadge actionId="generate_scorecard" />
+                  <ModelPicker actionId="generate_scorecard" value={selectedModel} onChange={setSelectedModel} compact />
+                </div>
+              </div>
             </div>
           </div>
         </div>
