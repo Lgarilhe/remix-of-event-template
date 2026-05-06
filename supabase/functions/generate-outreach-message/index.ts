@@ -153,18 +153,37 @@ function detectViolations(args: {
   if (/\bparfaitement\s+ce\s+qu/i.test(text)) v.push('"parfaitement ce qu\'on veut"');
   if (/\bexactement\s+ce\s+qu/i.test(text)) v.push('"exactement ce qu\'on veut"');
 
-  // 🆕 Hallucination "on est connectés" si pas FIRST_DEGREE
-  // Détecte les patterns du genre :
-  //  - "on est déjà connectés"
-  //  - "on est connectés sur LinkedIn"
-  //  - "vu qu'on est en contact"
-  //  - "puisqu'on s'est connectés"
-  //  - "comme on est en lien"
-  if (networkDistance && networkDistance !== 'FIRST_DEGREE') {
-    if (/\bon\s+(est|s'est)\s+(déjà\s+)?connect[ée]s?\b/i.test(text)) v.push('halluciné "on est connectés" alors que pas 1st degree');
-    if (/\bon\s+est\s+(déjà\s+)?en\s+(contact|lien|relation)\b/i.test(text)) v.push('halluciné "on est en contact" alors que pas 1st degree');
-    if (/\b(vu|puisqu|comme|sachant)\s+qu['e]\s*on\s+est\s+connect/i.test(text)) v.push('halluciné connexion existante');
-    if (/\bon\s+s'est\s+crois[ée]s\b/i.test(text)) v.push('halluciné "on s\'est croisés"');
+  // 🆕 Mention du statut de connexion LinkedIn = INTERDIT peu importe la valeur
+  // Le statut (1er/2e/3e degré) n'est jamais une info pertinente dans un message.
+  // Le candidat le voit déjà via LinkedIn — c'est une accroche faible doublée
+  // d'un pattern IA reconnaissable. Banni partout dans le message, pas juste
+  // en début, pas juste si pas 1st degree.
+  if (/\bon\s+(est|s'est)\s+(déjà\s+)?connect[ée]s?\b/i.test(text)) {
+    v.push('accroche faible "on est connectés" (info que le candidat voit déjà)');
+  }
+  if (/\bon\s+est\s+(déjà\s+)?en\s+(contact|lien|relation)\b/i.test(text)) {
+    v.push('accroche faible "on est en contact"');
+  }
+  if (/\b(vu|puisqu|comme|sachant|maintenant)\s+qu['e]\s*on\s+est\s+(connect|en\s+lien|en\s+contact)/i.test(text)) {
+    v.push('accroche faible "vu qu\'on est connectés"');
+  }
+  if (/\bon\s+s'est\s+crois[ée]s\b/i.test(text) && !/\bcrois[ée]s\s+(à|au|chez|via|pendant|lors)\b/i.test(text)) {
+    // OK uniquement si suivi d'un fait précis ("croisés à devoxx", "croisés via X")
+    v.push('"on s\'est croisés" sans contexte précis (event/personne)');
+  }
+
+  // 🆕 Justifications creuses de prise de contact ("je me permets de...")
+  if (/\bje\s+me\s+permets\s+(d['e]\s*aller\s+droit\s+au\s+but|de\s+te\s+(contacter|solliciter|écrire)\s+(directement)?|d['e]\s*([eé]crire|aborder|passer))\b/i.test(text)) {
+    v.push('cliché IA "je me permets de..."');
+  }
+  if (/\bdonc\s+je\s+me\s+permets\b/i.test(text)) {
+    v.push('cliché IA "donc je me permets"');
+  }
+  if (/\bje\s+profite\s+de\s+(notre\s+connexion|ce\s+lien|notre\s+lien)\b/i.test(text)) {
+    v.push('cliché IA "je profite de notre connexion"');
+  }
+  if (/\bj['e]\s*en\s+profite\s+pour\s+te\s+(contact|écrire|solliciter)/i.test(text)) {
+    v.push('cliché IA "j\'en profite pour te contacter"');
   }
 
   // 🆕 Mode interne (via outreach_config OU isRPO legacy) :
@@ -824,9 +843,23 @@ ${profile.networkDistance ? `- Statut LinkedIn : ${
 ${profile.openToWork ? '- 💼 Statut "Open to Work" activé sur LinkedIn (= cherche activement)' : ''}
 ${profile.premium ? '- ⭐ Compte LinkedIn Premium' : ''}
 
-⚠️ RÈGLE NON NÉGOCIABLE — STATUT DE CONNEXION :
-- Si Statut LinkedIn = "1er niveau" : tu PEUX dire "on est connectés" / "je vois qu'on est en lien" / "on s'est croisés via [nom commun s'il existe]"
-- Si Statut LinkedIn = "2e/3e niveau" ou "Hors réseau" ou inconnu : NE DIS JAMAIS "on est déjà connectés" / "on est en contact" / "salut Chiemezie, on est connectés sur LinkedIn". C'est FAUX et grillé en 2 secondes par le candidat. Tu écris comme à un INCONNU à qui tu te présentes pour la première fois.
+⚠️ ACCROCHE — RÈGLE NON NÉGOCIABLE :
+
+L'accroche (1ère phrase après "Salut [Prénom],") DOIT être une OBSERVATION PERSONNALISÉE (post LinkedIn, parcours, side project, conviction technique, ancien employeur commun, école commune).
+
+❌ INTERDICTION ABSOLUE — peu importe le statut LinkedIn :
+- "on est connectés" / "on est en lien" / "on est en contact" / "on s'est croisés"
+  (même si c'est vrai, le candidat le voit déjà sur LinkedIn — info zéro valeur)
+- "je me permets de te contacter" / "je me permets d'aller droit au but" / "je me permets de te solliciter"
+- "donc je me permets" / "vu qu'on est connectés, j'en profite"
+- "je profite de notre connexion / de ce lien / de cette mise en relation"
+- Toute formule où tu te JUSTIFIES de prendre contact. Tu n'as pas à te justifier.
+
+Le statut LinkedIn (1er/2e/3e niveau) n'est PAS une info à partager dans le message — c'est juste un contexte technique pour toi (savoir si l'invitation est nécessaire ou si tu peux DM directement). Ne le mentionne JAMAIS dans le contenu.
+
+✅ Va DIRECTEMENT à l'observation personnalisée du profil. Pas de transition, pas de justification, juste le fait précis.
+
+⚠️ Si Statut LinkedIn = 2e/3e/hors réseau et que la 1ère ÉTAPE de la séquence est un "message direct" sans invitation préalable, c'est un signal qu'il y a déjà eu une connexion automatique acceptée OU que c'est un InMail. Tu n'as pas à mentionner ça.
 ${profile.summary ? `
 === SECTION "À PROPOS" DU CANDIDAT (SOURCE PRIORITAIRE DE PERSONNALISATION) ===
 "${profile.summary.slice(0, 1200)}"
@@ -1045,10 +1078,9 @@ Réponds UNIQUEMENT en JSON valide:
       const correctionRules: string[] = [
         '- Aucun tiret (—, –, -) nulle part dans le texte.',
         '- Aucune flatterie ("parfait", "exactement le profil", "rare", "précieux").',
+        '- JAMAIS mentionner le statut LinkedIn ("on est connectés", "on est en contact", "vu qu\'on est en lien"). Le candidat le voit déjà sur LinkedIn, c\'est une accroche faible. Va DIRECT à l\'observation personnalisée du profil.',
+        '- AUCUNE justification de prise de contact ("je me permets de te contacter", "donc je me permets", "j\'en profite"). Tu n\'as pas à te justifier.',
       ];
-      if (profile.networkDistance && profile.networkDistance !== 'FIRST_DEGREE') {
-        correctionRules.push(`- Le candidat est ${profile.networkDistance === 'SECOND_DEGREE' ? '2e niveau' : profile.networkDistance === 'THIRD_DEGREE' ? '3e niveau' : 'hors réseau'} → tu n'es PAS connecté avec lui. NE DIS JAMAIS "on est connectés", "on est en contact", "on s'est croisés". Tu écris à un INCONNU.`);
-      }
       if (isInternalMode || isRPO) {
         const cn = job.client?.name || 'nous';
         correctionRules.push(`- MODE INTERNE : tu es employé(e) de ${cn}. Jamais "ils", "leur", "mon client", "je recrute pour eux", "j'accompagne une scale-up". Toujours "on", "nous", "notre", "chez ${cn}", "chez nous".`);
