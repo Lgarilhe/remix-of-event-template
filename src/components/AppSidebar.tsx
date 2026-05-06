@@ -45,90 +45,22 @@ interface NavItem {
   icon: React.ComponentType<any>;
   badgeKey?: 'unread';
   feature?: Feature;
-  /**
-   * Tile color tokens. `tile` est appliqué au tile par défaut, `tileActive`
-   * quand l'item est actif (saturation plus forte). `text` colore l'icône.
-   */
-  color: {
-    tile: string;
-    tileActive: string;
-    text: string;
-  };
+  /** Couleur de l'icône (le tile est uniforme pour tous les items). */
+  iconColor: string;
 }
 
+// Pattern Qonto : tile background uniforme pour tous les items, mais icônes
+// color-coded par section. Le tile reste calme/neutre, ce qui crée un rythme
+// visuel régulier ; la couleur de l'icône signale la nature de la section
+// sans surcharger la sidebar.
 const NAV_ITEMS: NavItem[] = [
-  {
-    to: '/dashboard',
-    label: 'Dashboard',
-    icon: Home,
-    color: {
-      tile: 'bg-blue-500/10',
-      tileActive: 'bg-blue-500/20',
-      text: 'text-blue-500',
-    },
-  },
-  {
-    to: '/missions',
-    label: 'Missions',
-    icon: Briefcase,
-    color: {
-      tile: 'bg-violet-500/10',
-      tileActive: 'bg-violet-500/20',
-      text: 'text-violet-500',
-    },
-  },
-  {
-    to: '/pipeline',
-    label: 'Pipeline',
-    icon: Columns3,
-    color: {
-      tile: 'bg-cyan-500/10',
-      tileActive: 'bg-cyan-500/20',
-      text: 'text-cyan-500',
-    },
-  },
-  {
-    to: '/calendar',
-    label: 'Calendrier',
-    icon: Calendar,
-    color: {
-      tile: 'bg-amber-500/10',
-      tileActive: 'bg-amber-500/20',
-      text: 'text-amber-500',
-    },
-  },
-  {
-    to: '/tasks',
-    label: 'Tâches',
-    icon: ListTodo,
-    color: {
-      tile: 'bg-emerald-500/10',
-      tileActive: 'bg-emerald-500/20',
-      text: 'text-emerald-500',
-    },
-  },
-  {
-    to: '/inbox',
-    label: 'Messages',
-    icon: Inbox,
-    badgeKey: 'unread',
-    color: {
-      tile: 'bg-rose-500/10',
-      tileActive: 'bg-rose-500/20',
-      text: 'text-rose-500',
-    },
-  },
-  {
-    to: '/marketplace',
-    label: 'Marketplace',
-    icon: Store,
-    feature: 'marketplace_browse',
-    color: {
-      tile: 'bg-indigo-500/10',
-      tileActive: 'bg-indigo-500/20',
-      text: 'text-indigo-500',
-    },
-  },
+  { to: '/dashboard',   label: 'Dashboard',   icon: Home,      iconColor: 'text-blue-500'    },
+  { to: '/missions',    label: 'Missions',    icon: Briefcase, iconColor: 'text-violet-500'  },
+  { to: '/pipeline',    label: 'Pipeline',    icon: Columns3,  iconColor: 'text-cyan-500'    },
+  { to: '/calendar',    label: 'Calendrier',  icon: Calendar,  iconColor: 'text-amber-500'   },
+  { to: '/tasks',       label: 'Tâches',      icon: ListTodo,  iconColor: 'text-emerald-500' },
+  { to: '/inbox',       label: 'Messages',    icon: Inbox,     iconColor: 'text-rose-500',   badgeKey: 'unread' },
+  { to: '/marketplace', label: 'Marketplace', icon: Store,     iconColor: 'text-indigo-500', feature: 'marketplace_browse' },
 ];
 
 export function AppSidebar() {
@@ -257,19 +189,20 @@ export function AppSidebar() {
                       collapsed ? 'justify-center' : 'gap-3 w-full',
                     )}
                   >
-                    {/* Tile coloré contenant l'icône */}
+                    {/* Tile uniforme (pattern Qonto) — bg neutre identique
+                        pour tous les items, seule l'icône est color-coded. */}
                     <span
                       className={cn(
                         'flex items-center justify-center rounded-lg shrink-0 transition-colors',
                         collapsed ? 'h-7 w-7' : 'h-8 w-8',
-                        active ? item.color.tileActive : item.color.tile,
+                        active ? 'bg-foreground/[0.10]' : 'bg-foreground/[0.05]',
                       )}
                     >
                       <item.icon
                         className={cn(
                           'shrink-0',
                           collapsed ? 'h-[18px] w-[18px]' : 'h-[19px] w-[19px]',
-                          item.color.text,
+                          item.iconColor,
                         )}
                         strokeWidth={2}
                         aria-hidden="true"
