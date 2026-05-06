@@ -76,13 +76,15 @@ const ACTION_LABELS: Record<string, string> = {
   condition_branch: 'Condition',
 };
 
+// Channel colors via design tokens (plus de couleurs hardcoded sky-400/indigo-400 etc.)
+// Le header utilise une icon-tile colorée + le border standard pour tous.
 const CHANNEL_COLORS: Record<string, { header: string; border: string }> = {
-  email: { header: 'text-info-foreground', border: 'border-border' },
-  message: { header: 'text-sky-400', border: 'border-border' },
-  smart_message: { header: 'text-sky-400', border: 'border-border' },
-  inmail: { header: 'text-indigo-400', border: 'border-border' },
-  connection_request: { header: 'text-violet-400', border: 'border-border' },
-  whatsapp_message: { header: 'text-green-400', border: 'border-border' },
+  email: { header: 'bg-info/15 text-info', border: 'border-border' },
+  message: { header: 'bg-info/15 text-info', border: 'border-border' },
+  smart_message: { header: 'bg-info/15 text-info', border: 'border-border' },
+  inmail: { header: 'bg-brand-purple/15 text-brand-purple', border: 'border-border' },
+  connection_request: { header: 'bg-brand-purple/15 text-brand-purple', border: 'border-border' },
+  whatsapp_message: { header: 'bg-success/15 text-success', border: 'border-border' },
 };
 
 function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
@@ -959,78 +961,94 @@ function MessageStepCard({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
       >
-      <div className={cn("flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30", colors.header)}>
-        <div className="flex items-center gap-1.5">
-          <Icon className="w-3.5 h-3.5" />
-          <span className="text-[11.5px] font-semibold tracking-tight">{ACTION_LABELS[step.actionType]}</span>
+      <div className={cn("flex items-center gap-2 px-4 sm:px-5 py-2.5 border-b border-border bg-muted/20")}>
+        <div className={cn("h-7 w-7 rounded-lg grid place-items-center shrink-0", colors.header)}>
+          <Icon className="w-3.5 h-3.5" strokeWidth={2.25} />
         </div>
+        <span className="text-[12.5px] font-semibold tracking-tight text-foreground">
+          {ACTION_LABELS[step.actionType]}
+        </span>
         {step.useAiPersonalization && (
-          <Badge className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-0 gap-0.5">
-            <Sparkles className="w-2.5 h-2.5" /> IA
-          </Badge>
+          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-purple/10 text-brand-purple border border-brand-purple/20 font-semibold uppercase tracking-wider">
+            <Sparkles className="w-2.5 h-2.5" />
+            IA
+          </span>
         )}
         {preview?.isEdited && (
-          <Badge className="text-[9px] h-4 px-1.5 bg-warning/10 text-warning-foreground border-0">
+          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/30 font-semibold uppercase tracking-wider">
             Modifié
-          </Badge>
+          </span>
         )}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-0.5">
           {preview?.isGenerated && (
             <>
-              <button onClick={onRegenerate} className="p-1 rounded hover:bg-muted transition-colors" title="Regénérer">
-                <RefreshCw className="w-3 h-3" />
+              <button
+                onClick={onRegenerate}
+                className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Régénérer ce step"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={onToggleEdit}
-                className={cn("p-1 rounded transition-colors", isEditing ? "bg-muted" : "hover:bg-muted")}
+                className={cn(
+                  "h-7 w-7 grid place-items-center rounded-md transition-colors",
+                  isEditing
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
                 title={isEditing ? "Voir" : "Modifier"}
               >
-                <Pencil className="w-3 h-3" />
+                <Pencil className="w-3.5 h-3.5" />
               </button>
             </>
           )}
         </div>
       </div>
 
-      <div className="px-3 py-3">
+      <div className="px-4 sm:px-5 py-4">
         {preview?.isGenerating ? (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-5/6" />
-            <Skeleton className="h-3 w-2/3" />
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
           </div>
         ) : preview?.isGenerated || preview?.error ? (
-          <div className="space-y-2">
+          <div className="space-y-4">
             {preview.error && (
-              <div className="flex items-center gap-1.5 text-[11px] text-warning-foreground mb-2">
-                <AlertTriangle className="w-3 h-3 shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/30 text-[12px] text-warning">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 {preview.error}
               </div>
             )}
             {step.actionType === 'email' && (
               <div>
-                <label className="text-[10px] text-muted-foreground">Objet</label>
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 mb-1.5">
+                  Objet
+                </p>
                 {isEditing ? (
                   <Input
                     value={preview?.subject || ''}
                     onChange={e => onEditMessage('subject', e.target.value)}
-                    className="h-7 text-xs mt-0.5"
+                    className="h-9 text-[13px] font-medium"
                   />
                 ) : (
-                  <p className="text-xs font-medium mt-0.5">{preview?.subject || '—'}</p>
+                  <p className="text-[14px] font-semibold text-foreground">{preview?.subject || '—'}</p>
                 )}
               </div>
             )}
             <div>
               {step.actionType === 'email' && (
-                <label className="text-[10px] text-muted-foreground">Message</label>
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 mb-1.5">
+                  Message
+                </p>
               )}
               {isEditing ? (
                 <AiTextarea
                   value={(preview?.message || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')}
                   onChange={e => onEditMessage('message', e.target.value)}
-                  className="min-h-[100px] text-xs mt-0.5 resize-y pr-10"
+                  className="min-h-[140px] text-[13px] leading-relaxed resize-y pr-10"
                   context={{
                     purpose: step.actionType === 'email' ? 'email outreach' : 'message LinkedIn',
                     data: { step_type: step.actionType, candidate: preview?.candidateName },
@@ -1040,19 +1058,30 @@ function MessageStepCard({
                 />
               ) : (
                 <div
-                  className="text-xs leading-relaxed mt-0.5 whitespace-pre-wrap"
+                  className="text-[13.5px] leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans"
                   dangerouslySetInnerHTML={{ __html: preview?.message || '' }}
                 />
               )}
             </div>
             {preview?.personalizationPoints && preview.personalizationPoints.length > 0 && (
-              <div className="pt-1 border-t border-border/50">
-                <p className="text-[10px] text-muted-foreground mb-1">Points de personnalisation</p>
-                <div className="flex flex-wrap gap-1">
+              <div className="pt-3 border-t border-border/60">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Sparkles className="w-3 h-3 text-brand-purple" />
+                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+                    Points de personnalisation
+                  </p>
+                </div>
+                <div className="space-y-1.5">
                   {preview.personalizationPoints.map((pt, i) => (
-                    <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted/50 rounded">
-                      {pt}
-                    </span>
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-purple/[0.04] border border-brand-purple/15 text-[12px] leading-relaxed text-foreground/85"
+                    >
+                      <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-brand-purple/15 text-brand-purple text-[10px] font-bold shrink-0 mt-0.5">
+                        {i + 1}
+                      </span>
+                      <span>{pt}</span>
+                    </div>
                   ))}
                 </div>
               </div>
