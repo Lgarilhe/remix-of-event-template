@@ -131,8 +131,16 @@ function isLikelyRealFirstName(name: string): boolean {
   return true;
 }
 
-function detectViolations(args: { isRPO: boolean; message: string; subject?: string }): string[] {
-  const { isRPO, message, subject } = args;
+function detectViolations(args: {
+  isRPO: boolean;
+  /** Mode interne (employé du client) — détecté soit via RPO legacy, soit via outreach_config. */
+  isInternalMode?: boolean;
+  /** Network distance LinkedIn pour détecter "on est connectés" hallucination. */
+  networkDistance?: 'FIRST_DEGREE' | 'SECOND_DEGREE' | 'THIRD_DEGREE' | 'OUT_OF_NETWORK' | null;
+  message: string;
+  subject?: string;
+}): string[] {
+  const { isRPO, isInternalMode, networkDistance, message, subject } = args;
   const v: string[] = [];
   const text = `${subject || ''}\n${message || ''}`;
 
@@ -140,18 +148,39 @@ function detectViolations(args: { isRPO: boolean; message: string; subject?: str
   if (/^\s*[-•]\s+/m.test(message)) v.push('tiret / puce en début de ligne');
   if (/[–—]/.test(message) || /\s-\s/.test(message)) v.push('tiret (—/–/ - ) dans le texte');
 
-  // “AI-ish” flattery / over-claiming
+  // "AI-ish" flattery / over-claiming
   if (/\b(colle|match)e\s+parfaitement\b/i.test(text)) v.push('"colle parfaitement"');
   if (/\bparfaitement\s+ce\s+qu/i.test(text)) v.push('"parfaitement ce qu\'on veut"');
   if (/\bexactement\s+ce\s+qu/i.test(text)) v.push('"exactement ce qu\'on veut"');
 
-  // RPO persona: never talk as an external recruiter.
-  if (isRPO) {
-    if (/\bje\s+recrute\b/i.test(text)) v.push('RPO: "je recrute"');
-    if (/\bje\s+recrute\s+pour\s+(eux|elle|lui|mon\s+client|un\s+client)\b/i.test(text)) v.push('RPO: "je recrute pour eux/mon client"');
-    if (/\bils\b/i.test(text)) v.push('RPO: "ils"');
-    if (/\bleur(s)?\b/i.test(text)) v.push('RPO: "leur"');
-    if (/\bmon\s+client\b/i.test(text)) v.push('RPO: "mon client"');
+  // 🆕 Hallucination "on est connectés" si pas FIRST_DEGREE
+  // Détecte les patterns du genre :
+  //  - "on est déjà connectés"
+  //  - "on est connectés sur LinkedIn"
+  //  - "vu qu'on est en contact"
+  //  - "puisqu'on s'est connectés"
+  //  - "comme on est en lien"
+  if (networkDistance && networkDistance !== 'FIRST_DEGREE') {
+    if (/\bon\s+(est|s'est)\s+(déjà\s+)?connect[ée]s?\b/i.test(text)) v.push('halluciné "on est connectés" alors que pas 1st degree');
+    if (/\bon\s+est\s+(déjà\s+)?en\s+(contact|lien|relation)\b/i.test(text)) v.push('halluciné "on est en contact" alors que pas 1st degree');
+    if (/\b(vu|puisqu|comme|sachant)\s+qu['e]\s*on\s+est\s+connect/i.test(text)) v.push('halluciné connexion existante');
+    if (/\bon\s+s'est\s+crois[ée]s\b/i.test(text)) v.push('halluciné "on s\'est croisés"');
+  }
+
+  // 🆕 Mode interne (via outreach_config OU isRPO legacy) :
+  //    bannit les formulations cabinet
+  const internalModeActive = isRPO || isInternalMode;
+  if (internalModeActive) {
+    if (/\bje\s+recrute\b/i.test(text)) v.push('mode interne: "je recrute"');
+    if (/\bje\s+recrute\s+pour\s+(eux|elle|lui|mon\s+client|un\s+client)\b/i.test(text)) v.push('mode interne: "je recrute pour eux/mon client"');
+    if (/\bj['e]\s+accompagne\s+(une|un|leur|cette|cet)\b/i.test(text)) v.push('mode interne: "j\'accompagne une scale-up/un client"');
+    if (/\bils\s+(cherchent|ouvrent|recrutent|embauchent|montent)\b/i.test(text)) v.push('mode interne: "ils cherchent/ouvrent..."');
+    if (/\bleur\s+(équipe|stack|projet|tech|techno)\b/i.test(text)) v.push('mode interne: "leur équipe/stack/projet"');
+    if (/\bmon\s+client\b/i.test(text)) v.push('mode interne: "mon client"');
+    if (/\bune\s+(scale-up|startup|entreprise)\s+tech\s+(française|américaine|européenne)\b/i.test(text) && !isInternalMode) {
+      // Cette formulation peut être OK avec anonymisation — donc on la flag pas si anonymize_client est on
+      v.push('mode interne: "une scale-up tech française qui..." (formulation cabinet)');
+    }
   }
 
   return v;
@@ -840,199 +869,31 @@ ${sequencePrevMessagesBlock ? `\nMESSAGES PRÉCÉDENTS DÉJÀ ENVOYÉS À CE CAN
 ${statusInstructions[candidateStatus] || statusInstructions.other}`}
 
 
-=== POSTURE DU RECRUTEUR (CRITIQUE) ===
-Tu es un CONNECTEUR, pas un expert technique. Tu ne prétends pas comprendre la stack du candidat.
-Tu fais le PONT entre le candidat et l'environnement du poste.
-Exemple CORRECT: "Le CTO chez ${clientName} est à fond sur le DDD, je pense que vous pourriez bien matcher"
-Exemple INCORRECT: "Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}"
-Tu OBSERVES et tu POSES DES QUESTIONS, tu ne démontres pas une expertise que tu n'as pas.
-=== FIN POSTURE ===
+=== APPROCHE & STRUCTURE ===
 
-=== STRATÉGIE LINKEDIN 2025 – RÈGLES ABSOLUES ===
+PERSONNALISATION (obligatoire) :
+- UN fait précis du candidat (À propos, post LinkedIn, parcours, ancien employeur commun, école commune, side project) traité comme une OBSERVATION FACTUELLE — jamais comme un compliment.
+- Si rien de spécifique trouvé → question ouverte plutôt que pitch ("Qu'est-ce qui te ferait bouger aujourd'hui ?").
+- Cite le contenu DIRECTEMENT, jamais la source ("dans ton À propos" ❌). Pas de "j'ai parcouru ton profil" ni "a retenu mon attention".
 
-📊 STATS CLÉS QUI GUIDENT TA RÉDACTION:
-- Les InMails personnalisés obtiennent +15% de taux de réponse vs envois en masse
-- Les messages entre 200 et 400 CARACTÈRES ont +16% de chances de réponse
-- 57% du trafic LinkedIn est mobile → sujet COURT obligatoire
-- Mentionner un ancien employeur commun = +27% de réponse
-- Les candidats "Open to Work" sont 75% plus susceptibles de répondre
+CE QUE LE CANDIDAT Y GAGNE :
+- Vends ce qu'il OBTIENT (latitude, équipe, mission), pas le poste.
+- 1-2 éléments différenciants MAX, intégrés naturellement (jamais en liste/énumération).
 
-1. PERSONNALISATION = FACTEUR N°1 (NON NÉGOCIABLE)
-   Chaque message DOIT contenir au moins UN élément hyper-spécifique au candidat. Cherche dans cet ordre de priorité:
+CTA :
+- Simple, non-engageant ("Dispo 15 min cette semaine ?", "Curieux d'avoir ton avis", "Ça te parle ?").
+- Banni : "Es-tu intéressé ?", "Tu serais ouvert ?", "Ça t'intéresserait ?".
 
-   ⚠️ RÈGLE D'OR DE LA PERSONNALISATION : c'est un ÉCHO FACTUEL, jamais une VALORISATION.
-   - "fais écho" = "je remarque que tu fais X, on fait aussi X chez nous"
-   - PAS "fais écho" = "je remarque que tu fais X, c'est rare/précieux/impressionnant"
-   - Tu OBSERVES sans juger. Tu poses des ponts factuels.
-   - Si l'élément observé est intéressant → il parlera de lui-même. Pas besoin de le qualifier.
+OBJET (InMail uniquement) :
+- < 40 chars, mobile-first. Ex : "${job.title} chez ${clientName}", "Ton avis m'intéresse".
 
-   a) SECTION "À PROPOS" + PUBLICATIONS LINKEDIN (sources PRIMAIRES, ÉGALES en priorité):
+TON : ${toneInstructions[tone]}
+ADAPTATION : si le candidat utilise un style décontracté/formel/technique → adapte-toi. But = un message de pair.
 
-      "À PROPOS" (mine d'or de personnalisation):
-      - Une conviction technique ("le DDD", "la qualité avant la vélocité") → fais écho FACTUEL ("on pousse aussi le DDD chez X")
-      - Une motivation personnelle ("j'ai quitté X pour Y", "ce qui m'anime") → rebondis FACTUELLEMENT (sans dire "ça correspond parfaitement")
-      - Un side project, contribution open source → mentionne-le sans le qualifier ("rare", "impressionnant", "ambitieux"...)
-      - Un style de travail ("petites équipes", "ownership") → fais le pont avec le poste sans valoriser
-      - ⚠️ JAMAIS écrire "dans ton À propos", "tu mentionnes dans ton profil" → cite le contenu DIRECTEMENT comme si tu le savais naturellement
-      - EXEMPLE: si le candidat écrit "je crois que le bon code c'est du code testable" → "L'approche test-first, c'est aussi ce qu'on pousse chez ${clientName}."
-      - CONTRE-EXEMPLE INTERDIT: "Ta sensibilité au test-first, c'est exactement ce qu'on cherche" ❌ (jugement de valeur)
-      
-      PUBLICATIONS LINKEDIN RÉCENTES (si fournies):
-      - Un post sur un sujet technique lié au poste → "j'ai vu ton post sur [sujet]"
-      - Une prise de position sur un enjeu du secteur → montre que tu l'as lu
-      - ATTENTION: n'utilise un post QUE s'il est pertinent par rapport au poste. Sinon ignore-le.
-   
-   a-bis) HISTORIQUE INTERNE (si fourni, TRÈS FORT pour personnaliser):
-      - Le candidat a déjà été en shortlist ou placé via le cabinet → "on avait échangé il y a quelque temps pour [poste/client]"
-      - Un consultant a déjà eu un contact → mentionne le lien existant naturellement
-      - ATTENTION: utilise l'historique UNIQUEMENT quand c'est pertinent et récent. Ne force pas.
-      - JAMAIS citer les notes internes textuellement, ce sont des infos confidentielles.
-      - Le but: transformer un cold outreach en warm intro grâce à la relation existante.
-   
-   c) PARCOURS PROFESSIONNEL:
-      - Un ancien employeur commun avec le client → +27% de réponse, TOUJOURS le mentionner si applicable
-      - Une transition de carrière intéressante (ex: de corporate à startup)
-      - Un changement de poste récent (6-12 mois → paradoxalement réceptif)
-      - Une progression remarquable
-   
-   d) CONNEXIONS MUTUELLES:
-      - Si tu peux déduire une connexion commune (même école, même ex-employeur), mentionne-la
-      - Ça transforme un cold outreach en warm intro
-   
-   e) ACTIVITÉ LINKEDIN (si aucun post récupéré automatiquement):
-      - Un article publié, un post, un commentaire
-      - Un engagement sur un sujet tech spécifique
-   
-   ⚠️ SI tu ne trouves RIEN de spécifique → utilise une QUESTION OUVERTE comme accroche:
-   "Qu'est-ce qui te ferait bouger aujourd'hui ?" plutôt qu'un pitch direct
-
-2. LONGUEUR = COURT (CRITIQUE)
-   - OBJECTIF: 200-400 CARACTÈRES pour le corps du message (hors signature)
-   - C'est environ 3-5 phrases MAX
-   - Chaque mot doit mériter sa place
-   - Si tu peux dire la même chose en moins de mots, fais-le
-   - Sur mobile (57% du trafic), un message court = entièrement visible sans scroller
-
-3. CE QUE LE CANDIDAT Y GAGNE (PAS UN DESCRIPTIF DE POSTE)
-   NE DÉCRIS PAS le poste. VENDS ce que le candidat obtient:
-   - "Tu définirais l'archi toi-même" > "Nous cherchons un architecte"
-   - "Stack greenfield Go/K8s, pas de legacy" > "Stack: Go, Kubernetes"
-   - "Impact direct sur 10M users" > "Projet à grande échelle"
-   - "Full remote, équipe de 5 seniors" > "Poste remote, grande équipe"
-   
-   MAX 1-2 éléments différenciants, intégrés naturellement. Pas de liste.
-
-4. CTA = SIMPLE ET NON-ENGAGEANT
-   Le candidat ne doit PAS se sentir forcé. Exemples de bons CTAs:
-   - "Dispo pour un call de 15 min cette semaine ?"
-   - "Ça te parle ? Je t'envoie plus de détails si oui"
-   - "Curieux d'avoir ton avis, même si tu n'es pas en recherche"
-   - "Qu'est-ce qui te ferait bouger aujourd'hui ?"
-   
-   ❌ MAUVAIS CTAs: "Es-tu intéressé ?", "Ça t'intéresserait ?", "Tu serais ouvert ?"
-
-5. OBJET (INMAIL) = MOBILE-FIRST
-   - MAX 40 caractères (lisible sur mobile)
-   - Pas de jargon, pas de "Opportunité" générique
-   - Exemples: "${job.title} chez ${clientName}", "Une question rapide", "Ton avis m'intéresse"
-   - Personnalisé si possible: "Re: ton article sur [X]", "Ex-[entreprise] aussi ?"
-
-6. TON: ${toneInstructions[tone]}
-
-7. ADAPTATION AU STYLE DU CANDIDAT:
-   - SI décontracté avec émojis → sois plus casual
-   - SI corporate/formel → reste pro mais pas froid
-   - SI humour → ose une touche légère
-   - SI technique/précis → sois concis et factuel
-   Le but: un message de PAIR, pas de robot.
-
- 8. INTERDITS (MARQUEURS IA À BANNIR):
-    - "j'ai parcouru ton profil", "a retenu mon attention", "m'a tapé dans l'œil"
-    - "dans ton À propos", "tu mentionnes dans ton profil", "dans ta bio", "dans ta section" → CITE LE CONTENU DIRECTEMENT sans préciser la source
-    - Superlatifs: exceptionnel, remarquable, impressionnant, brillant, solide parcours
-    - "parfaitement", "exactement", "idéalement" → trop vendeur
-    - Questions génériques: "ça t'intéresserait ?", "tu serais ouvert ?"
-    - FORMAT: JAMAIS "20+", "10+" → "plus de 20", "plus de 10"
-   - TIRETS: JAMAIS de "- ..." ni "A – B" → phrases avec points/virgules
-   - LISTES À PUCES: JAMAIS, écris en prose fluide
-   - LIENS: JAMAIS de liens dans le message (distrait du contenu)
-   - JARGON STARTUP: "ton taf", "mise gros", "c'est chaud", "le kiff"
-   - FORMULES CREUSES: "projet passionnant", "belle aventure", "super équipe"
-   - "ton profil colle parfaitement" ❌ → "ton profil colle bien" ou "ça matche"
-   
-   ⛔ FLATTERIE = INTERDIT (ça sonne fake et IA):
-   - "c'est rare et c'est ce qu'il nous faut" ❌
-   - "ça montre que tu aimes creuser" ❌ (tu ne connais pas la personne)
-   - "c'est exactement le mindset qu'on cherche" ❌
-   - "ton expertise en [X] est précieuse" ❌
-   - "ta maîtrise de [X]" ❌
-   - Toute phrase qui JUGE ou VALORISE le candidat ❌
-   → Tu OBSERVES ou tu POSES UNE QUESTION, tu ne fais PAS de compliment.
-   → Ton = pair curieux, pas recruteur qui vend du rêve.
-   
-   EN MODE RPO - ABSOLUMENT INTERDIT:
-   - "je recrute pour eux" ❌
-   - "ce qu'ils cherchent" ❌ → "ce qu'on recherche"
-   - "leur équipe" ❌ → "notre équipe"
-
-9. FORMAT OBLIGATOIRE:
-   - 200-400 CARACTÈRES pour le message (hors signature) = 3-5 phrases
-   - Phrases courtes et percutantes, PAS de tirets, PAS de listes
-   - SAUTS DE LIGNE entre chaque idée (2-3 paragraphes courts)
-   - SALUTATION: "Salut [Prénom]," UNIQUEMENT si le prénom indiqué ci-dessus est un vrai prénom fiable.
-     Si le prénom est marqué "(non fiable, ne pas utiliser)", utilise simplement "Salut," ou "Hey," SANS prénom.
-     Ne JAMAIS utiliser un prénom tronqué, bizarre ou manifestement faux.
-   - Structure: 
-     PHRASE 1 = PERSONNALISATION PURE (obligatoire). Une phrase naturelle qui montre que tu as lu le profil.
-     PAS de structure "Du X au Y", PAS de "Ton parcours de X à Y", PAS de résumé de carrière.
-     C'est une OBSERVATION SPÉCIFIQUE: quelque chose que tu as remarqué, une question sur un choix de carrière, une référence à un post ou un élément du profil (SANS citer la source comme "ton À propos").
-     → PHRASE 2-3 = Ce que le candidat y gagne (1-2 phrases)
-     → PHRASE 4 = CTA non-engageant (1 phrase)
-   - Signature : ${senderName ? `EXACTEMENT "${senderName}" — uniquement le prénom, JAMAIS d'initiale + nom (pas "${senderName.charAt(0)}. NomDeFamille"), JAMAIS le nom complet, JAMAIS un titre, JAMAIS de mention de société` : 'utilise un prénom court et chaleureux. JAMAIS d\'initiale + nom de famille, JAMAIS de titre, JAMAIS de signature corporate.'}
-   
-   IMPORTANT: \\n\\n entre les paragraphes. Jamais de bloc massif.
-
-   ⛔ STRUCTURES D'ACCROCHE INTERDITES:
-   - "Du [entreprise] au [entreprise]..." ❌
-   - "Ton parcours de [X] à [Y]..." ❌  
-   - "De [rôle] à [rôle]..." ❌
-   - "Après [N] ans chez [entreprise]..." ❌ (trop résumé CV)
-   - Toute formulation qui RÉSUME le parcours au lieu de RÉAGIR à un élément précis ❌
-
-   ✅ BONNES ACCROCHES (phrase 1) — factuel, jamais flatteur:
-    - "Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}." (cite le contenu SANS mentionner "À propos")
-    - "J'ai vu ton post sur [sujet], on part sur la même approche chez ${clientName}." (réf post)
-    - "Ton passage chez [entreprise] m'intrigue, comment tu gérais [problème spécifique] ?" (question)
-    - "Tu bosses sur [techno] depuis [entreprise], on cherche quelqu'un sur ce créneau." (observation neutre)
-
-=== EXEMPLES (BONNES PRATIQUES 2025) ===
-
-EXEMPLE 1 - MODE RPO, accroche profil:
-"Salut Thomas,
-
-Le DDD et l'ownership, c'est aussi ce qu'on pousse chez ${clientName}. On monte le cloud souverain, stack Go/K8s, tu définirais l'archi toi-même.
-
-Curieux d'avoir ton avis, même si t'es pas en recherche.
-
-${senderName || '[Prénom]'}"
-
-EXEMPLE 2 - MODE SUCCÈS, accroche parcours:
-"Salut Julie,
-
-4 ans sur la data pipeline chez Doctolib, tu connais bien le sujet. Chez Alan ils ouvrent un poste Data Engineer senior, stack dbt/BigQuery, full remote.
-
-Tu recommanderais quelqu'un pour ce type de rôle ?
-
-${senderName || '[Prénom]'}"
-
-EXEMPLE 3 - Accroche post LinkedIn:
-"Salut Alex,
-
-Ton post sur les micro-services m'a donné une idée. On a un projet greenfield chez ${clientName} qui part sur cette approche, Lead Backend, stack moderne.
-
-Ça t'inspire un avis ?
-
-${senderName || '[Prénom]'}"
+FORMAT FINAL :
+- Salutation : "Salut [Prénom]," si prénom fiable. Sinon "Salut," ou "Hey," sans prénom.
+- 2-3 paragraphes courts séparés par \\n\\n. Pas de bloc massif. Pas de tirets/puces.
+- Signature : ${senderName ? `EXACTEMENT "${senderName}" (prénom seul). JAMAIS "${senderName.charAt(0)}. NomDeFamille" ni nom complet ni titre.` : 'prénom seul, jamais nom de famille ni titre.'}
 ${calendlyWithPrefill ? `
 === LIEN CALENDLY DISPONIBLE ===
 Lien de prise de RDV: ${calendlyWithPrefill}
@@ -1144,6 +1005,18 @@ Réponds UNIQUEMENT en JSON valide:
       throw new Error("All AI retries exhausted");
     };
 
+    // 🔍 DEBUG : log la taille + résumé du prompt envoyé pour pouvoir
+    // débugger les hallucinations en prod (avant : impossible de savoir
+    // ce qui partait vraiment au LLM). Visible dans Supabase Edge Logs.
+    const promptSize = prompt.length;
+    const estimatedTokens = Math.round(promptSize / 4); // ~4 chars/token
+    console.log(`[generate-outreach-message] Prompt: ${promptSize} chars, ~${estimatedTokens} tokens`);
+    console.log(`[generate-outreach-message] Profile context: ${profile.name} | network=${profile.networkDistance || 'unknown'} | location=${profile.location || 'unknown'} | xp=${profile.yearsOfExperience || '?'}`);
+    console.log(`[generate-outreach-message] Mode: ${outreachConfig?.recruitment_mode || 'fallback'} | sender_role=${outreachConfig?.sender_role || 'none'} | template_length=${(messageTemplate || '').length}`);
+    if (sequenceMsgType) {
+      console.log(`[generate-outreach-message] Sequence: ${sequenceMsgType} | prevSteps=${(sequenceContext?.prevSentSteps || []).length}`);
+    }
+
     const first = await callAnthropic(prompt);
     if (!first.ok) return first.response;
 
@@ -1156,11 +1029,31 @@ Réponds UNIQUEMENT en JSON valide:
       };
     }
 
-    // Guardrails: if RPO but the model speaks as an external recruiter (or uses dashes), re-run once.
-    const violations = detectViolations({ isRPO, message: parsed.message, subject: parsed.subject });
+    // Guardrails étendus : détecte les hallucinations (on est connectés
+    // alors que pas 1st degree) ET les violations de mode (interne vs cabinet)
+    // ET le tiret cadratin / flatterie. Re-run le LLM avec correction si trouvé.
+    const isInternalMode = outreachConfig?.recruitment_mode === 'internal';
+    const violations = detectViolations({
+      isRPO,
+      isInternalMode,
+      networkDistance: profile.networkDistance,
+      message: parsed.message,
+      subject: parsed.subject,
+    });
     if (violations.length > 0) {
-      console.warn('[generate-outreach-message] Violations detected, retrying:', violations);
-      const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE (OBLIGATOIRE) ===\nLe draft ci-dessous viole ces règles: ${violations.join(' ; ')}.\n\nRÈGLES CRITIQUES À RESPECTER:\n- Si MODE RPO: jamais \"ils\", \"leur\", \"mon client\", \"je recrute\". Toujours \"on\", \"nous\", \"notre\" + \"chez ${job.client?.name || 'nous'}\".\n- Aucun tiret (—, –, -) nulle part.\n\nDRAFT_JSON:\n${JSON.stringify(parsed)}\n\nRéponds UNIQUEMENT en JSON valide avec les 3 clés: subject, message, personalization_points.`;
+      console.warn(`[generate-outreach-message] ${violations.length} violations detected:`, violations);
+      const correctionRules: string[] = [
+        '- Aucun tiret (—, –, -) nulle part dans le texte.',
+        '- Aucune flatterie ("parfait", "exactement le profil", "rare", "précieux").',
+      ];
+      if (profile.networkDistance && profile.networkDistance !== 'FIRST_DEGREE') {
+        correctionRules.push(`- Le candidat est ${profile.networkDistance === 'SECOND_DEGREE' ? '2e niveau' : profile.networkDistance === 'THIRD_DEGREE' ? '3e niveau' : 'hors réseau'} → tu n'es PAS connecté avec lui. NE DIS JAMAIS "on est connectés", "on est en contact", "on s'est croisés". Tu écris à un INCONNU.`);
+      }
+      if (isInternalMode || isRPO) {
+        const cn = job.client?.name || 'nous';
+        correctionRules.push(`- MODE INTERNE : tu es employé(e) de ${cn}. Jamais "ils", "leur", "mon client", "je recrute pour eux", "j'accompagne une scale-up". Toujours "on", "nous", "notre", "chez ${cn}", "chez nous".`);
+      }
+      const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE (OBLIGATOIRE) ===\nLe draft ci-dessous viole ces règles : ${violations.join(' ; ')}.\n\nRÈGLES CRITIQUES À RESPECTER :\n${correctionRules.join('\n')}\n\nDRAFT_JSON :\n${JSON.stringify(parsed)}\n\nRéécris le message en respectant les règles. Réponds UNIQUEMENT en JSON valide avec les 3 clés : subject, message, personalization_points.`;
 
       const second = await callAnthropic(correctionPrompt);
       if (!second.ok) return second.response;

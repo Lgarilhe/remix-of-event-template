@@ -466,17 +466,41 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
     if (step.useAiPersonalization) {
       try {
+        // 🐛 Fix bug snake_case (audit Opus) : avant on envoyait
+        // current_company / current_title (snake_case), mais l'edge
+        // function lit currentCompany / currentRole (camelCase) → les
+        // champs étaient ignorés silencieusement à la régénération.
+        // Du coup le poste actuel disparaissait du contexte.
+        // Maintenant : payload aligné sur generateForCandidate.
+        const rawNd = (profile as any).network_distance;
+        const normalizedNetworkDistance =
+          rawNd === 1 || rawNd === '1' || rawNd === 'DISTANCE_1' || rawNd === 'FIRST_DEGREE'
+            ? 'FIRST_DEGREE'
+            : rawNd === 2 || rawNd === '2' || rawNd === 'DISTANCE_2' || rawNd === 'SECOND_DEGREE'
+            ? 'SECOND_DEGREE'
+            : rawNd === 3 || rawNd === '3' || rawNd === 'DISTANCE_3' || rawNd === 'THIRD_DEGREE'
+            ? 'THIRD_DEGREE'
+            : rawNd === 'OUT_OF_NETWORK'
+            ? 'OUT_OF_NETWORK'
+            : null;
+
         const profileData = {
-          id: profile.id,
           name: profile.name,
-          first_name: profile.first_name,
-          last_name: profile.last_name,
           headline: profile.headline,
           location: profile.location,
-          summary: profile.summary,
-          current_company: profile.work_experience?.[0]?.company,
-          current_title: profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position,
-          skills: profile.skills?.map(s => s.name) || [],
+          summary: profile.summary || (profile as any).about,
+          currentRole: profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position,
+          currentCompany: profile.work_experience?.[0]?.company,
+          skills: profile.skills?.map(s => typeof s === 'string' ? s : s.name).filter(Boolean) || [],
+          pastPositions: profile.work_experience?.slice(0, 4).map(w =>
+            `${w.role || w.position || ''} @ ${w.company || ''}`.trim()
+          ).filter(Boolean) || [],
+          education: (profile as any).education?.slice(0, 2).map((e: any) =>
+            [e.school_name || e.school, e.degree_name || e.degree, e.field_of_study || e.field].filter(Boolean).join(' - ')
+          ) || [],
+          networkDistance: normalizedNetworkDistance,
+          openToWork: !!(profile as any).open_to_work,
+          premium: !!(profile as any).premium,
         };
 
         // Idem qu'au-dessus : on simule prevSentSteps pour que le LLM
