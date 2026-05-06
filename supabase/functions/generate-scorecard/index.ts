@@ -114,15 +114,26 @@ ${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
-    // Modèle utilisé pour la génération.
-    // Le routing tier de generate_scorecard est passé à 'fast' dans
-    // ai-config.ts → ROUTING_DEFAULTS.fast = 'claude-haiku-4-5'.
-    // Donc _aiParams.modelId = 'claude-haiku-4-5' par défaut, sauf si
-    // l'user a explicitement choisi Sonnet/Opus dans le ModelPicker.
-    // callClaudeCompat → mapModel → getAnthropicModelId résoud le model
-    // ID complet pour l'API Anthropic.
-    const modelToUse = _aiParams.modelId || 'claude-haiku-4-5';
-    console.log('[generate-scorecard] Using model:', modelToUse);
+    // Sélection du modèle avec override Haiku → Sonnet 4.5.
+    //
+    // Pourquoi : Haiku 4.5 est rapide (~10-15s) MAIS galère sur le
+    // schema tool_use de la scorecard, en particulier ratingRubric qui
+    // a 5 clés numériques requises ("1"-"5"). Résultat observé :
+    // tool_use vide ou criteria=[]. Sonnet 4.5 prend ~15-20s mais
+    // produit fiablement le tool call complet.
+    //
+    // Si l'user a EXPLICITEMENT choisi Haiku/Sonnet 4.6/Opus dans le
+    // ModelPicker, on respecte. Sinon (default Haiku via routing tier
+    // 'fast'), on bascule sur Sonnet 4.5 silencieusement.
+    const resolvedModel = _aiParams.modelId;
+    const modelToUse = resolvedModel === 'claude-haiku-4-5'
+      ? 'claude-sonnet-4-5'  // Override pour fiabilité tool_use
+      : (resolvedModel || 'claude-sonnet-4-5');
+    console.log('[generate-scorecard] Model resolution:', {
+      resolvedFromExtract: resolvedModel,
+      finalModelToUse: modelToUse,
+      overridden: resolvedModel === 'claude-haiku-4-5',
+    });
 
     let aiResult;
     try {
@@ -156,16 +167,16 @@ Génère la scorecard d'évaluation sur mesure.`;
                           items: { type: "string" },
                           description: "2-3 specific interview questions to ask for this criterion"
                         },
+                        // 🔧 ratingRubric en ARRAY (pas object avec keys "1"-"5")
+                        // Beaucoup plus fiable pour les modèles Anthropic en
+                        // tool_use. On reconvertit en object {1,2,3,4,5} après
+                        // la réponse côté serveur.
                         ratingRubric: {
-                          type: "object",
-                          properties: {
-                            "1": { type: "string", description: "Description for rating 1 (very weak)" },
-                            "2": { type: "string", description: "Description for rating 2 (weak)" },
-                            "3": { type: "string", description: "Description for rating 3 (adequate)" },
-                            "4": { type: "string", description: "Description for rating 4 (strong)" },
-                            "5": { type: "string", description: "Description for rating 5 (exceptional)" },
-                          },
-                          description: "Rating rubric with descriptions for each level 1-5"
+                          type: "array",
+                          items: { type: "string" },
+                          minItems: 5,
+                          maxItems: 5,
+                          description: "Exactement 5 descriptions ordonnées : note 1 (très faible), 2 (faible), 3 (adéquat), 4 (solide), 5 (exceptionnel)"
                         },
                         redFlags: {
                           type: "array",
@@ -216,11 +227,60 @@ Génère la scorecard d'évaluation sur mesure.`;
     const _tokensIn = aiResult.usage.input_tokens;
     const _tokensOut = aiResult.usage.output_tokens;
 
+    // 🔍 Diagnostic : log la shape de la réponse AI pour debug si tool_use vide
+    const inputKeys = aiResult.toolCall?.input ? Object.keys(aiResult.toolCall.input) : null;
+    const criteriaLength = Array.isArray((aiResult.toolCall?.input as any)?.criteria)
+      ? (aiResult.toolCall.input as any).criteria.length
+      : null;
+    console.log('[generate-scorecard] AI response shape:', {
+      model: aiResult.model,
+      stopReason: aiResult.stop_reason,
+      tokensIn: _tokensIn,
+      tokensOut: _tokensOut,
+      hasToolCall: !!aiResult.toolCall,
+      toolCallName: aiResult.toolCall?.name,
+      inputKeys,
+      criteriaLength,
+      contentPreview: aiResult.content?.slice(0, 200),
+    });
+
     if (!aiResult.toolCall?.input) {
-      throw new Error("No tool call response from AI");
+      console.error('[generate-scorecard] No tool call. Full content:', aiResult.content);
+      return new Response(JSON.stringify({
+        error: "L'IA n'a pas suivi le format demandé. Réessaie ou change de modèle.",
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const parsed = aiResult.toolCall.input;
+
+    // Validation : criteria doit être un array non-vide
+    if (!Array.isArray((parsed as any).criteria) || (parsed as any).criteria.length === 0) {
+      console.error('[generate-scorecard] Tool call returned but criteria empty/invalid:', parsed);
+      return new Response(JSON.stringify({
+        error: "L'IA a renvoyé une scorecard vide. Réessaie ou ajoute du contexte au profil/poste.",
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Convertit ratingRubric : array (depuis l'IA) → object {1,2,3,4,5}
+    // (format attendu par le frontend ScorecardTab.activeEval.criteria[].ratingRubric)
+    // Pourquoi : on demande à l'IA un array (plus fiable en tool_use)
+    // mais le frontend attend un object pour pouvoir faire ratingRubric[String(rating)].
+    const normalizedCriteria = ((parsed as any).criteria as any[]).map((c) => {
+      let rubricObj: Record<string, string> | undefined = undefined;
+      if (Array.isArray(c.ratingRubric) && c.ratingRubric.length === 5) {
+        rubricObj = {
+          "1": c.ratingRubric[0],
+          "2": c.ratingRubric[1],
+          "3": c.ratingRubric[2],
+          "4": c.ratingRubric[3],
+          "5": c.ratingRubric[4],
+        };
+      } else if (c.ratingRubric && typeof c.ratingRubric === 'object' && !Array.isArray(c.ratingRubric)) {
+        // Backward compat : si l'IA renvoie déjà un object, on garde
+        rubricObj = c.ratingRubric;
+      }
+      return { ...c, ratingRubric: rubricObj };
+    });
 
     // ── Fire-and-forget RAG ingestion (scorecard) ──
     const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
@@ -268,7 +328,7 @@ Génère la scorecard d'évaluation sur mesure.`;
       } catch (e) { console.warn("[generate-scorecard] settle skipped:", e); }
     }
 
-    return new Response(JSON.stringify({ success: true, criteria: parsed.criteria }), {
+    return new Response(JSON.stringify({ success: true, criteria: normalizedCriteria }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
