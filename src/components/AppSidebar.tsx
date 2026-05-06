@@ -136,21 +136,21 @@ export function AppSidebar() {
         {!collapsed ? (
           <button
             onClick={() => toggleAgent()}
-            className="w-full flex items-center gap-2 h-8 px-2.5 mb-2 rounded-md bg-sidebar-accent/40 text-muted-foreground text-[12px] hover:bg-sidebar-accent/60 transition-colors"
+            className="w-full flex items-center gap-2 h-9 px-2.5 mb-2 rounded-md bg-sidebar-accent/40 text-muted-foreground text-[12px] hover:bg-sidebar-accent/60 transition-colors"
             aria-label="Rechercher (Ctrl+K)"
           >
-            <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+            <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
             <span className="flex-1 text-left">Rechercher…</span>
             <kbd className="text-[10px] font-mono text-muted-foreground/70">⌘K</kbd>
           </button>
         ) : (
           <button
             onClick={() => toggleAgent()}
-            className="h-8 w-8 mx-auto flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors mb-2"
+            className="h-9 w-9 mx-auto flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors mb-2"
             aria-label="Rechercher"
             title="Rechercher (⌘K)"
           >
-            <Search className="h-4 w-4" strokeWidth={1.5} />
+            <Search className="h-5 w-5" strokeWidth={1.5} />
           </button>
         )}
 
@@ -166,8 +166,8 @@ export function AppSidebar() {
                   isActive={active}
                   tooltip={item.label}
                   className={cn(
-                    'h-8 rounded-md text-[13px] font-medium transition-colors',
-                    collapsed ? 'w-8 px-0 justify-center' : 'px-2.5',
+                    'h-9 rounded-md text-[13px] font-medium transition-colors',
+                    collapsed ? 'w-9 px-0 justify-center' : 'px-2.5',
                     active
                       ? 'bg-sidebar-accent text-sidebar-foreground'
                       : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/40',
@@ -182,7 +182,7 @@ export function AppSidebar() {
                     )}
                   >
                     <item.icon
-                      className="h-[18px] w-[18px] shrink-0"
+                      className="h-5 w-5 shrink-0"
                       strokeWidth={1.5}
                       aria-hidden="true"
                     />
