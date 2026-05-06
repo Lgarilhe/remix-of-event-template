@@ -30,6 +30,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useCountUp } from '@/hooks/useCountUp';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
+import { MissionCompanyLogo } from './MissionCompanyLogo';
 
 interface DashboardMissionsPanelProps {
   projects: SourcingProject[];
@@ -104,7 +105,12 @@ const MissionCard: React.FC<{
       whileTap={{ scale: 0.99 }}
       className="group w-full text-left rounded-xl bg-card border border-border p-4 transition-shadow hover:shadow-md hover:border-foreground/20"
     >
-      <div className="flex items-start justify-between gap-3 mb-2">
+      <div className="flex items-start gap-3 mb-2">
+        {/* Logo société client — Clearbit/Google avec fallback initiales colorées */}
+        <MissionCompanyLogo
+          company={project.client_name || project.name}
+          size={44}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-display font-bold text-foreground text-[14px] tracking-tight leading-tight truncate">
