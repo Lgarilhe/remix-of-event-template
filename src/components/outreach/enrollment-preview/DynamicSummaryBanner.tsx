@@ -1,8 +1,8 @@
 import React from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateStatesMap } from './types';
-import { Users, AlertTriangle, Sparkles, MailWarning, PhoneOff } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Users, Sparkles, MailWarning, PhoneOff } from 'lucide-react';
+import { Pill } from '@/components/missions/v2/Pill';
 
 interface Props {
   profiles: LinkedInProfile[];
@@ -16,10 +16,10 @@ interface Props {
 /**
  * Bandeau stats du modal d'enrollment.
  *
- * Refonte UX : on est passé d'une rangée de texte avec pipes "|" et emojis
- * mélangés à des pills propres (couleur du token sémantique : muted /
- * warning / brand). Plus lisible, plus scannable, plus d'incohérences
- * de couleurs hardcodées.
+ * Refonte 2026-05-06 : migration vers la primitive Pill v2 partagée
+ * (cf. src/components/missions/v2/Pill.tsx). Cohérence avec le reste
+ * du site (rounded-full, dot pulse animé, variant ai pour gradient
+ * Skalr sur la pill IA).
  */
 export function DynamicSummaryBanner({
   profiles, states, generatedCount, totalToGenerate, estimatedCredits, hasAiSteps,
@@ -40,89 +40,56 @@ export function DynamicSummaryBanner({
     && !p.contact_info?.phones?.length
   ).length;
 
-  const previewProgress = totalToGenerate > 0 ? generatedCount / totalToGenerate : 0;
-  const isComplete = previewProgress >= 1;
+  const isComplete = totalToGenerate > 0 && generatedCount >= totalToGenerate;
 
   return (
-    <div className="px-4 py-2 border-b border-border bg-muted/15 flex items-center gap-2 flex-wrap">
-      {/* Pill principale : compteur candidats actifs */}
-      <Pill icon={Users} tone="default" emphasis>
-        <strong className="tabular-nums">{active}</strong>
-        <span className="text-muted-foreground">/ {profiles.length} candidat{profiles.length > 1 ? 's' : ''}</span>
+    <div className="px-4 py-2.5 border-b border-border bg-muted/15 flex items-center gap-2 flex-wrap konekt-fade-up" style={{ animationDelay: '60ms' }}>
+      {/* Compteur candidats actifs */}
+      <Pill icon={Users} variant="muted">
+        <strong className="tabular-nums text-foreground">{active}</strong>
+        <span className="opacity-60">/ {profiles.length} candidat{profiles.length > 1 ? 's' : ''}</span>
         {(removed > 0 || skipped > 0) && (
-          <span className="text-[10px] text-muted-foreground">
-            {removed > 0 && `${removed} retiré${removed > 1 ? 's' : ''}`}
+          <span className="text-[10px] opacity-60">
+            ({removed > 0 && `${removed} retiré${removed > 1 ? 's' : ''}`}
             {removed > 0 && skipped > 0 && ' · '}
-            {skipped > 0 && `${skipped} passé${skipped > 1 ? 's' : ''}`}
+            {skipped > 0 && `${skipped} passé${skipped > 1 ? 's' : ''}`})
           </span>
         )}
       </Pill>
 
-      {/* Pill email — gris si tout le monde a un email, warning sinon */}
+      {/* Pill email — verte si tout le monde a un email, warning sinon */}
       {active > 0 && (
         <Pill
           icon={MailWarning}
-          tone={withoutEmail === 0 ? 'success' : 'warning'}
+          variant={withoutEmail === 0 ? 'success' : 'warning'}
         >
           {withoutEmail === 0
-            ? <>tous avec email</>
+            ? 'tous avec email'
             : <><strong className="tabular-nums">{withoutEmail}</strong> sans email</>}
         </Pill>
       )}
 
       {/* Pill téléphone — n'apparaît que si manque */}
       {withoutPhone > 0 && (
-        <Pill icon={PhoneOff} tone="warning">
+        <Pill icon={PhoneOff} variant="warning">
           <strong className="tabular-nums">{withoutPhone}</strong> sans tél
         </Pill>
       )}
 
-      {/* Pill previews IA — n'apparaît que si la séquence a des étapes IA */}
+      {/* Pill previews IA — variant ai (gradient skalr) en cours, success quand complet */}
       {hasAiSteps && (
         <Pill
           icon={Sparkles}
-          tone={isComplete ? 'success' : 'brand'}
+          variant={isComplete ? 'success' : 'ai'}
+          pulse={!isComplete && generatedCount > 0}
           className="ml-auto"
         >
-          <span className="tabular-nums">{generatedCount}/{totalToGenerate}</span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="tabular-nums font-semibold">{generatedCount}/{totalToGenerate}</span>
+          <span className="opacity-70 text-[10px]">
             previews · ~{estimatedCredits} cr
           </span>
         </Pill>
       )}
     </div>
-  );
-}
-
-// ─── Pill primitive ─────────────────────────────────────────────────
-
-interface PillProps {
-  icon: React.ComponentType<{ className?: string }>;
-  tone?: 'default' | 'success' | 'warning' | 'destructive' | 'brand';
-  emphasis?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}
-
-function Pill({ icon: Icon, tone = 'default', emphasis, className, children }: PillProps) {
-  const toneClasses: Record<string, string> = {
-    default: emphasis
-      ? 'bg-foreground/[0.08] border-border text-foreground'
-      : 'bg-muted/30 border-border text-foreground',
-    success: 'bg-success/10 border-success/30 text-success',
-    warning: 'bg-warning/10 border-warning/30 text-warning',
-    destructive: 'bg-destructive/10 border-destructive/30 text-destructive',
-    brand: 'bg-info/10 border-info/30 text-info',
-  };
-
-  return (
-    <span className={cn(
-      'inline-flex items-center gap-1.5 h-6 px-2 rounded-md border text-[11px] whitespace-nowrap',
-      toneClasses[tone],
-      className,
-    )}>
-      <Icon className="w-3 h-3 shrink-0" />
-      {children}
-    </span>
   );
 }

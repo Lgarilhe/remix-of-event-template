@@ -627,22 +627,38 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 </div>
               )}
 
-              {/* Candidate Sidebar — hidden on mobile when viewing preview */}
+              {/* Candidate Sidebar — hidden on mobile when viewing preview.
+                  Refonte : header avec eyebrow uppercase + compteur,
+                  recherche pill rounded-full au lieu de carrée. */}
               {!isSingle && (
-                <div className={cn(
-                  "w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0",
-                  "sm:flex",
-                  mobilePane === 'list' ? "flex flex-1 sm:flex-none" : "hidden sm:flex"
-                )}>
-                  <div className="p-2 border-b border-border">
+                <motion.div
+                  className={cn(
+                    "w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0",
+                    "sm:flex",
+                    mobilePane === 'list' ? "flex flex-1 sm:flex-none" : "hidden sm:flex"
+                  )}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
+                >
+                  <div className="p-3 border-b border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                        Candidats
+                      </p>
+                      <span className="text-[10px] tabular-nums text-muted-foreground/70">
+                        {filteredProfiles.length}
+                        {filteredProfiles.length !== profiles.length && <span className="opacity-50"> / {profiles.length}</span>}
+                      </span>
+                    </div>
                     <div className="relative">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Rechercher…"
-                        className="w-full h-7 pl-7 pr-2 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+                        className="w-full h-8 pl-8 pr-3 text-[12px] bg-background border border-border rounded-full focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/30 transition-all"
                       />
                     </div>
                   </div>
@@ -711,7 +727,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                       </div>
                     )}
                   </ScrollArea>
-                </div>
+                </motion.div>
               )}
 
               {/* Preview Panel — hidden on mobile when viewing list */}
@@ -719,32 +735,39 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 "flex-1 flex flex-col overflow-hidden",
                 !isSingle && mobilePane === 'list' ? "hidden sm:flex" : "flex"
               )}>
-                {/* Bulk generation bar */}
+                {/* Bulk generation bar — refonte avec shine button +
+                    progress animé. Disparaît quand isSingle. */}
                 {!isSingle && hasAiSteps && (
-                  <div className="px-4 py-2 border-b border-border bg-muted/10 flex items-center gap-3">
+                  <div className="px-4 py-2.5 border-b border-border bg-gradient-to-r from-brand-purple/[0.04] via-brand-pink/[0.03] to-transparent flex items-center gap-3">
                     {isBulkGenerating ? (
                       <>
-                        <Progress value={(generatedCount / totalToGenerate) * 100} className="flex-1 h-1.5" />
-                        <span className="text-[11px] text-muted-foreground tabular-nums">
-                          {generatedCount}/{totalToGenerate}
-                        </span>
-                        <Button size="sm" variant="ghost" onClick={cancelBulkGeneration} className="h-6 px-2 text-[10px]">
+                        <div className="flex-1 flex items-center gap-2">
+                          <Progress value={(generatedCount / totalToGenerate) * 100} className="flex-1 h-1.5" />
+                          <span className="text-[11px] text-muted-foreground tabular-nums font-medium">
+                            {generatedCount}/{totalToGenerate}
+                          </span>
+                        </div>
+                        <button
+                          onClick={cancelBulkGeneration}
+                          className="h-7 px-3 text-[11px] text-muted-foreground hover:text-foreground transition-colors rounded-full"
+                        >
                           Annuler
-                        </Button>
+                        </button>
                       </>
                     ) : (
                       <>
-                        <Button
-                          size="sm"
-                          variant="outline"
+                        <motion.button
+                          type="button"
                           onClick={() => generateAll(3)}
-                          className="h-7 px-3 text-[11px] gap-1.5"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="h-8 px-4 inline-flex items-center gap-1.5 text-[11.5px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine shadow-sm"
                         >
-                          <Zap className="w-3 h-3" />
+                          <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />
                           Générer toutes les previews
-                        </Button>
-                        <span className="text-[10px] text-muted-foreground">
-                          ~{estimatedCredits} crédits
+                        </motion.button>
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
+                          ~{estimatedCredits} cr
                         </span>
                       </>
                     )}
@@ -1075,15 +1098,31 @@ function SummaryMode({
 
   return (
     <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">
-      <div className="text-center space-y-2">
-        <div className="w-12 h-12 mx-auto rounded-xl bg-accent/50 flex items-center justify-center">
-          <GitBranch className="w-6 h-6 text-foreground" />
+      {/* Hero icon konekt-skalr-bg + animation pour cohérence avec V2 */}
+      <motion.div
+        className="text-center space-y-3"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <motion.div
+          className="w-14 h-14 mx-auto rounded-xl konekt-skalr-bg konekt-shine flex items-center justify-center shadow-lg"
+          initial={{ scale: 0, rotate: -10 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ delay: 0.1, type: 'spring', stiffness: 180, damping: 14 }}
+        >
+          <GitBranch className="w-7 h-7 text-white" strokeWidth={2.5} />
+        </motion.div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">
+            Récapitulatif
+          </p>
+          <h3 className="font-display text-xl font-bold">Avant d'enrôler</h3>
+          <p className="text-[13px] text-muted-foreground mt-1">
+            <strong className="text-foreground">{activeProfiles.length}</strong> candidat{activeProfiles.length > 1 ? 's' : ''} sélectionné{activeProfiles.length > 1 ? 's' : ''} pour <strong className="text-foreground">{steps.length} étapes</strong> de séquence
+          </p>
         </div>
-        <h3 className="text-lg font-semibold">Récapitulatif de l'enrollment</h3>
-        <p className="text-sm text-muted-foreground">
-          {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''} sélectionné{activeProfiles.length > 1 ? 's' : ''}
-        </p>
-      </div>
+      </motion.div>
 
       <div className="space-y-2">
         <SummaryRow icon={CheckCircle} color="text-success-foreground" label="Candidats avec LinkedIn" count={activeProfiles.length} />
@@ -1099,7 +1138,7 @@ function SummaryMode({
               />
             </div>
             <p className="text-[11px] text-muted-foreground pl-1">
-              ⚡ Enrichissez maintenant pour que ces candidats reçoivent les emails de la séquence.
+              Enrichissez maintenant pour que ces candidats reçoivent les emails de la séquence.
               Sans enrichment, leurs steps email seront skippés silencieusement.
             </p>
           </div>
@@ -1113,7 +1152,7 @@ function SummaryMode({
               />
             </div>
             <p className="text-[11px] text-muted-foreground pl-1">
-              ⚡ Enrichissez avec téléphone (10 cr/profil) pour que les steps WhatsApp partent.
+              Enrichissez avec téléphone (10 cr/profil) pour que les steps WhatsApp partent.
             </p>
           </div>
         )}
@@ -1131,7 +1170,7 @@ function SummaryMode({
                 <span className="text-[10px] text-muted-foreground tabular-nums w-4">#{i + 1}</span>
                 <Icon className="w-3 h-3 text-muted-foreground" />
                 <span>{ACTION_LABELS[step.actionType]}</span>
-                {step.useAiPersonalization && <Sparkles className="w-2.5 h-2.5 text-amber-500" />}
+                {step.useAiPersonalization && <Sparkles className="w-2.5 h-2.5 text-warning" />}
                 {(step.delayDays || step.delayHours) ? (
                   <span className="text-[10px] text-muted-foreground ml-auto">
                     +{step.delayDays ? `${step.delayDays}j` : ''}{step.delayHours ? `${step.delayHours}h` : ''}
@@ -1149,43 +1188,53 @@ function SummaryMode({
       </div>
 
       {hasAiSteps && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-lg text-xs text-warning-foreground">
-          <Sparkles className="w-3.5 h-3.5 shrink-0" />
-          <span>Estimation : ~{estimatedCredits} crédits IA ({hasMessageSteps ? 'personnalisation' : 'génération'})</span>
+        <div className="flex items-center gap-2 px-3 py-2 bg-brand-purple/5 border border-brand-purple/20 rounded-xl text-xs text-foreground">
+          <Sparkles className="w-3.5 h-3.5 shrink-0 text-brand-purple" />
+          <span>
+            Estimation : <strong className="tabular-nums">~{estimatedCredits} crédits IA</strong>
+            {' '}({hasMessageSteps ? 'personnalisation' : 'génération'})
+          </span>
         </div>
       )}
 
-      {/* 3-button footer */}
+      {/* 3-button footer avec hierarchy claire et CTA hero skalr */}
       <div className="flex flex-col gap-2 pt-2">
         {hasMessageSteps && (
-          <Button
-            variant="outline"
+          <button
+            type="button"
             onClick={onSwitchToPreview}
-            className="w-full h-9 gap-2 text-xs"
+            className="w-full h-10 inline-flex items-center justify-center gap-2 text-[12px] font-medium rounded-full border border-border bg-background hover:bg-accent transition-colors"
           >
             <Eye className="w-3.5 h-3.5" />
             Ouvrir la préparation des previews
-          </Button>
+          </button>
         )}
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button variant="ghost" onClick={onClose} className="sm:flex-1 h-9 text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={onClose}
+            className="sm:flex-1 h-9 text-[12px] text-muted-foreground hover:text-foreground transition-colors rounded-full"
+          >
             Annuler
-          </Button>
+          </button>
           {jobId && (
-            <Button
-              variant="outline"
+            <button
+              type="button"
               onClick={onShortlist}
               disabled={isEnrolling || activeProfiles.length === 0}
-              className="sm:flex-1 h-9 gap-1.5 text-xs"
+              className="sm:flex-1 h-9 inline-flex items-center justify-center gap-1.5 text-[12px] font-medium rounded-full border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
             >
               <ListChecks className="w-3.5 h-3.5" />
               Shortlister sans message
-            </Button>
+            </button>
           )}
-          <Button
+          <motion.button
+            type="button"
             onClick={onEnroll}
             disabled={isEnrolling || activeProfiles.length === 0}
-            className="sm:flex-1 h-10 gap-2 bg-foreground text-background hover:bg-foreground/90"
+            whileHover={{ scale: isEnrolling ? 1 : 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="sm:flex-1 h-10 inline-flex items-center justify-center gap-2 text-[12px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine konekt-glow disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
           >
             {isEnrolling ? (
               <>
@@ -1194,11 +1243,11 @@ function SummaryMode({
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" />
+                <Send className="w-4 h-4" strokeWidth={2.5} />
                 Enrôler {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
               </>
             )}
-          </Button>
+          </motion.button>
         </div>
       </div>
     </div>

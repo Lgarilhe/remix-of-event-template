@@ -60,7 +60,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
           <div className="flex items-center gap-1">
             <p className={cn("text-xs font-medium truncate", state.skipped && "line-through")}>{profile.name}</p>
             {state.skipped && (
-              <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-300 text-amber-600 shrink-0">Passé</Badge>
+              <Badge variant="outline" className="text-[9px] h-4 px-1 border-warning/30 bg-warning/10 text-warning shrink-0">Passé</Badge>
             )}
           </div>
           <p className="text-[10px] text-muted-foreground truncate">{profile.headline}</p>
@@ -68,8 +68,8 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
 
         {/* Status indicators */}
         <div className="flex items-center gap-0.5 shrink-0">
-          {allGenerated && <Check className="w-3 h-3 text-emerald-500" />}
-          {hasEdits && <Pencil className="w-2.5 h-2.5 text-amber-500" />}
+          {allGenerated && <Check className="w-3 h-3 text-success" />}
+          {hasEdits && <Pencil className="w-2.5 h-2.5 text-warning" />}
         </div>
 
         {/* Action menu */}
