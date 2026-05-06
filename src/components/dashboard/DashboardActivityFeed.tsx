@@ -29,7 +29,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ATSCandidate } from '@/hooks/useATSData';
+import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { LivePulse } from './LivePulse';
+import { CandidateAvatar } from './CandidateAvatar';
 
 interface DashboardActivityFeedProps {
   candidates: ATSCandidate[];
@@ -163,6 +165,28 @@ export const DashboardActivityFeed: React.FC<DashboardActivityFeedProps> = ({
   const navigate = useNavigate();
   const entries = useMemo(() => buildActivityEntries(candidates), [candidates]);
 
+  // Batch-fetch les photos LinkedIn des candidats du feed (≤8 IDs).
+  // Le sourceId pour les candidats locaux est `local-{uuid}` → on extrait l'uuid.
+  const sourceIds = useMemo(() => {
+    return entries
+      .map((e) => {
+        if (e.candidate.source === 'local' && e.candidate.id.startsWith('local-')) {
+          return e.candidate.id.replace(/^local-/, '');
+        }
+        return e.candidate.sourceId;
+      })
+      .filter(Boolean);
+  }, [entries]);
+  const avatarMap = useCandidateAvatars(sourceIds);
+
+  const getAvatarUrl = (candidate: ATSCandidate): string | null => {
+    const key =
+      candidate.source === 'local' && candidate.id.startsWith('local-')
+        ? candidate.id.replace(/^local-/, '')
+        : candidate.sourceId;
+    return avatarMap.get(key) || null;
+  };
+
   return (
     <motion.div
       className="rounded-xl bg-card border border-border overflow-hidden"
@@ -240,14 +264,24 @@ export const DashboardActivityFeed: React.FC<DashboardActivityFeedProps> = ({
                     onClick={() => onCandidateClick(entry.candidate)}
                     className="w-full text-left rounded-lg px-3 py-2.5 transition-colors flex items-center gap-3 hover:bg-muted/40 group relative"
                   >
-                    <div
-                      className={cn(
-                        'h-8 w-8 rounded-lg flex items-center justify-center shrink-0',
-                        entry.iconBg,
-                        entry.iconColor,
-                      )}
-                    >
-                      {entry.icon}
+                    {/* Avatar candidat (photo LinkedIn) + badge action en bas-droite */}
+                    <div className="relative shrink-0">
+                      <CandidateAvatar
+                        name={entry.candidate.name}
+                        avatarUrl={getAvatarUrl(entry.candidate)}
+                        size={36}
+                      />
+                      <div
+                        className={cn(
+                          'absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full flex items-center justify-center ring-2 ring-card',
+                          entry.iconBg,
+                          entry.iconColor,
+                        )}
+                      >
+                        {React.cloneElement(entry.icon as React.ReactElement, {
+                          className: 'w-2.5 h-2.5',
+                        })}
+                      </div>
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-foreground truncate">
