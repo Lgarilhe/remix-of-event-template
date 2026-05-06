@@ -40,7 +40,7 @@ const greetingFor = (hour: number): { greeting: string; emoji: string } => {
   if (hour < 5) return { greeting: 'Bonsoir', emoji: '🌙' };
   if (hour < 12) return { greeting: 'Bonjour', emoji: '☀️' };
   if (hour < 18) return { greeting: 'Bon après-midi', emoji: '👋' };
-  return { greeting: 'Bonsoir', emoji: '🌆' };
+  return { greeting: 'Bonsoir', emoji: '🌙' };
 };
 
 export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
