@@ -15,6 +15,20 @@ import { ProfileData } from './types';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { toast } from 'sonner';
 
+/**
+ * Tab supplémentaire injecté après les tabs standard. Permet aux
+ * surfaces qui réutilisent ProfileDetailSheet (ex: pipeline) d'ajouter
+ * leurs onglets spécifiques sans modifier ce composant.
+ */
+export interface ExpandedContentExtraTab {
+  key: string;
+  label: string;
+  shortLabel?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  content: React.ReactNode;
+  count?: number;
+}
+
 interface CardExpandedContentProps {
   profile: LinkedInProfile;
   profileData: ProfileData;
@@ -29,6 +43,9 @@ interface CardExpandedContentProps {
   onOpenMessage: () => void;
   onMessageSent?: () => void;
   onProfileTreated?: () => void;
+  /** Tabs supplémentaires injectés après les tabs standard (Exp/Form/Skills/Msg/Posts).
+   *  Utilisé par le pipeline pour ajouter Évaluation/Séquences/Activité/Notes/Actions. */
+  extraTabs?: ExpandedContentExtraTab[];
 }
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
@@ -51,13 +68,19 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   onOpenMessage,
   onMessageSent,
   onProfileTreated,
+  extraTabs,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
 
+  // Si extraTabs présents (pipeline mode), on default sur le premier
+  // extraTab — typiquement plus utile à voir en premier que l'XP brute
+  // (ex: l'user vient de cliquer sur un candidat pour voir son scoring).
+  const defaultTab = extraTabs && extraTabs.length > 0 ? extraTabs[0].key : 'experience';
+
   return (
     <div className="bg-background rounded-lg border border-border overflow-hidden">
-      <Tabs defaultValue="experience" className="w-full">
+      <Tabs defaultValue={defaultTab} className="w-full">
         <div className="border-b border-border overflow-x-auto bg-background">
           <TabsList className="w-max min-w-full h-10 bg-transparent p-1 px-1.5 rounded-none gap-1">
             {[
@@ -77,6 +100,26 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                 <span className="sm:hidden">{tab.shortLabel}</span>
               </TabsTrigger>
             ))}
+            {/* Extra tabs (pipeline-only : Évaluation, Séquences, Activité, Notes, Actions). */}
+            {extraTabs?.map(tab => {
+              const Icon = tab.icon;
+              return (
+                <TabsTrigger
+                  key={tab.key}
+                  value={tab.key}
+                  className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium relative"
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.shortLabel || tab.label}</span>
+                  {tab.count != null && tab.count > 0 && (
+                    <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 rounded-full bg-foreground/10 text-foreground text-[9px] font-bold tabular-nums">
+                      {tab.count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
         </div>
 
@@ -225,6 +268,13 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
             </Button>
           </div>
         </TabsContent>
+
+        {/* Extra tabs (pipeline-only) — leur contenu est rendu via la prop. */}
+        {extraTabs?.map(tab => (
+          <TabsContent key={tab.key} value={tab.key} className="mt-0 p-2 sm:p-4">
+            {tab.content}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

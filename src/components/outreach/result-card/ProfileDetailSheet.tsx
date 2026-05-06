@@ -88,6 +88,49 @@ const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company,
   );
 };
 
+/**
+ * Tab supplémentaire à injecter dans CardExpandedContent. Permet aux
+ * surfaces qui réutilisent ProfileDetailSheet (typiquement le pipeline)
+ * d'ajouter leurs onglets spécifiques (Évaluation, Séquences, Activité,
+ * Notes, Actions) sans dupliquer toute la modale.
+ */
+export interface ProfileDetailExtraTab {
+  /** Identifiant unique de l'onglet. */
+  key: string;
+  /** Label affiché dans le tab trigger. */
+  label: string;
+  /** Label court (mobile). */
+  shortLabel?: string;
+  /** Icône Lucide à afficher (composant). */
+  icon: React.ComponentType<{ className?: string }>;
+  /** Contenu rendu quand l'onglet est actif. */
+  content: React.ReactNode;
+  /** Compteur affiché en badge sur le tab trigger (ex: nb de notes). */
+  count?: number;
+}
+
+/**
+ * Métadonnées pipeline-spécifiques à afficher dans le header (stage
+ * selector, tags, etc.). Ne sont rendues que si fournies — la modale
+ * sourcing reste identique sans ces props.
+ */
+export interface ProfileDetailPipelineMeta {
+  /** Étape pipeline courante (ex: "Contacté"). */
+  stage: string;
+  /** Liste des étapes possibles ({ key, label }). */
+  stageOptions: Array<{ key: string; label: string }>;
+  /** Callback de changement de stage. */
+  onStageChange: (newStage: string) => void;
+  /** Score IA (0-100) cliquable pour ouvrir l'onglet Évaluation. */
+  score?: number | null;
+  onScoreClick?: () => void;
+  /** Tags du candidat (mutables). */
+  tags?: string[];
+  onTagsChange?: (tags: string[]) => void;
+  /** Action "Générer lien portail" pour partager au client. */
+  onCreatePortalLink?: () => void;
+}
+
 interface ProfileDetailSheetProps {
   profile: LinkedInProfile | null;
   open: boolean;
@@ -108,6 +151,12 @@ interface ProfileDetailSheetProps {
   onNavigateNext?: () => void;
   currentIndex?: number;
   totalCount?: number;
+  /** Tabs supplémentaires (pipeline-spécifiques) ajoutés après les tabs
+   *  standards (Expérience/Formation/Compétences/Messages/Posts). */
+  extraTabs?: ProfileDetailExtraTab[];
+  /** Métadonnées pipeline (stage, tags, score) à afficher dans le header.
+   *  Si absent → modale en mode sourcing pur (comportement legacy). */
+  pipelineMeta?: ProfileDetailPipelineMeta;
 }
 
 export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
@@ -130,6 +179,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   onNavigateNext,
   currentIndex,
   totalCount,
+  extraTabs,
+  pipelineMeta,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
 
@@ -564,9 +615,63 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     historyLoading={historyLoading}
                     historyLatestDateLabel={historyLatestDateLabel}
                   />
+                  {/* Pipeline mode : score badge cliquable pour ouvrir l'onglet Évaluation */}
+                  {pipelineMeta?.score != null && pipelineMeta.score > 0 && (
+                    <button
+                      onClick={pipelineMeta.onScoreClick}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums border rounded-full transition-colors hover:opacity-90 ${
+                        pipelineMeta.score >= 70
+                          ? 'bg-success/15 text-success border-success/40'
+                          : pipelineMeta.score >= 50
+                            ? 'bg-warning/15 text-warning border-warning/40'
+                            : 'bg-destructive/15 text-destructive border-destructive/40'
+                      }`}
+                      title={`Score IA : ${pipelineMeta.score}/100 — clic pour voir l'évaluation`}
+                    >
+                      <Target className="w-3 h-3" />
+                      {pipelineMeta.score}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
+
+            {/* ─── PIPELINE META : stage selector + tags (mode pipeline only) ─── */}
+            {pipelineMeta && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 mt-2 border-t border-border">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden sm:inline">
+                  Étape
+                </span>
+                <select
+                  value={pipelineMeta.stage}
+                  onChange={(e) => pipelineMeta.onStageChange(e.target.value)}
+                  className="h-7 px-2.5 text-[11.5px] font-medium rounded-full bg-background border border-border focus:outline-none focus:ring-2 focus:ring-foreground/10"
+                >
+                  {pipelineMeta.stageOptions.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+                {pipelineMeta.tags?.map(tag => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full bg-accent/20 text-foreground border border-accent/40 font-medium cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
+                    onClick={() => pipelineMeta.onTagsChange?.((pipelineMeta.tags || []).filter(t => t !== tag))}
+                    title="Cliquer pour supprimer ce tag"
+                  >
+                    {tag} ×
+                  </span>
+                ))}
+                {pipelineMeta.onCreatePortalLink && (
+                  <button
+                    onClick={pipelineMeta.onCreatePortalLink}
+                    className="ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-success text-success-foreground text-[11px] font-bold hover:bg-success/90 transition-colors shadow-sm"
+                    title="Générer un lien portail à partager au client"
+                  >
+                    🔗 Portail
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* ─── CONTACT INFO ─── */}
             {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0) && (
@@ -727,7 +832,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </div>
               )}
 
-              {/* Tabs: experience, education, skills, messages, posts */}
+              {/* Tabs: experience, education, skills, messages, posts
+                  + extraTabs si fournis (pipeline mode → injecte
+                  Évaluation / Séquences / Activité / Notes / Actions) */}
               <CardExpandedContent
                 profile={displayProfile}
                 profileData={profileData}
@@ -742,6 +849,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 onOpenMessage={() => setShowMessageModal(true)}
                 onMessageSent={onMessageSent}
                 onProfileTreated={onProfileTreated}
+                extraTabs={extraTabs}
               />
             </div>
           </div>
