@@ -22,6 +22,7 @@ import {
   Clock, GitBranch, ListChecks,
 } from 'lucide-react';
 import { CandidateSidebarCard } from './enrollment-preview/CandidateSidebarCard';
+import { SequenceTreeView } from './enrollment-preview/SequenceTreeView';
 import { CandidateContextHeader } from './enrollment-preview/CandidateContextHeader';
 import { ScoringPopover } from './enrollment-preview/ScoringPopover';
 import { HistoryPopover } from './enrollment-preview/HistoryPopover';
@@ -787,55 +788,41 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                         linkedinUrl={selectedProfile.profile_url || selectedProfile.public_profile_url || null}
                       />
 
-                      {/* Steps en timeline verticale : rail à gauche +
-                          nodes numérotés. Donne un vrai sens de parcours
-                          au lieu de cards isolées flottantes. */}
-                      <div className="relative pl-7 sm:pl-9">
-                        {/* Rail vertical (la "ligne du temps") */}
-                        <div
-                          className="absolute left-3 sm:left-4 top-2 bottom-2 w-px"
-                          style={{
-                            background: 'linear-gradient(to bottom, hsl(var(--border) / 0.4), hsl(var(--border) / 0.8) 20%, hsl(var(--border) / 0.8) 80%, hsl(var(--border) / 0.4))',
-                          }}
-                          aria-hidden="true"
-                        />
-                        <div className="space-y-3">
-                      {steps.map((step, idx) => {
-                        const isMessageStep = MESSAGE_ACTIONS.includes(step.actionType) && !!step.messageTemplate?.trim();
-                        const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
+                      {/* Vue arborescente : décisions stylées en diamants
+                          + connecteurs avec labels (si accepté / si réponse...)
+                          + flèches entre étapes. Les steps message gardent
+                          leur card complète (avec preview AI), les autres
+                          (visite, invitation, etc.) sont compactés. */}
+                      <SequenceTreeView
+                        steps={steps}
+                        renderStep={(step, idx) => {
+                          const isMessageStep = MESSAGE_ACTIONS.includes(step.actionType) && !!step.messageTemplate?.trim();
+                          const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
 
-                        if (!isMessageStep) {
+                          if (!isMessageStep) {
+                            return null; // tree view rend ses propres cards pour non-message
+                          }
+
+                          const preview = getPreview(selectedCandidateId, step.stepId);
+                          const isEditing = editingSteps.has(step.stepId);
+
                           return (
-                            <CompactStepCard
+                            <MessageStepCard
                               key={step.stepId}
                               step={step}
+                              preview={preview}
+                              isEditing={isEditing}
                               Icon={Icon}
                               index={idx}
+                              candidateId={selectedCandidateId}
+                              onToggleEdit={() => toggleEditing(step.stepId)}
+                              onRegenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
+                              onEditMessage={(field, value) => editMessage(selectedCandidateId, step.stepId, field, value)}
+                              onGenerate={() => generateForCandidateById(selectedCandidateId)}
                             />
                           );
-                        }
-
-                        const preview = getPreview(selectedCandidateId, step.stepId);
-                        const isEditing = editingSteps.has(step.stepId);
-
-                        return (
-                          <MessageStepCard
-                            key={step.stepId}
-                            step={step}
-                            preview={preview}
-                            isEditing={isEditing}
-                            Icon={Icon}
-                            index={idx}
-                            candidateId={selectedCandidateId}
-                            onToggleEdit={() => toggleEditing(step.stepId)}
-                            onRegenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
-                            onEditMessage={(field, value) => editMessage(selectedCandidateId, step.stepId, field, value)}
-                            onGenerate={() => generateForCandidateById(selectedCandidateId)}
-                          />
-                        );
-                      })}
-                        </div>
-                      </div>
+                        }}
+                      />
                     </div>
                   ) : (
                     <PreviewPanelFallback hasProfiles={profiles.length > 0} />
