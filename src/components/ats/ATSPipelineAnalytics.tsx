@@ -1,7 +1,16 @@
 import React, { useMemo } from 'react';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
 import { differenceInDays, parseISO } from 'date-fns';
-import { AlertTriangle, Clock, TrendingDown, ArrowRight } from 'lucide-react';
+import {
+  AlertTriangle,
+  Clock,
+  TrendingDown,
+  ArrowRight,
+  Users,
+  Target,
+  Activity,
+  Gauge,
+} from 'lucide-react';
 
 interface Props {
   candidates: ATSCandidate[];
@@ -33,39 +42,62 @@ interface Bottleneck {
   severity: 'warning' | 'critical';
 }
 
+const KPICard: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  hint?: string;
+  tone?: 'default' | 'success' | 'warning' | 'destructive';
+}> = ({ icon, label, value, hint, tone = 'default' }) => {
+  const toneStyles = {
+    default: 'bg-foreground/[0.06] text-foreground',
+    success: 'bg-success/10 text-success',
+    warning: 'bg-warning/10 text-warning',
+    destructive: 'bg-destructive/10 text-destructive',
+  };
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${toneStyles[tone]}`}>
+          {icon}
+        </div>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+          {label}
+        </span>
+      </div>
+      <div className="font-display text-2xl font-bold text-foreground tabular-nums tracking-tight leading-none">
+        {value}
+      </div>
+      {hint && <div className="text-xs text-muted-foreground mt-1.5">{hint}</div>}
+    </div>
+  );
+};
+
 const SectionCard: React.FC<{
   icon: React.ReactNode;
   title: string;
-  tone?: 'default' | 'destructive';
+  subtitle?: string;
   children: React.ReactNode;
-}> = ({ icon, title, tone = 'default', children }) => (
+}> = ({ icon, title, subtitle, children }) => (
   <div className="rounded-xl bg-card border border-border overflow-hidden">
-    <div
-      className={`flex items-center gap-2 px-4 py-2.5 border-b ${
-        tone === 'destructive' ? 'border-destructive/20 bg-destructive/5' : 'border-border bg-muted/40'
-      }`}
-    >
-      <div
-        className={`h-7 w-7 rounded-lg flex items-center justify-center ${
-          tone === 'destructive' ? 'bg-destructive/10 text-destructive' : 'bg-foreground/[0.06] text-foreground'
-        }`}
-      >
+    <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-muted/20">
+      <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] text-foreground flex items-center justify-center shrink-0">
         {icon}
       </div>
-      <span
-        className={`text-[10px] uppercase tracking-wider font-bold ${
-          tone === 'destructive' ? 'text-destructive' : 'text-foreground'
-        }`}
-      >
-        {title}
-      </span>
+      <div className="min-w-0">
+        <h3 className="font-display font-bold text-foreground text-[15px] tracking-tight leading-none">
+          {title}
+        </h3>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+      </div>
     </div>
     {children}
   </div>
 );
 
 export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
-  const { stageMetrics, bottlenecks, funnelSteps } = useMemo(() => {
+  const { stageMetrics, bottlenecks, funnelSteps, kpis } = useMemo(() => {
     const now = new Date();
 
     // Stage metrics
@@ -138,62 +170,120 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       };
     });
 
-    return { stageMetrics: metrics, bottlenecks, funnelSteps };
+    // KPI summary
+    const totalActive = candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu').length;
+    const totalWon = candidates.filter(c => c.stage === 'Gagné').length;
+    const totalLost = candidates.filter(c => c.stage === 'Perdu').length;
+    const totalEnded = totalWon + totalLost;
+    const winRate = totalEnded > 0 ? Math.round((totalWon / totalEnded) * 100) : 0;
+    const totalStagnant = metrics.reduce((sum, m) => sum + m.stagnantCount, 0);
+    const overallAvgDays = metrics.length > 0
+      ? Math.round(metrics.reduce((sum, m) => sum + m.avgDays * m.count, 0) / Math.max(metrics.reduce((sum, m) => sum + m.count, 0), 1))
+      : 0;
+
+    return {
+      stageMetrics: metrics,
+      bottlenecks,
+      funnelSteps,
+      kpis: { totalActive, totalWon, winRate, totalStagnant, overallAvgDays },
+    };
   }, [candidates]);
 
   const maxCount = Math.max(...stageMetrics.map(m => m.count), 1);
 
   return (
     <div className="space-y-4">
+      {/* KPI Summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard
+          icon={<Users className="w-4 h-4" />}
+          label="Pipeline actif"
+          value={kpis.totalActive}
+          hint={`${kpis.totalWon} gagné${kpis.totalWon > 1 ? 's' : ''} au total`}
+        />
+        <KPICard
+          icon={<Target className="w-4 h-4" />}
+          label="Taux de win"
+          value={`${kpis.winRate}%`}
+          hint={kpis.winRate >= 30 ? 'Très bon ratio' : 'À optimiser'}
+          tone={kpis.winRate >= 30 ? 'success' : kpis.winRate >= 15 ? 'default' : 'warning'}
+        />
+        <KPICard
+          icon={<Activity className="w-4 h-4" />}
+          label="Cycle moyen"
+          value={`${kpis.overallAvgDays}j`}
+          hint="Temps moyen en stage actif"
+        />
+        <KPICard
+          icon={<AlertTriangle className="w-4 h-4" />}
+          label="Stagnants"
+          value={kpis.totalStagnant}
+          hint={kpis.totalStagnant === 0 ? 'Aucun blocage' : 'Candidats à relancer'}
+          tone={kpis.totalStagnant === 0 ? 'success' : kpis.totalStagnant >= 5 ? 'destructive' : 'warning'}
+        />
+      </div>
+
       {/* Bottleneck Alerts */}
       {bottlenecks.length > 0 && (
-        <SectionCard
-          icon={<AlertTriangle className="w-3.5 h-3.5" />}
-          title="Goulots d'étranglement détectés"
-          tone="destructive"
-        >
+        <div className="rounded-xl bg-card border border-destructive/30 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-destructive/20 bg-destructive/5">
+            <div className="h-9 w-9 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-display font-bold text-destructive text-[15px] tracking-tight leading-none">
+                Goulots d'étranglement
+              </h3>
+              <p className="text-xs text-destructive/80 mt-1">
+                {bottlenecks.length} étape{bottlenecks.length > 1 ? 's' : ''} avec des candidats bloqués
+              </p>
+            </div>
+          </div>
           <div className="divide-y divide-border">
             {bottlenecks.map(b => (
               <div
                 key={b.stage}
-                className={`flex items-center justify-between px-4 py-3 ${
-                  b.severity === 'critical' ? 'bg-destructive/5' : 'bg-warning/5'
+                className={`flex items-center justify-between px-5 py-3 ${
+                  b.severity === 'critical' ? 'bg-destructive/[0.03]' : 'bg-warning/[0.03]'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    b.severity === 'critical' ? 'bg-destructive' : 'bg-warning'
-                  }`} />
-                  <div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      b.severity === 'critical' ? 'bg-destructive' : 'bg-warning'
+                    }`}
+                  />
+                  <div className="min-w-0">
                     <span className="text-sm font-display font-semibold text-foreground tracking-tight">
                       {b.stage}
                     </span>
-                    <p className="text-xs text-muted-foreground">
-                      {b.count} candidat{b.count > 1 ? 's' : ''} bloqué{b.count > 1 ? 's' : ''} depuis &gt; {b.guideTime}j
+                    <p className="text-xs text-muted-foreground truncate">
+                      {b.count} candidat{b.count > 1 ? 's' : ''} bloqué{b.count > 1 ? 's' : ''} · &gt; {b.guideTime}j
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border ${
-                      b.severity === 'critical'
-                        ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                        : 'border-warning/40 bg-warning/10 text-warning'
-                    }`}
-                  >
-                    ~{b.avgDays}j
-                  </span>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">moy. en stage</p>
-                </div>
+                <span
+                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold tabular-nums border shrink-0 ${
+                    b.severity === 'critical'
+                      ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                      : 'border-warning/40 bg-warning/10 text-warning'
+                  }`}
+                >
+                  ~{b.avgDays}j moy.
+                </span>
               </div>
             ))}
           </div>
-        </SectionCard>
+        </div>
       )}
 
       {/* Time in Stage Distribution */}
-      <SectionCard icon={<Clock className="w-3.5 h-3.5" />} title="Temps moyen par étape">
-        <div className="p-4 space-y-2">
+      <SectionCard
+        icon={<Clock className="w-4 h-4" />}
+        title="Temps moyen par étape"
+        subtitle="Volume actuel et durée moyenne dans chaque étape, vs. temps cible"
+      >
+        <div className="p-5 space-y-3">
           {stageMetrics.map(metric => {
             const barWidth = metric.count > 0 ? (metric.count / maxCount) * 100 : 0;
             const isOverGuide = metric.avgDays > metric.guideTime;
@@ -203,10 +293,12 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                 <span className="text-xs font-medium text-foreground w-24 shrink-0 truncate">
                   {metric.label}
                 </span>
-                <div className="flex-1 h-7 bg-muted/40 rounded-full relative overflow-hidden border border-border">
+                <div className="flex-1 h-8 bg-muted/40 rounded-full relative overflow-hidden border border-border">
                   <div
-                    className={`h-full transition-all duration-500 ${
-                      isOverGuide ? 'bg-destructive/60' : 'bg-foreground/15'
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      isOverGuide
+                        ? 'bg-gradient-to-r from-destructive/40 to-destructive/60'
+                        : 'bg-gradient-to-r from-foreground/15 to-foreground/25'
                     }`}
                     style={{ width: `${barWidth}%` }}
                   />
@@ -214,9 +306,11 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                     <span className="text-[11px] font-bold tabular-nums text-foreground">
                       {metric.count}
                     </span>
-                    <span className={`text-[11px] font-medium tabular-nums ${
-                      isOverGuide ? 'text-destructive font-bold' : 'text-muted-foreground'
-                    }`}>
+                    <span
+                      className={`text-[11px] font-medium tabular-nums ${
+                        isOverGuide ? 'text-destructive font-bold' : 'text-muted-foreground'
+                      }`}
+                    >
                       {metric.avgDays}j / {metric.guideTime}j
                     </span>
                   </div>
@@ -236,8 +330,12 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       </SectionCard>
 
       {/* Conversion Funnel */}
-      <SectionCard icon={<TrendingDown className="w-3.5 h-3.5" />} title="Taux de conversion entre étapes">
-        <div className="p-4 space-y-2">
+      <SectionCard
+        icon={<TrendingDown className="w-4 h-4" />}
+        title="Taux de conversion entre étapes"
+        subtitle="Pourcentage de candidats qui passent d'une étape à la suivante"
+      >
+        <div className="p-5 space-y-2">
           {funnelSteps.map((step) => (
             <div key={step.from} className="flex items-center gap-2">
               <span className="text-xs font-medium text-foreground w-24 shrink-0 truncate">
@@ -247,12 +345,12 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
               <span className="text-xs font-medium text-foreground w-24 shrink-0 truncate">
                 {step.to}
               </span>
-              <div className="flex-1 h-6 bg-muted/40 rounded-full relative overflow-hidden border border-border">
+              <div className="flex-1 h-7 bg-muted/40 rounded-full relative overflow-hidden border border-border">
                 <div
-                  className={`h-full transition-all duration-500 ${
-                    step.rate >= 50 ? 'bg-success/40' :
-                    step.rate >= 20 ? 'bg-foreground/15' :
-                    'bg-destructive/30'
+                  className={`h-full transition-all duration-500 rounded-full ${
+                    step.rate >= 50 ? 'bg-gradient-to-r from-success/40 to-success/60' :
+                    step.rate >= 20 ? 'bg-gradient-to-r from-foreground/15 to-foreground/25' :
+                    'bg-gradient-to-r from-destructive/30 to-destructive/40'
                   }`}
                   style={{ width: `${step.rate}%` }}
                 />
@@ -267,6 +365,53 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
               </span>
             </div>
           ))}
+        </div>
+      </SectionCard>
+
+      {/* Pipeline Health Score */}
+      <SectionCard
+        icon={<Gauge className="w-4 h-4" />}
+        title="Santé du pipeline"
+        subtitle="Indicateurs combinés pour évaluer la qualité de votre flux"
+      >
+        <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-xl bg-muted/20 border border-border p-4">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+              Vélocité
+            </div>
+            <div className="font-display text-xl font-bold text-foreground tabular-nums">
+              {kpis.overallAvgDays <= 5 ? 'Rapide' : kpis.overallAvgDays <= 10 ? 'Modérée' : 'Lente'}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {kpis.overallAvgDays}j en moyenne par étape
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-muted/20 border border-border p-4">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+              Fluidité
+            </div>
+            <div className="font-display text-xl font-bold text-foreground tabular-nums">
+              {kpis.totalStagnant === 0 ? 'Excellente' :
+                kpis.totalStagnant < 3 ? 'Bonne' :
+                kpis.totalStagnant < 8 ? 'Moyenne' : 'Faible'}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {kpis.totalStagnant} candidat{kpis.totalStagnant > 1 ? 's' : ''} stagnant{kpis.totalStagnant > 1 ? 's' : ''}
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-muted/20 border border-border p-4">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+              Conversion finale
+            </div>
+            <div className="font-display text-xl font-bold text-foreground tabular-nums">
+              {kpis.winRate}%
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {kpis.totalWon} placement{kpis.totalWon > 1 ? 's' : ''} confirmé{kpis.totalWon > 1 ? 's' : ''}
+            </div>
+          </div>
         </div>
       </SectionCard>
     </div>

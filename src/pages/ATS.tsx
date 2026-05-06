@@ -380,24 +380,28 @@ export default function ATS() {
                           ) : (
                             <>
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                                <div className="flex gap-0">
+                                <div className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border shrink-0">
                                   {[
                                     { value: 'pipeline' as const, label: 'Pipeline', Icon: LayoutGrid },
                                     { value: 'list' as const, label: 'Liste', Icon: List },
-                                  ].map((tab, index) => (
-                                    <button
-                                      key={tab.value}
-                                      onClick={() => setShortlistViewMode(tab.value)}
-                                      className={cn(
-                                        "relative overflow-hidden flex items-center gap-1.5 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group",
-                                        index > 0 && "border-l-0",
-                                        shortlistViewMode === tab.value ? "bg-accent text-foreground" : "bg-background text-foreground"
-                                      )}
-                                    >
-                                      <tab.Icon className="w-3 h-3 shrink-0 relative z-10" />
-                                      <span className="relative z-10">{tab.label}</span>
-                                    </button>
-                                  ))}
+                                  ].map((tab) => {
+                                    const isActive = shortlistViewMode === tab.value;
+                                    return (
+                                      <button
+                                        key={tab.value}
+                                        onClick={() => setShortlistViewMode(tab.value)}
+                                        className={cn(
+                                          "inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-all shrink-0",
+                                          isActive
+                                            ? "bg-foreground text-background shadow-sm"
+                                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                        )}
+                                      >
+                                        <tab.Icon className="w-3.5 h-3.5 shrink-0" />
+                                        {tab.label}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                                 <CandidateFilters filters={shortlistFilters} onFiltersChange={setShortlistFilters} options={shortlistFilterOptions} />
                               </div>
