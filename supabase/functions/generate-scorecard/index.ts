@@ -62,30 +62,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    const stageContext = interviewStage
-      ? `\n\nCONTEXTE D'ÉTAPE: Cette scorecard est pour un entretien de type "${interviewStage}". Adapte les critères en conséquence:
-- "Phone Screen": critères rapides de qualification (motivation, disponibilité, prétentions, fit basique)
-- "Technique": critères techniques approfondis, exercices pratiques, architecture, problem-solving
-- "Culture Fit": valeurs, travail d'équipe, communication, alignement avec la culture d'entreprise
-- "Final": critères de décision finale, leadership, vision long terme, négociation`
+    // Map type d'entretien → angle d'évaluation (concis pour réduire les tokens)
+    const stageHint: Record<string, string> = {
+      phone_screen: 'Phone Screen → motivation, dispo, prétentions, fit basique',
+      technique: 'Technique → architecture, problem-solving, exercices pratiques',
+      culture_fit: 'Culture Fit → valeurs, travail d\'équipe, communication',
+      final: 'Final → leadership, vision long terme, négociation',
+    };
+    const stageContext = interviewStage && stageHint[interviewStage]
+      ? `\nÉtape : ${stageHint[interviewStage]}`
       : '';
 
-    const systemPrompt = `Tu es un expert en recrutement tech/digital. Tu dois générer une grille d'évaluation (scorecard) sur mesure pour un entretien de qualification.
+    // System prompt compact (réduit de ~250 → ~120 tokens). Garde l'essentiel
+    // sans bavardage. Plus le prompt est court, plus l'inférence est rapide.
+    const systemPrompt = `Tu es expert en recrutement tech. Génère une scorecard d'évaluation sur mesure.
 
-RÈGLES:
-- Génère exactement 6 à 8 critères d'évaluation
-- Chaque critère doit être SPÉCIFIQUE au poste et au profil, pas générique
-- Utilise les compétences réelles du poste et du candidat pour formuler les critères
-- Inclus un mix de : compétences techniques, soft skills, adéquation culturelle, motivation
-- Pour chaque critère, fournis une description courte qui guide l'évaluateur sur quoi observer
-- Ordonne les critères du plus critique au moins critique
-- Pour chaque critère, génère 2-3 questions d'entretien spécifiques à poser
-- Pour chaque critère, génère une rubrique de notation avec la définition de chaque niveau (1 à 5)
-- Pour chaque critère, identifie 1-2 signaux d'alerte (red flags) à surveiller${stageContext}
-
-FORMAT DE SORTIE (JSON strict via tool call)
-
-weight: 1 = nice-to-have, 2 = important, 3 = critique/éliminatoire`;
+RÈGLES :
+- 6 à 8 critères SPÉCIFIQUES au poste et au profil (pas de générique)
+- Mix : tech / soft skills / culture / motivation
+- Critères ordonnés du plus critique au moins critique
+- Pour chaque critère : 2-3 questions d'entretien + rubric notation 1-5 + 1-2 red flags
+- weight : 1=nice-to-have, 2=important, 3=critique/éliminatoire${stageContext}`;
 
     const userPrompt = `CONTEXTE DU POSTE:
 - Titre: ${jobContext.title || 'Non spécifié'}
@@ -114,26 +111,15 @@ ${interviewStage ? `TYPE D'ENTRETIEN: ${interviewStage}` : ''}
 
 Génère la scorecard d'évaluation sur mesure.`;
 
-    // Sélection du modèle avec override Haiku → Sonnet 4.5.
+    // Modèle utilisé : Haiku 4.5 par défaut depuis le routing tier 'fast'.
     //
-    // Pourquoi : Haiku 4.5 est rapide (~10-15s) MAIS galère sur le
-    // schema tool_use de la scorecard, en particulier ratingRubric qui
-    // a 5 clés numériques requises ("1"-"5"). Résultat observé :
-    // tool_use vide ou criteria=[]. Sonnet 4.5 prend ~15-20s mais
-    // produit fiablement le tool call complet.
+    // Maintenant que ratingRubric est un ARRAY (et non plus un object avec
+    // 5 clés numériques requises), Haiku 4.5 gère le tool_use de manière
+    // fiable. Vitesse : ~10s vs Sonnet 4.5 ~15-20s vs Sonnet 4.6 ~30-40s.
     //
-    // Si l'user a EXPLICITEMENT choisi Haiku/Sonnet 4.6/Opus dans le
-    // ModelPicker, on respecte. Sinon (default Haiku via routing tier
-    // 'fast'), on bascule sur Sonnet 4.5 silencieusement.
-    const resolvedModel = _aiParams.modelId;
-    const modelToUse = resolvedModel === 'claude-haiku-4-5'
-      ? 'claude-sonnet-4-5'  // Override pour fiabilité tool_use
-      : (resolvedModel || 'claude-sonnet-4-5');
-    console.log('[generate-scorecard] Model resolution:', {
-      resolvedFromExtract: resolvedModel,
-      finalModelToUse: modelToUse,
-      overridden: resolvedModel === 'claude-haiku-4-5',
-    });
+    // L'user peut toujours forcer un autre modèle via le ModelPicker.
+    const modelToUse = _aiParams.modelId || 'claude-haiku-4-5';
+    console.log('[generate-scorecard] Using model:', modelToUse);
 
     let aiResult;
     try {

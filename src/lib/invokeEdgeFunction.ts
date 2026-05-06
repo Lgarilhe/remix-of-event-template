@@ -8,6 +8,25 @@ import { getActiveOrganizationId } from '@/lib/orgContext';
 
 const TIMEOUT_MS = 55_000;
 
+/**
+ * Timeouts plus longs pour certaines actions IA qui prennent du temps :
+ * scorecard generation, scoring batch, etc. Ces fonctions appellent
+ * Anthropic avec output structuré complexe (4000+ tokens output via
+ * tool_use) → 25-40s d'inférence + cold start + DB queries.
+ */
+const HEAVY_AI_FUNCTIONS = new Set([
+  'generate-scorecard',
+  'score-profile-job',
+  'screen-candidate',
+  'generate-call-report',
+  'audit-employer-brand',
+]);
+const HEAVY_AI_TIMEOUT_MS = 90_000;
+
+function getTimeoutForFunction(functionName: string): number {
+  return HEAVY_AI_FUNCTIONS.has(functionName) ? HEAVY_AI_TIMEOUT_MS : TIMEOUT_MS;
+}
+
 type EdgeResponsePayload = Record<string, unknown> | null;
 
 async function readEdgeResponse(response: Response): Promise<{
@@ -95,7 +114,8 @@ async function doFetchEdgeFunction(
   accessToken: string | null,
 ): Promise<Response> {
   const abortController = new AbortController();
-  const timer = window.setTimeout(() => abortController.abort(), TIMEOUT_MS);
+  const timeoutMs = getTimeoutForFunction(functionName);
+  const timer = window.setTimeout(() => abortController.abort(), timeoutMs);
   try {
     return await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${functionName}`, {
       method: 'POST',
