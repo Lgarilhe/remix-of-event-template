@@ -790,38 +790,55 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 </div>
               )}
 
-              {/* Airtable History Panel */}
-              {(historyPanelLoading || hasHistory) && (
-                <div className="bg-background rounded-lg border border-border overflow-hidden">
-                  <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
-                </div>
-              )}
-
-              {/* Aircall History */}
-              {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
-                <div className="bg-background rounded-lg border border-border overflow-hidden p-3 sm:p-4">
-                  <AircallHistoryPanel
-                    calls={aircallHistory.calls}
-                    loading={aircallHistory.loading}
-                    totalCalls={aircallHistory.totalCalls}
-                    totalDuration={aircallHistory.totalDuration}
-                  />
-                </div>
-              )}
-
-              {/* À propos */}
-              {displayProfile.summary && (
-                <div className="bg-background rounded-lg border border-border overflow-hidden">
-                  <details className="group">
-                    <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-                      <h3 className="text-xs font-semibold text-foreground">À propos</h3>
-                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-                    </summary>
-                    <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
+              {/* Panels au-dessus des tabs : MASQUÉS en mode pipeline.
+                  Pourquoi : en pipeline, l'onglet "Aperçu" (premier extraTab,
+                  default actif) est censé être visible immédiatement à
+                  l'ouverture. Si on garde Airtable History + Aircall +
+                  About au-dessus, ils poussent les tabs sous la fold →
+                  l'user ne voit pas le dashboard Aperçu sans scroller.
+                  Les infos sont déjà accessibles ailleurs :
+                  - About → section "À propos" dans Aperçu
+                  - Aircall stats → card Engagement dans Aperçu
+                  - Airtable history + Notion shortlists → onglet Activité
+                    (timeline) qui les incorpore déjà.
+                  En mode sourcing pur (pas de pipelineMeta), comportement
+                  inchangé : panels visibles avant les tabs comme avant. */}
+              {!pipelineMeta && (
+                <>
+                  {/* Airtable History Panel */}
+                  {(historyPanelLoading || hasHistory) && (
+                    <div className="bg-background rounded-lg border border-border overflow-hidden">
+                      <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
                     </div>
-                  </details>
-                </div>
+                  )}
+
+                  {/* Aircall History */}
+                  {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
+                    <div className="bg-background rounded-lg border border-border overflow-hidden p-3 sm:p-4">
+                      <AircallHistoryPanel
+                        calls={aircallHistory.calls}
+                        loading={aircallHistory.loading}
+                        totalCalls={aircallHistory.totalCalls}
+                        totalDuration={aircallHistory.totalDuration}
+                      />
+                    </div>
+                  )}
+
+                  {/* À propos */}
+                  {displayProfile.summary && (
+                    <div className="bg-background rounded-lg border border-border overflow-hidden">
+                      <details className="group">
+                        <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                          <h3 className="text-xs font-semibold text-foreground">À propos</h3>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                        </summary>
+                        <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+                          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{displayProfile.summary}</p>
+                        </div>
+                      </details>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Loading indicator for pool profile enrichment */}

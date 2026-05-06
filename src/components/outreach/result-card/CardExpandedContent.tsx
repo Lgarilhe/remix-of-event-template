@@ -78,29 +78,34 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   // (ex: l'user vient de cliquer sur un candidat pour voir son scoring).
   const defaultTab = extraTabs && extraTabs.length > 0 ? extraTabs[0].key : 'experience';
 
+  // 🔧 Ordre des tabs (fix 2026-05-06) :
+  // Si extraTabs présents (pipeline mode) → ils sont rendus EN PREMIER,
+  // les onglets standards (Experience/Education/Skills/Messages/Posts)
+  // viennent ensuite. Comme ça :
+  //   - L'onglet "Aperçu" est visuellement en position 1 → cohérent
+  //     avec le defaultValue qui pointe sur lui
+  //   - Les onglets pipeline (Aperçu, Évaluation, CV, Séquences, etc.)
+  //     sont mis en avant car c'est ce que l'user pipeline veut voir
+  //   - Les tabs sourcing (XP/Form/Skills/Msg/Posts) restent dispos
+  //     mais en deuxième vague — secondaires en mode pipeline
+  // Si pas d'extraTabs (mode sourcing pur) → ordre inchangé : tabs
+  // standards en 1er comme avant.
+  const standardTabs = [
+    { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
+    { value: 'education', icon: GraduationCap, label: 'Formation', shortLabel: 'Form.' },
+    { value: 'skills', icon: Zap, label: 'Compétences', shortLabel: 'Skills' },
+    { value: 'messages', icon: MessageSquare, label: 'Messages', shortLabel: 'Msg' },
+    { value: 'posts', icon: Newspaper, label: 'Posts', shortLabel: 'Posts' },
+  ];
+
   return (
     <div className="bg-background rounded-lg border border-border overflow-hidden">
       <Tabs defaultValue={defaultTab} className="w-full">
         <div className="border-b border-border overflow-x-auto bg-background">
           <TabsList className="w-max min-w-full h-10 bg-transparent p-1 px-1.5 rounded-none gap-1">
-            {[
-              { value: 'experience', icon: Briefcase, label: 'Expérience', shortLabel: 'Exp.' },
-              { value: 'education', icon: GraduationCap, label: 'Formation', shortLabel: 'Form.' },
-              { value: 'skills', icon: Zap, label: 'Compétences', shortLabel: 'Skills' },
-              { value: 'messages', icon: MessageSquare, label: 'Messages', shortLabel: 'Msg' },
-              { value: 'posts', icon: Newspaper, label: 'Posts', shortLabel: 'Posts' },
-            ].map(tab => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium"
-              >
-                <tab.icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.shortLabel}</span>
-              </TabsTrigger>
-            ))}
-            {/* Extra tabs (pipeline-only : Évaluation, Séquences, Activité, Notes, Actions). */}
+            {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
+                que l'onglet par défaut (premier extraTab = "Aperçu")
+                soit aussi visuellement en position 1. */}
             {extraTabs?.map(tab => {
               const Icon = tab.icon;
               return (
@@ -120,6 +125,19 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                 </TabsTrigger>
               );
             })}
+            {/* Onglets standards LinkedIn — secondaires en mode pipeline,
+                primaires en mode sourcing. */}
+            {standardTabs.map(tab => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium"
+              >
+                <tab.icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.shortLabel}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
         </div>
 
