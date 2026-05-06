@@ -59,26 +59,26 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
   };
 
   return (
-    <div className="flex gap-0 mb-4 overflow-x-auto scrollbar-hide">
-      {STAT_CONFIG.map((stat, index) => {
+    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+      {STAT_CONFIG.map(stat => {
         const Icon = stat.icon;
         const value = values[stat.key];
         return (
           <div
             key={stat.key}
-            className={`
-              flex items-center gap-2 px-3 py-2 border border-border bg-background shrink-0
-              ${index > 0 ? '-ml-px' : ''}
-              hover:bg-accent transition-colors duration-200 cursor-default
-            `}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors"
           >
-            <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <span className="text-sm font-bold text-foreground tabular-nums">
-              {value}{stat.suffix || ''}
-            </span>
-            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium hidden sm:inline">
-              {stat.label}
-            </span>
+            <div className="h-7 w-7 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
+              <Icon className="w-3.5 h-3.5 text-foreground/70" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[14px] font-bold text-foreground tabular-nums leading-tight">
+                {value}{stat.suffix || ''}
+              </p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold truncate">
+                {stat.label}
+              </p>
+            </div>
           </div>
         );
       })}

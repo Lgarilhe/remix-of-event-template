@@ -44,19 +44,19 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
     <div
       ref={setNodeRef}
       className={`
-        w-[280px] flex-shrink-0 border bg-background transition-all duration-200
+        w-[280px] flex-shrink-0 rounded-xl border bg-card transition-all duration-200
         ${isOver
-          ? 'border-foreground border-2 shadow-lg scale-[1.02] bg-muted/30'
+          ? 'border-foreground/40 ring-2 ring-foreground/20 shadow-lg scale-[1.02] bg-muted/30'
           : 'border-border'}
       `}
       role="region"
       aria-label={`Colonne ${stage.label}, ${candidates.length} candidat${candidates.length > 1 ? 's' : ''}`}
     >
-      {/* Header — sticky pour garder le label visible en scroll vertical (Opus B3) */}
-      <div className={`sticky top-0 z-10 p-3 border-b transition-colors ${isOver ? 'border-foreground bg-foreground/5 backdrop-blur-sm' : 'border-border bg-accent/80 backdrop-blur-sm'}`}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-foreground text-xs uppercase tracking-wider truncate">{stage.label}</h3>
-          <span className="text-xs text-foreground bg-foreground/10 px-2 py-0.5 font-bold tabular-nums shrink-0">
+      {/* Header — sticky pour garder le label visible en scroll vertical */}
+      <div className={`sticky top-0 z-10 p-3 border-b rounded-t-xl transition-colors ${isOver ? 'border-foreground/30 bg-foreground/5 backdrop-blur-sm' : 'border-border bg-muted/40 backdrop-blur-sm'}`}>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-display font-bold text-foreground text-[13px] tracking-tight truncate">{stage.label}</h3>
+          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-[11px] text-foreground bg-foreground/10 font-bold tabular-nums shrink-0">
             {candidates.length}
           </span>
         </div>
@@ -65,10 +65,10 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
       {/* Cards */}
       <div className="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto">
         {visibleCandidates.length === 0 ? (
-          <div className={`text-center py-8 text-xs uppercase tracking-wider transition-all border-2 border-dashed rounded-none ${
+          <div className={`text-center py-8 text-[11px] uppercase tracking-wider transition-all rounded-lg border-2 border-dashed ${
             isOver
               ? 'text-foreground border-foreground bg-foreground/5 font-bold'
-              : 'text-muted-foreground border-border/50'
+              : 'text-muted-foreground/60 border-border/50'
           }`}>
             {isOver ? '⬇️ Déposer ici' : 'Aucun candidat'}
           </div>
@@ -89,12 +89,12 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
 
       {/* Load more / Collapse */}
       {(hasMore || canCollapse) && (
-        <div className="p-2 border-t border-border bg-accent/50">
-          <div className="flex gap-0">
+        <div className="p-2 border-t border-border rounded-b-xl bg-muted/20">
+          <div className="flex gap-1.5">
             {hasMore && (
               <button
                 onClick={() => setVisibleCount(prev => Math.min(prev + LOAD_MORE_COUNT, candidates.length))}
-                className="flex-1 flex items-center justify-center gap-1 h-[28px] text-xs font-medium uppercase tracking-wider text-foreground border border-border hover:bg-accent transition-colors"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-full text-[11px] font-medium text-foreground border border-border bg-background hover:bg-accent transition-colors"
               >
                 <ChevronDown className="w-3 h-3" />
                 Voir plus ({candidates.length - visibleCount})
@@ -103,7 +103,7 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
             {canCollapse && (
               <button
                 onClick={() => setVisibleCount(INITIAL_VISIBLE)}
-                className={`flex-1 flex items-center justify-center gap-1 h-[28px] text-xs font-medium uppercase tracking-wider text-foreground border border-border hover:bg-accent transition-colors ${hasMore ? 'border-l-0' : ''}`}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-full text-[11px] font-medium text-foreground border border-border bg-background hover:bg-accent transition-colors"
               >
                 <ChevronUp className="w-3 h-3" />
                 Réduire

@@ -64,10 +64,10 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       aria-label={`Candidat ${candidate.name}${candidate.score != null ? ', score ' + candidate.score + '%' : ''}, étape ${candidate.stage}`}
       className={`
-        group bg-background border p-3 cursor-pointer interactive-card focus-ring-brutal relative
-        ${selected ? 'border-foreground border-2 bg-accent/30' : 'border-border'}
-        ${isDragging ? 'shadow-md border-foreground/30' : ''}
-        ${isStagnant ? 'border-l-2 border-l-destructive' : ''}
+        group rounded-xl bg-card border p-3 cursor-pointer transition-all hover:shadow-md hover:border-foreground/20 relative
+        ${selected ? 'border-foreground/40 ring-2 ring-foreground/20 bg-accent/30' : 'border-border'}
+        ${isDragging ? 'shadow-lg border-foreground/30' : ''}
+        ${isStagnant ? 'border-l-4 border-l-destructive' : ''}
       `}
     >
       {/* Bulk select checkbox — visible au hover ou si déjà sélectionné */}
@@ -86,7 +86,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
               onToggleSelect();
             }
           }}
-          className={`absolute top-1.5 left-1.5 w-4 h-4 border-2 flex items-center justify-center transition-opacity z-10 ${
+          className={`absolute top-1.5 left-1.5 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-opacity z-10 ${
             selected
               ? 'opacity-100 bg-foreground border-foreground'
               : 'opacity-0 group-hover:opacity-100 hover:opacity-100 border-foreground/40 bg-background'
@@ -102,7 +102,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
-          <h4 className="font-medium text-foreground truncate text-sm uppercase">
+          <h4 className="font-display font-bold text-foreground truncate text-[14px] tracking-tight leading-tight">
             {candidate.name}
           </h4>
           {candidate.headline && (
@@ -116,7 +116,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         <div className="flex items-center gap-1 flex-shrink-0">
           {candidate.score != null && candidate.score > 0 && (
             <span
-              className={`text-xs font-bold font-mono tabular-nums px-1.5 py-0.5 border ${
+              className={`inline-flex items-center text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded-full border ${
                 candidate.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
                 candidate.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
                 'border-destructive/40 bg-destructive/10 text-destructive'
@@ -140,25 +140,25 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
       {/* Source & Job & Outreach Status */}
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <span className="text-xs px-1.5 py-0.5 border border-border bg-accent/50 flex items-center gap-1 uppercase tracking-wider font-medium text-foreground">
+        <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-border bg-foreground/[0.06] uppercase tracking-wider font-semibold text-foreground/85">
           {sourceConfig.icon}
           {sourceConfig.label}
         </span>
-        
+
         {candidate.outreachStatus === 'interested' && (
-          <span className="text-xs px-1.5 py-0.5 border border-success bg-success/10 text-success flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-success/40 bg-success/10 text-success uppercase tracking-wider font-bold">
             <ThumbsUp className="w-3 h-3" />
             Intéressé
           </span>
         )}
         {candidate.outreachStatus === 'not_interested' && (
-          <span className="text-xs px-1.5 py-0.5 border border-destructive/40 bg-destructive/5 text-destructive flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-destructive/40 bg-destructive/5 text-destructive uppercase tracking-wider font-bold">
             <ThumbsDown className="w-3 h-3" />
             Pas intéressé
           </span>
         )}
         {candidate.outreachStatus === 'replied' && (
-          <span className="text-xs px-1.5 py-0.5 border border-info/40 bg-info/10 text-info flex items-center gap-1 uppercase tracking-wider font-bold">
+          <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-info/40 bg-info/10 text-info uppercase tracking-wider font-bold">
             <MessageCircle className="w-3 h-3" />
             Répondu
           </span>
@@ -166,7 +166,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
         {candidate.jobTitle && (
           <span
-            className={`text-xs px-1.5 py-0.5 border border-border bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:border-border hover:text-foreground transition-colors' : ''}`}
+            className={`inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full border border-border bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:bg-accent hover:text-foreground transition-colors' : ''}`}
             onClick={(e) => {
               if (candidate.jobId && onJobClick) {
                 e.stopPropagation();
@@ -187,7 +187,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           <GitBranch className="w-3 h-3" />
           {candidate.sequenceName}
           {candidate.sequenceStatus && (
-            <span className="border border-border px-1 py-0 text-[8px] uppercase tracking-wider">
+            <span className="inline-flex items-center rounded-full border border-border bg-foreground/[0.06] px-1.5 py-0 text-[9px] uppercase tracking-wider font-semibold">
               {candidate.sequenceStatus}
             </span>
           )}
@@ -198,12 +198,12 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {(candidate.tags || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {(candidate.tags || []).slice(0, 3).map(tag => (
-            <span key={tag} className="text-xs px-1.5 py-0 bg-accent/20 text-foreground border border-accent/40 font-medium">
+            <span key={tag} className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-accent/20 text-foreground border border-accent/40 font-medium">
               {tag}
             </span>
           ))}
           {(candidate.tags || []).length > 3 && (
-            <span className="text-xs px-1.5 py-0 bg-accent/50 text-muted-foreground border border-border">
+            <span className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
               +{(candidate.tags || []).length - 3}
             </span>
           )}
@@ -222,15 +222,15 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {candidate.expertise.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {candidate.expertise.slice(0, 3).map(skill => (
-            <span 
-              key={skill} 
-              className="text-xs px-1.5 py-0 bg-accent/50 text-muted-foreground border border-border"
+            <span
+              key={skill}
+              className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
             >
               {skill}
             </span>
           ))}
           {candidate.expertise.length > 3 && (
-            <span className="text-xs px-1.5 py-0 bg-accent/50 text-muted-foreground border border-border">
+            <span className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
               +{candidate.expertise.length - 3}
             </span>
           )}

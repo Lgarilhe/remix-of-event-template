@@ -37,18 +37,20 @@ const FilterButton: React.FC<{
   <Popover>
     <PopoverTrigger asChild>
       <button className={cn(
-        "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-border text-foreground text-xs font-medium uppercase tracking-wider group shrink-0 whitespace-nowrap",
-        count > 0 && "bg-accent"
+        "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0 whitespace-nowrap",
+        count > 0
+          ? "bg-foreground text-background border-foreground"
+          : "border-border bg-background hover:bg-accent text-foreground",
       )}>
-        <span className="relative z-10">{label}</span>
+        {label}
         {count > 0 && (
-          <span className="relative z-10 bg-foreground text-background text-xs px-1.5 py-0 font-bold">
+          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-background text-foreground text-[10px] font-bold tabular-nums">
             {count}
           </span>
         )}
       </button>
     </PopoverTrigger>
-    <PopoverContent className="w-56 p-3 rounded-lg border-border" align="start">
+    <PopoverContent className="w-56 p-3 rounded-xl border-border" align="start">
       {children}
     </PopoverContent>
   </Popover>
@@ -67,15 +69,15 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
   };
 
   return (
-    <div className="flex items-center gap-0 overflow-x-auto scrollbar-hide">
+    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
       {/* Search */}
-      <div className="relative mr-3 shrink-0">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <div className="relative shrink-0">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
         <Input
-          placeholder="Rechercher..."
+          placeholder="Rechercher…"
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-56 rounded-lg border-border bg-background text-sm h-9"
+          className="pl-9 w-48 sm:w-56 rounded-full border-border bg-background text-[12px] h-8"
         />
       </div>
 
@@ -157,22 +159,24 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       <button
         onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
         className={cn(
-          "relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-l-0 border-border text-foreground text-xs font-medium uppercase tracking-wider group",
-          filters.hasReminder && "bg-accent"
+          "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0",
+          filters.hasReminder
+            ? "bg-foreground text-background border-foreground"
+            : "border-border bg-background hover:bg-accent text-foreground",
         )}
       >
-        <Bell className="w-3.5 h-3.5 relative z-10" />
-        <span className="relative z-10">Rappels</span>
+        <Bell className="w-3.5 h-3.5" />
+        Rappels
       </button>
 
       {/* Clear all */}
       {activeFiltersCount > 0 && (
         <button
           onClick={clearAllFilters}
-          className="relative overflow-hidden h-9 px-4 flex items-center gap-2 border border-l-0 border-border text-destructive text-xs font-medium uppercase tracking-wider group ml-0"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-destructive/40 bg-destructive/5 hover:bg-destructive/10 text-destructive text-[11.5px] font-medium transition-colors shrink-0"
         >
-          <X className="w-3.5 h-3.5 relative z-10" />
-          <span className="relative z-10">Effacer ({activeFiltersCount})</span>
+          <X className="w-3.5 h-3.5" />
+          Effacer ({activeFiltersCount})
         </button>
       )}
     </div>

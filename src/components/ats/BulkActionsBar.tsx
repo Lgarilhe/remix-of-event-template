@@ -55,16 +55,16 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
     <div
       className={cn(
         'fixed bottom-4 left-1/2 -translate-x-1/2 z-[200]',
-        'flex items-center gap-2 px-4 py-3',
-        'bg-foreground text-background border-2 border-foreground shadow-xl',
+        'inline-flex items-center gap-2 px-3 py-2 rounded-full',
+        'bg-foreground text-background shadow-xl',
         'animate-in fade-in-0 slide-in-from-bottom-4 duration-200',
       )}
       role="toolbar"
       aria-label={`${count} candidat${count > 1 ? 's' : ''} sélectionné${count > 1 ? 's' : ''}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 px-2">
         <CheckCheck className="w-4 h-4" aria-hidden="true" />
-        <span className="text-xs font-bold uppercase tracking-wider font-mono tabular-nums">
+        <span className="text-[12px] font-bold tabular-nums">
           {count} sélectionné{count > 1 ? 's' : ''}
         </span>
       </div>

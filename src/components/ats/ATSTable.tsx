@@ -87,7 +87,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
   );
 
   return (
-    <div className="bg-background border border-border overflow-hidden">
+    <div className="rounded-xl bg-card border border-border overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-accent/50 border-b border-border">
@@ -128,7 +128,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </div>
               </TableCell>
               <TableCell>
-                <span className="text-xs px-2 py-0.5 border border-border bg-accent/50 uppercase tracking-wider font-medium flex items-center gap-1 w-fit">
+                <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full border border-border bg-foreground/[0.06] uppercase tracking-wider font-semibold w-fit">
                   {candidate.stage}
                   {(() => {
                     const GUIDE_TIMES: Record<string, number> = { 'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5, 'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7 };
@@ -140,7 +140,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </span>
               </TableCell>
               <TableCell>
-                <span className="text-xs px-2 py-0.5 border border-border flex items-center gap-1 w-fit uppercase tracking-wider">
+                <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full border border-border bg-background w-fit uppercase tracking-wider font-medium text-muted-foreground">
                   {SOURCE_ICONS[candidate.source]}
                   {SOURCE_LABELS[candidate.source]}
                 </span>
@@ -181,11 +181,12 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
               </TableCell>
               <TableCell>
                 {candidate.score != null ? (
-                  <span className={`text-xs font-bold px-1.5 py-0.5 border ${
-                    candidate.score >= 70 ? 'border-border bg-accent text-foreground' : 
-                    candidate.score >= 40 ? 'border-border text-foreground' : 'border-destructive text-destructive'
+                  <span className={`inline-flex items-center text-[11px] font-bold px-1.5 py-0.5 rounded-full border tabular-nums ${
+                    candidate.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
+                    candidate.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
+                    'border-destructive/40 bg-destructive/10 text-destructive'
                   }`}>
-                    {candidate.score}%
+                    {candidate.score}
                   </span>
                 ) : (
                   <span className="text-sm text-muted-foreground">—</span>
@@ -195,7 +196,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 <div className="flex items-center gap-1">
                   {candidate.linkedin && (
                     <button
-                      className="h-7 w-7 flex items-center justify-center border border-border hover:bg-accent transition-colors"
+                      className="h-7 w-7 flex items-center justify-center rounded-lg border border-border hover:bg-accent transition-colors"
                       onClick={(e) => { e.stopPropagation(); window.open(candidate.linkedin!, '_blank'); }}
                     >
                       <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain" />
@@ -203,7 +204,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                   )}
                   {candidate.email && (
                     <button
-                      className="h-7 w-7 flex items-center justify-center border border-border hover:bg-accent transition-colors"
+                      className="h-7 w-7 flex items-center justify-center rounded-lg border border-border hover:bg-accent transition-colors"
                       onClick={(e) => { e.stopPropagation(); window.open(`mailto:${candidate.email}`, '_blank'); }}
                     >
                       <Mail className="w-4 h-4" />

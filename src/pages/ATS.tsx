@@ -226,35 +226,37 @@ export default function ATS() {
       <div className="py-6 pb-8">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
           {/* Header — compact single row */}
-          <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2.5 min-w-0">
               <AnimatedFunnel size={32} speed={0.8} />
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">Pipeline</h1>
+              <h1 className="font-display text-xl sm:text-2xl font-bold text-foreground tracking-tight">Pipeline</h1>
               {isFetching && !loading && (
-                <span className="text-xs text-blue-600 border border-blue-300 px-1.5 py-0.5 uppercase tracking-wider font-medium animate-pulse hidden sm:inline">
-                  Sync...
+                <span className="inline-flex items-center text-[10px] text-info border border-info/30 bg-info/10 rounded-full px-2 py-0.5 uppercase tracking-wider font-semibold animate-pulse hidden sm:inline">
+                  Sync…
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-0 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={refetch}
                 disabled={loading}
-                className="relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-border text-foreground text-xs font-medium uppercase tracking-wider group disabled:opacity-30"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors disabled:opacity-30"
               >
-                <RefreshCw className={`w-3 h-3 relative z-10 ${loading ? 'animate-spin' : ''}`} />
-                <span className="relative z-10 hidden sm:inline">Actualiser</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Actualiser</span>
               </button>
               <button
                 onClick={() => setShowReminders(!showReminders)}
                 className={cn(
-                  "relative overflow-hidden h-8 px-3 flex items-center gap-1.5 border border-l-0 border-border text-foreground text-xs font-medium uppercase tracking-wider group",
-                  showReminders && "bg-accent"
+                  "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors",
+                  showReminders
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border bg-background hover:bg-accent text-foreground",
                 )}
               >
-                <Bell className="w-3 h-3 relative z-10" />
-                <span className="relative z-10 hidden sm:inline">Rappels</span>
+                <Bell className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Rappels</span>
               </button>
             </div>
           </div>
@@ -270,22 +272,23 @@ export default function ATS() {
           <div className="mb-4">
             <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                {/* Brutal tabs */}
-                <div className="flex gap-0 overflow-x-auto scrollbar-hide">
-                  {viewTabs.map((tab, index) => {
+                {/* View tabs — pill segmented control */}
+                <div className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border overflow-x-auto scrollbar-hide">
+                  {viewTabs.map((tab) => {
                     const isActive = activeView === tab.value;
                     return (
                       <button
                         key={tab.value}
                         onClick={() => setActiveView(tab.value as any)}
                         className={cn(
-                          "relative overflow-hidden flex items-center gap-1.5 h-9 px-4 text-xs font-medium uppercase tracking-wider border border-border transition-colors duration-200 group shrink-0",
-                          index > 0 && "border-l-0",
-                          isActive ? "bg-accent text-foreground" : "bg-background text-foreground"
+                          "inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-all shrink-0",
+                          isActive
+                            ? "bg-foreground text-background shadow-sm"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                         )}
                       >
-                        <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain shrink-0 relative z-10" />
-                        <span className="relative z-10">{tab.label}</span>
+                        <img src={tab.icon3d} alt="" aria-hidden="true" className="w-4 h-4 object-contain shrink-0" />
+                        {tab.label}
                       </button>
                     );
                   })}
@@ -299,13 +302,13 @@ export default function ATS() {
               </div>
 
               {error ? (
-                <div className="bg-destructive/10 border border-destructive/30 p-6 text-center">
+                <div className="rounded-xl bg-destructive/5 border border-destructive/30 p-6 text-center">
                   <p className="text-destructive">{error}</p>
                   <button
                     onClick={refetch}
-                    className="relative overflow-hidden h-9 px-6 mt-4 border border-border text-foreground text-xs font-medium uppercase tracking-wider group"
+                    className="inline-flex items-center justify-center gap-1.5 h-9 px-5 mt-4 rounded-full border border-border bg-background hover:bg-accent text-foreground text-[12px] font-medium transition-colors"
                   >
-                    <span className="relative z-10">Réessayer</span>
+                    Réessayer
                   </button>
                 </div>
               ) : (
