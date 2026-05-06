@@ -25,6 +25,12 @@ interface ProfileData {
   education?: string[];
   yearsOfExperience?: number;
   summary?: string; // LinkedIn "About" section
+  /** Statut réseau LinkedIn : FIRST_DEGREE = connecté, SECOND_DEGREE = ami d'ami,
+   *  THIRD_DEGREE = inconnu, OUT_OF_NETWORK = hors réseau. CRITIQUE pour éviter
+   *  que l'IA hallucine "on est déjà connectés" sur des profils 2nd/3rd. */
+  networkDistance?: 'FIRST_DEGREE' | 'SECOND_DEGREE' | 'THIRD_DEGREE' | 'OUT_OF_NETWORK' | null;
+  openToWork?: boolean;
+  premium?: boolean;
 }
 
 interface CandidateHistoryData {
@@ -779,6 +785,19 @@ PROFIL DU CANDIDAT:
 - Expériences passées: ${profile.pastPositions?.slice(0, 3).join('; ') || 'Non spécifiées'}
 ${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
+${profile.networkDistance ? `- Statut LinkedIn : ${
+  profile.networkDistance === 'FIRST_DEGREE' ? '🟢 1er niveau (vous êtes connectés sur LinkedIn)'
+  : profile.networkDistance === 'SECOND_DEGREE' ? '🟡 2e niveau (PAS connectés, ami d\'ami)'
+  : profile.networkDistance === 'THIRD_DEGREE' ? '🟠 3e niveau (PAS connectés, lointain dans le réseau)'
+  : profile.networkDistance === 'OUT_OF_NETWORK' ? '🔴 Hors réseau (PAS connectés du tout)'
+  : '(inconnu)'
+}` : ''}
+${profile.openToWork ? '- 💼 Statut "Open to Work" activé sur LinkedIn (= cherche activement)' : ''}
+${profile.premium ? '- ⭐ Compte LinkedIn Premium' : ''}
+
+⚠️ RÈGLE NON NÉGOCIABLE — STATUT DE CONNEXION :
+- Si Statut LinkedIn = "1er niveau" : tu PEUX dire "on est connectés" / "je vois qu'on est en lien" / "on s'est croisés via [nom commun s'il existe]"
+- Si Statut LinkedIn = "2e/3e niveau" ou "Hors réseau" ou inconnu : NE DIS JAMAIS "on est déjà connectés" / "on est en contact" / "salut Chiemezie, on est connectés sur LinkedIn". C'est FAUX et grillé en 2 secondes par le candidat. Tu écris comme à un INCONNU à qui tu te présentes pour la première fois.
 ${profile.summary ? `
 === SECTION "À PROPOS" DU CANDIDAT (SOURCE PRIORITAIRE DE PERSONNALISATION) ===
 "${profile.summary.slice(0, 1200)}"

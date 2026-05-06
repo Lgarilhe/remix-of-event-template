@@ -296,6 +296,22 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
       if (step.useAiPersonalization) {
         try {
+          // Normalise le network_distance : Unipile renvoie 1/2/3 ou
+          // 'DISTANCE_1' etc. On standardise pour que l'IA comprenne :
+          // 'FIRST_DEGREE' = déjà connecté, 'SECOND_DEGREE' = ami d'ami,
+          // 'THIRD_DEGREE' = inconnu réseau, 'OUT_OF_NETWORK' = hors réseau.
+          const rawNd = (profile as any).network_distance;
+          const normalizedNetworkDistance =
+            rawNd === 1 || rawNd === '1' || rawNd === 'DISTANCE_1' || rawNd === 'FIRST_DEGREE'
+              ? 'FIRST_DEGREE'
+              : rawNd === 2 || rawNd === '2' || rawNd === 'DISTANCE_2' || rawNd === 'SECOND_DEGREE'
+              ? 'SECOND_DEGREE'
+              : rawNd === 3 || rawNd === '3' || rawNd === 'DISTANCE_3' || rawNd === 'THIRD_DEGREE'
+              ? 'THIRD_DEGREE'
+              : rawNd === 'OUT_OF_NETWORK'
+              ? 'OUT_OF_NETWORK'
+              : null;
+
           // Build rich profile data — the more context, the better the AI personalization
           const profileData = {
             name: profile.name,
@@ -305,6 +321,12 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
             currentRole: profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position,
             currentCompany: profile.work_experience?.[0]?.company,
             skills: profile.skills?.map(s => typeof s === 'string' ? s : s.name).filter(Boolean) || [],
+            // 🔑 Network distance : sans ça l'IA hallucine "on est déjà
+            // connectés" sur des profils 2nd/3rd degree. Avec ça, l'IA
+            // adapte son accroche selon le statut réel.
+            networkDistance: normalizedNetworkDistance,
+            openToWork: !!(profile as any).open_to_work,
+            premium: !!(profile as any).premium,
             pastPositions: profile.work_experience?.slice(0, 4).map(w =>
               `${w.role || w.position || ''} @ ${w.company || ''}`.trim()
             ).filter(Boolean) || [],
