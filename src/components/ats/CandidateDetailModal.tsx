@@ -18,6 +18,7 @@ import { ScorecardTab } from './ScorecardTab';
 import { PrepSheetTab } from './candidate-detail/PrepSheetTab';
 import { FraudDetectionTab } from './FraudDetectionTab';
 import { CandidateSequencesPanel } from '@/components/outreach/CandidateSequencesPanel';
+import { RichCandidateHeader } from './candidate-detail/RichCandidateHeader';
 import { useAgent } from '@/contexts/AgentContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -332,125 +333,28 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
            ? "sm:max-w-[95vw] sm:max-h-[95vh] sm:w-[95vw] sm:h-[95vh]"
            : "sm:max-w-2xl sm:max-h-[90vh]"
        )}>
-        {/* Header */}
-        <div className="p-3 sm:p-6 pb-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base sm:text-xl font-bold text-foreground truncate">{candidate.name}</h2>
-                {/* Score IA visible dans le header (avant : caché dans onglet Évaluation) */}
-                {candidate.score != null && candidate.score > 0 && (
-                  <button
-                    onClick={() => setActiveTab('evaluation')}
-                    aria-label={`Score ${candidate.score} sur 100, cliquer pour voir l'évaluation détaillée`}
-                    className={cn(
-                      'inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold font-mono tabular-nums border transition-colors hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                      candidate.score >= 70
-                        ? 'bg-success/15 text-success border-success/40'
-                        : candidate.score >= 50
-                          ? 'bg-warning/15 text-warning border-warning/40'
-                          : 'bg-destructive/15 text-destructive border-destructive/40',
-                    )}
-                  >
-                    <Target className="w-3 h-3" aria-hidden="true" />
-                    {candidate.score}
-                  </button>
-                )}
-              </div>
-              {(enrichedProfile?.headline || candidate.headline) && (
-                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">{enrichedProfile?.headline || candidate.headline}</p>
-              )}
-              <div className="hidden sm:flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
-                {enrichedProfile?.currentCompany && (
-                  <span className="flex items-center gap-1 font-medium text-foreground/80">
-                    <Building2 className="w-3 h-3 text-muted-foreground" />
-                    {enrichedProfile.currentCompany}
-                  </span>
-                )}
-                {enrichedProfile?.location && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    {enrichedProfile.location}
-                  </span>
-                )}
-                {enrichedProfile?.yearsOfExperience && (
-                  <span className="flex items-center gap-1 text-success font-medium">
-                    <TrendingUp className="w-3 h-3" />
-                    ~{enrichedProfile.yearsOfExperience} ans d'exp.
-                  </span>
-                )}
-              </div>
-            </div>
-            <button onClick={onClose} className="h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center border border-border text-foreground hover:bg-accent transition-colors shrink-0">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Stage + Actions */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-4 pb-2 sm:pb-4 border-b border-border">
-            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground hidden sm:inline">Étape :</span>
-            <Select value={candidate.stage} onValueChange={(v) => onStageChange(candidate.id, v)}>
-              <SelectTrigger className="w-[140px] sm:w-[180px] rounded-lg border-border h-8 sm:h-9 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="rounded-lg border-border">
-                {ATS_STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-
-            <div className="flex items-center gap-0 ml-auto flex-wrap">
-              {candidate.linkedin && (
-                <BrutalButton onClick={() => window.open(candidate.linkedin!, '_blank')} first>
-                  <img src={linkedinLogo} alt="LinkedIn" className="w-4 h-4 object-contain relative z-10" />
-                  <span className="relative z-10 hidden sm:inline">LinkedIn</span>
-                </BrutalButton>
-              )}
-              {candidate.email && (
-                <BrutalButton onClick={() => window.open(`mailto:${candidate.email}`, '_blank')} first={!candidate.linkedin}>
-                  <Mail className="w-3.5 h-3.5 relative z-10" />
-                  <span className="relative z-10 hidden sm:inline">Email</span>
-                </BrutalButton>
-              )}
-              <button
-                onClick={handleCreatePortalLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 ml-2 border-2 border-success bg-success text-success-foreground text-xs font-bold uppercase tracking-wider hover:bg-success/90 transition-colors"
-              >
-                <Link2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Portail</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Tags */}
-          <div className="hidden sm:flex flex-wrap items-center gap-1.5 mt-3 pb-4 border-b border-border">
-            {(candidate.tags || []).map(tag => (
-              <span
-                key={tag}
-                className="text-xs px-2 py-0.5 bg-accent/20 text-foreground border border-accent/40 font-medium flex items-center gap-1 cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
-                onClick={() => onTagsChange?.(candidate.id, (candidate.tags || []).filter(t => t !== tag))}
-                title="Cliquer pour supprimer"
-              >
-                {tag} ×
-              </span>
-            ))}
-            <form
-              className="flex items-center gap-0"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const tag = newTag.trim().toLowerCase();
-                if (!tag || (candidate.tags || []).includes(tag)) return;
-                onTagsChange?.(candidate.id, [...(candidate.tags || []), tag]);
-                setNewTag('');
-              }}
-            >
-              <Input
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                placeholder="+ tag"
-                className="h-6 w-20 text-xs rounded-lg border-border px-1.5"
-              />
-            </form>
-          </div>
-        </div>
+        {/* Header riche — mirror du visuel sourcing card.
+            Avant : header basique nom + score + 3 metas inline.
+            Après : avatar + degré connexion + skills preview + meta riche
+            (tenure, XP, connexions). Les détails complets restent dans
+            les onglets Profil / Évaluation / Activité. */}
+        <RichCandidateHeader
+          candidate={candidate}
+          linkedinProfileData={candidateWithProfileData.linkedinProfileData}
+          newTag={newTag}
+          onNewTagChange={setNewTag}
+          onAddTag={() => {
+            const tag = newTag.trim().toLowerCase();
+            if (!tag || (candidate.tags || []).includes(tag)) return;
+            onTagsChange?.(candidate.id, [...(candidate.tags || []), tag]);
+            setNewTag('');
+          }}
+          onRemoveTag={(tag) => onTagsChange?.(candidate.id, (candidate.tags || []).filter(t => t !== tag))}
+          onStageChange={(v) => onStageChange(candidate.id, v)}
+          onScoreClick={() => setActiveTab('evaluation')}
+          onClose={onClose}
+          onCreatePortalLink={handleCreatePortalLink}
+        />
 
         {/* Tabs */}
         <div className="px-3 sm:px-6 pt-2 sm:pt-4">
