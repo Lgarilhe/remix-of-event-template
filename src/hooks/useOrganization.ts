@@ -58,15 +58,50 @@ export const useOrganization = () => {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (profileError || !profile?.active_organization_id) {
+      if (profileError) {
+        console.error('[useOrganization] profile fetch error:', profileError);
         return null;
+      }
+
+      let activeOrgId = profile?.active_organization_id;
+
+      // 🔧 SAFETY NET (fix 2026-05-06) : si active_organization_id est null
+      // (peut arriver après un bug trigger, bootstrap raté, ou reset),
+      // on FALLBACK sur les orgs où l'user est déjà membre AVANT de
+      // déclencher l'onboarding qui créerait une duplicate org.
+      // Sans ce fallback, l'user redirigé vers /onboarding crée une
+      // nouvelle org alors qu'il en avait déjà une → perte de tout
+      // (crédits, missions, candidats, LinkedIn account...).
+      if (!activeOrgId) {
+        console.warn('[useOrganization] active_organization_id is null, checking memberships fallback...');
+        const { data: memberships } = await supabase
+          .from('organization_members')
+          .select('organization_id, organizations(created_at)')
+          .eq('user_id', user.id)
+          .order('organizations(created_at)', { ascending: true });
+
+        if (memberships && memberships.length > 0) {
+          // Prend la PLUS ANCIENNE org où l'user est membre — typiquement
+          // celle créée pendant l'onboarding initial, donc avec ses
+          // données. Évite de prendre une nouvelle org de test/duplicate.
+          activeOrgId = memberships[0].organization_id;
+          console.warn(`[useOrganization] Recovered active org from memberships: ${activeOrgId} (${memberships.length} total)`);
+
+          // Persiste pour pas re-faire le fallback à chaque mount
+          await supabase
+            .from('profiles')
+            .upsert({ user_id: user.id, active_organization_id: activeOrgId }, { onConflict: 'user_id' });
+        } else {
+          // Vraiment aucune org → user nouveau → onboarding légitime
+          return null;
+        }
       }
 
       // Get organization details
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .select('*')
-        .eq('id', profile.active_organization_id)
+        .eq('id', activeOrgId)
         .single();
 
       if (orgError) return null;
