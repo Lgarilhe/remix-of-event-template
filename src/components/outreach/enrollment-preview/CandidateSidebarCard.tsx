@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateState, computeYearsOfExperience, getChannelAvailability } from './types';
 import { cn } from '@/lib/utils';
-import { Check, Pencil, MapPin, Briefcase, MoreVertical, X as XIcon, SkipForward, BarChart3, History, ExternalLink, Mail, Linkedin, MessageCircle } from 'lucide-react';
+import { Check, Pencil, MapPin, Briefcase, MoreVertical, X as XIcon, SkipForward, BarChart3, History, ExternalLink, Mail } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -13,6 +13,9 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 // I3 — primitive partagée pour avatar candidat
 import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
+// Logos officiels (cohérence avec le reste de la modal)
+import linkedinLogo from '@/assets/linkedin-logo.svg';
+import whatsappLogo from '@/assets/whatsapp-logo.svg';
 
 interface Props {
   profile: LinkedInProfile;
@@ -43,7 +46,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
     <div
       onClick={onSelect}
       className={cn(
-        "group w-full flex flex-col gap-2 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer relative border",
+        "group w-full max-w-full flex flex-col gap-2 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer relative border overflow-hidden",
         state.skipped && "opacity-50",
         isSelected
           ? "bg-foreground/[0.04] border-foreground/20 shadow-sm"
@@ -58,7 +61,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         />
       )}
 
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-2.5 min-w-0">
         {/* Avatar — taille augmentée pour plus de présence */}
         <div className="relative shrink-0">
           <CandidateAvatar
@@ -77,10 +80,10 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex items-center gap-1.5 min-w-0">
             <p className={cn(
-              "text-[13px] font-semibold truncate text-foreground tracking-tight leading-tight",
+              "text-[13px] font-semibold truncate text-foreground tracking-tight leading-tight min-w-0",
               state.skipped && "line-through"
             )}>
               {profile.name}
@@ -91,12 +94,23 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
               </Badge>
             )}
             {hasEdits && (
-              <span title="Édité manuellement">
-                <Pencil className="w-2.5 h-2.5 text-warning shrink-0" />
+              <span title="Édité manuellement" className="shrink-0">
+                <Pencil className="w-2.5 h-2.5 text-warning" />
               </span>
             )}
           </div>
-          <p className="text-[11.5px] text-muted-foreground truncate mt-0.5 leading-snug">
+          {/* Headline en 2 lignes max (line-clamp) au lieu de truncate single ligne :
+              les headlines LinkedIn sont souvent longues, 2 lignes lisibles >>
+              "Tech Lead | Software Architect | Symfony C..." en 1 ligne tronquée */}
+          <p
+            className="text-[11.5px] text-muted-foreground mt-0.5 leading-snug min-w-0 overflow-hidden"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              wordBreak: 'break-word',
+            }}
+          >
             {profile.headline || '—'}
           </p>
         </div>
@@ -159,14 +173,28 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         )}
       </div>
 
-      {/* Channel badges — icônes Lucide color-coded au lieu de croix/check
-          textuelles. Plus scannable d'un coup d'œil : icône colorée =
-          dispo, icône grisée = manquante. */}
+      {/* Channel badges — vrais logos LinkedIn/WhatsApp + icon Lucide
+          pour Email. Logo coloré quand dispo, grisé quand manquant. */}
       <TooltipProvider delayDuration={300}>
-        <div className="flex items-center gap-1 pl-10">
-          <ChannelBadge available={channels.email} icon={Mail} label="Email" tooltipMissing="Pas d'email — étapes Email skippées" tooltipAvailable="Email disponible" />
-          <ChannelBadge available={channels.linkedin} icon={Linkedin} label="LinkedIn" tooltipMissing="Pas de profil LinkedIn" tooltipAvailable="LinkedIn disponible" />
-          <ChannelBadge available={channels.whatsapp} icon={MessageCircle} label="WhatsApp" tooltipMissing="Pas de téléphone — étapes WhatsApp skippées" tooltipAvailable="WhatsApp disponible" />
+        <div className="flex items-center gap-1 pl-[44px]">
+          <ChannelBadge
+            available={channels.email}
+            kind="email"
+            tooltipMissing="Pas d'email — étapes Email skippées"
+            tooltipAvailable="Email disponible"
+          />
+          <ChannelBadge
+            available={channels.linkedin}
+            kind="linkedin"
+            tooltipMissing="Pas de profil LinkedIn"
+            tooltipAvailable="LinkedIn disponible"
+          />
+          <ChannelBadge
+            available={channels.whatsapp}
+            kind="whatsapp"
+            tooltipMissing="Pas de téléphone — étapes WhatsApp skippées"
+            tooltipAvailable="WhatsApp disponible"
+          />
         </div>
       </TooltipProvider>
     </div>
@@ -174,25 +202,60 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
 });
 
 function ChannelBadge({
-  available, icon: Icon, label, tooltipMissing, tooltipAvailable,
+  available, kind, tooltipMissing, tooltipAvailable,
 }: {
   available: boolean;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
+  kind: 'email' | 'linkedin' | 'whatsapp';
   tooltipMissing: string;
   tooltipAvailable: string;
 }) {
+  const renderIcon = () => {
+    if (kind === 'email') {
+      return <Mail className="w-3 h-3" strokeWidth={2.25} />;
+    }
+    if (kind === 'linkedin') {
+      return (
+        <img
+          src={linkedinLogo}
+          alt=""
+          className={cn(
+            'w-3 h-3 object-contain',
+            !available && 'opacity-40 grayscale',
+          )}
+          aria-hidden="true"
+        />
+      );
+    }
+    // whatsapp
+    return (
+      <img
+        src={whatsappLogo}
+        alt=""
+        className={cn(
+          'w-3 h-3 object-contain',
+          !available && 'opacity-40 grayscale',
+        )}
+        aria-hidden="true"
+      />
+    );
+  };
+
+  const colorClass = (() => {
+    if (!available) return 'border-border text-muted-foreground/50 bg-muted/30';
+    if (kind === 'email') return 'border-info/30 text-info bg-info/10';
+    if (kind === 'linkedin') return 'border-info/30 bg-info/10';
+    return 'border-success/30 bg-success/10';
+  })();
+
   const badge = (
     <span
       className={cn(
         'inline-flex items-center justify-center h-5 w-5 rounded border transition-colors',
-        available
-          ? 'border-success/30 text-success bg-success/10'
-          : 'border-border text-muted-foreground/50 bg-muted/30',
+        colorClass,
       )}
-      aria-label={`${label}${available ? ' disponible' : ' indisponible'}`}
+      aria-label={`${kind}${available ? ' disponible' : ' indisponible'}`}
     >
-      <Icon className="w-3 h-3" />
+      {renderIcon()}
     </span>
   );
 
