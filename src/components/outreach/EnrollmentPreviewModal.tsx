@@ -102,7 +102,7 @@ const ACTION_LABELS: Record<string, string> = {
 // vrais logos de marque (LinkedIn = bleu/info, WhatsApp = vert/success,
 // Email = neutre).
 const CHANNEL_COLORS: Record<string, { header: string; border: string }> = {
-  email: { header: 'bg-foreground/[0.06] text-foreground/70', border: 'border-border' },
+  email: { header: 'bg-emerald-500/15 text-foreground', border: 'border-border' },
   message: { header: 'bg-info/10 text-info', border: 'border-border' },
   smart_message: { header: 'bg-info/10 text-info', border: 'border-border' },
   inmail: { header: 'bg-info/10 text-info', border: 'border-border' },

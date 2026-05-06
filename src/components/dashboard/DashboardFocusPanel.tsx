@@ -118,7 +118,7 @@ const FocusCard: React.FC<{ item: FocusItem; index: number }> = ({ item, index }
         <div
           className={cn(
             'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
-            isActive ? `${styles.iconBg} ${styles.iconColor}` : 'bg-foreground/[0.06] text-muted-foreground',
+            isActive ? `${styles.iconBg} ${styles.iconColor}` : 'bg-emerald-500/15 text-foreground',
           )}
         >
           {item.icon}

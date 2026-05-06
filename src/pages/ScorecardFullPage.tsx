@@ -402,11 +402,11 @@ export default function ScorecardFullPage() {
                     <div className="space-y-2">
                       {enrichedProfile!.education.slice(0, 3).map((edu, i) => (
                         <div key={i} className="flex items-start gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
+                          <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
                             {edu.logo ? (
                               <img src={edu.logo} alt="" className="w-5 h-5 object-contain rounded" />
                             ) : (
-                              <GraduationCap className="w-3.5 h-3.5 text-foreground/60" />
+                              <GraduationCap className="w-3.5 h-3.5 text-foreground" />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -579,8 +579,8 @@ function SidebarSection({
   return (
     <div className="rounded-xl border border-border bg-card p-3 w-full min-w-0 max-w-full overflow-hidden">
       <div className="flex items-center gap-2 mb-2 min-w-0">
-        <div className="h-6 w-6 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Icon className="w-3 h-3 text-foreground/70" />
+        <div className="h-6 w-6 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
+          <Icon className="w-3 h-3 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-display font-bold text-[12px] tracking-tight text-foreground truncate">
@@ -615,7 +615,7 @@ function CompactExperienceItem({
 
   return (
     <div className="flex items-start gap-2.5">
-      <div className="h-7 w-7 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0 overflow-hidden">
+      <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0 overflow-hidden">
         {logoSrc ? (
           <img
             src={logoSrc}
@@ -624,7 +624,7 @@ function CompactExperienceItem({
             onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))}
           />
         ) : (
-          <Building2 className="w-3.5 h-3.5 text-foreground/60" />
+          <Building2 className="w-3.5 h-3.5 text-foreground" />
         )}
       </div>
       <div className="flex-1 min-w-0">

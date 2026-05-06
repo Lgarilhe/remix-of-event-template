@@ -502,8 +502,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           {/* Empty state hero — gradient skalr discret + icon-tile cohérent V2 */}
           <div className="rounded-xl border border-border bg-gradient-to-br from-brand-purple/[0.04] via-brand-pink/[0.02] to-transparent p-6 sm:p-8">
             <div className="text-center max-w-md mx-auto">
-              <div className="h-14 w-14 rounded-2xl bg-foreground/[0.06] border border-border grid place-items-center mx-auto mb-4 shadow-sm">
-                <Sparkles className="w-6 h-6 text-foreground/70" strokeWidth={2} />
+              <div className="h-14 w-14 rounded-2xl bg-emerald-500/15 border border-border grid place-items-center mx-auto mb-4 shadow-sm">
+                <Sparkles className="w-6 h-6 text-foreground" strokeWidth={2} />
               </div>
               <h3 className="font-display font-bold text-[18px] sm:text-[20px] tracking-tight text-foreground mb-1.5">
                 Nouvelle scorecard
@@ -598,8 +598,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 {activeEval.overallScore}
               </div>
             ) : (
-              <div className="h-12 w-12 sm:h-14 sm:w-14 flex items-center justify-center rounded-xl bg-foreground/[0.06] border border-dashed border-border shrink-0">
-                <Sparkles className="w-5 h-5 text-foreground/40" />
+              <div className="h-12 w-12 sm:h-14 sm:w-14 flex items-center justify-center rounded-xl bg-emerald-500/15 border border-dashed border-border shrink-0">
+                <Sparkles className="w-5 h-5 text-foreground" />
               </div>
             )}
             <div className="min-w-0">

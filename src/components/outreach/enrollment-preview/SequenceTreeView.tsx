@@ -248,8 +248,8 @@ function ActionCard({
       className="rounded-xl border border-border bg-card overflow-hidden"
     >
       <div className="flex items-center gap-3 px-4 py-3">
-        <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Icon className="w-4 h-4 text-foreground/70" strokeWidth={2} />
+        <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Icon className="w-4 h-4 text-foreground" strokeWidth={2} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-semibold text-foreground tracking-tight">

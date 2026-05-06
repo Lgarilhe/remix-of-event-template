@@ -307,7 +307,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
     >
       <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-muted/20">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] text-foreground flex items-center justify-center shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
             <Briefcase className="w-4 h-4" />
           </div>
           <div className="min-w-0">
@@ -374,7 +374,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4 }}
           >
-            <div className="h-10 w-10 rounded-full bg-foreground/[0.06] text-muted-foreground flex items-center justify-center mx-auto mb-3">
+            <div className="h-10 w-10 rounded-full bg-emerald-500/15 text-foreground flex items-center justify-center mx-auto mb-3">
               <Sparkles className="w-5 h-5" />
             </div>
             <p className="text-sm text-foreground font-medium">Aucune mission active</p>

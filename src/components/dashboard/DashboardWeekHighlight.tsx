@@ -138,7 +138,7 @@ const StatCell: React.FC<{
       transition={{ duration: 0.4, ease: 'easeOut', delay }}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="h-7 w-7 rounded-lg bg-foreground/[0.06] text-muted-foreground flex items-center justify-center shrink-0">
+        <div className="h-7 w-7 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
           {icon}
         </div>
         <Sparkline data={sparkline} tone={sparklineTone} width={64} height={20} />
@@ -274,7 +274,7 @@ export const DashboardWeekHighlight: React.FC<DashboardWeekHighlightProps> = ({ 
   const headlineToneStyles = {
     positive: 'bg-success/10 text-success ring-success/30',
     negative: 'bg-destructive/10 text-destructive ring-destructive/30',
-    neutral: 'bg-foreground/[0.06] text-foreground ring-border',
+    neutral: 'bg-emerald-500/15 text-foreground ring-border',
   }[headlineTone];
 
   return (

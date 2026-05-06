@@ -50,7 +50,7 @@ const KPICard: React.FC<{
   tone?: 'default' | 'success' | 'warning' | 'destructive';
 }> = ({ icon, label, value, hint, tone = 'default' }) => {
   const toneStyles = {
-    default: 'bg-foreground/[0.06] text-foreground',
+    default: 'bg-emerald-500/15 text-foreground',
     success: 'bg-success/10 text-success',
     warning: 'bg-warning/10 text-warning',
     destructive: 'bg-destructive/10 text-destructive',
@@ -82,7 +82,7 @@ const SectionCard: React.FC<{
 }> = ({ icon, title, subtitle, children }) => (
   <div className="rounded-xl bg-card border border-border overflow-hidden">
     <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-muted/20">
-      <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] text-foreground flex items-center justify-center shrink-0">
+      <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
         {icon}
       </div>
       <div className="min-w-0">

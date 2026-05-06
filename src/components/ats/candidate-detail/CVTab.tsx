@@ -271,8 +271,8 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
           {/* Toolbar du CV actif */}
           {activeCV && (
             <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card">
-              <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-                <FileText className="w-4 h-4 text-foreground/70" />
+              <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+                <FileText className="w-4 h-4 text-foreground" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -459,7 +459,7 @@ function DropZone({
           'h-14 w-14 rounded-2xl grid place-items-center transition-all',
           dragActive
             ? 'bg-foreground text-background scale-110'
-            : 'bg-foreground/[0.06] text-foreground/50 group-hover:bg-foreground/10 group-hover:text-foreground/70',
+            : 'bg-emerald-500/15 text-foreground group-hover:bg-emerald-500/25',
         )}
       >
         {uploading ? (
@@ -502,8 +502,8 @@ function CVListItem({
           : 'border-border bg-card hover:bg-muted/30 hover:border-foreground/20',
       )}
     >
-      <div className="h-7 w-7 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
-        <FileText className="w-3.5 h-3.5 text-foreground/60" />
+      <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
+        <FileText className="w-3.5 h-3.5 text-foreground" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">

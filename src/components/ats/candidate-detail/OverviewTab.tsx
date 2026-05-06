@@ -731,8 +731,8 @@ function ProfileSummaryCard({
       className="rounded-xl border border-border bg-card p-4 sm:p-5"
     >
       <div className="flex items-start gap-3">
-        <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Sparkles className="w-4 h-4 text-foreground/70" />
+        <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Sparkles className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
@@ -801,7 +801,7 @@ function StatCard({
     success: { iconBg: 'bg-success/10', iconText: 'text-success' },
     warning: { iconBg: 'bg-warning/10', iconText: 'text-warning' },
     brand: { iconBg: 'bg-brand-purple/10', iconText: 'text-brand-purple' },
-    muted: { iconBg: 'bg-foreground/[0.06]', iconText: 'text-foreground/60' },
+    muted: { iconBg: 'bg-emerald-500/15', iconText: 'text-foreground' },
   }[tone];
 
   return (
@@ -845,8 +845,8 @@ function SectionCard({
   return (
     <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
       <div className="flex items-center gap-2 mb-2.5">
-        <div className="h-7 w-7 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Icon className="w-3.5 h-3.5 text-foreground/70" />
+        <div className="h-7 w-7 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Icon className="w-3.5 h-3.5 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-display font-bold text-[13px] tracking-tight text-foreground">{title}</h3>
@@ -871,8 +871,8 @@ function PositionRow({ position }: { position: { jobId: string; jobTitle: string
 
   return (
     <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-muted/15 border border-border/50 hover:bg-muted/30 transition-colors">
-      <div className="h-7 w-7 rounded-md bg-foreground/[0.06] grid place-items-center shrink-0">
-        <Briefcase className="w-3.5 h-3.5 text-foreground/60" />
+      <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
+        <Briefcase className="w-3.5 h-3.5 text-foreground" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] font-semibold text-foreground truncate leading-tight">
@@ -960,8 +960,8 @@ function ExperienceRow({
       {exp.logo ? (
         <img src={exp.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-card border border-border shrink-0" />
       ) : (
-        <div className="h-8 w-8 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Building2 className="w-3.5 h-3.5 text-foreground/60" />
+        <div className="h-8 w-8 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Building2 className="w-3.5 h-3.5 text-foreground" />
         </div>
       )}
       <div className="flex-1 min-w-0">
@@ -987,8 +987,8 @@ function EducationRow({
       {edu.logo ? (
         <img src={edu.logo} alt="" className="w-9 h-9 rounded-lg object-contain bg-card border border-border shrink-0" />
       ) : (
-        <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <GraduationCap className="w-4 h-4 text-foreground/60" />
+        <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <GraduationCap className="w-4 h-4 text-foreground" />
         </div>
       )}
       <div className="flex-1 min-w-0">

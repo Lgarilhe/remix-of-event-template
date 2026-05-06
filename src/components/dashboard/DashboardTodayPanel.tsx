@@ -70,7 +70,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
             ? `${msg.sequenceName} · Étape ${(msg.stepOrder || 0) + 1}`
             : msg.recipientHeadline || '—',
         icon: msg.type === 'inmail' ? <Mail className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />,
-        iconBg: msg.type === 'inmail' ? 'bg-info/10' : 'bg-foreground/[0.06]',
+        iconBg: msg.type === 'inmail' ? 'bg-info/10' : 'bg-emerald-500/15',
         iconColor: msg.type === 'inmail' ? 'text-info' : 'text-foreground',
         isDone,
         isLate,
@@ -107,7 +107,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
     >
       <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border bg-muted/20">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="h-9 w-9 rounded-lg bg-foreground/[0.06] text-foreground flex items-center justify-center shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
             <CalendarClock className="w-4 h-4" />
           </div>
           <div className="min-w-0">

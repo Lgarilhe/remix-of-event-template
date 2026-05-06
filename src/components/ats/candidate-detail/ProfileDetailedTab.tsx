@@ -143,8 +143,8 @@ function Section({
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/15">
-        <div className="h-8 w-8 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Icon className="w-4 h-4 text-foreground/70" />
+        <div className="h-8 w-8 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Icon className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
@@ -238,8 +238,8 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
           className="w-10 h-10 rounded-lg object-contain bg-card border border-border shrink-0"
         />
       ) : (
-        <div className="h-10 w-10 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Building2 className="w-4 h-4 text-foreground/60" />
+        <div className="h-10 w-10 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Building2 className="w-4 h-4 text-foreground" />
         </div>
       )}
 
@@ -366,8 +366,8 @@ function EducationItem({ edu }: { edu: RawEducation }) {
           className="w-10 h-10 rounded-lg object-contain bg-card border border-border shrink-0"
         />
       ) : (
-        <div className="h-10 w-10 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <GraduationCap className="w-4 h-4 text-foreground/60" />
+        <div className="h-10 w-10 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <GraduationCap className="w-4 h-4 text-foreground" />
         </div>
       )}
 

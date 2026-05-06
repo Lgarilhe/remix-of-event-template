@@ -68,8 +68,8 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates, stages }) => {
             key={stat.key}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors"
           >
-            <div className="h-7 w-7 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-              <Icon className="w-3.5 h-3.5 text-foreground/70" />
+            <div className="h-7 w-7 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+              <Icon className="w-3.5 h-3.5 text-foreground" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-display text-[14px] font-bold text-foreground tabular-nums leading-tight">

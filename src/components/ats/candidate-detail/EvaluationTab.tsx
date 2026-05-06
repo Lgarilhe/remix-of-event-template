@@ -232,8 +232,8 @@ function SectionCard({
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/15">
-        <div className="h-8 w-8 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Icon className="w-4 h-4 text-foreground/70" />
+        <div className="h-8 w-8 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Icon className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
@@ -276,8 +276,8 @@ function CollapsibleCard({
           open ? 'border-b border-border bg-muted/15' : 'hover:bg-muted/15',
         )}
       >
-        <div className="h-8 w-8 rounded-lg bg-foreground/[0.06] grid place-items-center shrink-0">
-          <Icon className="w-4 h-4 text-foreground/70" />
+        <div className="h-8 w-8 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+          <Icon className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0 text-left">
           <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
