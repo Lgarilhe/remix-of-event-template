@@ -769,47 +769,51 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
               <Mic className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Coaching Live</span>
             </button>
-            <button
-              onClick={async () => {
-                // Auto-save avant de naviguer en plein écran (sans coaching)
-                if (activeEval) {
-                  try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (user) {
-                      const now = new Date().toISOString();
-                      const payload: any = {
-                        candidate_id: candidate.candidateId,
-                        job_id: candidate.jobId,
-                        job_title: candidate.jobTitle,
-                        criteria: activeEval.criteria as any,
-                        ratings: activeEval.ratings as any,
-                        comments: activeEval.comments as any,
-                        overall_score: activeEval.overallScore,
-                        created_by: user.id,
-                        updated_at: now,
-                        recommendation: activeEval.recommendation || null,
-                        summary: activeEval.summary || null,
-                        follow_up_notes: activeEval.followUpNotes || null,
-                        interview_stage: activeEval.interviewStage || null,
-                        organization_id: organizationId || null,
-                      };
-                      if (activeEval.id) {
-                        await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
-                      } else {
-                        const { data } = await supabase.from('candidate_evaluations').insert(payload).select('id').single();
-                        if (data) updateActiveEval(ev => ({ ...ev, id: data.id }));
+            {/* Plein écran : caché si on est déjà en mode plein écran
+                (autoOpenFirst = true sur ScorecardFullPage) */}
+            {!autoOpenFirst && (
+              <button
+                onClick={async () => {
+                  // Auto-save avant de naviguer en plein écran (sans coaching)
+                  if (activeEval) {
+                    try {
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (user) {
+                        const now = new Date().toISOString();
+                        const payload: any = {
+                          candidate_id: candidate.candidateId,
+                          job_id: candidate.jobId,
+                          job_title: candidate.jobTitle,
+                          criteria: activeEval.criteria as any,
+                          ratings: activeEval.ratings as any,
+                          comments: activeEval.comments as any,
+                          overall_score: activeEval.overallScore,
+                          created_by: user.id,
+                          updated_at: now,
+                          recommendation: activeEval.recommendation || null,
+                          summary: activeEval.summary || null,
+                          follow_up_notes: activeEval.followUpNotes || null,
+                          interview_stage: activeEval.interviewStage || null,
+                          organization_id: organizationId || null,
+                        };
+                        if (activeEval.id) {
+                          await supabase.from('candidate_evaluations').update(payload).eq('id', activeEval.id);
+                        } else {
+                          const { data } = await supabase.from('candidate_evaluations').insert(payload).select('id').single();
+                          if (data) updateActiveEval(ev => ({ ...ev, id: data.id }));
+                        }
                       }
-                    }
-                  } catch (e) { console.warn('Auto-save before fullscreen failed:', e); }
-                }
-                navigate(`/ats/scorecard/${candidate.candidateId}`);
-              }}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent text-foreground transition-colors"
-              title="Ouvrir la scorecard en plein écran avec sidebar candidat + poste"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Plein écran</span>
-            </button>
+                    } catch (e) { console.warn('Auto-save before fullscreen failed:', e); }
+                  }
+                  navigate(`/ats/scorecard/${candidate.candidateId}`);
+                }}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent text-foreground transition-colors"
+                title="Ouvrir la scorecard en plein écran avec sidebar candidat + poste"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Plein écran</span>
+              </button>
+            )}
             <button onClick={handleGenerate} disabled={generating}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent text-foreground disabled:opacity-50 transition-colors">
               {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
