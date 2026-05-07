@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Target, Shield, CheckCircle2, Circle, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
 
 interface FeatureActivation {
   id: string;
@@ -65,9 +66,7 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
     <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-            <Icon className="w-4 h-4 text-foreground" />
-          </div>
+          <IconTile icon={Icon} size="md" />
           <div>
             <h3 className="font-display text-sm font-bold tracking-tight text-foreground">{title}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">{description}</p>

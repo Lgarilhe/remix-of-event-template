@@ -150,16 +150,42 @@ const Settings = () => {
           {/* Header */}
           <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>
 
-          {/* Brutal tabs */}
-          <div className="flex gap-0 border-b-2 border-border overflow-x-auto no-scrollbar mb-6">
+          {/* Tabs avec a11y proper (role tablist + keyboard nav left/right) */}
+          <div
+            role="tablist"
+            aria-label="Sections des paramètres"
+            className="flex gap-0 border-b-2 border-border overflow-x-auto no-scrollbar mb-6"
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+              e.preventDefault();
+              const currentIdx = tabs.findIndex(t => t.value === activeTab);
+              let nextIdx = currentIdx;
+              if (e.key === 'ArrowLeft') nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+              else if (e.key === 'ArrowRight') nextIdx = (currentIdx + 1) % tabs.length;
+              else if (e.key === 'Home') nextIdx = 0;
+              else if (e.key === 'End') nextIdx = tabs.length - 1;
+              setActiveTab(tabs[nextIdx].value);
+              // Move focus to the new active tab
+              const target = e.currentTarget.querySelector<HTMLButtonElement>(`[data-tab-value="${tabs[nextIdx].value}"]`);
+              target?.focus();
+            }}
+          >
             {tabs.map(tab => {
               const isActive = activeTab === tab.value;
               return (
                 <button
                   key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls={`settings-panel-${tab.value}`}
+                  id={`settings-tab-${tab.value}`}
+                  data-tab-value={tab.value}
+                  tabIndex={isActive ? 0 : -1}
                   onClick={() => setActiveTab(tab.value)}
                   className={cn(
                     "relative px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap flex items-center gap-2 border-r border-border last:border-r-0 overflow-hidden group transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                     isActive
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground"
@@ -173,7 +199,13 @@ const Settings = () => {
           </div>
 
           {/* Tab content */}
-          <div className="max-w-3xl space-y-6">
+          <div
+            role="tabpanel"
+            id={`settings-panel-${activeTab}`}
+            aria-labelledby={`settings-tab-${activeTab}`}
+            tabIndex={0}
+            className="max-w-3xl space-y-6 focus:outline-none"
+          >
             {activeTab === 'general' && (
               <Card>
                 <CardHeader>

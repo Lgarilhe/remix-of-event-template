@@ -97,9 +97,6 @@ export default {
   				border: 'hsl(var(--sidebar-border))',
   				ring: 'hsl(var(--sidebar-ring))'
   			},
-  			brutal: {
-  				accent: 'hsl(var(--brutal-accent))'
-  			},
   			success: {
   				DEFAULT: 'hsl(var(--status-success))',
   				foreground: 'hsl(var(--status-success-foreground))',
@@ -131,10 +128,18 @@ export default {
   			}
   		},
   		borderRadius: {
+  			'2xl': 'calc(var(--radius) + 12px)',
   			xl: 'calc(var(--radius) + 4px)',
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		fontSize: {
+  			// Étend l'échelle Tailwind pour avoir des paliers entre 10 et 12px,
+  			// nécessaires pour les eyebrow labels, badges, kbd shortcuts.
+  			// Bannit l'usage de text-[Npx] arbitraires (8px / 9.5px / 10.5px / 11.5px).
+  			'3xs': ['0.625rem', { lineHeight: '0.875rem' }], // 10px / 14px
+  			'2xs': ['0.6875rem', { lineHeight: '0.9375rem' }], // 11px / 15px
   		},
   		keyframes: {
   			'accordion-down': {

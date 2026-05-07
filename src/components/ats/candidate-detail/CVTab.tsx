@@ -21,6 +21,7 @@ import {
   Loader2, AlertCircle, RefreshCw, Pencil, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -271,19 +272,17 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
           {/* Toolbar du CV actif */}
           {activeCV && (
             <div className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-card">
-              <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-                <FileText className="w-4 h-4 text-foreground" />
-              </div>
+              <IconTile icon={FileText} size="md" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <p className="text-[13px] font-semibold truncate">{activeCV.fileName}</p>
                   {activeCV.isPrimary && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+                    <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
                       <Star className="w-2.5 h-2.5" /> Principal
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   {formatFileSize(activeCV.fileSizeBytes)}
                   {' · '}
                   Uploadé {format(new Date(activeCV.uploadedAt), "d MMM yyyy 'à' HH:mm", { locale: fr })}
@@ -293,7 +292,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-2xs"
                   onClick={() => handleDownload(activeCV)}
                   title="Télécharger"
                 >
@@ -302,7 +301,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-2xs"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                   title="Uploader un nouveau CV"
@@ -313,7 +312,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2 text-[11px] hover:text-destructive hover:border-destructive/40"
+                  className="h-7 px-2 text-2xs hover:text-destructive hover:border-destructive/40"
                   onClick={() => setConfirmDelete(activeCV)}
                   title="Supprimer ce CV"
                 >
@@ -336,10 +335,10 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
                     autoFocus
                   />
                   <div className="flex items-center gap-1.5 justify-end">
-                    <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setEditingNotes(null)}>
+                    <Button variant="ghost" size="sm" className="h-7 text-2xs" onClick={() => setEditingNotes(null)}>
                       Annuler
                     </Button>
-                    <Button size="sm" className="h-7 text-[11px]" onClick={handleSaveNotes}>
+                    <Button size="sm" className="h-7 text-2xs" onClick={handleSaveNotes}>
                       Enregistrer
                     </Button>
                   </div>
@@ -378,7 +377,7 @@ export const CVTab: React.FC<Props> = ({ candidateId, organizationId, candidateN
           {/* Liste des autres CVs (versions alternatives) */}
           {cvs.length > 1 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground px-1">
+              <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground px-1">
                 Toutes les versions ({cvs.length})
               </p>
               {cvs.map(cv => (
@@ -511,19 +510,17 @@ function CVListItem({
           : 'border-border bg-card hover:bg-muted/30 hover:border-foreground/20',
       )}
     >
-      <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
-        <FileText className="w-3.5 h-3.5 text-foreground" />
-      </div>
+      <IconTile icon={FileText} size="sm" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <p className="text-[12px] font-semibold truncate">{cv.fileName}</p>
           {cv.isPrimary && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+            <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
               Principal
             </span>
           )}
         </div>
-        <p className="text-[10.5px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {formatFileSize(cv.fileSizeBytes)}
           {' · '}
           {format(new Date(cv.uploadedAt), 'd MMM yyyy', { locale: fr })}

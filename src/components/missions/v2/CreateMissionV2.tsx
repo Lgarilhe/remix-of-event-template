@@ -719,7 +719,7 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
               'relative flex flex-col items-start gap-3 px-5 py-5 rounded-xl border text-left transition-all',
               opt.recommended
                 ? 'border-foreground/30 bg-card hover:border-foreground/50'
-                : 'border-border bg-card/60 hover:bg-card hover:border-borderHi',
+                : 'border-border bg-card/60 hover:bg-card hover:border-foreground/30',
               disabled && 'opacity-50 cursor-not-allowed',
             )}
           >

@@ -5,6 +5,7 @@ import { ModelPicker } from '@/components/ai/ModelPicker';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { IconTile } from '@/components/ui/IconTile';
 
 interface Props {
   candidate: ATSCandidate;
@@ -75,9 +76,7 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
   if (!result && !loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 grid place-items-center mb-3">
-          <Shield className="w-5 h-5 text-foreground" />
-        </div>
+        <IconTile icon={Shield} size="lg" className="mb-3 rounded-2xl" />
         <p className="font-display text-base font-bold tracking-tight text-foreground">Détection de fraude IA</p>
         <p className="text-xs text-muted-foreground mt-1 max-w-xs">
           Analyse automatique du profil pour détecter les incohérences : dates, titres gonflés, diplômes douteux.

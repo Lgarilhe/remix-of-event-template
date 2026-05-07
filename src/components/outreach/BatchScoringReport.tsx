@@ -332,7 +332,7 @@ const FilterPill: React.FC<{
         'h-7 px-3 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5',
         active
           ? 'bg-foreground text-background border-foreground'
-          : 'bg-card text-foreground border-border hover:border-borderHi hover:bg-accent',
+          : 'bg-card text-foreground border-border hover:border-foreground/30 hover:bg-accent',
       )}
     >
       {variant && !active && (

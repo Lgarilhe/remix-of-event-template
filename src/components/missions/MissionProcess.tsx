@@ -294,7 +294,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                       'flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-md border text-left transition-all',
                       isActive
                         ? 'border-foreground/40 bg-background'
-                        : 'border-border bg-background/40 hover:border-borderHi hover:bg-background',
+                        : 'border-border bg-background/40 hover:border-foreground/30 hover:bg-background',
                     )}
                   >
                     <div className="flex items-center gap-1.5">
@@ -542,7 +542,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
               {!readOnly && (
                 <button
                   onClick={() => setRemoveTarget({ id: member.id, name: getMemberName(member.user_id) })}
-                  className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -645,7 +645,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                       </button>
                       <button
                         onClick={() => cancelInvitation(inv.id)}
-                        className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
                         title="Annuler l'invitation"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
