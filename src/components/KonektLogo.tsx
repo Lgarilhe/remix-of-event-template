@@ -28,8 +28,9 @@ interface KonektLogoProps {
  *   <KonektLogo theme="light" />            // full, blanc (fond sombre)
  *   <KonektLogo variant="mark" size={28} /> // mark seul (favicon-style)
  *
- * Les fichiers SVG sont dans `/public/konekt-{logo,mark}{,-white}.svg`.
- * Remplacer ces fichiers par le logo officiel pour mise à jour globale.
+ * Les fichiers sont dans `/public/konekt-{logo,mark}{,-white}.png` (PNG
+ * transparents générés depuis les sources WhatsApp via scripts/convert-logos.py).
+ * Pour passer en SVG natif, remplacer par .svg + ajuster l'extension ici.
  */
 export const KonektLogo = ({
   variant = 'full',
@@ -40,7 +41,7 @@ export const KonektLogo = ({
 }: KonektLogoProps) => {
   const useWhite = theme === 'light';
   const base = variant === 'mark' ? 'konekt-mark' : 'konekt-logo';
-  const src = `/${base}${useWhite ? '-white' : ''}.svg`;
+  const src = `/${base}${useWhite ? '-white' : ''}.png`;
   const defaultSize = variant === 'mark' ? 32 : 36;
   const finalSize = size ?? defaultSize;
 
