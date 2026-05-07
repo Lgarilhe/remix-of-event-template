@@ -10,7 +10,7 @@
  * icon-tiles vert clair, segmented control rounded-full).
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
@@ -36,6 +36,12 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { PageLayout } from '@/components/layout';
 import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
+import {
+  TasksFiltersBar,
+  applyTasksFilters,
+  DEFAULT_TASKS_FILTERS,
+  type TasksFilters,
+} from '@/components/tasks/TasksFiltersBar';
 import { useAutoTaskSuggestions } from '@/hooks/useAutoTaskSuggestions';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -155,10 +161,39 @@ export default function TasksPage() {
   const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder, reminders } = useAllReminders();
   const [view, setView] = useState<'active' | 'all'>('active');
   const [createOpen, setCreateOpen] = useState(false);
+  const [filters, setFilters] = useState<TasksFilters>(DEFAULT_TASKS_FILTERS);
 
   // Auto-task suggestions (debrief post-RDV manquants, etc.)
   const { suggestions } = useAutoTaskSuggestions();
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
+
+  // Apply filters to grouped buckets côté UI (light, ~50 items max)
+  const filteredGrouped = useMemo(() => {
+    const out: typeof grouped = {
+      overdue: applyTasksFilters(grouped.overdue, filters),
+      today: applyTasksFilters(grouped.today, filters),
+      week: applyTasksFilters(grouped.week, filters),
+      later: applyTasksFilters(grouped.later, filters),
+      done: applyTasksFilters(grouped.done, filters),
+    };
+    return out;
+  }, [grouped, filters]);
+
+  const filteredCounts = useMemo(
+    () => ({
+      overdue: filteredGrouped.overdue.length,
+      today: filteredGrouped.today.length,
+      week: filteredGrouped.week.length,
+      later: filteredGrouped.later.length,
+      done: filteredGrouped.done.length,
+      active:
+        filteredGrouped.overdue.length +
+        filteredGrouped.today.length +
+        filteredGrouped.week.length +
+        filteredGrouped.later.length,
+    }),
+    [filteredGrouped],
+  );
 
   // Crée la tâche depuis une suggestion auto
   const acceptSuggestion = async (s: ReturnType<typeof useAutoTaskSuggestions>['suggestions'][0]) => {
@@ -197,7 +232,9 @@ export default function TasksPage() {
     ? ['overdue', 'today', 'week', 'later']
     : ['overdue', 'today', 'week', 'later', 'done'];
 
-  const isEmpty = counts.active === 0 && (view === 'active' || counts.done === 0);
+  const isEmpty = filteredCounts.active === 0 && (view === 'active' || filteredCounts.done === 0);
+  const isFilteredEmpty =
+    isEmpty && (counts.active > 0 || counts.done > 0); // a des reminders mais filtrés out
 
   // Batch-fetch les avatars LinkedIn pour tous les candidats des reminders.
   // On dédoublonne les candidate_ids, et on cap à 50 pour éviter une query
@@ -343,11 +380,20 @@ export default function TasksPage() {
         </motion.div>
       )}
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      {/* KPI strip — utilise filteredCounts pour refléter les filtres actifs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
         {(['overdue', 'today', 'week', 'later', 'done'] as const).map((bucket, i) => (
-          <KPICard key={bucket} bucket={bucket} count={counts[bucket]} index={i} />
+          <KPICard key={bucket} bucket={bucket} count={filteredCounts[bucket]} index={i} />
         ))}
+      </div>
+
+      {/* Filtres bar */}
+      <div className="mb-6">
+        <TasksFiltersBar
+          filters={filters}
+          onFiltersChange={setFilters}
+          allReminders={reminders}
+        />
       </div>
 
       {/* Loading / Empty / Content */}
@@ -364,16 +410,40 @@ export default function TasksPage() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
         >
-          <div className="h-12 w-12 rounded-full bg-success/10 text-success flex items-center justify-center mx-auto mb-4">
+          <div
+            className={cn(
+              'h-12 w-12 rounded-full flex items-center justify-center mx-auto mb-4',
+              isFilteredEmpty ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success',
+            )}
+          >
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <p className="font-display font-bold text-foreground text-base">
-            Zéro tâche en cours
+            {isFilteredEmpty
+              ? 'Aucune tâche ne correspond à tes filtres'
+              : 'Zéro tâche en cours'}
           </p>
-          <p className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto">
-            Les rappels créés sur un candidat apparaîtront ici. Tu peux en ajouter
-            depuis le modal de détail d'un candidat.
+          <p className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto mb-4">
+            {isFilteredEmpty
+              ? `${counts.active} tâche${counts.active > 1 ? 's' : ''} active${counts.active > 1 ? 's' : ''} mais toutes filtrées. Relâche un filtre pour les voir.`
+              : 'Les rappels apparaîtront ici. Crée-en une depuis cette page, le modal d\'un candidat ou un événement.'}
           </p>
+          {isFilteredEmpty ? (
+            <button
+              onClick={() => setFilters(DEFAULT_TASKS_FILTERS)}
+              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
+            >
+              Effacer les filtres
+            </button>
+          ) : (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nouvelle tâche
+            </button>
+          )}
         </motion.div>
       ) : (
         <motion.div
@@ -386,7 +456,7 @@ export default function TasksPage() {
           }}
         >
           {visibleBuckets.map((bucket) => {
-            const items = grouped[bucket];
+            const items = filteredGrouped[bucket];
             const meta = BUCKET_META[bucket];
             if (items.length === 0) return null;
             return (

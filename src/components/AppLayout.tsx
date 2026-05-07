@@ -3,6 +3,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
+import { GlobalTaskShortcut } from '@/components/tasks/GlobalTaskShortcut';
 
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
@@ -22,6 +23,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
       {/* Onboarding 3 étapes pour les users qui viennent d'accepter une invitation.
           Auto-detect via flag localStorage konekt_welcome_pending (set par Auth.tsx). */}
       <WelcomeOnboardingModal />
+
+      {/* Cmd+T / Ctrl+T global → ouvre CreateTaskModal n'importe où dans l'app */}
+      <GlobalTaskShortcut />
     </SidebarProvider>
   );
 };
