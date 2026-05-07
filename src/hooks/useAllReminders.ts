@@ -11,9 +11,19 @@ import { toast } from 'sonner';
 import { isPast, isToday, isThisWeek, parseISO } from 'date-fns';
 import { useCallback } from 'react';
 
+export type TaskCategory =
+  | 'general'
+  | 'follow_up'
+  | 'interview_prep'
+  | 'debrief'
+  | 'admin'
+  | 'client'
+  | 'sourcing';
+
 export interface Reminder {
   id: string;
-  candidate_id: string;
+  /** Nullable depuis migration V2 — tasks standalone possibles */
+  candidate_id: string | null;
   candidate_name: string | null;
   job_id: string | null;
   job_title: string | null;
@@ -22,6 +32,9 @@ export interface Reminder {
   due_at: string;
   completed_at: string | null;
   created_at: string;
+  category: TaskCategory;
+  auto_generated: boolean;
+  source_event_id: string | null;
 }
 
 export type ReminderBucket = 'overdue' | 'today' | 'week' | 'later' | 'done';

@@ -11,10 +11,11 @@
  * actions en haut et en bas pour mobile-friendly.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
 import {
   ExternalLink,
   Copy,
@@ -31,6 +32,7 @@ import {
   Video,
   Phone,
   ArrowRight,
+  CheckSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -123,6 +125,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
   onOpenChange,
 }) => {
   const navigate = useNavigate();
+  const [taskModalOpen, setTaskModalOpen] = useState<'prep' | 'debrief' | null>(null);
 
   if (!event) {
     return (
@@ -430,6 +433,28 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
 
         {/* Footer actions */}
         <div className="border-t border-border px-6 py-4 bg-card sticky bottom-0 space-y-2">
+          {/* Quick task creation depuis le contexte event (qualif uniquement) */}
+          {event.type === 'qualification' && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTaskModalOpen('prep')}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full border border-border bg-background hover:bg-accent text-xs font-medium text-foreground transition-colors"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                Tâche prép.
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskModalOpen('debrief')}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full border border-border bg-background hover:bg-accent text-xs font-medium text-foreground transition-colors"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                Tâche débrief
+              </button>
+            </div>
+          )}
+
           {/* CTA Préparer l'entretien — uniquement pour les qualifs avec candidat */}
           {event.type === 'qualification' && meta.candidateId && (
             <button
@@ -471,6 +496,63 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
           </div>
         </div>
       </SheetContent>
+
+      {/* Modal création tâche (prep ou débrief) — pré-rempli depuis l'event */}
+      {taskModalOpen && (
+        <CreateTaskModal
+          open={!!taskModalOpen}
+          onOpenChange={(o) => !o && setTaskModalOpen(null)}
+          prefillCandidate={
+            meta.candidateId && meta.candidateName
+              ? {
+                  candidateId: meta.candidateId,
+                  name: meta.candidateName,
+                  headline: meta.candidateHeadline ?? null,
+                  avatarUrl: meta.candidateAvatarUrl ?? null,
+                }
+              : undefined
+          }
+          prefillProjectId={meta.projectId ?? undefined}
+          prefillCategory={taskModalOpen === 'prep' ? 'interview_prep' : 'debrief'}
+          prefillTitle={
+            taskModalOpen === 'prep'
+              ? `Préparer l'entretien ${meta.candidateName ?? ''}`.trim()
+              : `Débrief de l'entretien ${meta.candidateName ?? ''}`.trim()
+          }
+          prefillDescription={
+            taskModalOpen === 'prep'
+              ? [
+                  `Avant le RDV ${meta.candidateName ?? ''} le ${dateLabel} à ${timeRangeLabel}.`,
+                  meta.clientName ? `Client : ${meta.clientName}.` : null,
+                  meta.jobTitle ? `Poste : ${meta.jobTitle}.` : null,
+                  'Relire CV + scoring + questions à creuser.',
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+              : [
+                  `Après le RDV ${meta.candidateName ?? ''} le ${dateLabel}.`,
+                  meta.clientName ? `Client : ${meta.clientName}.` : null,
+                  'Notes + envoi retour client.',
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+          }
+          prefillDueAt={
+            taskModalOpen === 'prep'
+              ? // 1h avant l'event
+                startDate
+                ? new Date(startDate.getTime() - 60 * 60 * 1000)
+                : undefined
+              : // 2h après l'event
+                endDate
+                ? new Date(endDate.getTime() + 2 * 60 * 60 * 1000)
+                : undefined
+          }
+          sourceEventId={
+            event.id.startsWith('qualif-') ? event.id.replace(/^qualif-/, '') : undefined
+          }
+        />
+      )}
     </Sheet>
   );
 };

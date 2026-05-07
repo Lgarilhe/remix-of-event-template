@@ -27,11 +27,20 @@ import {
   Trash2,
   ExternalLink,
   Loader2,
+  Plus,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { PageLayout } from '@/components/layout';
+import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
+import { useAutoTaskSuggestions } from '@/hooks/useAutoTaskSuggestions';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { useOrganization } from '@/hooks/useOrganization';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -140,8 +149,49 @@ const KPICard: React.FC<{
 
 export default function TasksPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuthReady();
+  const { organizationId } = useOrganization();
   const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder, reminders } = useAllReminders();
   const [view, setView] = useState<'active' | 'all'>('active');
+  const [createOpen, setCreateOpen] = useState(false);
+
+  // Auto-task suggestions (debrief post-RDV manquants, etc.)
+  const { suggestions } = useAutoTaskSuggestions();
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
+
+  // Crée la tâche depuis une suggestion auto
+  const acceptSuggestion = async (s: ReturnType<typeof useAutoTaskSuggestions>['suggestions'][0]) => {
+    if (!user || !organizationId) return;
+    const { error } = await supabase.from('candidate_reminders').insert({
+      organization_id: organizationId,
+      created_by: user.id,
+      title: s.title,
+      description: s.description,
+      due_at: s.dueAt.toISOString(),
+      category: s.category,
+      candidate_id: s.candidate?.candidateId ?? null,
+      candidate_name: s.candidate?.name ?? null,
+      source_event_id: s.sourceEventId,
+      auto_generated: true,
+    } as any);
+    if (error) {
+      console.warn('[acceptSuggestion]', error);
+      return;
+    }
+    setDismissedSuggestions((prev) => new Set(prev).add(s.key));
+    await queryClient.invalidateQueries({ queryKey: ['all-reminders'] });
+    await queryClient.invalidateQueries({ queryKey: ['auto-task-suggestions'] });
+  };
+
+  const dismissSuggestion = (key: string) => {
+    setDismissedSuggestions((prev) => new Set(prev).add(key));
+  };
+
+  const visibleSuggestions = useMemo(
+    () => suggestions.filter((s) => !dismissedSuggestions.has(s.key)),
+    [suggestions, dismissedSuggestions],
+  );
 
   const visibleBuckets: ReminderBucket[] = view === 'active'
     ? ['overdue', 'today', 'week', 'later']
@@ -224,8 +274,74 @@ export default function TasksPage() {
             <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">Actualiser</span>
           </button>
+
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-foreground text-background text-[11.5px] font-medium hover:opacity-90 transition-opacity"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Nouvelle tâche
+          </button>
         </div>
       </motion.header>
+
+      {/* Suggestions auto (debrief post-RDV manquants, etc.) */}
+      {visibleSuggestions.length > 0 && (
+        <motion.div
+          className="mb-6 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/30 overflow-hidden"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-emerald-500/20 bg-emerald-500/[0.04]">
+            <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <Sparkles className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-display font-bold text-foreground tracking-tight">
+                {visibleSuggestions.length} suggestion{visibleSuggestions.length > 1 ? 's' : ''} de tâches automatiques
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Détectées d'après ton activité — clique pour créer ou rejeter
+              </p>
+            </div>
+          </div>
+          <ul className="divide-y divide-emerald-500/10">
+            {visibleSuggestions.map((s) => (
+              <li key={s.key} className="px-5 py-3 flex items-start gap-3 hover:bg-emerald-500/[0.04] transition-colors">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-display font-semibold text-foreground tracking-tight leading-tight">
+                    {s.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                    {s.description}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mt-1.5 font-semibold">
+                    {s.reason}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => acceptSuggestion(s)}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors"
+                    title="Créer cette tâche"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Créer
+                  </button>
+                  <button
+                    onClick={() => dismissSuggestion(s.key)}
+                    className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                    title="Ignorer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
@@ -289,6 +405,9 @@ export default function TasksPage() {
           })}
         </motion.div>
       )}
+
+      {/* Modal création de tâche */}
+      <CreateTaskModal open={createOpen} onOpenChange={setCreateOpen} />
     </PageLayout>
   );
 }
