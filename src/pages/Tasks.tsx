@@ -10,7 +10,7 @@
  * icon-tiles vert clair, segmented control rounded-full).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
