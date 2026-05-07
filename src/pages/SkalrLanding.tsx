@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  ArrowRight, ChevronDown, X, Loader2,
+import {
+  ArrowRight, ChevronDown, X, Loader2, Menu,
   Search, Brain, Send, MessageSquare, LayoutGrid
 } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
@@ -84,6 +84,7 @@ const SkalrLanding = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [contactForm, setContactForm] = useState({ name: '', email: '', company: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -189,9 +190,86 @@ const SkalrLanding = () => {
               <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))} className="h-9 px-5 text-xs">
                 Commencer <ArrowRight className="h-3 w-3" />
               </BrutalButton>
+              {/* Burger menu — mobile uniquement */}
+              <button
+                type="button"
+                onClick={() => setShowMobileMenu(true)}
+                aria-label="Ouvrir le menu"
+                className="md:hidden h-9 w-9 grid place-items-center rounded-md border border-border text-foreground hover:bg-foreground/[0.04] transition-colors"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </nav>
+
+        {/* ===== Mobile menu drawer ===== */}
+        <AnimatePresence>
+          {showMobileMenu && (
+            <motion.div
+              key="mobile-menu"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] md:hidden bg-background"
+            >
+              <div className="flex items-center justify-between px-6 h-14 border-b border-border">
+                <KonektLogo variant="full" theme="dark" size={28} />
+                <button
+                  type="button"
+                  onClick={() => setShowMobileMenu(false)}
+                  aria-label="Fermer le menu"
+                  className="h-9 w-9 grid place-items-center rounded-md border border-border text-foreground hover:bg-foreground/[0.04] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <nav className="flex flex-col px-6 py-6 gap-1">
+                {[
+                  { label: 'Produit', id: 'produit' },
+                  { label: 'Résultats', id: 'resultats' },
+                  { label: 'FAQ', id: 'faq' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      // Délai pour laisser le menu se fermer avant de scroller
+                      setTimeout(() => {
+                        document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
+                      }, 250);
+                    }}
+                    className="text-left py-4 text-base font-display font-bold uppercase tracking-wide text-foreground hover:text-foreground/70 transition-colors border-b border-border"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setTimeout(() => setShowCalendly(true), 250);
+                  }}
+                  className="text-left py-4 text-base font-display font-bold uppercase tracking-wide text-foreground hover:text-foreground/70 transition-colors border-b border-border"
+                >
+                  Démo
+                </button>
+              </nav>
+              <div className="px-6 mt-4">
+                <BrutalButton
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setTimeout(() => navigate(withPreviewAccessToken('/auth')), 200);
+                  }}
+                  className="w-full h-12 text-sm"
+                >
+                  Commencer <ArrowRight className="h-4 w-4" />
+                </BrutalButton>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ===== HERO ===== */}
         <section className="landing-sky-gradient pt-28 pb-20 px-6">
