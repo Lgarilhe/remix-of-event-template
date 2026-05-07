@@ -237,8 +237,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] rounded-xl">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[520px] rounded-xl max-h-[calc(100vh-2rem)] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b border-border">
           <DialogTitle className="flex items-center gap-2 font-display tracking-tight">
             <div className="h-8 w-8 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center">
               <Plus className="w-4 h-4" />
@@ -250,7 +250,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {/* Event name (round) */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">Étape</label>
@@ -401,8 +402,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               rows={3}
             />
           </div>
+          </div>
 
-          <DialogFooter>
+          {/* Footer sticky en bas, hors zone scrollable */}
+          <DialogFooter className="px-6 py-4 border-t border-border shrink-0 bg-card">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
