@@ -3,7 +3,7 @@
 @tailwind utilities;
 /* cache-bust: v2 */
 
-/* Skalr Design System — Qonto-inspired dark-first theme.
+/* Konekt Design System — Qonto-inspired dark-first theme.
    All colors MUST be HSL.
    Default = dark. .light class = light mode.
 */
@@ -51,7 +51,7 @@
     --sidebar-border: 0 0% 100% / 8%;
     --sidebar-ring: 0 0% 100% / 25%;
 
-    /* Skalr brand colors */
+    /* Konekt brand colors */
     --skalr-purple: 271 81% 56%;
     --skalr-pink: 330 81% 60%;
     --skalr-blue: 217 91% 60%;
@@ -207,7 +207,7 @@
   }
 }
 
-/* Skalr specific styles */
+/* Konekt specific styles */
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;

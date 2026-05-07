@@ -41,7 +41,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
           </div>
           {entry.entity && (
             <span className={`text-xs px-2 py-0.5 ${
-              entry.entity === 'Skalr' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
+              entry.entity === 'Konekt' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
             }`}>
               {entry.entity}
             </span>
@@ -116,7 +116,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
             )}
             {entry.entity && (
               <span className={`text-xs px-2 py-1 ${
-                entry.entity === 'Skalr' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
+                entry.entity === 'Konekt' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
               }`}>
                 {entry.entity}
               </span>

@@ -141,7 +141,7 @@ const Settings = () => {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title="Paramètres | Skalr"
+        title="Paramètres | Konekt"
         description="Gérez les paramètres de votre organisation"
       />
 

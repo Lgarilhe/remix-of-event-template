@@ -141,16 +141,16 @@ const SkalrLanding = () => {
   ];
 
   const faqs = [
-    { question: 'Comment ça marche ?', answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Skalr trouver, scorer et contacter les meilleurs profils pour vous." },
+    { question: 'Comment ça marche ?', answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Konekt trouver, scorer et contacter les meilleurs profils pour vous." },
     { question: 'Mon compte LinkedIn est-il en sécurité ?', answer: "Absolument. Nous utilisons des connexions sécurisées et respectons les limites de LinkedIn. Vos identifiants sont chiffrés et ne sont jamais stockés en clair." },
-    { question: "Combien de messages puis-je envoyer ?", answer: "Cela dépend de votre abonnement LinkedIn et de votre plan Skalr. Nous optimisons automatiquement le volume et les horaires d'envoi." },
-    { question: "C'est gratuit ?", answer: "Skalr propose un essai gratuit pour découvrir la plateforme. Nos plans sont ensuite adaptés à la taille de votre équipe." },
+    { question: "Combien de messages puis-je envoyer ?", answer: "Cela dépend de votre abonnement LinkedIn et de votre plan Konekt. Nous optimisons automatiquement le volume et les horaires d'envoi." },
+    { question: "C'est gratuit ?", answer: "Konekt propose un essai gratuit pour découvrir la plateforme. Nos plans sont ensuite adaptés à la taille de votre équipe." },
   ];
 
   return (
     <>
       <SEOHead 
-        title="Skalr — Plateforme de recrutement tout-en-un"
+        title="Konekt — Plateforme de recrutement tout-en-un"
         description="Trouvez, engagez et recrutez vos meilleurs talents. Sourcing LinkedIn, séquences automatisées et suivi candidat."
         keywords="recrutement saas, sourcing linkedin, ats, talent acquisition"
       />
@@ -161,9 +161,9 @@ const SkalrLanding = () => {
         <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
           <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
             <span className="text-lg font-bold uppercase tracking-wider text-foreground">
-              Skalr<span className="text-primary">.</span>
+              Konekt<span className="text-primary">.</span>
             </span>
-            
+
             <div className="hidden md:flex items-center gap-8">
               {[
                 { label: 'Produit', id: 'produit' },
@@ -253,7 +253,7 @@ const SkalrLanding = () => {
               className="max-w-3xl mx-auto"
             >
               <div className="border-2 border-border shadow-md overflow-hidden bg-background">
-                <img src={landingDashboard} alt="Skalr dashboard preview" className="w-full" />
+                <img src={landingDashboard} alt="Konekt dashboard preview" className="w-full" />
               </div>
             </motion.div>
           </div>
@@ -423,7 +423,7 @@ const SkalrLanding = () => {
                 Témoignage
               </span>
               <blockquote className="font-editorial text-2xl sm:text-3xl md:text-4xl leading-[1.3] text-background mb-8">
-                "Skalr a transformé notre façon de recruter. On contacte 3× plus de candidats qualifiés, 
+                "Konekt a transformé notre façon de recruter. On contacte 3× plus de candidats qualifiés,
                 et notre taux de réponse a explosé."
               </blockquote>
               <div className="flex items-center justify-center gap-3">
@@ -513,14 +513,14 @@ const SkalrLanding = () => {
         <footer className="py-8 px-6 border-t-2 border-border bg-background">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <span className="text-sm font-bold uppercase tracking-wider text-foreground">
-              Skalr<span className="text-primary">.</span>
+              Konekt<span className="text-primary">.</span>
             </span>
             <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">
               <a href="#" className="hover:text-foreground transition-colors">Mentions légales</a>
               <a href="#" className="hover:text-foreground transition-colors">Confidentialité</a>
               <button onClick={() => setShowContact(true)} className="hover:text-foreground transition-colors">Contact</button>
             </div>
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">© 2025 Skalr</span>
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">© {new Date().getFullYear()} Konekt</span>
           </div>
         </footer>
 

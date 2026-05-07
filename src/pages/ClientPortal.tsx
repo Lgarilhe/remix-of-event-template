@@ -99,7 +99,7 @@ export default function ClientPortal() {
   if (notFound || !data) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <SEOHead title="Portail client | Skalr" description="Accès client" />
+        <SEOHead title="Portail client | Konekt" description="Accès client" />
         <div className="text-center max-w-md">
           <div className="text-4xl mb-4">🔒</div>
           <h1 className="text-sm font-bold uppercase tracking-wider text-foreground mb-2">Lien invalide ou expiré</h1>
@@ -115,7 +115,7 @@ export default function ClientPortal() {
 
   return (
     <div className="min-h-screen bg-background">
-      <SEOHead title={`Portail client — ${data.client_name} | Skalr`} description="Suivez vos missions de recrutement" />
+      <SEOHead title={`Portail client — ${data.client_name} | Konekt`} description="Suivez vos missions de recrutement" />
 
       {/* Header */}
       <header className="border-b-2 border-border bg-background sticky top-0 z-10">
@@ -238,7 +238,7 @@ export default function ClientPortal() {
       {/* Footer */}
       <footer className="border-t border-border py-6 text-center">
         <p className="text-xs text-muted-foreground uppercase tracking-wider">
-          Portail propulsé par Skalr
+          Portail propulsé par Konekt
         </p>
       </footer>
     </div>

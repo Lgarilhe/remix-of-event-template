@@ -19,9 +19,9 @@ const CHECKLIST = [
 ];
 
 const ECOSYSTEM = [
-  { name: 'Skalr', emoji: '🧠', desc: 'Stratégie', active: true },
-  { name: 'App Skalr', emoji: '⚡', desc: 'Outreach IA', active: true },
-  { name: 'Skalr RPO', emoji: '🤝', desc: 'Renfort', active: false },
+  { name: 'Konekt', emoji: '🧠', desc: 'Stratégie', active: true },
+  { name: 'App Konekt', emoji: '⚡', desc: 'Outreach IA', active: true },
+  { name: 'Konekt RPO', emoji: '🤝', desc: 'Renfort', active: false },
 ];
 
 export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinish }) => {
@@ -183,7 +183,7 @@ export const SceneLaunch: React.FC<Props> = ({ completedSet, totalSteps, onFinis
         }}
       >
         <Rocket className="w-4 h-4" />
-        Lancer Skalr
+        Lancer Konekt
       </motion.button>
     </div>
   );

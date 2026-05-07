@@ -12,7 +12,7 @@ const NotFound = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <SEOHead
-        title="404 — Page introuvable | Skalr"
+        title="404 — Page introuvable | Konekt"
         description="La page que vous cherchez n'existe pas."
       />
       <div className="text-center">

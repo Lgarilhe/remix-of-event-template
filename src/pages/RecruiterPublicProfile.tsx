@@ -87,7 +87,7 @@ const RecruiterPublicProfile: React.FC = () => {
   return (
     <>
       <SEOHead
-        title={`${name} — Recruteur | Skalr`}
+        title={`${name} — Recruteur | Konekt`}
         description={profile.recruiter_bio?.slice(0, 160) || `Profil de ${name}, recruteur professionnel.`}
       />
       <div className="min-h-screen bg-background">
@@ -96,7 +96,7 @@ const RecruiterPublicProfile: React.FC = () => {
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
-              Skalr
+              Konekt
             </Link>
             {profile.linkedin_url && (
               <a href={profile.linkedin_url} target="_blank" rel="noopener noreferrer"
@@ -278,7 +278,7 @@ const RecruiterPublicProfile: React.FC = () => {
 
           {/* Footer */}
           <p className="text-center text-xs text-muted-foreground/50 mt-8">
-            Profil généré par Skalr
+            Profil généré par Konekt
           </p>
         </div>
       </div>

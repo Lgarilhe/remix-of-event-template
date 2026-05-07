@@ -254,8 +254,8 @@ const Admin = () => {
   return (
     <div className="min-h-screen bg-card p-8">
       <SEOHead 
-        title="Administration | Skalr"
-        description="Administration de la plateforme Skalr"
+        title="Administration | Konekt"
+        description="Administration de la plateforme Konekt"
       />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">

@@ -884,7 +884,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                       .replace(/\{\{full_name\}\}/g, 'Laurent Garilhe')
                                       .replace(/\{\{company\}\}/g, 'Konekt')
                                       .replace(/\{\{job_title\}\}/g, 'Lead Developer')
-                                      .replace(/\{\{sender_name\}\}/g, sequence.name?.includes('Skalr') ? 'Anna (Skalr)' : 'Toi')
+                                      .replace(/\{\{sender_name\}\}/g, sequence.name?.includes('Konekt') ? 'Anna (Konekt)' : 'Toi')
                                       .replace(/\{\{calendly_link\}\}/g, 'https://calendly.com/konekt/call')
                                       .replace(/\{\{signature\}\}/g, '— L.G., Konekt')
                                       .replace(/\{\{ai_snippet\}\}/g, '[snippet IA généré par profil]')

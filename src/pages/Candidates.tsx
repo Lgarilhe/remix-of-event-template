@@ -114,7 +114,7 @@ export default function Candidates() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title="Candidats & Shortlist | Skalr"
+        title="Candidats & Shortlist | Konekt"
         description="Gérez vos candidats et votre shortlist de recrutement"
       />
 

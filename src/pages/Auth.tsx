@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { SEOHead } from '@/components/SEOHead';
-import { lovable } from '@/integrations/lovable/index';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 import { markWelcomePending } from '@/components/onboarding/WelcomeOnboardingModal';
@@ -15,7 +14,7 @@ import { withPreviewAccessToken } from '@/lib/previewToken';
 const PENDING_INVITATION_STORAGE_KEY = 'pending-team-invitation-token';
 const PREVIEW_ACCESS_TOKEN_STORAGE_KEY = 'lovable-preview-access-token';
 const getPublicAppOrigin = () => {
-  if (typeof window === 'undefined') return 'https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app';
+  if (typeof window === 'undefined') return 'https://konekt-app-navy.vercel.app';
   return window.location.origin;
 };
 
@@ -244,7 +243,7 @@ const Auth = () => {
       } else if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        toast({ title: 'Connexion réussie', description: 'Bienvenue sur Skalr' });
+        toast({ title: 'Connexion réussie', description: 'Bienvenue sur Konekt' });
       } else {
         const { error } = await supabase.auth.signUp({
           email, password,
@@ -279,8 +278,8 @@ const Auth = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <SEOHead
-        title={isLogin ? 'Connexion — Skalr' : 'Inscription — Skalr'}
-        description={isLogin ? 'Connectez-vous à Skalr pour gérer vos recrutements' : 'Créez votre compte Skalr pour piloter vos recrutements'}
+        title={isLogin ? 'Connexion — Konekt' : 'Inscription — Konekt'}
+        description={isLogin ? 'Connectez-vous à Konekt pour gérer vos recrutements' : 'Créez votre compte Konekt pour piloter vos recrutements'}
       />
       <div className="w-full max-w-md space-y-8">
         {/* Banner contextuel : invité via email d'invitation */}
@@ -375,8 +374,9 @@ const Auth = () => {
               variant="outline"
               className="w-full border-border text-foreground"
               onClick={async () => {
-                const { error } = await lovable.auth.signInWithOAuth('google', {
-                  redirect_uri: getAuthRedirectUrl(),
+                const { error } = await supabase.auth.signInWithOAuth({
+                  provider: 'google',
+                  options: { redirectTo: getAuthRedirectUrl() },
                 });
                 if (error) {
                   toast({ title: 'Erreur', description: error.message, variant: 'destructive' });

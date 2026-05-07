@@ -1105,7 +1105,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           jobTitle: jobTitle || undefined,
           clientName: job?.client?.name || undefined,
           clientId: (job?.client as any)?.id || undefined,
-          entity: 'Skalr',
+          entity: 'Konekt',
           accompagnement,
           etape: 'Contacté',
           etat: 'En attente de réponse',

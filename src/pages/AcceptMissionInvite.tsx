@@ -28,7 +28,7 @@ export default function AcceptMissionInvite() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <SEOHead title="Invitation mission | Skalr" description="Accepter une invitation" />
+      <SEOHead title="Invitation mission | Konekt" description="Accepter une invitation" />
       <div className="text-center max-w-md space-y-4">
         {status === 'loading' && (
           <>

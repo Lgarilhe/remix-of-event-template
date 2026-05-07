@@ -377,7 +377,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
           jobTitle: job.title,
           clientName: job.client?.name,
           clientId: job.client?.id,
-          entity: 'Skalr',
+          entity: 'Konekt',
           accompagnement,
           etape: 'Contacté',
           etat: 'En attente de réponse',

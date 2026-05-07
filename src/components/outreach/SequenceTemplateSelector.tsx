@@ -258,7 +258,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                           <div className="flex items-center gap-2">
                             <p className="font-bold text-sm text-foreground truncate">{template.name}</p>
                             {template.is_system && (
-                              <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30 rounded-full">Skalr</Badge>
+                              <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30 rounded-full">Konekt</Badge>
                             )}
                             {cat && (
                               <Badge variant="outline" className="text-[9px] rounded-full border-border">

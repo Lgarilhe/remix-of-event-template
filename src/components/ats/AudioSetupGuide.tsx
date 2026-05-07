@@ -45,7 +45,7 @@ const SCENARIOS = [
       { text: 'L\'enregistrement pourra être transcrit après l\'appel', important: false },
     ],
     alternativeTitle: 'Astuce : Aircall',
-    alternative: 'Si vous utilisez Aircall, les appels sont enregistrés automatiquement. Skalr peut récupérer le transcript après l\'appel via l\'intégration Aircall.',
+    alternative: 'Si vous utilisez Aircall, les appels sont enregistrés automatiquement. Konekt peut récupérer le transcript après l\'appel via l\'intégration Aircall.',
   },
   {
     key: 'in_person' as const,

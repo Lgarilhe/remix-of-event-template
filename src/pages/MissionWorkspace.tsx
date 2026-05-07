@@ -91,7 +91,7 @@ const MissionWorkspace = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
-        <SEOHead title="Mission | Skalr" description="Espace de travail mission" />
+        <SEOHead title="Mission | Konekt" description="Espace de travail mission" />
         <div className="py-6 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
             <BrutalLoader variant="default" rows={3} messages={['Chargement de la mission…', 'Récupération des données…']} />
@@ -107,7 +107,7 @@ const MissionWorkspace = () => {
   if (useV2 && project) {
     return (
       <>
-        <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
+        <SEOHead title={`${project.name} | Konekt`} description={`Mission ${project.name}`} />
         <MissionWorkspaceV2 project={project} />
       </>
     );
@@ -117,7 +117,7 @@ const MissionWorkspace = () => {
   if (!project) {
     return (
       <div className="min-h-screen w-full max-w-full bg-background">
-        <SEOHead title="Mission introuvable | Skalr" description="Mission introuvable" />
+        <SEOHead title="Mission introuvable | Konekt" description="Mission introuvable" />
         <div className="py-6 pb-14 w-full max-w-full">
           <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
             <div className="rounded-lg border border-border bg-card p-12 text-center">
@@ -141,7 +141,7 @@ const MissionWorkspace = () => {
 
   return (
     <div className="min-h-screen w-full max-w-full bg-background relative">
-      <SEOHead title={`${project.name} | Skalr`} description={`Mission ${project.name}`} />
+      <SEOHead title={`${project.name} | Konekt`} description={`Mission ${project.name}`} />
       <div className="py-4 pb-14 w-full max-w-full relative z-10">
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           {/* Header — breadcrumb style */}

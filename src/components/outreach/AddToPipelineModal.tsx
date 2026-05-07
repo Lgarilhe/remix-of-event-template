@@ -61,7 +61,7 @@ interface AddToPipelineModalProps {
   onSuccess?: () => void;
 }
 
-const ENTITIES = ['Skalr', 'Skalr', 'Autre'];
+const ENTITIES = ['Konekt', 'Konekt', 'Autre'];
 
 export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   open,
@@ -77,7 +77,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
   
   // Form fields
-  const [entity, setEntity] = useState('Skalr');
+  const [entity, setEntity] = useState('Konekt');
 
   // Fetch jobs when modal opens
   useEffect(() => {

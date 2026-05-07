@@ -250,7 +250,7 @@ export default function ATS() {
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
-        title="ATS - Suivi des candidats | Skalr"
+        title="ATS - Suivi des candidats | Konekt"
         description="Centralisez et gérez toutes vos interactions avec les candidats"
       />
 

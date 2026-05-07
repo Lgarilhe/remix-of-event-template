@@ -22,7 +22,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 const HUNT_CHECKLIST = [
-  { key: 'cgu_accepted', label: 'Accepter les CGU Marketplace Skalr' },
+  { key: 'cgu_accepted', label: 'Accepter les CGU Marketplace Konekt' },
   { key: 'clauses_validated', label: 'Valider les clauses (paiement, garantie, confidentialité, RGPD)' },
   { key: 'payment_method', label: 'Ajouter un mode de paiement' },
   { key: 'contract_signed', label: 'Signer le contrat cadre' },
@@ -32,7 +32,7 @@ const RECRUIT_CHECKLIST = [
   { key: 'profile_complete', label: 'Compléter le profil agence/recruteur' },
   { key: 'cgu_accepted', label: 'Accepter les CGU Recruteur Marketplace' },
   { key: 'clauses_validated', label: 'Valider les clauses (non-sollicitation, confidentialité, qualité, RGPD)' },
-  { key: 'verification', label: 'Vérification Skalr (SIRET, LinkedIn, références)' },
+  { key: 'verification', label: 'Vérification Konekt (SIRET, LinkedIn, références)' },
   { key: 'contract_signed', label: 'Signer le contrat' },
 ];
 
@@ -146,7 +146,7 @@ export const MarketplaceActivation: React.FC = () => {
     <div className="space-y-6">
       <ActivationCard
         title="Mode chasse"
-        description="Publiez vos missions sur le réseau Skalr"
+        description="Publiez vos missions sur le réseau Konekt"
         icon={Target}
         feature="marketplace_publish"
         checklist={HUNT_CHECKLIST}

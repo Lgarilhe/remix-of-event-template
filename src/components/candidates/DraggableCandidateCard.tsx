@@ -83,7 +83,7 @@ export const DraggableCandidateCard: React.FC<DraggableCandidateCardProps> = ({ 
             <div className="flex items-center gap-1 flex-shrink-0">
               {entry.entity && (
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  entry.entity === 'Skalr' ? 'bg-success/10 text-green-700' : 'bg-brand-purple/10 text-purple-700'
+                  entry.entity === 'Konekt' ? 'bg-success/10 text-green-700' : 'bg-brand-purple/10 text-purple-700'
                 }`}>
                   {entry.entity}
                 </span>

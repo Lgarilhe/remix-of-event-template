@@ -84,7 +84,7 @@ const Pricing = () => {
     <div className="min-h-screen bg-background">
       <SEOHead
         title="Tarifs"
-        description="Découvrez les plans Skalr : Starter gratuit, Pro pour les équipes ambitieuses, Enterprise sur mesure."
+        description="Découvrez les plans Konekt : Starter gratuit, Pro pour les équipes ambitieuses, Enterprise sur mesure."
         keywords="pricing, tarifs, recrutement, ATS, sourcing"
       />
       

@@ -29,7 +29,7 @@ export default function Outreach() {
   return (
     <div className="w-full max-w-full bg-background">
       <SEOHead
-        title="Missions | Skalr"
+        title="Missions | Konekt"
         description="Gérez vos missions de recrutement et de sourcing"
       />
 

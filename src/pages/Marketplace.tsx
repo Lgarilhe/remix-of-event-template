@@ -102,7 +102,7 @@ export default function Marketplace() {
   if (!canBrowse) {
     return (
       <div className="min-h-screen bg-background">
-        <SEOHead title="Marketplace | Skalr" description="Missions en mode chasse" />
+        <SEOHead title="Marketplace | Konekt" description="Missions en mode chasse" />
 
         <div className="py-6 pb-14">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
@@ -121,7 +121,7 @@ export default function Marketplace() {
 
   return (
     <div className="min-h-screen bg-background">
-      <SEOHead title="Marketplace | Skalr" description="Missions en mode chasse — trouvez des opportunités de recrutement" />
+      <SEOHead title="Marketplace | Konekt" description="Missions en mode chasse — trouvez des opportunités de recrutement" />
 
       <div className="py-6 pb-14">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
