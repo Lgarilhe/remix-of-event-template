@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Target, Shield, CheckCircle2, Circle, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface FeatureActivation {
   id: string;
@@ -16,9 +17,9 @@ interface FeatureActivation {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   inactive: { label: 'Non activé', color: 'text-muted-foreground' },
-  pending_validation: { label: 'En attente de validation', color: 'text-amber-600' },
-  active: { label: 'Activé', color: 'text-green-600' },
-  suspended: { label: 'Suspendu', color: 'text-red-600' },
+  pending_validation: { label: 'En attente de validation', color: 'text-warning' },
+  active: { label: 'Activé', color: 'text-success' },
+  suspended: { label: 'Suspendu', color: 'text-destructive' },
 };
 
 const HUNT_CHECKLIST = [
@@ -61,33 +62,35 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
   if (!available) return null;
 
   return (
-    <div className="border border-border p-4 sm:p-6">
+    <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <Icon className="w-5 h-5 text-foreground" />
+          <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+            <Icon className="w-4 h-4 text-foreground" />
+          </div>
           <div>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">{title}</h3>
+            <h3 className="font-display text-sm font-bold tracking-tight text-foreground">{title}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
           </div>
         </div>
         <span className={cn(
-          "px-2 py-0.5 text-xs font-bold uppercase tracking-wider border",
-          status === 'active' ? "bg-foreground text-background border-border" :
-          status === 'pending_validation' ? "border-amber-500 text-amber-600" :
-          "border-border text-muted-foreground"
+          "px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider border",
+          status === 'active' ? "bg-success/10 text-success border-success/30" :
+          status === 'pending_validation' ? "bg-warning/10 text-warning border-warning/30" :
+          "bg-muted text-muted-foreground border-border"
         )}>
           {STATUS_CONFIG[status]?.label || status}
         </span>
       </div>
 
       {/* Checklist */}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {checklist.map(item => {
           const done = !!cl[item.key];
           return (
-            <div key={item.key} className="flex items-center gap-3 px-3 py-2 border border-border">
+            <div key={item.key} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-background">
               {done ? (
-                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
               ) : (
                 <Circle className="w-4 h-4 text-muted-foreground shrink-0" />
               )}
@@ -104,15 +107,13 @@ const ActivationCard: React.FC<ActivationCardProps> = ({
 
       {/* Progress */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-xs text-muted-foreground uppercase tracking-wider">
+        <p className="text-xs text-muted-foreground">
           {completedCount}/{checklist.length} étapes
         </p>
         {status !== 'active' && (
-          <button
-            className="h-8 px-4 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background disabled:opacity-50"
-          >
-            {completedCount === 0 ? 'Commencer l\'activation' : 'Continuer'}
-          </button>
+          <Button size="sm" className="rounded-full">
+            {completedCount === 0 ? "Commencer l'activation" : 'Continuer'}
+          </Button>
         )}
       </div>
     </div>

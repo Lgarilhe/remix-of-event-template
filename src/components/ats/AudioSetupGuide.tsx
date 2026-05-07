@@ -121,10 +121,10 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
       {/* Auto-detection hint */}
       {hasHeadset !== null && (
         <div className={cn(
-          "flex items-center gap-2 px-3 py-2 text-xs border",
+          "flex items-center gap-2 px-3 py-2 rounded-lg text-xs border",
           hasHeadset
-            ? "border-amber-400/50 bg-warning/10 text-amber-700"
-            : "border-border text-muted-foreground"
+            ? "border-warning/40 bg-warning/10 text-warning"
+            : "border-border text-muted-foreground bg-muted/30"
         )}>
           {hasHeadset ? (
             <>
@@ -147,12 +147,14 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
           {SCENARIOS.map(s => (
             <button
               key={s.key}
+              type="button"
               onClick={() => setSelectedScenario(s.key)}
               className={cn(
-                "flex items-start gap-2 p-3 text-left border transition-all",
+                "flex items-start gap-2 p-3 text-left rounded-lg border transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                 selectedScenario === s.key
-                  ? "border-border bg-accent/50"
-                  : "border-border hover:border-border"
+                  ? "border-foreground/30 bg-foreground/[0.04]"
+                  : "border-border hover:border-foreground/20"
               )}
             >
               <s.icon className="w-4 h-4 text-foreground shrink-0 mt-0.5" />
@@ -170,9 +172,9 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             {scenario.capturesBoth ? (
-              <CheckCircle2 className="w-4 h-4 text-foreground" />
+              <CheckCircle2 className="w-4 h-4 text-success" />
             ) : (
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <AlertTriangle className="w-4 h-4 text-warning" />
             )}
             <p className="font-display font-bold text-[13px] tracking-tight text-foreground">
               {scenario.capturesBoth
@@ -184,8 +186,8 @@ export const AudioSetupGuide: React.FC<AudioSetupGuideProps> = ({ onReady, onDis
           <div className="space-y-1.5">
             {scenario.steps.map((step, i) => (
               <div key={i} className={cn(
-                "flex items-start gap-2 px-3 py-2 text-xs",
-                step.important ? "border border-border bg-accent/50 font-medium text-foreground" : "text-muted-foreground"
+                "flex items-start gap-2 px-3 py-2 rounded-lg text-xs",
+                step.important ? "border border-foreground/20 bg-foreground/[0.04] font-medium text-foreground" : "text-muted-foreground"
               )}>
                 <span className="shrink-0 w-4 text-center font-bold text-foreground">{i + 1}</span>
                 {step.text}

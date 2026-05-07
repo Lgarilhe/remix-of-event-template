@@ -1315,12 +1315,24 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
         const recOption = ev.recommendation ? RECOMMENDATION_OPTIONS.find(o => o.value === ev.recommendation) : null;
 
         return (
-          <div key={ev.id || index} className="border border-border hover:border-border transition-colors">
-            <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => { setActiveIndex(index); setExpandedCriteria(new Set()); }}>
+          <div key={ev.id || index} className="rounded-xl border border-border hover:border-foreground/30 transition-colors overflow-hidden">
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex items-center justify-between p-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              onClick={() => { setActiveIndex(index); setExpandedCriteria(new Set()); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActiveIndex(index);
+                  setExpandedCriteria(new Set());
+                }
+              }}
+            >
               <div className="flex items-center gap-3">
                 {ev.overallScore != null && (
                   <div className={cn(
-                    "h-10 w-10 flex items-center justify-center border-2 text-base font-bold",
+                    "h-10 w-10 rounded-xl flex items-center justify-center border font-display text-base font-bold tabular-nums",
                     ev.overallScore >= 4 ? "border-success/40 bg-success/10 text-success" :
                     ev.overallScore >= 3 ? "border-warning/40 bg-warning/10 text-warning" :
                     "border-destructive/40 bg-destructive/10 text-destructive"
@@ -1330,16 +1342,16 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                 )}
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    <p className="font-display text-sm font-bold tracking-tight text-foreground">
                       {totalCriteria > 0 ? `${ratedCount}/${totalCriteria} critères` : 'Brouillon'}
                     </p>
                     {ev.interviewStage && (
-                      <span className="text-xs px-1.5 py-0.5 border border-border bg-accent/50 text-muted-foreground font-medium uppercase tracking-wider">
+                      <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted/50 text-muted-foreground font-medium">
                         {INTERVIEW_STAGES.find(s => s.value === ev.interviewStage)?.label || ev.interviewStage}
                       </span>
                     )}
                     {recOption && (
-                      <span className={cn("text-xs px-1.5 py-0.5 border font-bold uppercase tracking-wider", recOption.color)}>
+                      <span className={cn("text-[11px] px-2 py-0.5 rounded-full border font-medium", recOption.color)}>
                         {recOption.label}
                       </span>
                     )}
@@ -1352,7 +1364,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 {/* Mini rating dots */}
                 <div className="flex gap-1 mr-2">
                   {ev.criteria.slice(0, 6).map(c => {
@@ -1366,12 +1378,19 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
                     );
                   })}
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); setActiveIndex(index); setExpandedCriteria(new Set()); }}
-                  className="h-[28px] px-2.5 flex items-center gap-1 border border-border text-foreground text-xs font-medium uppercase tracking-wider hover:bg-foreground hover:text-background transition-colors">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setActiveIndex(index); setExpandedCriteria(new Set()); }}
+                  className="h-8 px-3 flex items-center gap-1.5 rounded-full border border-border text-foreground text-xs font-medium hover:bg-foreground hover:text-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                >
                   <Pencil className="w-3 h-3" /> Modifier
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); handleDelete(index); }}
-                  className="h-[28px] px-2 flex items-center border border-destructive/30 text-destructive text-xs hover:bg-destructive/5 transition-colors">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleDelete(index); }}
+                  aria-label="Supprimer cette évaluation"
+                  className="h-8 w-8 grid place-items-center rounded-full border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30 focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                >
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
