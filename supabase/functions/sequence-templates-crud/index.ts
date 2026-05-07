@@ -133,14 +133,16 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Verify ownership
+      // Verify ownership : seul le propriétaire de l'org peut modifier ses
+      // templates. Les system templates (is_system=true) sont partagés
+      // cross-tenant et ne doivent JAMAIS être éditables côté tenant.
       const { data: existing } = await supabase
         .from('sequence_templates')
         .select('organization_id, is_system')
         .eq('id', id)
         .single();
 
-      if (!existing || (existing.organization_id !== orgId && !existing.is_system)) {
+      if (!existing || existing.is_system || existing.organization_id !== orgId) {
         return new Response(JSON.stringify({ error: 'Not found or not authorized' }), {
           status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -152,10 +154,13 @@ Deno.serve(async (req) => {
       if (steps_config !== undefined) updates.steps_config = steps_config;
       if (category !== undefined) updates.category = category;
 
+      // Re-filtre par organization_id pour fermer la fenêtre TOCTOU entre
+      // le SELECT ci-dessus et l'UPDATE.
       const { data, error } = await supabase
         .from('sequence_templates')
         .update(updates)
         .eq('id', id)
+        .eq('organization_id', orgId)
         .select()
         .single();
 
@@ -199,7 +204,8 @@ Deno.serve(async (req) => {
       const { error } = await supabase
         .from('sequence_templates')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
 
@@ -215,7 +221,7 @@ Deno.serve(async (req) => {
     if (err instanceof Response) return err; // Auth error
     const message = err instanceof Error ? err.message : String(err);
     console.error('[sequence-templates-crud] Error:', message);
-    return new Response(JSON.stringify({ error: message }), {
+    return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

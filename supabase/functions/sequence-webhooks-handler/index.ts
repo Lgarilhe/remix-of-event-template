@@ -1,14 +1,21 @@
 /**
  * Edge Function: sequence-webhooks-handler
  *
- * Receives Unipile webhooks and updates sequence enrollments/executions.
+ * Receives provider webhooks and updates sequence enrollments/executions.
  * Complements the existing check_replies polling in process-sequences.
  *
- * Webhooks handled:
+ * Webhooks handled HERE :
+ *   - mail_received (Email reply)
+ *   - mail_opened / mail_link_clicked (Email tracking)
+ *
+ * Webhooks handled by `unipile-webhook` (NOT here, to avoid double processing —
+ * audit Opus 2026-05-07) :
  *   - message_received (LinkedIn reply)
  *   - new_relation (LinkedIn invite accepted)
- *   - mail_received (Email reply)
- *   - mail_opened / mail_link_clicked (Email tracking via Unipile)
+ *
+ * Si on reçoit ces events ici (legacy webhook setup), on les ignore avec un
+ * warning. Ré-enregistrer les webhooks Unipile via scripts/setup-sequence-
+ * webhooks.ts pour ne plus les recevoir.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 
@@ -294,20 +301,32 @@ async function handleMailReceived(
   }
 
   // Fallback 2: match by sender email → enrollment.email_used
+  // SCOPED par account_id pour éviter le cross-org leak (audit Opus 2026-05-07).
+  // Si deux orgs ont enrôlé la même adresse mail, on ne marque "replied" que
+  // l'enrollment de l'org dont le compte mail a réellement reçu la réponse.
   if (!executionId) {
     const fromEmail = (payload.from_attendee as Record<string, unknown>)?.email as string
       || payload.from as string
       || payload.sender_email as string;
+    const accountId = payload.account_id as string;
 
     if (fromEmail) {
-      const { data: enrollments } = await supabase
+      let query = supabase
         .from('sequence_enrollments')
         .select('id')
         .eq('email_used', fromEmail)
         .eq('status', 'active');
+      if (accountId) {
+        query = query.eq('account_id', accountId);
+      } else {
+        console.warn('[webhooks] mail_received: no account_id in payload, skipping email-based fallback to avoid cross-org leak');
+        console.log('[webhooks] mail_received: no matching tracking record or enrollment');
+        return;
+      }
+      const { data: enrollments } = await query;
 
       if (enrollments?.length) {
-        console.log(`[webhooks] mail_received: matched ${enrollments.length} enrollment(s) by email_used=${fromEmail}`);
+        console.log(`[webhooks] mail_received: matched ${enrollments.length} enrollment(s) by email_used=${fromEmail} + account_id=${accountId}`);
         const timestamp = (payload.timestamp as string) || new Date().toISOString();
         for (const enrollment of enrollments) {
           await handleReply(supabase, enrollment.id, timestamp);
@@ -358,31 +377,37 @@ async function handleMailTracking(
 
   if (!execution) return;
 
-  const trackingData = (execution.tracking_data || {}) as Record<string, unknown>;
   const now = new Date().toISOString();
 
-  const STATUS_PRIORITY: Record<string, number> = {
-    'sent': 2, 'opened': 3, 'clicked': 4, 'replied': 5,
-  };
+  // Audit Opus 2026-05-07 : utilisation de la RPC atomic_tracking_append pour
+  // éviter les lost-updates quand un open/click pixel + un open/click webhook
+  // arrivent simultanément. La RPC fait un jsonb_set + array_append en SQL
+  // atomique et préserve la priorité du status (sent < opened < clicked < replied).
+  const field = eventType === 'open' ? 'opened_at' : 'clicked_at';
+  const newStatus = eventType === 'open' ? 'opened' : 'clicked';
 
-  const currentPriority = STATUS_PRIORITY[execution.status] ?? 0;
+  const { error: rpcError } = await supabase.rpc('atomic_tracking_append', {
+    p_execution_id: execution.id,
+    p_field: field,
+    p_value: now,
+    p_new_status: newStatus,
+  });
 
-  if (eventType === 'open') {
-    const openedAt = (trackingData.opened_at || []) as string[];
-    const updates: Record<string, unknown> = {
-      tracking_data: { ...trackingData, opened_at: [...openedAt, now] },
+  if (rpcError) {
+    // Fallback non-atomique en dernier recours (lost-update possible mais
+    // mieux que de perdre l'event entièrement). Logué pour alerting.
+    console.error(`[webhooks] atomic_tracking_append RPC failed (${rpcError.message}) — falling back to read-modify-write`);
+    const trackingData = (execution.tracking_data || {}) as Record<string, unknown>;
+    const STATUS_PRIORITY: Record<string, number> = {
+      'sent': 2, 'opened': 3, 'clicked': 4, 'replied': 5,
     };
-    if ((STATUS_PRIORITY['opened'] ?? 3) > currentPriority) {
-      updates.status = 'opened';
-    }
-    await supabase.from('sequence_step_executions').update(updates).eq('id', execution.id);
-  } else if (eventType === 'click') {
-    const clickedAt = (trackingData.clicked_at || []) as string[];
+    const currentPriority = STATUS_PRIORITY[execution.status] ?? 0;
+    const list = (trackingData[field] || []) as string[];
     const updates: Record<string, unknown> = {
-      tracking_data: { ...trackingData, clicked_at: [...clickedAt, now] },
+      tracking_data: { ...trackingData, [field]: [...list, now] },
     };
-    if ((STATUS_PRIORITY['clicked'] ?? 4) > currentPriority) {
-      updates.status = 'clicked';
+    if ((STATUS_PRIORITY[newStatus] ?? 0) > currentPriority) {
+      updates.status = newStatus;
     }
     await supabase.from('sequence_step_executions').update(updates).eq('id', execution.id);
   }
@@ -442,11 +467,11 @@ Deno.serve(async (req) => {
 
     switch (event) {
       case 'message_received':
-        await handleMessageReceived(supabase, payload);
-        break;
-
       case 'new_relation':
-        await handleNewRelation(supabase, payload);
+        // Audit Opus 2026-05-07 : ces events sont gérés par `unipile-webhook`.
+        // Si on les reçoit ici, c'est un setup legacy → on logue et on ignore
+        // pour éviter le double-processing (double cancel + analytics doublonnées).
+        console.warn(`[webhooks] Event "${event}" received here but handled by unipile-webhook — ignoring. Re-run scripts/setup-sequence-webhooks.ts to clean up.`);
         break;
 
       case 'mail_received':

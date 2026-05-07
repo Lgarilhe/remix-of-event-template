@@ -31,17 +31,12 @@ interface WebhookConfig {
   events: string[];
 }
 
+// Audit Opus 2026-05-07 : `message_received` et `new_relation` sont gérés
+// par `unipile-webhook` (côté Unipile config). Les enregistrer ici aussi
+// causerait du double-processing (double cancel + analytics doublonnées).
+// Ce script n'enregistre donc QUE les events email — les events LinkedIn
+// passent par l'autre webhook.
 const WEBHOOKS: WebhookConfig[] = [
-  {
-    name: `${PREFIX}messaging`,
-    source: 'messaging',
-    events: ['message_received'],
-  },
-  {
-    name: `${PREFIX}relations`,
-    source: 'users',
-    events: ['new_relation'],
-  },
   {
     name: `${PREFIX}email-tracking`,
     source: 'email_tracking',

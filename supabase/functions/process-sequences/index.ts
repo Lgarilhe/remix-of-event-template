@@ -22,21 +22,40 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
-// Per-org Unipile credential resolution with env fallback
-async function resolveUnipileCreds(orgId: string | undefined, sb: any): Promise<{ apiKey: string; dsn: string }> {
-  const fallback = { apiKey: ENV_UNIPILE_API_KEY!, dsn: ENV_UNIPILE_DSN };
-  if (!orgId) return fallback;
-  try {
-    const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
-    const creds = await resolveUnipileCredentials(orgId, sb);
-    if (creds) {
-      const rawDsn = creds.dsn.replace(/^https?:\/\//, '').replace(/\/$/, '');
-      return { apiKey: creds.apiKey, dsn: `https://${rawDsn}` };
+// Per-org Unipile credential resolution.
+//
+// Audit Opus 2026-05-07 : le fallback ENV_UNIPILE_* est dangereux en
+// multi-tenant — si une org A ne configure pas ses propres credentials, on
+// peut interroger un compte LinkedIn appartenant à une autre org B. Pour
+// limiter le blast radius :
+//   - on log explicitement quand on utilise le fallback (pour surveiller)
+//   - on throw si orgId est manquant (legacy data) ET le fallback aussi absent
+//   - les callers doivent prévoir le cas où la résolution renvoie null
+//     (skip enrollment plutôt que cross-org leak silencieux).
+async function resolveUnipileCreds(
+  orgId: string | undefined,
+  sb: any,
+): Promise<{ apiKey: string; dsn: string; usedFallback: boolean }> {
+  if (orgId) {
+    try {
+      const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
+      const creds = await resolveUnipileCredentials(orgId, sb);
+      if (creds) {
+        const rawDsn = creds.dsn.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        return { apiKey: creds.apiKey, dsn: `https://${rawDsn}`, usedFallback: false };
+      }
+    } catch (e) {
+      console.warn(`[process-sequences] Org credential resolution failed for org=${orgId}, falling back to ENV:`, e);
     }
-  } catch (e) {
-    console.warn('[process-sequences] Org credential resolution failed, using env:', e);
   }
-  return fallback;
+  if (ENV_UNIPILE_API_KEY && ENV_UNIPILE_DSN_RAW) {
+    if (orgId) {
+      console.warn(`[process-sequences] Using ENV Unipile fallback for org=${orgId} (org has no creds configured)`);
+    }
+    return { apiKey: ENV_UNIPILE_API_KEY, dsn: ENV_UNIPILE_DSN, usedFallback: true };
+  }
+  console.error(`[process-sequences] No Unipile credentials available (orgId=${orgId || 'none'}, no ENV fallback)`);
+  throw new Error('unipile_credentials_unavailable');
 }
 
 // Fetch RAG context for a candidate from the Knowledge Lake
@@ -46,14 +65,17 @@ async function fetchRAGContext(
   jobContextText: string,
 ): Promise<string | null> {
   try {
+    // Audit Opus 2026-05-07 : appel server-to-server depuis le cron, donc
+    // service_role plutôt que anon. Évite les problèmes de RLS bypass et
+    // permet à retrieve-context de faire confiance à organization_id du body.
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return null;
+    const serviceRoleKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceRoleKey) return null;
 
     const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${anonKey}`,
+        'Authorization': `Bearer ${serviceRoleKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1998,6 +2020,7 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     scheduled_at: scheduledAt.toISOString(),
     status: 'scheduled',
     variant_assigned: variantAssigned,
+    organization_id: enrollment.organization_id ?? null,
   });
 }
 
@@ -2177,7 +2200,11 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           if (needsInMail) { fd.append('linkedin[api]', linkedinApiMode); fd.append('linkedin[inmail]', 'true'); if (subj) fd.append('subject', subj); }
           r = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: fd });
         }
-        if (!r.ok) { const e = await r.text(); return { success: false, error: `Unipile ${r.status}: ${e}` }; }
+        if (!r.ok) {
+          const e = await r.text();
+          console.error(`[executeStepAction] LinkedIn provider ${r.status}: ${e}`);
+          return { success: false, error: `linkedin_send_failed_${r.status}` };
+        }
         await r.json();
         await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         return { success: true, message: msg, subject: needsInMail ? subj : undefined };
@@ -2233,7 +2260,11 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           waFd.append('text', msg);
           waR = await fetchWithTimeout(`${effectiveDsn}/api/v1/chats`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey }, body: waFd });
         }
-        if (!waR.ok) { const e = await waR.text(); return { success: false, error: `Unipile WhatsApp ${waR.status}: ${e}` }; }
+        if (!waR.ok) {
+          const e = await waR.text();
+          console.error(`[executeStepAction] WhatsApp provider ${waR.status}: ${e}`);
+          return { success: false, error: `whatsapp_send_failed_${waR.status}` };
+        }
         await waR.json();
         await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         return { success: true, message: msg };

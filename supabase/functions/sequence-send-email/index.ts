@@ -206,7 +206,8 @@ async function sendViaUnipile(
   bcc?: string[],
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   if (!unipileApiKey || !unipileDsn) {
-    return { success: false, error: 'Unipile not configured (no API key or DSN resolved for this org)' };
+    console.error('[sequence-send-email] Email provider not configured: missing API key or DSN for org');
+    return { success: false, error: 'email_provider_not_configured' };
   }
 
   try {
@@ -244,9 +245,11 @@ async function sendViaUnipile(
     }
 
     const errorBody = await res.text();
-    return { success: false, error: `Unipile ${res.status}: ${errorBody}` };
+    console.error(`[sequence-send-email] Email provider returned ${res.status}: ${errorBody}`);
+    return { success: false, error: `email_send_failed_${res.status}` };
   } catch (err) {
-    return { success: false, error: `Unipile error: ${err instanceof Error ? err.message : String(err)}` };
+    console.error(`[sequence-send-email] Email provider error:`, err);
+    return { success: false, error: 'email_send_failed' };
   }
 }
 
@@ -525,7 +528,8 @@ Deno.serve(async (req) => {
       if (graphToken) {
         sendResult = await sendViaGraphApi(graphToken, senderEmail, recipientEmail, subject, htmlBody, cc, bcc);
       } else {
-        sendResult = { success: false, error: 'No email sending method available. Connect an email account in Unipile or configure MICROSOFT_GRAPH_TOKEN.' };
+        console.error('[sequence-send-email] No email sending method available (no email account connected, no fallback token configured)');
+        sendResult = { success: false, error: 'no_email_method_available' };
       }
     }
 
