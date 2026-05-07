@@ -6,6 +6,7 @@ import {
   Search, Brain, Send, MessageSquare, LayoutGrid
 } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
+import { KonektLogo } from '@/components/KonektLogo';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
@@ -160,9 +161,7 @@ const SkalrLanding = () => {
         {/* ===== NAV ===== */}
         <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
           <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-            <span className="text-lg font-bold uppercase tracking-wider text-foreground">
-              Konekt<span className="text-primary">.</span>
-            </span>
+            <KonektLogo variant="full" theme="dark" size={28} ariaLabel="Konekt — accueil" />
 
             <div className="hidden md:flex items-center gap-8">
               {[
@@ -512,12 +511,10 @@ const SkalrLanding = () => {
         {/* ===== FOOTER ===== */}
         <footer className="py-8 px-6 border-t-2 border-border bg-background">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="text-sm font-bold uppercase tracking-wider text-foreground">
-              Konekt<span className="text-primary">.</span>
-            </span>
+            <KonektLogo variant="full" theme="dark" size={24} />
             <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              <a href="#" className="hover:text-foreground transition-colors">Mentions légales</a>
-              <a href="#" className="hover:text-foreground transition-colors">Confidentialité</a>
+              <a href="/privacy#mentions" className="hover:text-foreground transition-colors">Mentions légales</a>
+              <a href="/privacy" className="hover:text-foreground transition-colors">Confidentialité</a>
               <button onClick={() => setShowContact(true)} className="hover:text-foreground transition-colors">Contact</button>
             </div>
             <span className="text-xs uppercase tracking-wider text-muted-foreground">© {new Date().getFullYear()} Konekt</span>

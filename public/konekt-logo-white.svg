@@ -1,0 +1,10 @@
+<!-- Placeholder Konekt logo+texte (blanc pour fond sombre) — à remplacer par le logo officiel -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 100" fill="none">
+  <!-- Mark (cercle blanc) -->
+  <circle cx="50" cy="50" r="50" fill="#FFFFFF"/>
+  <path d="M28 28 L28 72 Q28 76 32 76 L40 76 Q44 76 44 72 L44 38 L52 32 Q56 30 56 26 L56 24 Q56 20 52 20 L36 20 Q32 20 30 22 L26 26 Q24 28 28 28 Z" fill="#02013B"/>
+  <path d="M52 50 L66 36 Q68 34 71 34 L73 34 Q76 34 76 37 L76 39 Q76 41 74 43 L62 55 Q60 57 60 60 L60 60 Q60 62 62 62 L70 70" stroke="#02013B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="68" cy="68" r="6" fill="#02013B"/>
+  <!-- Wordmark "Konekt" en serif gras -->
+  <text x="125" y="73" font-family="'Instrument Serif', 'Recoleta', Georgia, serif" font-weight="700" font-size="68" fill="#FFFFFF" letter-spacing="-1">Konekt</text>
+</svg>

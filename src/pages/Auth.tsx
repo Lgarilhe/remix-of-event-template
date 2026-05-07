@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { SEOHead } from '@/components/SEOHead';
+import { KonektLogo } from '@/components/KonektLogo';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
 import { markWelcomePending } from '@/components/onboarding/WelcomeOnboardingModal';
@@ -282,6 +283,13 @@ const Auth = () => {
         description={isLogin ? 'Connectez-vous à Konekt pour gérer vos recrutements' : 'Créez votre compte Konekt pour piloter vos recrutements'}
       />
       <div className="w-full max-w-md space-y-8">
+        {/* Logo Konekt — lien retour landing */}
+        <div className="flex justify-center">
+          <Link to="/" aria-label="Retour à l'accueil">
+            <KonektLogo variant="full" theme="dark" size={32} />
+          </Link>
+        </div>
+
         {/* Banner contextuel : invité via email d'invitation */}
         {arrivingViaInvitation && !isResettingPassword && !isForgotPassword && (
           <div className="bg-info/10 border border-info/30 rounded-lg p-4 text-sm">
