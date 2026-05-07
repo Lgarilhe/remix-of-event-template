@@ -29,7 +29,7 @@ export const LowCreditBanner = () => {
         "relative flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium",
         isCritical
           ? "bg-destructive/10 text-destructive border-b border-destructive/20"
-          : "bg-amber-500/10 text-amber-700 border-b border-amber-500/20"
+          : "bg-warning/10 text-warning border-b border-warning/20"
       )}
     >
       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -42,7 +42,7 @@ export const LowCreditBanner = () => {
         onClick={() => navigate('/settings?tab=credits')}
         className={cn(
           "inline-flex items-center gap-1 font-bold underline underline-offset-2 hover:no-underline",
-          isCritical ? "text-destructive" : "text-amber-700"
+          isCritical ? "text-destructive" : "text-warning"
         )}
       >
         Acheter des crédits

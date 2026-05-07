@@ -91,7 +91,7 @@ export const AICreditsSettings = () => {
             <div>
               <span className={cn(
                 "text-3xl font-bold",
-                isOut ? "text-destructive" : isLow ? "text-amber-500" : "text-foreground"
+                isOut ? "text-destructive" : isLow ? "text-warning" : "text-foreground"
               )}>
                 {creditsRemaining.toLocaleString()}
               </span>
@@ -292,7 +292,7 @@ export const AICreditsSettings = () => {
                       <p className="text-sm text-foreground">
                         {isTopup ? (
                           <span className="flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <CheckCircle2 className="w-3.5 h-3.5 text-success" />
                             Achat de crédits
                           </span>
                         ) : (
@@ -309,7 +309,7 @@ export const AICreditsSettings = () => {
                     <div className="text-right shrink-0 ml-2">
                       <p className={cn(
                         "text-sm font-medium",
-                        isTopup ? "text-emerald-600" : "text-destructive"
+                        isTopup ? "text-success" : "text-destructive"
                       )}>
                         {isTopup ? '+' : '-'}{isTopup ? Math.abs(tx.amount ?? 0) : creditsUsed} cr
                       </p>

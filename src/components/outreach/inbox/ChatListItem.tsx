@@ -178,7 +178,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             </Avatar>
             {/* Unread dot indicator */}
             {unread && (
-              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold bg-foreground text-background rounded-full ring-2 ring-background tabular-nums">
+              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-3xs font-bold bg-foreground text-background rounded-full ring-2 ring-background tabular-nums">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -233,7 +233,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
               {time && (
                 <span
                   className={cn(
-                    'text-[11px] tabular-nums whitespace-nowrap',
+                    'text-2xs tabular-nums whitespace-nowrap',
                     unread ? 'text-foreground font-medium' : 'text-muted-foreground/70',
                   )}
                 >
@@ -269,7 +269,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {/* Badge Snooze — priorité haute, super visible */}
             {snoozedUntil && (
               <span
-                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded-md bg-warning/10 text-warning"
                 title={`En sommeil jusqu'au ${snoozedUntil.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
               >
                 <span>⏰</span>
@@ -279,7 +279,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {/* Badge Archive */}
             {archivedAt && !snoozedUntil && (
               <span
-                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-gray-500/10 text-gray-600 dark:text-gray-400"
+                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded-md bg-gray-500/10 text-gray-600 dark:text-gray-400"
                 title={`Archivée le ${archivedAt.toLocaleDateString('fr-FR')}`}
               >
                 <span>📦</span>
@@ -290,7 +290,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {intentMeta && !snoozedUntil && !archivedAt && (
               <span
                 className={cn(
-                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-md',
+                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded-md',
                   intentMeta.color,
                 )}
                 title={intent?.summary || intentMeta.label}
@@ -302,7 +302,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {sourceType && (
               <span
                 className={cn(
-                  'shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-md',
+                  'shrink-0 inline-flex items-center px-1.5 py-0.5 text-3xs font-medium rounded-md',
                   sourceType.color,
                 )}
               >
@@ -312,7 +312,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {categoryInfo && (
               <span
                 className={cn(
-                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded',
+                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded',
                   categoryInfo.color,
                 )}
               >
@@ -323,7 +323,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             {statusInfo && !sourceType && !categoryInfo && (
               <p
                 className={cn(
-                  'text-[11px] truncate flex items-center gap-1 min-w-0 leading-tight',
+                  'text-2xs truncate flex items-center gap-1 min-w-0 leading-tight',
                   statusInfo.color,
                 )}
               >
@@ -333,7 +333,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
             )}
             {/* Unread badge — toujours à droite, avec ml-auto */}
             {unread && (
-              <span className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold bg-foreground text-background rounded-full tabular-nums">
+              <span className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-3xs font-bold bg-foreground text-background rounded-full tabular-nums">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}

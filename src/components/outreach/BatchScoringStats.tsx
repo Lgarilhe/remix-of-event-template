@@ -15,7 +15,7 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
   return (
     <div className="border border-border bg-muted/30 p-3 space-y-2">
       <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        <CheckCircle2 className="w-4 h-4 text-success" />
         {stats.total} profils analysés{durationLabel && ` en ${durationLabel}`}
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground pl-6">

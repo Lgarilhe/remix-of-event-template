@@ -9,7 +9,7 @@ const SafeModeBadge = () => (
   <TooltipProvider>
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 cursor-help">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 cursor-help">
           <Shield className="w-2.5 h-2.5" />
           Safe mode
         </span>
@@ -41,8 +41,8 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
     <div className="flex items-center gap-2">
       <div className={cn(
         "w-6 h-6 flex items-center justify-center",
-        isCritical ? "bg-destructive/10 text-red-600" :
-        isWarning ? "bg-warning/10 text-amber-600" :
+        isCritical ? "bg-destructive/10 text-destructive" :
+        isWarning ? "bg-warning/10 text-warning" :
         "bg-muted text-muted-foreground"
       )}>
         {icon}
@@ -52,8 +52,8 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
           <span className="text-muted-foreground truncate">{label}</span>
           <span className={cn(
             "font-medium",
-            isCritical ? "text-red-600" :
-            isWarning ? "text-amber-600" :
+            isCritical ? "text-destructive" :
+            isWarning ? "text-warning" :
             "text-foreground"
           )}>
             {remaining}/{limit}
@@ -63,8 +63,8 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
           value={percentUsed} 
           className={cn(
             "h-1.5 mt-1",
-            isCritical ? "[&>div]:bg-red-500" :
-            isWarning ? "[&>div]:bg-amber-500" :
+            isCritical ? "[&>div]:bg-destructive" :
+            isWarning ? "[&>div]:bg-warning" :
             "[&>div]:bg-linkedin"
           )}
         />
@@ -72,7 +72,7 @@ const QuotaItem: React.FC<QuotaItemProps> = ({ label, current, limit, icon }) =>
       {(isWarning || isCritical) && (
         <AlertTriangle className={cn(
           "w-3.5 h-3.5 shrink-0",
-          isCritical ? "text-red-500" : "text-amber-500"
+          isCritical ? "text-destructive" : "text-warning"
         )} />
       )}
     </div>
@@ -136,7 +136,7 @@ export const QuotaDisplay: React.FC<QuotaDisplayProps> = ({
             <div className={cn(
               "flex items-center gap-1.5 px-2 py-1 text-xs font-medium cursor-help border",
               isCritical ? "bg-destructive/10 text-destructive border-destructive/30" :
-              isWarning ? "bg-warning/10 text-amber-700 border-amber-300" :
+              isWarning ? "bg-warning/10 text-warning border-warning/30" :
               "bg-muted text-foreground border-border"
             )}>
               {(isWarning || isCritical) && <AlertTriangle className="w-3 h-3" />}

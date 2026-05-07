@@ -35,8 +35,8 @@ export const SessionExpiredDialog: React.FC<SessionExpiredDialogProps> = ({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-            <LogIn className="w-6 h-6 text-amber-600" />
+          <div className="mx-auto w-12 h-12 rounded-full bg-warning/10 flex items-center justify-center mb-2">
+            <LogIn className="w-6 h-6 text-warning" />
           </div>
           <AlertDialogTitle className="text-center">
             Session expirée
@@ -49,7 +49,7 @@ export const SessionExpiredDialog: React.FC<SessionExpiredDialogProps> = ({
         <AlertDialogFooter className="sm:justify-center">
           <AlertDialogAction 
             onClick={handleLogin}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8"
+            className="bg-info text-info-foreground hover:bg-info/90 px-8"
           >
             Se reconnecter
           </AlertDialogAction>

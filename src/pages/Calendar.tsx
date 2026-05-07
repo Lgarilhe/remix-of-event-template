@@ -327,7 +327,7 @@ export default function CalendarPage() {
                   key={m.value}
                   onClick={() => setView(m.value)}
                   className={cn(
-                    'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-[11.5px] font-medium transition-colors',
+                    'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-2xs font-medium transition-colors',
                     isActive
                       ? 'bg-foreground text-background shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -345,7 +345,7 @@ export default function CalendarPage() {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-2xs font-medium text-foreground transition-colors disabled:opacity-50"
             aria-label="Rafraîchir le calendrier"
           >
             <RefreshCw
@@ -373,7 +373,7 @@ export default function CalendarPage() {
             </button>
             <button
               onClick={() => setWeekStart(startOfDay(new Date()))}
-              className="h-8 px-3 rounded-full text-[11.5px] font-medium text-foreground hover:bg-muted/60 transition-colors"
+              className="h-8 px-3 rounded-full text-2xs font-medium text-foreground hover:bg-muted/60 transition-colors"
               title="Aujourd'hui (T)"
             >
               Aujourd'hui
@@ -393,7 +393,7 @@ export default function CalendarPage() {
           {/* + Nouvel event */}
           <button
             onClick={() => openCreate()}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-foreground text-background text-[11.5px] font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-foreground text-background text-2xs font-medium hover:opacity-90 transition-opacity"
             title="Programmer un entretien (N)"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -497,7 +497,7 @@ export default function CalendarPage() {
                       <div>
                         <p
                           className={cn(
-                            'text-[10px] uppercase tracking-wider font-semibold',
+                            'text-3xs uppercase tracking-wider font-semibold',
                             today ? 'text-foreground' : 'text-muted-foreground',
                           )}
                         >
@@ -517,7 +517,7 @@ export default function CalendarPage() {
                         {dayEvents.length > 0 && (
                           <span
                             className={cn(
-                              'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums',
+                              'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-2xs font-bold tabular-nums',
                               today
                                 ? 'bg-foreground text-background'
                                 : 'bg-foreground/10 text-foreground',
@@ -700,7 +700,7 @@ export default function CalendarPage() {
       />
 
       {/* Aide raccourcis clavier — discret en bas */}
-      <div className="mt-6 text-[10px] text-muted-foreground/60 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="mt-6 text-3xs text-muted-foreground/60 flex flex-wrap items-center gap-x-3 gap-y-1">
         <span>Raccourcis :</span>
         <kbd className="font-mono px-1 py-0.5 rounded border border-border bg-muted/40">J</kbd>
         <span>précédent</span>
@@ -786,7 +786,7 @@ const EventCard = React.memo(function EventCard({
             {time}
           </span>
           {durationMin && (
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span className="text-3xs text-muted-foreground tabular-nums">
               · {durationMin}min
             </span>
           )}
@@ -794,9 +794,9 @@ const EventCard = React.memo(function EventCard({
           {meta.round && (
             <span
               className={cn(
-                'inline-flex items-center text-[9.5px] font-bold uppercase tracking-wider px-1.5 h-4 rounded-full shrink-0',
+                'inline-flex items-center text-3xs font-bold uppercase tracking-wider px-1.5 h-4 rounded-full shrink-0',
                 meta.round.kind === 'final'
-                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/30'
+                  ? 'bg-warning/15 text-warning ring-1 ring-warning/30'
                   : meta.round.n === 1
                   ? 'bg-foreground/[0.08] text-foreground/80'
                   : meta.round.n === 2
@@ -858,7 +858,7 @@ const EventCard = React.memo(function EventCard({
               {meta.candidateName}
             </div>
             {(meta.clientName || meta.jobTitle) && (
-              <div className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
+              <div className="text-3xs text-muted-foreground truncate leading-tight mt-0.5">
                 {meta.clientName && (
                   <span className="font-medium text-foreground/80">{meta.clientName}</span>
                 )}
@@ -872,7 +872,7 @@ const EventCard = React.memo(function EventCard({
 
       {/* Mission / job line — uniquement si ni qualif (pas déjà affiché ci-dessus) */}
       {!isQualif && (meta.clientName || meta.jobTitle) && (
-        <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground truncate mb-1">
+        <div className="flex items-center gap-1.5 text-2xs text-muted-foreground truncate mb-1">
           {meta.clientName && (
             <MissionCompanyLogo company={meta.clientName} size={16} />
           )}
@@ -897,10 +897,10 @@ const EventCard = React.memo(function EventCard({
       <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/40">
         {meta.manager?.displayName ? (
           <span
-            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground truncate"
+            className="inline-flex items-center gap-1 text-3xs text-muted-foreground truncate"
             title={`Animé par ${meta.manager.displayName}`}
           >
-            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-foreground font-bold text-[8px]">
+            <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500/15 text-foreground font-bold text-3xs">
               {getInitials(meta.manager.displayName)}
             </span>
             <span className="truncate">{meta.manager.displayName.split(' ')[0]}</span>
@@ -911,7 +911,7 @@ const EventCard = React.memo(function EventCard({
 
         {meta.location && (
           <span
-            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
+            className="inline-flex items-center gap-1 text-3xs text-muted-foreground shrink-0"
             title={meta.location}
           >
             {hasVisio ? <Video className="w-2.5 h-2.5" /> : <MapPin className="w-2.5 h-2.5" />}

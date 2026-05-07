@@ -60,7 +60,7 @@ export function ScoringPopover({ candidateId, jobId, isOpen, onOpenChange, child
             </div>
             {data.scoring_details?.strengths?.length > 0 && (
               <div>
-                <p className="text-[10px] font-medium text-emerald-600 mb-0.5">Forces</p>
+                <p className="text-[10px] font-medium text-success mb-0.5">Forces</p>
                 {data.scoring_details.strengths.map((s: string, i: number) => (
                   <p key={i} className="text-[10px] text-muted-foreground">• {s}</p>
                 ))}
@@ -68,7 +68,7 @@ export function ScoringPopover({ candidateId, jobId, isOpen, onOpenChange, child
             )}
             {data.scoring_details?.concerns?.length > 0 && (
               <div>
-                <p className="text-[10px] font-medium text-amber-600 mb-0.5">Points d'attention</p>
+                <p className="text-[10px] font-medium text-warning mb-0.5">Points d'attention</p>
                 {data.scoring_details.concerns.map((s: string, i: number) => (
                   <p key={i} className="text-[10px] text-muted-foreground">• {s}</p>
                 ))}

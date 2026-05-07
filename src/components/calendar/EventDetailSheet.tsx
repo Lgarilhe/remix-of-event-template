@@ -226,7 +226,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
                   className={cn(
                     'inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 h-5 rounded-full shrink-0',
                     meta.round.kind === 'final'
-                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/30'
+                      ? 'bg-warning/15 text-warning ring-1 ring-warning/30'
                       : meta.round.n === 1
                       ? 'bg-foreground/[0.08] text-foreground/80'
                       : meta.round.n === 2
@@ -465,7 +465,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
                 );
                 onOpenChange(false);
               }}
-              className="w-full inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/15 text-foreground text-sm font-medium transition-colors"
+              className="w-full inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-success/30 bg-success/10 hover:bg-success/15 text-foreground text-sm font-medium transition-colors"
             >
               <Sparkles className="w-4 h-4" />
               Préparer l'entretien (scorecard IA)

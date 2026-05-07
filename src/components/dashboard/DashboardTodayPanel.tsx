@@ -239,7 +239,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
       {combined.length > 0 && stats.done > 0 && (
         <div className="h-0.5 bg-muted/40 relative">
           <motion.div
-            className="absolute inset-y-0 left-0 bg-emerald-500/60"
+            className="absolute inset-y-0 left-0 bg-success/60"
             initial={{ width: 0 }}
             animate={{ width: `${(stats.done / stats.total) * 100}%` }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
@@ -343,7 +343,7 @@ const TodayItem: React.FC<{
         className={cn(
           'group rounded-lg p-2.5 transition-colors relative',
           isLive
-            ? 'bg-emerald-500/[0.08] ring-1 ring-emerald-500/40 hover:bg-emerald-500/[0.12]'
+            ? 'bg-success/[0.08] ring-1 ring-success/40 hover:bg-success/[0.12]'
             : isImminent
             ? 'bg-warning/[0.06] ring-1 ring-warning/30 hover:bg-warning/[0.10]'
             : 'hover:bg-muted/40',
@@ -360,7 +360,7 @@ const TodayItem: React.FC<{
             <span
               className={cn(
                 'font-display text-[12px] font-bold tabular-nums tracking-tight',
-                isLive ? 'text-emerald-700 dark:text-emerald-400' :
+                isLive ? 'text-success' :
                 isImminent ? 'text-warning' :
                 isPast ? 'text-muted-foreground line-through' :
                 'text-foreground',
@@ -371,16 +371,16 @@ const TodayItem: React.FC<{
             {isLive ? (
               <span className="inline-flex items-center gap-1 mt-0.5">
                 <LivePulse tone="success" />
-                <span className="text-[8px] uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-400">
+                <span className="text-3xs uppercase tracking-wider font-bold text-success">
                   Live
                 </span>
               </span>
             ) : isImminent ? (
-              <span className="text-[9px] uppercase tracking-wider font-bold text-warning mt-0.5">
+              <span className="text-3xs uppercase tracking-wider font-bold text-warning mt-0.5">
                 {minutesUntil}min
               </span>
             ) : item.endAt ? (
-              <span className="text-[9px] text-muted-foreground tabular-nums mt-0.5">
+              <span className="text-3xs text-muted-foreground tabular-nums mt-0.5">
                 — {format(item.endAt, 'HH:mm')}
               </span>
             ) : null}
@@ -410,9 +410,9 @@ const TodayItem: React.FC<{
               {meta.round && (
                 <span
                   className={cn(
-                    'inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 h-3.5 rounded-full shrink-0',
+                    'inline-flex items-center text-3xs font-bold uppercase tracking-wider px-1.5 h-3.5 rounded-full shrink-0',
                     meta.round.kind === 'final'
-                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                      ? 'bg-warning/15 text-warning'
                       : meta.round.n === 1
                       ? 'bg-foreground/[0.08] text-foreground/80'
                       : 'bg-info/10 text-info',
@@ -427,7 +427,7 @@ const TodayItem: React.FC<{
               )}
             </div>
             {(meta.clientName || meta.jobTitle) && (
-              <p className="text-[10.5px] text-muted-foreground truncate leading-tight mt-0.5">
+              <p className="text-2xs text-muted-foreground truncate leading-tight mt-0.5">
                 {meta.clientName && (
                   <span className="font-medium text-foreground/80">{meta.clientName}</span>
                 )}
@@ -460,9 +460,9 @@ const TodayItem: React.FC<{
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className={cn(
-                'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium transition-colors',
+                'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-2xs font-medium transition-colors',
                 isLive
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  ? 'bg-success text-success-foreground hover:bg-success/90'
                   : 'bg-foreground text-background hover:opacity-90',
               )}
             >
@@ -511,7 +511,7 @@ const TodayItem: React.FC<{
           className={cn(
             'h-5 w-5 rounded-md border-2 shrink-0 flex items-center justify-center transition-colors',
             isDone
-              ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-700 dark:text-emerald-400'
+              ? 'bg-success/20 border-success/60 text-success'
               : 'border-muted-foreground/40 hover:border-foreground hover:bg-muted/40',
           )}
           title={isDone ? 'Marquer non fait' : 'Marquer fait'}
@@ -544,7 +544,7 @@ const TodayItem: React.FC<{
             >
               {r.title}
             </p>
-            <p className="text-[10.5px] text-muted-foreground truncate">
+            <p className="text-2xs text-muted-foreground truncate">
               {r.candidate_name || r.job_title || 'Rappel'}
             </p>
           </div>
@@ -605,7 +605,7 @@ const TodayItem: React.FC<{
           </p>
           <span
             className={cn(
-              'inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1.5 h-3.5 rounded-full shrink-0',
+              'inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1.5 h-3.5 rounded-full shrink-0',
               isInmail
                 ? 'bg-info/15 text-info'
                 : 'bg-foreground/[0.08] text-foreground/70',
@@ -615,7 +615,7 @@ const TodayItem: React.FC<{
             {isInmail ? 'InMail' : 'Séq.'}
           </span>
         </div>
-        <p className="text-[10.5px] text-muted-foreground truncate">{subtitle}</p>
+        <p className="text-2xs text-muted-foreground truncate">{subtitle}</p>
       </div>
 
       {isDone ? (
@@ -651,7 +651,7 @@ const EmptyState: React.FC<{ onCreate: () => void }> = ({ onCreate }) => (
     </p>
     <button
       onClick={onCreate}
-      className="relative inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors"
+      className="relative inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-2xs font-medium text-foreground transition-colors"
     >
       <Plus className="w-3.5 h-3.5" />
       Ajouter une tâche

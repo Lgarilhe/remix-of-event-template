@@ -150,7 +150,7 @@ export const ConnectorSettings = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <CheckCircle2 className="w-4 h-4 text-success" />
             Connecteurs actifs
             <Badge variant="secondary" className="ml-auto text-xs">
               {activeInstances.length}
@@ -170,15 +170,15 @@ export const ConnectorSettings = () => {
                     className="flex items-center justify-between py-3 border-b border-border last:border-0"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded bg-green-900/30 flex items-center justify-center shrink-0">
-                        <Power className="w-4 h-4 text-green-600" />
+                      <div className="w-8 h-8 rounded bg-success/10 flex items-center justify-center shrink-0">
+                        <Power className="w-4 h-4 text-success" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">
                           {reg?.name || instance.connector_id}
                         </p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Badge variant="outline" className="text-xs px-1.5 py-0 border-green-500 text-green-600">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 border-success text-success">
                             ACTIF
                           </Badge>
                           {instance.last_sync_at && (

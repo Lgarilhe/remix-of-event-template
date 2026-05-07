@@ -215,7 +215,7 @@ const LinkedInHostedAuthCard = ({
               ) : linkedInAccounts.length > 0 ? (
                 <Badge
                   variant="default"
-                  className="text-xs px-2 bg-green-600 text-white hover:bg-green-700"
+                  className="text-xs px-2 bg-success text-success-foreground hover:bg-success/90"
                 >
                   {linkedInAccounts.length} compte{linkedInAccounts.length > 1 ? 's' : ''} connecté{linkedInAccounts.length > 1 ? 's' : ''}
                 </Badge>
@@ -260,7 +260,7 @@ const LinkedInHostedAuthCard = ({
                         <div className="flex items-center gap-1.5">
                           <div className={cn(
                             'w-1.5 h-1.5 rounded-full',
-                            account.status === 'OK' ? 'bg-green-500' : 'bg-amber-500'
+                            account.status === 'OK' ? 'bg-success' : 'bg-warning'
                           )} />
                           <span className="text-xs text-muted-foreground">
                             {account.status === 'OK' ? 'Actif' : account.status}
@@ -433,7 +433,7 @@ const IntegrationCard = ({
                 variant={isConnected ? 'default' : 'secondary'}
                 className={cn(
                   'text-xs px-2',
-                  isConnected && 'bg-green-600 text-white hover:bg-green-700'
+                  isConnected && 'bg-success text-success-foreground hover:bg-success/90'
                 )}
               >
                 {isConnected ? 'Connecté' : 'Non configuré'}

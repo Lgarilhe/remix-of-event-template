@@ -140,7 +140,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium text-foreground truncate">{getDisplayName(member.user_id)}</p>
                       {(member.role as string) === 'collaborator' && (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0 border-blue-400 text-blue-600 font-semibold uppercase tracking-wider">
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 border-info text-info font-semibold uppercase tracking-wider">
                           <UserCog className="w-2.5 h-2.5 mr-0.5" />
                           Externe
                         </Badge>
@@ -210,7 +210,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                   <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
                                   {(acc as any).name || (acc as any).identifier || acc.id}
                                   {(acc as any).status === 'OK' && (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-success" />
                                   )}
                                 </span>
                               </SelectItem>
