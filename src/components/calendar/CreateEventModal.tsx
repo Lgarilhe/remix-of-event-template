@@ -42,6 +42,10 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { cn } from '@/lib/utils';
+import {
+  CandidateAutocomplete,
+  type SelectedCandidate,
+} from './CandidateAutocomplete';
 
 interface CreateEventModalProps {
   open: boolean;
@@ -89,8 +93,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   // Form state
   const [eventName, setEventName] = useState('Qualif initiale');
   const [projectId, setProjectId] = useState<string>('');
-  const [candidateName, setCandidateName] = useState('');
-  const [candidateHeadline, setCandidateHeadline] = useState('');
+  const [candidate, setCandidate] = useState<SelectedCandidate | null>(null);
   const [date, setDate] = useState(() =>
     format(defaultDate || new Date(), 'yyyy-MM-dd'),
   );
@@ -115,8 +118,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const resetForm = () => {
     setEventName('Qualif initiale');
     setProjectId('');
-    setCandidateName('');
-    setCandidateHeadline('');
+    setCandidate(null);
     setDate(format(defaultDate || new Date(), 'yyyy-MM-dd'));
     setTime('10:00');
     setDuration('30');
@@ -131,8 +133,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       toast.error('Pas authentifié');
       return;
     }
-    if (!candidateName.trim()) {
-      toast.error('Saisis le nom du candidat');
+    if (!candidate || !candidate.name.trim()) {
+      toast.error('Sélectionne ou crée un candidat');
       return;
     }
 
@@ -157,11 +159,40 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         locationStr = customLocation.trim();
       }
 
+      // ─── Si nouveau candidat → créer JCS row d'abord (le candidat
+      // apparaîtra au pipeline en "Pressenti" sur la mission sélectionnée)
+      let candidateProfileId = candidate.candidateId;
+      if (!candidateProfileId) {
+        // Génère un id pour le nouveau candidat
+        candidateProfileId = crypto.randomUUID();
+
+        const jcsInsert: Record<string, unknown> = {
+          organization_id: organizationId,
+          candidate_id: candidateProfileId,
+          candidate_name: candidate.name.trim(),
+          candidate_headline: candidate.headline?.trim() || null,
+          status: 'shortlisted',
+          pipeline_stage: 'Pressenti',
+        };
+        if (projectId && selectedProject?.job_id) {
+          jcsInsert.job_id = selectedProject.job_id;
+        }
+        const { error: jcsErr } = await supabase
+          .from('job_candidate_status')
+          .insert(jcsInsert as any);
+        if (jcsErr) {
+          console.warn('[CreateEvent] JCS insert error (non-fatal):', jcsErr);
+          // On continue quand même — la qualif peut exister sans JCS
+        }
+      }
+
       const insert: Record<string, unknown> = {
         organization_id: organizationId,
         created_by: user.id,
-        candidate_name: candidateName.trim(),
-        candidate_headline: candidateHeadline.trim() || null,
+        candidate_profile_id: candidateProfileId,
+        candidate_name: candidate.name.trim(),
+        candidate_headline: candidate.headline?.trim() || null,
+        candidate_linkedin_url: candidate.linkedinUrl || null,
         event_name: eventName.trim(),
         event_start_at: startAt.toISOString(),
         event_end_at: endAt.toISOString(),
@@ -180,9 +211,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       const { error } = await supabase.from('qualification_sessions').insert(insert as any);
       if (error) throw error;
 
-      toast.success('Entretien programmé');
-      // Invalide toutes les queries calendar pour forcer refetch
+      toast.success(
+        candidate.candidateId
+          ? 'Entretien programmé'
+          : `Entretien programmé · ${candidate.name} ajouté au pipeline`,
+      );
       await queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      await queryClient.invalidateQueries({ queryKey: ['ats-data'] });
       resetForm();
       onOpenChange(false);
     } catch (err: any) {
@@ -254,22 +289,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             </Select>
           </div>
 
-          {/* Candidate */}
+          {/* Candidat — autocomplete sur existants + option "Créer nouveau" */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">Candidat</label>
-            <Input
-              value={candidateName}
-              onChange={(e) => setCandidateName(e.target.value)}
-              placeholder="Nom du candidat"
-              className="h-9 rounded-lg"
-              required
-            />
-            <Input
-              value={candidateHeadline}
-              onChange={(e) => setCandidateHeadline(e.target.value)}
-              placeholder="Headline (optionnel) — ex: Senior Backend @ Datadog"
-              className="h-9 rounded-lg text-xs"
-            />
+            <CandidateAutocomplete value={candidate} onChange={setCandidate} />
+            {!candidate && (
+              <p className="text-[10.5px] text-muted-foreground">
+                Cherche dans tes candidats existants ou crée-en un nouveau au passage.
+              </p>
+            )}
           </div>
 
           {/* Date + time + duration */}
