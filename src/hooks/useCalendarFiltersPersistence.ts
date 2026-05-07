@@ -14,20 +14,16 @@ import { useAuthReady } from '@/hooks/useAuthReady';
 import {
   DEFAULT_FILTERS,
   type CalendarFilters,
+  type CalendarFilterPreset,
 } from '@/components/calendar/CalendarFiltersBar';
+
+export type { CalendarFilterPreset };
 
 const FILTERS_KEY = (userId: string | null) =>
   userId ? `calendar-filters-${userId}` : 'calendar-filters-anon';
 
 const PRESETS_KEY = (userId: string | null) =>
   userId ? `calendar-filter-presets-${userId}` : 'calendar-filter-presets-anon';
-
-export interface CalendarFilterPreset {
-  id: string;
-  name: string;
-  filters: CalendarFilters;
-  createdAt: string;
-}
 
 const readJson = <T>(key: string, fallback: T): T => {
   if (typeof window === 'undefined') return fallback;

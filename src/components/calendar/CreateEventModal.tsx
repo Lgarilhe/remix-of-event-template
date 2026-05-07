@@ -15,7 +15,7 @@
  * À la submit : INSERT puis invalide les queries calendar pour refetch.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -108,6 +108,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     () => projects.filter((p) => p.status === 'active'),
     [projects],
   );
+
+  // Sync date with defaultDate quand l'user click sur un slot
+  useEffect(() => {
+    if (defaultDate && open) {
+      setDate(format(defaultDate, 'yyyy-MM-dd'));
+    }
+  }, [defaultDate, open]);
 
   // Auto-derive client_name + job_title from selected project
   const selectedProject = useMemo(
@@ -406,7 +413,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={submitting || !candidateName.trim()}
+              disabled={submitting || !candidate?.name?.trim()}
               className="h-9 px-4 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
             >
               {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}

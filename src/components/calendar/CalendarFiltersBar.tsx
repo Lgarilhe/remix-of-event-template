@@ -39,7 +39,15 @@ import type {
   CalendarEventFormat,
   CalendarEventType,
 } from '@/hooks/useCalendarEvents';
-import type { CalendarFilterPreset } from '@/hooks/useCalendarFiltersPersistence';
+
+/** Preset typing déclaré ici pour éviter une circular dep avec le hook
+ *  useCalendarFiltersPersistence (qui importe CalendarFilters d'ici). */
+export interface CalendarFilterPreset {
+  id: string;
+  name: string;
+  filters: CalendarFilters;
+  createdAt: string;
+}
 
 export interface CalendarFilters {
   /** Types autorisés. Vide = tous. */
