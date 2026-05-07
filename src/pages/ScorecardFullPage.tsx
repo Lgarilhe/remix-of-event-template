@@ -1,13 +1,16 @@
 /**
  * ScorecardFullPage — vue plein écran de la scorecard d'évaluation.
  *
- * Refonte 2026-05-06 :
- * - Layout 2-col propre (vs ancien header sticky + drawers en bas)
- * - Sidebar gauche persistante avec : candidat (avatar/meta/skills) +
- *   poste (titre/client/seniority) + onglets compacts
- * - Main area : ScorecardTab plein cadre, plus de place pour évaluer
- * - Mobile : tabs en haut pour switcher candidat/poste/scorecard
- * - Style V2 cohérent (rounded-xl, font-display, icon-tile)
+ * V3 (mai 2026) : refonte workspace pro
+ * - max-width supprimée → utilise toute la largeur (suppression max-w-5xl)
+ * - Header riche avec progress bar visuelle + score running + recommendation
+ *   compacts en pill
+ * - Sidebar collapsible (bouton Réduire/Étendre) pour donner du focus au
+ *   workspace si besoin
+ * - Live progress de la scorecard chargée depuis la DB pour pré-render le
+ *   header avec X/Y critères évalués + score moyen avant même que ScorecardTab
+ *   finisse son load (UX plus snappy)
+ * - Mobile : tabs en haut comme avant
  */
 
 import { useEffect, useState, useMemo } from 'react';
@@ -17,9 +20,20 @@ import { ScorecardTab } from '@/components/ats/ScorecardTab';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
-  ArrowLeft, ExternalLink, MapPin, Building2, Briefcase,
-  GraduationCap, Mic, Loader2, Mail, Phone, User, Target,
-  Sparkles, ChevronDown,
+  ArrowLeft,
+  ExternalLink,
+  MapPin,
+  Building2,
+  Briefcase,
+  GraduationCap,
+  Mic,
+  Loader2,
+  User,
+  Target,
+  Sparkles,
+  PanelLeftClose,
+  PanelLeftOpen,
+  CheckCircle2,
 } from 'lucide-react';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
@@ -29,6 +43,13 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 type SidebarTab = 'candidate' | 'job';
+
+interface QuickEval {
+  criteriaCount: number;
+  ratedCount: number;
+  overallScore: number | null;
+  recommendation: string | null;
+}
 
 export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
@@ -41,6 +62,8 @@ export default function ScorecardFullPage() {
   const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('candidate');
   const [mobilePane, setMobilePane] = useState<'sidebar' | 'scorecard'>('scorecard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [quickEval, setQuickEval] = useState<QuickEval | null>(null);
 
   const { data: notionJobs } = useNotionJobs();
 
@@ -100,6 +123,40 @@ export default function ScorecardFullPage() {
       setLoading(false);
     };
     load();
+  }, [candidateId, navigate]);
+
+  // Load quick eval stats (for header progress bar)
+  useEffect(() => {
+    if (!candidateId) return;
+    const loadEval = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('candidate_evaluations')
+        .select('criteria, ratings, overall_score, recommendation')
+        .eq('candidate_id', candidateId)
+        .eq('created_by', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!data) {
+        setQuickEval(null);
+        return;
+      }
+      const criteria = (data.criteria as any[]) || [];
+      const ratings = (data.ratings as Record<string, number>) || {};
+      const ratedCount = Object.values(ratings).filter((r) => r != null).length;
+      setQuickEval({
+        criteriaCount: criteria.length,
+        ratedCount,
+        overallScore: data.overall_score ? Number(data.overall_score) : null,
+        recommendation: (data as any).recommendation || null,
+      });
+    };
+    loadEval();
+    // Refresh à chaque fois que ScorecardTab modifie la DB (debounced auto-save)
+    const interval = setInterval(loadEval, 5_000);
+    return () => clearInterval(interval);
   }, [candidateId]);
 
   const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
@@ -155,7 +212,6 @@ export default function ScorecardFullPage() {
     };
   }, [candidate]);
 
-  // Notion job details si disponible
   const jobDetails = useMemo(() => {
     if (!candidate?.jobId) return null;
     return notionJobs?.find(j => j.id === candidate.jobId) || null;
@@ -175,11 +231,26 @@ export default function ScorecardFullPage() {
   const avatarUrl = profileData?.profile_picture_url;
   const initials = candidate.name.split(' ').slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
 
+  // Quick eval derived
+  const progressPct = quickEval && quickEval.criteriaCount > 0
+    ? (quickEval.ratedCount / quickEval.criteriaCount) * 100
+    : 0;
+
+  const recoTone = (() => {
+    const r = quickEval?.recommendation;
+    if (r === 'strong_yes') return { bg: 'bg-success/15', text: 'text-success', border: 'border-success/30', label: 'Strong Yes' };
+    if (r === 'yes') return { bg: 'bg-success/10', text: 'text-success', border: 'border-success/30', label: 'Yes' };
+    if (r === 'maybe') return { bg: 'bg-warning/10', text: 'text-warning', border: 'border-warning/30', label: 'Maybe' };
+    if (r === 'no') return { bg: 'bg-destructive/10', text: 'text-destructive', border: 'border-destructive/30', label: 'No' };
+    if (r === 'strong_no') return { bg: 'bg-destructive/15', text: 'text-destructive', border: 'border-destructive/30', label: 'Strong No' };
+    return null;
+  })();
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* ═══ Header sticky ═══ */}
+    <div className="min-h-screen bg-background text-foreground flex flex-col overflow-hidden">
+      {/* ═══ Header riche ═══ */}
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="flex items-center gap-3 px-4 sm:px-6 h-14">
+        <div className="flex items-center gap-3 px-4 sm:px-6 h-14 max-w-none">
           <button
             onClick={() => navigate(-1)}
             className="h-9 w-9 grid place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0"
@@ -188,18 +259,72 @@ export default function ScorecardFullPage() {
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 hidden sm:block">
-              Scorecard d'entretien · plein écran
-            </p>
-            <h1 className="font-display text-[15px] sm:text-base font-bold truncate leading-tight">
-              {candidate.name}
-              {candidate.jobTitle && <span className="text-muted-foreground font-medium"> · {candidate.jobTitle}</span>}
-            </h1>
+          {/* Avatar + name + headline compact */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <Avatar className="w-8 h-8 ring-2 ring-border shadow-sm shrink-0">
+              <AvatarImage src={avatarUrl} alt={candidate.name} />
+              <AvatarFallback className="bg-gradient-to-br from-foreground/20 to-foreground/10 text-foreground font-bold text-xs">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="text-[9.5px] uppercase tracking-wider text-muted-foreground font-bold leading-none mb-0.5 hidden sm:block">
+                Scorecard d'entretien
+              </p>
+              <h1 className="font-display text-[14px] sm:text-[15px] font-bold truncate leading-tight">
+                {candidate.name}
+                {candidate.jobTitle && (
+                  <span className="text-muted-foreground font-medium hidden sm:inline">
+                    {' · '}{candidate.jobTitle}
+                  </span>
+                )}
+              </h1>
+            </div>
           </div>
 
+          {/* Progress + score + reco compact */}
+          {quickEval && quickEval.criteriaCount > 0 && (
+            <div className="hidden md:flex items-center gap-3 shrink-0">
+              {/* Progress bar */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] tabular-nums font-display font-bold text-foreground">
+                  {quickEval.ratedCount}/{quickEval.criteriaCount}
+                </span>
+                <div className="h-1.5 w-24 rounded-full bg-muted/40 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500/70 transition-all duration-500"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Score running */}
+              {quickEval.overallScore != null && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-card">
+                  <Sparkles className="w-3 h-3 text-foreground/60" />
+                  <span className="text-[11px] font-bold tabular-nums">
+                    {quickEval.overallScore.toFixed(1)}/5
+                  </span>
+                </div>
+              )}
+
+              {/* Recommendation */}
+              {recoTone && (
+                <span
+                  className={cn(
+                    'inline-flex items-center text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full border',
+                    recoTone.bg, recoTone.text, recoTone.border,
+                  )}
+                >
+                  {recoTone.label}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Coaching live indicator */}
           {autoCoaching && (
-            <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full bg-destructive/10 border border-destructive/30">
+            <div className="hidden lg:flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full bg-destructive/10 border border-destructive/30">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
@@ -210,6 +335,16 @@ export default function ScorecardFullPage() {
               </span>
             </div>
           )}
+
+          {/* Sidebar toggle (desktop) */}
+          <button
+            onClick={() => setSidebarCollapsed((p) => !p)}
+            className="hidden sm:grid h-9 w-9 place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0"
+            title={sidebarCollapsed ? 'Afficher la sidebar candidat' : 'Réduire la sidebar pour focus'}
+            aria-label={sidebarCollapsed ? 'Afficher sidebar' : 'Réduire sidebar'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Mobile pane toggle */}
@@ -233,22 +368,31 @@ export default function ScorecardFullPage() {
             Scorecard
           </button>
         </div>
+
+        {/* Mobile mini progress bar (visible sur petit écran) */}
+        {quickEval && quickEval.criteriaCount > 0 && (
+          <div className="md:hidden h-0.5 bg-muted/40 relative">
+            <div
+              className="absolute inset-y-0 left-0 bg-emerald-500/70 transition-all"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        )}
       </header>
 
       {/* ═══ Body 2-col ═══ */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar gauche : candidat + poste.
-            min-w-0 sur le aside ET les enfants pour éviter que des chips/
-            textes longs (skills, summary) cassent le layout en débordant. */}
+        {/* Sidebar gauche (collapsible sur desktop) */}
         <aside
           className={cn(
-            'w-full sm:w-[320px] lg:w-[360px] border-r border-border bg-muted/10 flex-col shrink-0 min-w-0',
+            'border-r border-border bg-muted/10 flex-col shrink-0 min-w-0 transition-all duration-300',
             'sm:flex',
-            mobilePane === 'sidebar' ? 'flex flex-1 sm:flex-none' : 'hidden sm:flex',
+            sidebarCollapsed ? 'sm:w-0 sm:border-r-0 sm:overflow-hidden' : 'sm:w-[320px] lg:w-[340px]',
+            mobilePane === 'sidebar' ? 'flex flex-1 sm:flex-none w-full' : 'hidden sm:flex',
           )}
         >
           {/* Tabs candidat/poste */}
-          <div className="border-b border-border p-2 flex items-center gap-1">
+          <div className="border-b border-border p-2 flex items-center gap-1 shrink-0">
             <button
               onClick={() => setSidebarTab('candidate')}
               className={cn(
@@ -275,11 +419,6 @@ export default function ScorecardFullPage() {
             </button>
           </div>
 
-          {/* ScrollArea Radix utilise display:table en interne sur son
-              viewport ce qui peut faire pousser le contenu au-delà du
-              parent. On force w-full + min-w-0 sur le wrapper interne
-              pour contrer ce comportement et garantir le truncate des
-              chips/textes longs. */}
           <ScrollArea className="flex-1 w-full">
             {sidebarTab === 'candidate' ? (
               <div className="p-4 space-y-4 w-full min-w-0 max-w-full">
@@ -303,7 +442,38 @@ export default function ScorecardFullPage() {
                   </div>
                 </div>
 
-                {/* Score IA */}
+                {/* Progress + score */}
+                {quickEval && quickEval.criteriaCount > 0 && (
+                  <div className="rounded-xl border border-border bg-card p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                        Progression
+                      </p>
+                      <span className="text-[11px] font-bold tabular-nums">
+                        {quickEval.ratedCount}/{quickEval.criteriaCount}
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mb-2">
+                      <div
+                        className="h-full bg-emerald-500/70 transition-all duration-500"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    {quickEval.overallScore != null && (
+                      <div className="flex items-center justify-between text-[11px] mt-2">
+                        <span className="text-muted-foreground">Score moyen</span>
+                        <span className="font-bold tabular-nums">{quickEval.overallScore.toFixed(2)}/5</span>
+                      </div>
+                    )}
+                    {recoTone && (
+                      <div className={cn('mt-2 px-2 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold border text-center', recoTone.bg, recoTone.text, recoTone.border)}>
+                        {recoTone.label}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Score IA initial */}
                 {candidate.score != null && candidate.score > 0 && (
                   <div className={cn(
                     'rounded-xl border px-3 py-2.5 flex items-center gap-3',
@@ -321,7 +491,7 @@ export default function ScorecardFullPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                        Score IA
+                        Score IA initial
                       </p>
                       <p className="text-[11.5px] font-medium text-foreground truncate">
                         {candidate.recommendation === 'shortlist' ? 'Recommandé' :
@@ -423,9 +593,7 @@ export default function ScorecardFullPage() {
                   </SidebarSection>
                 )}
 
-                {/* Skills — chips avec max-w pour éviter overflow horizontal
-                    sur les noms longs ("Continuous Integration..."). Le min-w-0
-                    + break-words gèrent les cas extrêmes. */}
+                {/* Skills */}
                 {(enrichedProfile?.skills?.length || 0) > 0 && (
                   <SidebarSection
                     icon={Sparkles}
@@ -468,7 +636,6 @@ export default function ScorecardFullPage() {
                   )}
                 </div>
 
-                {/* Quick stats du poste */}
                 {jobDetails && (
                   <div className="flex flex-wrap gap-1.5">
                     {jobDetails.seniority && (
@@ -489,7 +656,6 @@ export default function ScorecardFullPage() {
                   </div>
                 )}
 
-                {/* Bouton "Voir détails complets" */}
                 {candidate.jobId && (
                   <button
                     onClick={() => setJobOpen(true)}
@@ -500,7 +666,6 @@ export default function ScorecardFullPage() {
                   </button>
                 )}
 
-                {/* Skills must-have */}
                 {(jobDetails as any)?.mustHave && Array.isArray((jobDetails as any).mustHave) && (jobDetails as any).mustHave.length > 0 && (
                   <SidebarSection
                     icon={Target}
@@ -510,6 +675,7 @@ export default function ScorecardFullPage() {
                     <div className="flex flex-wrap gap-1">
                       {(jobDetails as any).mustHave.map((s: string, i: number) => (
                         <span key={i} className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+                          <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
                           {s}
                         </span>
                       ))}
@@ -517,7 +683,6 @@ export default function ScorecardFullPage() {
                   </SidebarSection>
                 )}
 
-                {/* Description résumée */}
                 {jobDetails?.description && (
                   <SidebarSection icon={Briefcase} title="Description du poste">
                     <p className="text-[11.5px] text-foreground/85 leading-relaxed line-clamp-8 whitespace-pre-line">
@@ -530,10 +695,7 @@ export default function ScorecardFullPage() {
           </ScrollArea>
         </aside>
 
-        {/* Main area : ScorecardTab.
-            min-w-0 + overflow-hidden pour garantir que le contenu interne
-            (rail + card) ne déborde pas horizontalement. ScrollArea avec
-            w-full pour bien remplir l'espace disponible. */}
+        {/* Main area : ScorecardTab — pleine largeur */}
         <main
           className={cn(
             'flex-1 min-w-0 overflow-hidden',
@@ -542,7 +704,7 @@ export default function ScorecardFullPage() {
           )}
         >
           <ScrollArea className="h-full w-full">
-            <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 min-w-0">
+            <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 min-w-0 w-full max-w-[1400px] mx-auto">
               <ScorecardTab
                 candidate={candidate}
                 enrichedProfile={enrichedProfile}
@@ -555,7 +717,6 @@ export default function ScorecardFullPage() {
         </main>
       </div>
 
-      {/* Job detail sheet (modal complet si user clique "Voir détails") */}
       <JobDetailSheet
         jobId={candidate.jobId}
         open={jobOpen}
