@@ -278,11 +278,21 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       const criteria = data.criteria as Criterion[];
 
       if (activeIndex !== null) {
+        // Update d'une scorecard existante (regenerate) → on patch + autosave
+        // peut s'occuper du persistage si ev.id existe (cas standard).
         setEvaluations(prev => prev.map((ev, i) => i === activeIndex ? {
           ...ev, criteria, overallScore: null,
         } : ev));
       } else {
-        const newEval: EvaluationData = {
+        // Nouvelle scorecard → on persiste immédiatement en DB pour ne PAS
+        // perdre les critères si l'user switch de tab et revient (la modal
+        // unmount le ScorecardTab quand un autre tab est actif). Sans save
+        // initial, l'auto-save ulterieur ne s'active que quand ev.id est
+        // set, donc on doit le set ici dès la création.
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Pas authentifié');
+
+        const newEvalBase: Omit<EvaluationData, 'id'> = {
           criteria,
           ratings: {},
           comments: {},
@@ -290,7 +300,41 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
           jobTitle: candidate.jobTitle || undefined,
           interviewStage: (selectedStage as InterviewStage) || undefined,
         };
-        setEvaluations(prev => [newEval, ...prev]);
+
+        const insertPayload: any = {
+          candidate_id: candidate.candidateId,
+          job_id: candidate.jobId,
+          job_title: candidate.jobTitle,
+          criteria: criteria as any,
+          ratings: {} as any,
+          comments: {} as any,
+          overall_score: null,
+          created_by: user.id,
+          interview_stage: newEvalBase.interviewStage || null,
+          organization_id: organizationId || null,
+        };
+
+        const { data: inserted, error: insertErr } = await supabase
+          .from('candidate_evaluations')
+          .insert(insertPayload)
+          .select('id, updated_at')
+          .single();
+
+        if (insertErr) {
+          console.warn('[ScorecardTab] persist failed, fallback in-memory:', insertErr);
+          // Fallback : on garde la scorecard en mémoire mais sans id.
+          // L'user devra cliquer Sauvegarder manuellement (ou activer un
+          // critère, l'auto-save ne marchera toujours pas sans id mais au
+          // moins le state n'est pas perdu pendant la session active).
+          setEvaluations(prev => [newEvalBase as EvaluationData, ...prev]);
+        } else {
+          const newEval: EvaluationData = {
+            ...newEvalBase,
+            id: inserted.id,
+            savedAt: inserted.updated_at,
+          };
+          setEvaluations(prev => [newEval, ...prev]);
+        }
         setActiveIndex(0);
       }
 
@@ -301,7 +345,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
     } finally {
       setGenerating(false);
     }
-  }, [candidate, enrichedProfile, activeIndex, selectedStage, activeEval]);
+  }, [candidate, enrichedProfile, activeIndex, selectedStage, activeEval, organizationId]);
 
   // Auto-generate scorecard si demandé via prop (CTA "Préparer l'entretien"
   // depuis le calendrier). Idempotent : ne déclenche qu'une fois et
