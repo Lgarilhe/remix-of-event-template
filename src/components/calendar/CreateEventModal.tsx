@@ -37,10 +37,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Briefcase, Loader2, Plus, Video, MapPin } from 'lucide-react';
+import { Briefcase, Loader2, Plus, Video, MapPin, User as UserIcon } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { cn } from '@/lib/utils';
 import {
   CandidateAutocomplete,
@@ -89,11 +91,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const { user } = useAuthReady();
   const { organizationId } = useOrganization();
   const { projects } = useSourcingProjects();
+  const { members: teamMembers } = useTeamMembers();
 
   // Form state
   const [eventName, setEventName] = useState('Qualif initiale');
   const [projectId, setProjectId] = useState<string>('');
   const [candidate, setCandidate] = useState<SelectedCandidate | null>(null);
+  const [managerId, setManagerId] = useState<string>('');
   const [date, setDate] = useState(() =>
     format(defaultDate || new Date(), 'yyyy-MM-dd'),
   );
@@ -103,6 +107,14 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [customLocation, setCustomLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Default manager = current user (le créateur s'auto-assigne par défaut).
+  // L'user peut sélectionner un autre membre de la team.
+  useEffect(() => {
+    if (!managerId && user?.id) {
+      setManagerId(user.id);
+    }
+  }, [user?.id, managerId]);
 
   const activeProjects = useMemo(
     () => projects.filter((p) => p.status === 'active'),
@@ -126,6 +138,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setEventName('Qualif initiale');
     setProjectId('');
     setCandidate(null);
+    setManagerId(user?.id ?? '');
     setDate(format(defaultDate || new Date(), 'yyyy-MM-dd'));
     setTime('10:00');
     setDuration('30');
@@ -195,7 +208,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
       const insert: Record<string, unknown> = {
         organization_id: organizationId,
-        created_by: user.id,
+        created_by: user.id, // RLS-bound : qui a créé le RDV
+        manager_id: managerId || user.id, // qui anime l'entretien (peut différer)
         candidate_profile_id: candidateProfileId,
         candidate_name: candidate.name.trim(),
         candidate_headline: candidate.headline?.trim() || null,
@@ -306,6 +320,53 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 Cherche dans tes candidats existants ou crée-en un nouveau au passage.
               </p>
             )}
+          </div>
+
+          {/* Manager — qui anime l'entretien */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <UserIcon className="w-3.5 h-3.5" />
+              Manager
+              <span className="text-[10px] text-muted-foreground font-normal">
+                · qui anime l'entretien
+              </span>
+            </label>
+            <Select value={managerId} onValueChange={setManagerId}>
+              <SelectTrigger className="h-9 rounded-lg">
+                <SelectValue placeholder="Sélectionner un manager…" />
+              </SelectTrigger>
+              <SelectContent>
+                {teamMembers.length === 0 && (
+                  <div className="text-xs text-muted-foreground p-2">
+                    Aucun membre dans l'équipe
+                  </div>
+                )}
+                {teamMembers.map((m) => {
+                  const label = m.displayName || m.email?.split('@')[0] || 'Membre';
+                  const isMe = m.userId === user?.id;
+                  return (
+                    <SelectItem key={m.userId} value={m.userId}>
+                      <div className="flex items-center gap-2">
+                        <CandidateAvatar
+                          name={label}
+                          avatarUrl={m.avatarUrl}
+                          size={20}
+                        />
+                        <span className="truncate">{label}</span>
+                        {isMe && (
+                          <span className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground">
+                            (moi)
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground capitalize">
+                          · {m.role}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Date + time + duration */}

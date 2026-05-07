@@ -181,6 +181,7 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
         'client_name',
         'project_id',
         'created_by',
+        'manager_id',
         'calendly_event_id',
         'notes',
       ].join(', '),
@@ -189,13 +190,16 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     .lte('event_start_at', rangeEnd)
     .order('event_start_at', { ascending: true });
 
-  // Resolve unique manager userIds + project ids → batch lookup (1 query each)
+  // Resolve unique manager userIds + project ids → batch lookup (1 query each).
+  // Manager = manager_id si présent (assigné explicitement), sinon
+  // fallback created_by (le créateur du RDV anime par défaut).
   const managerIds = new Set<string>();
   const projectIds = new Set<string>();
   const candidateProfileIds = new Set<string>();
   if (qualifs) {
     for (const q of qualifs as any[]) {
-      if (q.created_by) managerIds.add(q.created_by);
+      const effectiveManager = q.manager_id || q.created_by;
+      if (effectiveManager) managerIds.add(effectiveManager);
       if (q.project_id) projectIds.add(q.project_id);
       if (q.candidate_profile_id) candidateProfileIds.add(q.candidate_profile_id);
     }
@@ -258,13 +262,17 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     for (const q of qualifs as any[]) {
       if (!q.event_start_at) continue;
       const project = q.project_id ? projectMap.get(q.project_id) : null;
-      const manager = q.created_by ? managerMap.get(q.created_by) : null;
       const candidateAvatar = q.candidate_profile_id
         ? candidateAvatarMap.get(q.candidate_profile_id) ?? null
         : null;
       const eventName = q.event_name as string | null;
       const format = detectFormat(q.event_location);
       const round = inferRound(eventName);
+      // Manager effectif : manager_id explicite, sinon fallback created_by
+      const effectiveManagerId = q.manager_id || q.created_by;
+      const effectiveManager = effectiveManagerId
+        ? managerMap.get(effectiveManagerId) ?? null
+        : null;
       events.push({
         id: `qualif-${q.id}`,
         type: 'qualification',
@@ -283,7 +291,7 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
           clientName: q.client_name ?? null,
           projectId: q.project_id ?? null,
           projectName: project?.name ?? null,
-          manager: manager ?? null,
+          manager: effectiveManager,
           location: q.event_location ?? null,
           format,
           round,
