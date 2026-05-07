@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import { SidebarUserMenu } from './sidebar/SidebarUserMenu';
+import { KonektLogo } from './KonektLogo';
 
 interface NavItem {
   to: string;
@@ -224,9 +225,27 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      {/* Footer — juste user menu */}
+      {/* Footer — user menu + branding Konekt subtil */}
       <SidebarFooter className={cn(collapsed ? 'px-2 py-2' : 'px-2 py-2')}>
         <SidebarUserMenu collapsed={collapsed} isDark={isDark} onToggleTheme={toggleTheme} />
+        {/* Branding Konekt — pattern Linear / Vercel : marque produit en
+            tout bas, après l'identité user. Subtil, n'écrase pas l'org. */}
+        <div className={cn(
+          'flex items-center pt-2 mt-2 border-t border-sidebar-border',
+          collapsed ? 'justify-center' : 'gap-1.5 px-1',
+        )}>
+          <KonektLogo
+            variant="mark"
+            theme={isDark ? 'light' : 'dark'}
+            size={14}
+            className="opacity-50"
+          />
+          {!collapsed && (
+            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-medium">
+              Konekt
+            </span>
+          )}
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
