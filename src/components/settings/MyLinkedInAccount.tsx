@@ -591,7 +591,7 @@ function ReconnectForm({
         <div className="text-xs text-foreground space-y-1.5">
           <p className="font-bold uppercase tracking-wider text-destructive">⚠️ À lire avant de reconnecter</p>
           <p className="leading-relaxed text-muted-foreground">
-            LinkedIn n'autorise qu'<strong className="text-foreground">une seule session active par cookie</strong>. Quand Unipile utilise votre cookie depuis ses serveurs,
+            LinkedIn n'autorise qu'<strong className="text-foreground">une seule session active par cookie</strong>. Quand votre cookie est utilisé depuis nos serveurs,
             LinkedIn peut invalider votre session dans Chrome → vous êtes déconnecté de <strong className="text-foreground">LinkedIn Recruiter</strong> dans votre navigateur.
           </p>
           <p className="leading-relaxed text-muted-foreground">

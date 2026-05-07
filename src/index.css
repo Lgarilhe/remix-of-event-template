@@ -77,6 +77,11 @@
     /* Accent (kept for backwards compat — maps to Qonto subtle hover) */
     --brutal-accent: 271 81% 56%;
 
+    /* Landing/onboarding light surfaces (used in SkalrLanding hero/CTA + onboarding scenes) */
+    --landing-sky-start: 200 80% 95%;
+    --landing-sky-end: 220 70% 92%;
+    --landing-accent-yellow: 50 100% 60%;
+
     /* Charts */
     --chart-1: 271 60% 55%;
     --chart-2: 187 60% 50%;
@@ -232,6 +237,16 @@
 
   .font-editorial {
     font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  }
+
+  /* Landing hero/CTA + onboarding scenes — gradient ciel doux light-first.
+     Référencé par .landing-sky-gradient dans SkalrLanding et OnboardingLayout. */
+  .landing-sky-gradient {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--landing-sky-start)),
+      hsl(var(--landing-sky-end))
+    );
   }
 }
 

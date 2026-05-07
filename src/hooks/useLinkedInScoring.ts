@@ -8,6 +8,7 @@ import { Job } from '@/types/jobs';
 import { JobMatchResult, BatchScoringStats } from '@/components/outreach/JobScoreDisplay';
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
+import { confirmAlert } from '@/lib/confirmAlert';
 
 // Fire-and-forget: generate embedding for a candidate after scoring
 async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<void> {
@@ -557,16 +558,18 @@ export function useLinkedInScoring({
 
     // ── PRÉ-CHECK 2 : taille du batch raisonnable
     // Au-delà de 30 profils, le batch prend 1-3 minutes (10 profils/call,
-    // 3 calls en parallèle, ~20s/call). On confirme avec l'user.
+    // 3 calls en parallèle, ~20s/call). On confirme avec l'user via AlertDialog.
     const SAFE_BATCH_SIZE = 30;
     if (selectedProfiles.size > SAFE_BATCH_SIZE) {
       const eta = Math.ceil(selectedProfiles.size / 30) * 60; // ~1min par tranche de 30
-      const ok = window.confirm(
-        `Tu vas scorer ${selectedProfiles.size} profils en une fois.\n\n`
-        + `Temps estimé : ~${eta < 60 ? eta + ' secondes' : Math.ceil(eta / 60) + ' minutes'}\n`
-        + `Crédits IA consommés : ~${selectedProfiles.size}\n\n`
-        + `Continuer ?`
-      );
+      const etaLabel = eta < 60 ? `${eta} secondes` : `${Math.ceil(eta / 60)} minutes`;
+      const ok = await confirmAlert({
+        title: `Scorer ${selectedProfiles.size} profils en une fois ?`,
+        description:
+          `Temps estimé : ~${etaLabel}\n`
+          + `Crédits IA consommés : ~${selectedProfiles.size}`,
+        confirmLabel: 'Lancer le scoring',
+      });
       if (!ok) return;
     }
 
