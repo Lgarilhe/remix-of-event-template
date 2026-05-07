@@ -146,11 +146,16 @@ Deno.serve(async (req) => {
     )
   }
 
-  // verify_jwt=true in config.toml already validates the JWT at the gateway.
-  // Extra role check so only service-role callers trigger queue processing.
+  // Auth: deux callers légitimes
+  // 1. Cron pg_net via invoke_process_email_queue (envoie PROCESS_SEQUENCES_SECRET)
+  // 2. Frontend / autre edge function (envoie un JWT service_role)
+  // Note: config.toml met verify_jwt=false sur toutes les fonctions (incompat
+  // gateway HS256 vs nouveaux JWT ES256), donc on valide ici en interne.
   const token = authHeader.slice('Bearer '.length).trim()
-  const claims = parseJwtClaims(token)
-  if (claims?.role !== 'service_role') {
+  const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || ''
+  const isCronCaller = cronSecret.length > 0 && token === cronSecret
+  const claims = isCronCaller ? null : parseJwtClaims(token)
+  if (!isCronCaller && claims?.role !== 'service_role') {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },

@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
 
       case 'delete': {
         const webhook_id = (body as { webhook_id?: string }).webhook_id;
-        
+
         if (!webhook_id) {
           throw new Error('webhook_id is required');
         }
@@ -215,6 +215,102 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
+      }
+
+      case 'bootstrap-prod': {
+        // Bootstrap webhooks for the current konekt-production project:
+        // 1. Delete any webhook pointing to URLs other than the current SUPABASE_URL
+        //    AND other than the leadmagnet-worker (kept on purpose by Laurent)
+        // 2. Register the 5 sources to konekt-production /functions/v1/unipile-webhook
+        //
+        // Pass `dry_run: true` in body to preview without modifying anything.
+        const dryRun = !!(body as { dry_run?: boolean }).dry_run;
+        const keepUrlPattern = ((body as { keep_url_contains?: string }).keep_url_contains || 'leadmagnet-worker').toLowerCase();
+        const targetUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
+
+        const listResp = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, { headers: { 'X-API-KEY': apiKey } });
+        if (!listResp.ok) throw new Error(`List webhooks failed: ${listResp.status}`);
+        const listJson = await listResp.json();
+        const allWebhooks: Array<{ id: string; request_url: string; source: string; events?: string[] }> = listJson?.items || listJson?.webhooks?.items || [];
+
+        const targetUrlLower = targetUrl.toLowerCase();
+        const toDelete = allWebhooks.filter(w => {
+          const url = (w.request_url || '').toLowerCase();
+          if (url === targetUrlLower) return false; // already on target → keep
+          if (url.includes(keepUrlPattern)) return false; // explicitly kept (e.g. leadmagnet-worker)
+          return true;
+        });
+
+        const existingTargetSources = allWebhooks
+          .filter(w => (w.request_url || '').toLowerCase() === targetUrlLower)
+          .map(w => w.source);
+
+        const allInternalSources: WebhookSource[] = ['messaging', 'users', 'account_status', 'email', 'email_tracking'];
+        const toCreate = allInternalSources.filter(src => !existingTargetSources.includes(src));
+
+        if (dryRun) {
+          return new Response(JSON.stringify({
+            success: true,
+            dry_run: true,
+            target_url: targetUrl,
+            keep_pattern: keepUrlPattern,
+            total_webhooks: allWebhooks.length,
+            to_delete: toDelete.map(w => ({ id: w.id, url: w.request_url, source: w.source, events: w.events })),
+            to_create: toCreate,
+            existing_on_target: existingTargetSources,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        const deleteResults: Array<{ id: string; success: boolean; error?: string }> = [];
+        for (const w of toDelete) {
+          try {
+            const resp = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks/${w.id}`, {
+              method: 'DELETE',
+              headers: { 'X-API-KEY': apiKey },
+            });
+            if (!resp.ok) {
+              const errText = await resp.text();
+              deleteResults.push({ id: w.id, success: false, error: `${resp.status}: ${errText.slice(0, 200)}` });
+            } else {
+              deleteResults.push({ id: w.id, success: true });
+            }
+          } catch (err) {
+            deleteResults.push({ id: w.id, success: false, error: err instanceof Error ? err.message : 'unknown' });
+          }
+        }
+
+        const createResults: Array<{ source: string; success: boolean; error?: string; id?: string }> = [];
+        for (const src of toCreate) {
+          const config: WebhookConfig = {
+            request_url: targetUrl,
+            source: src,
+            headers: WEBHOOK_SECRET ? [{ key: 'Unipile-Auth', value: WEBHOOK_SECRET }] : undefined,
+          };
+          try {
+            const resp = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, {
+              method: 'POST',
+              headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify(config),
+            });
+            if (!resp.ok) {
+              const errText = await resp.text();
+              createResults.push({ source: src, success: false, error: `${resp.status}: ${errText.slice(0, 200)}` });
+            } else {
+              const data = await resp.json();
+              createResults.push({ source: src, success: true, id: data.webhook_id || data.id });
+            }
+          } catch (err) {
+            createResults.push({ source: src, success: false, error: err instanceof Error ? err.message : 'unknown' });
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: deleteResults.every(r => r.success) && createResults.every(r => r.success),
+          target_url: targetUrl,
+          deleted: deleteResults,
+          created: createResults,
+          kept_url_pattern: keepUrlPattern,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       default:
