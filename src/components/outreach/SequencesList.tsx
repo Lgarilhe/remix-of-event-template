@@ -134,7 +134,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     }
   };
 
-  const fetchSequences = async () => {
+  // Audit Opus 2026-05-07 : useCallback avec dep `projectId` pour que le
+  // listener visibilitychange ne capture pas une closure périmée après un
+  // changement de mission.
+  const fetchSequences = React.useCallback(async () => {
     try {
       let seqQuery = supabase
         .from('outreach_sequences')
@@ -186,32 +189,32 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   // Refetch when component becomes visible (tab change or page visibility)
   useEffect(() => {
     fetchSequences();
-    
+
     // Listen for visibility changes (when user returns to browser tab)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchSequences();
       }
     };
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [fetchSequences]);
 
   // Refetch when tab becomes visible within the app
   useEffect(() => {
     if (isVisible) {
       fetchSequences();
     }
-  }, [isVisible, projectId]);
+  }, [isVisible, fetchSequences]);
 
   const handleSaveSequence = async (sequence: Sequence) => {
     try {

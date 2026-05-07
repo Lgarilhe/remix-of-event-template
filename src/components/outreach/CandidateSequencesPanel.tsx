@@ -14,6 +14,7 @@
 
 import React, { useState } from 'react';
 import { useCandidateEnrollments, CandidateEnrollment } from '@/hooks/useCandidateEnrollments';
+import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -414,7 +415,7 @@ function ExecutionRow({
         )}
         {execution.error_message && (
           <p className="text-[10.5px] text-destructive mt-0.5">
-            ⚠ {execution.error_message}
+            ⚠ {formatSequenceError(execution.error_message)}
           </p>
         )}
         {execution.skip_reason && execution.status !== 'sent' && (

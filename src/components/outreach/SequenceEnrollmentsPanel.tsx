@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { formatSequenceError as formatErrorMessage } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -148,28 +149,6 @@ const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; c
   connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
   message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
   inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-};
-
-// Helper to format error messages nicely
-const formatErrorMessage = (error: string | null): string => {
-  if (!error) return '';
-  try {
-    // Try to parse JSON error
-    const parsed = JSON.parse(error);
-    if (parsed.detail) return parsed.detail;
-    if (parsed.title) return parsed.title;
-    if (parsed.message) return parsed.message;
-    return error;
-  } catch {
-    // If it starts with { and contains JSON-like content, try to extract meaningful parts
-    if (error.startsWith('{') || error.startsWith('[')) {
-      const titleMatch = error.match(/"title"\s*:\s*"([^"]+)"/);
-      const detailMatch = error.match(/"detail"\s*:\s*"([^"]+)"/);
-      if (detailMatch) return detailMatch[1];
-      if (titleMatch) return titleMatch[1];
-    }
-    return error;
-  }
 };
 
 const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {

@@ -449,7 +449,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     // Validation user-visible : toast au lieu d'un return silencieux
     if (!sequence.name.trim()) {
       toast.error('Nom requis', { description: 'Donnez un nom à votre séquence avant de l\'enregistrer.' });
-      if (mode === 'wizard') setWizardStep('basics');
+      if (mode === 'wizard') setWizardStep('info');
       return;
     }
     if (sequence.steps.length === 0) {
@@ -472,6 +472,12 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
       }
       if (s.conditionType === 'if_score_above' && !s.conditionValue?.trim()) {
         errors.push(`${stepLabel}: le seuil de score est requis`);
+      }
+      // Audit Opus 2026-05-07 : sans timeoutDays, un wait_* peut bloquer
+      // indéfiniment l'enrollment si l'événement attendu ne se produit jamais.
+      if (['wait_connection', 'wait_reply', 'wait_profile_visit'].includes(s.actionType)
+          && (!s.timeoutDays || s.timeoutDays <= 0)) {
+        errors.push(`${stepLabel}: un délai max (timeout) est requis pour les étapes d'attente`);
       }
     });
 

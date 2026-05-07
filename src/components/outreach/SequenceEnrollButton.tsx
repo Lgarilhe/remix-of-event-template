@@ -166,9 +166,11 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                       <GitBranch className="w-4 h-4 text-success" />
                       <span className="font-medium">{seq.name}</span>
                     </div>
-                    <Badge variant="secondary" className="text-xs">
-                      {seq.steps.length} étapes
-                    </Badge>
+                    {seq.steps.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {seq.steps.length} étapes
+                      </Badge>
+                    )}
                   </div>
                 </DropdownMenuItem>
               ))}

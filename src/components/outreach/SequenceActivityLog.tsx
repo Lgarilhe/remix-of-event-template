@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -516,7 +517,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     {exec.status === 'failed' ? 'Erreur' : 'Raison'}
                                   </div>
                                   <p className="mt-1 text-destructive text-xs">
-                                    {exec.error_message || exec.skip_reason}
+                                    {exec.error_message ? formatSequenceError(exec.error_message) : exec.skip_reason}
                                   </p>
                                 </div>
                               )}
@@ -566,7 +567,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setCancelConfirm({ id: exec.id, candidateName: exec.candidate_name || 'le candidat' });
+                                      setCancelConfirm({ id: exec.id, candidateName: exec.enrollment?.profile_name || 'le candidat' });
                                     }}
                                     disabled={cancellingId === exec.id}
                                   >

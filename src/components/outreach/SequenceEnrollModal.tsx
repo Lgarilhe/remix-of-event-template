@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
 import { checkProfilesCompat } from '@/lib/sequenceCompatibility';
+import { useOrganization } from '@/hooks/useOrganization';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -60,6 +61,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [results, setResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
   const [excludeIncompatible, setExcludeIncompatible] = useState(true);
+  const { organizationId } = useOrganization();
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -101,6 +103,13 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   }
 
   const handleEnroll = async () => {
+    if (!organizationId) {
+      toast.error('Organisation non détectée', {
+        description: 'Recharge la page ou reconnecte-toi.',
+      });
+      return;
+    }
+
     setIsEnrolling(true);
     setResults(null);
 
@@ -114,7 +123,12 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || '00000000-0000-0000-0000-000000000000';
 
-      const firstStep = sequence.steps.find((s: any) => s.step_order === 0) || sequence.steps[0];
+      // Tri par step_order pour garantir le bon firstStep, même si la séquence
+      // n'a pas de step à step_order=0 (ex: créée manuellement à partir de 1).
+      const sortedSteps = [...sequence.steps].sort(
+        (a, b) => (a.step_order ?? 0) - (b.step_order ?? 0),
+      );
+      const firstStep = sortedSteps[0];
 
       // Source des profils à enrôler : on respecte le toggle "exclure les
       // incompatibles" pour éviter les échecs silencieux (1st degree +
@@ -179,6 +193,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           current_step_order: 0,
           status: 'active',
           network_distance: normalizedDistance,
+          organization_id: organizationId,
         };
       });
 
@@ -211,6 +226,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             step_order: firstStep.step_order,
             scheduled_at: scheduledAt.toISOString(),
             status: 'scheduled',
+            organization_id: organizationId,
           };
         });
 
@@ -240,6 +256,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
             status: 'messaged',
             created_by: userId,
+            organization_id: organizationId,
           }));
 
         if (statusRows.length > 0) {

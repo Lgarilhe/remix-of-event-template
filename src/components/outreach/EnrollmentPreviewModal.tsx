@@ -472,7 +472,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       setEnrollResults(results);
       if (results.success > 0) toast.success(`${results.success} candidat(s) inscrits dans la séquence`);
       if (results.skipped > 0) toast.info(`${results.skipped} candidat(s) déjà inscrits`);
-    } catch {
+    } catch (err) {
+      console.error('[EnrollmentPreviewModal] Bulk enrollment failed:', err);
       toast.error("Erreur lors de l'inscription");
     } finally {
       setIsEnrolling(false);
@@ -513,7 +514,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
       toast.success(`${count} candidat(s) ajouté(s) à la shortlist`);
       onSuccess();
-    } catch {
+    } catch (err) {
+      console.error('[EnrollmentPreviewModal] Shortlist failed:', err);
       toast.error("Erreur lors de l'ajout à la shortlist");
     } finally {
       setIsEnrolling(false);

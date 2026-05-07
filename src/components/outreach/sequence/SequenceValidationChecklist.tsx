@@ -111,6 +111,26 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
       });
     }
 
+    // Validation timeout sur wait_* : sans timeoutDays, un enrollment peut
+    // rester bloqué indéfiniment si l'événement attendu ne se produit jamais.
+    const waitStepsWithoutTimeout = sequence.steps.filter(s =>
+      ['wait_connection', 'wait_reply', 'wait_profile_visit'].includes(s.actionType)
+      && (!s.timeoutDays || s.timeoutDays <= 0)
+    );
+    if (waitStepsWithoutTimeout.length > 0) {
+      const waitStepNumbers = waitStepsWithoutTimeout
+        .map(s => `Étape ${s.order + 1}`)
+        .join(', ');
+      result.push({
+        id: 'wait_timeouts',
+        label: 'Timeout sur attentes',
+        description: `Risque blocage : ${waitStepNumbers}`,
+        status: 'fail',
+        icon: AlertTriangle,
+        category: 'required',
+      });
+    }
+
     const hasStopConditions = sequence.stopConditions &&
       (sequence.stopConditions.on_reply || sequence.stopConditions.on_click || sequence.stopConditions.on_unsubscribe);
     result.push({
@@ -120,7 +140,16 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
     });
 
     return result;
-  }, [sequence]);
+    // Audit Opus 2026-05-07 : on dépend des primitives clés plutôt que de
+    // l'objet `sequence` entier. Recalcul uniquement quand quelque chose
+    // d'observable change.
+  }, [
+    sequence.name,
+    sequence.steps,
+    sequence.multiSenderEnabled,
+    sequence.senderAccounts,
+    sequence.stopConditions,
+  ]);
 
   const requiredItems = items.filter(i => i.category === 'required');
   const recommendedItems = items.filter(i => i.category === 'recommended');

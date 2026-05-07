@@ -171,12 +171,15 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       }
 
       // Fetch A/B test results from executions with variant_assigned
+      // sequence_step_executions n'a pas de colonne sequence_id : la liaison passe
+      // par enrollment_id → sequence_enrollments.sequence_id. On utilise un inner
+      // join Supabase pour filtrer en une seule requête.
       const filterForAB = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
       if (filterForAB) {
         const { data: execData } = await (supabase as any)
           .from('sequence_step_executions')
-          .select('variant_assigned, status')
-          .eq('sequence_id', filterForAB)
+          .select('variant_assigned, status, sequence_enrollments!inner(sequence_id)')
+          .eq('sequence_enrollments.sequence_id', filterForAB)
           .not('variant_assigned', 'is', null) as { data: { variant_assigned: string | null; status: string }[] | null };
 
         if (execData && execData.length > 0) {
