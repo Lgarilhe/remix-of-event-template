@@ -27,6 +27,11 @@ interface ScorecardTabProps {
    *  CTA "Préparer l'entretien" du calendrier). Idempotent : ne déclenche
    *  qu'une fois et seulement si aucune scorecard n'existe déjà. */
   autoGenerate?: boolean;
+  /** Si true et qu'au moins une scorecard existe en DB, on ouvre directement
+   *  la plus récente en mode édition (au lieu de la list view).
+   *  Utilisé par ScorecardFullPage : le user a cliqué "Plein écran" pour
+   *  éditer, pas pour voir une liste. */
+  autoOpenFirst?: boolean;
 }
 
 interface Criterion {
@@ -79,7 +84,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: 
   motivation: { label: 'Motiv.', color: 'border-success/40 bg-success/10 text-success', dotColor: 'bg-success' },
 };
 
-export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching, autoGenerate }) => {
+export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching, autoGenerate, autoOpenFirst }) => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
@@ -131,6 +136,12 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             followUpNotes: (d as any).follow_up_notes || undefined,
             interviewStage: (d as any).interview_stage || undefined,
           })));
+
+          // Mode plein écran ou auto-coaching : on ouvre la plus récente
+          // automatiquement (l'user vient pour éditer, pas pour voir une liste).
+          if (autoOpenFirst || autoStartCoaching) {
+            setActiveIndex(0);
+          }
         }
       } catch (err) {
         console.error('Error loading evaluations:', err);
@@ -139,7 +150,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       }
     };
     load();
-  }, [candidate.candidateId]);
+  }, [candidate.candidateId, autoOpenFirst, autoStartCoaching]);
 
   // Auto-start coaching when prop is set (fullscreen mode)
   useEffect(() => {

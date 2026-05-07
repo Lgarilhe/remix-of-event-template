@@ -548,6 +548,7 @@ export default function ScorecardFullPage() {
                 enrichedProfile={enrichedProfile}
                 onOpenProfile={() => setMobilePane('sidebar')}
                 autoStartCoaching={autoCoaching}
+                autoOpenFirst
               />
             </div>
           </ScrollArea>
