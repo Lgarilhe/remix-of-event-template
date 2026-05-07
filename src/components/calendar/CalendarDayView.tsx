@@ -169,10 +169,10 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                 className="absolute left-[60px] right-3 z-20"
                 style={{ top: `${pos.top}px`, height: `${pos.height}px` }}
               >
-                <div
-                  className="h-full overflow-hidden cursor-pointer"
-                  onClick={() => onEventClick(e)}
-                >
+                {/* `renderEvent` retourne déjà un <button> cliquable — pas besoin
+                    d'un wrapper `<div onClick>` qui créerait du HTML invalide
+                    (button nested dans div onClick = double trigger possible). */}
+                <div className="h-full overflow-hidden">
                   {renderEvent(e, { compact: pos.height < 70 })}
                 </div>
               </div>

@@ -156,14 +156,23 @@ export const RemindersSidebar: React.FC<RemindersSidebarProps> = ({
               return (
                 <div
                   key={reminder.id}
+                  role="button"
+                  tabIndex={0}
                   className={`
                     p-3 rounded-lg border transition-all cursor-pointer
-                    ${isCompleted 
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+                    ${isCompleted
                       ? 'bg-muted border-border opacity-60'
                       : 'bg-background border-border hover:border-border'
                     }
                   `}
                   onClick={() => onReminderClick(reminder.candidate_id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onReminderClick(reminder.candidate_id);
+                    }
+                  }}
                 >
                   <div className="flex items-start gap-3">
                     <Checkbox

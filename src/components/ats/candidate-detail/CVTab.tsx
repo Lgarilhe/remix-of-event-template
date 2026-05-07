@@ -494,9 +494,18 @@ function CVListItem({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       className={cn(
         'flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
         isActive
           ? 'border-foreground/30 bg-foreground/[0.04]'
           : 'border-border bg-card hover:bg-muted/30 hover:border-foreground/20',
