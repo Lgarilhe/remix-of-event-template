@@ -15,7 +15,7 @@
  * séquences=cyan) pour distinction rapide.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { SEOHead } from '@/components/SEOHead';
 import {
@@ -47,6 +47,11 @@ import {
   MapPin,
   Sparkles,
   Building2,
+  Plus,
+  AlertTriangle,
+  LayoutGrid,
+  CalendarRange,
+  ListOrdered,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PageLayout } from '@/components/layout';
@@ -57,9 +62,16 @@ import {
   CalendarFiltersBar,
   applyCalendarFilters,
   DEFAULT_FILTERS,
-  type CalendarFilters,
 } from '@/components/calendar/CalendarFiltersBar';
+import { CalendarDayView } from '@/components/calendar/CalendarDayView';
+import { CalendarListView } from '@/components/calendar/CalendarListView';
+import { CreateEventModal } from '@/components/calendar/CreateEventModal';
+import { useCalendarConflicts } from '@/components/calendar/useCalendarConflicts';
+import { useCalendarFiltersPersistence } from '@/hooks/useCalendarFiltersPersistence';
 import { useAuthReady } from '@/hooks/useAuthReady';
+
+type CalendarView = 'week' | 'day' | 'list';
+const VIEW_KEY = 'calendar-view-mode';
 
 const TYPE_STYLES: Record<
   CalendarEvent['type'],
@@ -119,29 +131,108 @@ const getInitials = (name: string | null | undefined): string => {
 
 export default function CalendarPage() {
   const [weekStart, setWeekStart] = useState(() => startOfDay(new Date()));
+  const { user } = useAuthReady();
+
+  // View mode (week / day / list) — persisté localStorage
+  const [view, setViewState] = useState<CalendarView>(() => {
+    if (typeof window === 'undefined') return 'week';
+    const stored = window.localStorage.getItem(VIEW_KEY);
+    return (stored === 'day' || stored === 'list') ? stored : 'week';
+  });
+  const setView = (next: CalendarView) => {
+    setViewState(next);
+    if (typeof window !== 'undefined') window.localStorage.setItem(VIEW_KEY, next);
+  };
+
+  // Day view : ne fetch que 1 jour, sinon 7
+  const fetchDays = view === 'day' ? 1 : 7;
   const { data: rawEvents = [], isLoading, isFetching, refetch } = useCalendarEvents({
     from: weekStart,
-    days: 7,
+    days: fetchDays,
   });
-  const { user } = useAuthReady();
+
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [filters, setFilters] = useState<CalendarFilters>(DEFAULT_FILTERS);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDefaultDate, setCreateDefaultDate] = useState<Date | undefined>(undefined);
 
-  // Filtre appliqué côté client (légère, ~50 events max sur 7j)
+  // Filtres : persistance + presets via hook dédié
+  const {
+    filters,
+    setFilters,
+    presets,
+    savePreset,
+    loadPreset,
+    deletePreset,
+  } = useCalendarFiltersPersistence();
+
+  // Filtre appliqué côté client
   const events = useMemo(
     () => applyCalendarFilters(rawEvents, filters, user?.id ?? null),
     [rawEvents, filters, user?.id],
   );
 
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [
-    weekStart,
-  ]);
+  // Détection conflits + buffers + jours surchargés
+  const { conflictIds, bufferIds, overloadDays } = useCalendarConflicts(events);
+
+  const days = useMemo(
+    () => Array.from({ length: fetchDays }, (_, i) => addDays(weekStart, i)),
+    [weekStart, fetchDays],
+  );
   const eventsByDay = useMemo(() => groupEventsByDay(events), [events]);
+
+  const openEvent = (event: CalendarEvent) => {
+    setSelectedEvent(event);
+    setSheetOpen(true);
+  };
+
+  const openCreate = (defaultDate?: Date) => {
+    setCreateDefaultDate(defaultDate);
+    setCreateOpen(true);
+  };
+
+  // ─── Raccourcis clavier ────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ne pas trigger si on tape dans un input/textarea/contenteditable
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // J/K next/prev period (jour ou semaine selon view)
+      if (e.key === 'k' || e.key === 'K' || e.key === 'ArrowRight') {
+        if (view === 'day') setWeekStart((prev) => addDays(prev, 1));
+        else setWeekStart((prev) => addDays(prev, 7));
+      } else if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowLeft') {
+        if (view === 'day') setWeekStart((prev) => subDays(prev, 1));
+        else setWeekStart((prev) => subDays(prev, 7));
+      } else if (e.key === 't' || e.key === 'T') {
+        setWeekStart(startOfDay(new Date()));
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        openCreate();
+      } else if (e.key === '1') {
+        setView('week');
+      } else if (e.key === '2') {
+        setView('day');
+      } else if (e.key === '3') {
+        setView('list');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const totalCount = events.length;
 
-  // Stats inline : entretiens / Calendly
+  // Stats inline : entretiens / Calendly / conflits
   const stats = useMemo(() => {
     let interviews = 0;
     let calendly = 0;
@@ -152,16 +243,17 @@ export default function CalendarPage() {
     return { interviews, calendly };
   }, [events]);
 
-  const weekRangeLabel = useMemo(() => {
+  const rangeLabel = useMemo(() => {
+    if (view === 'day') {
+      return format(weekStart, "EEEE d MMMM yyyy", { locale: fr }).replace(
+        /^./,
+        (c) => c.toUpperCase(),
+      );
+    }
     const start = weekStart;
     const end = addDays(weekStart, 6);
     return `${format(start, 'd MMM', { locale: fr })} – ${format(end, 'd MMM yyyy', { locale: fr })}`;
-  }, [weekStart]);
-
-  const openEvent = (event: CalendarEvent) => {
-    setSelectedEvent(event);
-    setSheetOpen(true);
-  };
+  }, [weekStart, view]);
 
   return (
     <PageLayout maxWidth="2xl">
@@ -186,7 +278,7 @@ export default function CalendarPage() {
               Calendrier
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {weekRangeLabel}
+              {rangeLabel}
               {totalCount > 0 && (
                 <>
                   {' · '}
@@ -215,6 +307,41 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
+          {/* View mode toggle (Semaine / Jour / Liste) */}
+          <div
+            className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border"
+            role="group"
+            aria-label="Mode d'affichage"
+          >
+            {(
+              [
+                { value: 'week', icon: LayoutGrid, label: 'Semaine', shortcut: '1' },
+                { value: 'day', icon: CalendarRange, label: 'Jour', shortcut: '2' },
+                { value: 'list', icon: ListOrdered, label: 'Liste', shortcut: '3' },
+              ] as const
+            ).map((m) => {
+              const Icon = m.icon;
+              const isActive = view === m.value;
+              return (
+                <button
+                  key={m.value}
+                  onClick={() => setView(m.value)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-[11.5px] font-medium transition-colors',
+                    isActive
+                      ? 'bg-foreground text-background shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                  )}
+                  title={`${m.label} (raccourci ${m.shortcut})`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Refresh */}
           <button
             onClick={() => refetch()}
             disabled={isFetching}
@@ -228,36 +355,54 @@ export default function CalendarPage() {
             <span className="hidden sm:inline">Actualiser</span>
           </button>
 
+          {/* Navigation prev/today/next */}
           <div
             className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border"
             role="group"
-            aria-label="Navigation semaine"
+            aria-label="Navigation"
           >
             <button
-              onClick={() => setWeekStart((prev) => subDays(prev, 7))}
+              onClick={() =>
+                setWeekStart((prev) => subDays(prev, view === 'day' ? 1 : 7))
+              }
               className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-              aria-label="Semaine précédente"
+              aria-label={view === 'day' ? 'Jour précédent' : 'Semaine précédente'}
+              title="Précédent (J)"
             >
               <ChevronLeft className="w-4 h-4" aria-hidden="true" />
             </button>
             <button
               onClick={() => setWeekStart(startOfDay(new Date()))}
               className="h-8 px-3 rounded-full text-[11.5px] font-medium text-foreground hover:bg-muted/60 transition-colors"
+              title="Aujourd'hui (T)"
             >
               Aujourd'hui
             </button>
             <button
-              onClick={() => setWeekStart((prev) => addDays(prev, 7))}
+              onClick={() =>
+                setWeekStart((prev) => addDays(prev, view === 'day' ? 1 : 7))
+              }
               className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-              aria-label="Semaine suivante"
+              aria-label={view === 'day' ? 'Jour suivant' : 'Semaine suivante'}
+              title="Suivant (K)"
             >
               <ChevronRight className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
+
+          {/* + Nouvel event */}
+          <button
+            onClick={() => openCreate()}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-foreground text-background text-[11.5px] font-medium hover:opacity-90 transition-opacity"
+            title="Programmer un entretien (N)"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Programmer</span>
+          </button>
         </div>
       </motion.header>
 
-      {/* Filters bar */}
+      {/* Filters bar avec presets */}
       <motion.div
         className="mb-4"
         initial={{ opacity: 0, y: 8 }}
@@ -269,94 +414,208 @@ export default function CalendarPage() {
           onFiltersChange={setFilters}
           allEvents={rawEvents}
           currentUserId={user?.id ?? null}
+          presets={presets}
+          onSavePreset={savePreset}
+          onLoadPreset={loadPreset}
+          onDeletePreset={deletePreset}
         />
       </motion.div>
 
-      {/* Week grid */}
+      {/* Conflict / overload warnings */}
+      {(conflictIds.size > 0 || overloadDays.size > 0) && (
+        <motion.div
+          className="mb-4 flex flex-wrap gap-2"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          {conflictIds.size > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-destructive/10 border border-destructive/30 text-destructive text-xs font-medium">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              {conflictIds.size / 2} conflit{conflictIds.size > 2 ? 's' : ''} d'horaire détecté
+              {conflictIds.size > 2 ? 's' : ''}
+            </span>
+          )}
+          {Array.from(overloadDays.entries()).map(([day, count]) => (
+            <span
+              key={day}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-warning/10 border border-warning/30 text-warning text-xs font-medium"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              {format(parseISO(day + 'T00:00:00'), 'EEEE d', { locale: fr })} : {count} events,
+              journée chargée
+            </span>
+          ))}
+        </motion.div>
+      )}
+
+      {/* Body : Week / Day / List selon le view mode */}
       <motion.div
-        className="rounded-xl bg-card border border-border overflow-hidden"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7">
-          {days.map((day, idx) => {
-            const dayKey = format(day, 'yyyy-MM-dd');
-            const dayEvents = eventsByDay[dayKey] || [];
-            const today = isToday(day);
-            const weekend = isWeekend(day);
+        {view === 'week' && (
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7">
+              {days.map((day, idx) => {
+                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayEvents = eventsByDay[dayKey] || [];
+                const today = isToday(day);
+                const weekend = isWeekend(day);
+                const isOverloaded = overloadDays.has(dayKey);
+                // Heure courante pour today
+                const nowOffsetPct = (() => {
+                  if (!today) return null;
+                  const now = new Date();
+                  // 7h-21h range, pourcentage dans la zone events
+                  const min = now.getHours() * 60 + now.getMinutes();
+                  const dayMinStart = 7 * 60;
+                  const dayMinEnd = 21 * 60;
+                  if (min < dayMinStart || min > dayMinEnd) return null;
+                  return ((min - dayMinStart) / (dayMinEnd - dayMinStart)) * 100;
+                })();
 
-            return (
-              <div
-                key={dayKey}
-                className={cn(
-                  'flex flex-col min-h-[260px] lg:min-h-[440px]',
-                  idx > 0 && 'lg:border-l lg:border-border',
-                  idx > 0 && idx < 7 && 'sm:border-l sm:border-border max-lg:border-l-0',
-                  idx >= 2 && 'max-sm:border-t max-sm:border-border',
-                  weekend && 'bg-muted/10',
-                )}
-              >
-                {/* Day header */}
-                <div
-                  className={cn(
-                    'px-3 py-2.5 border-b border-border flex items-center justify-between',
-                    today && 'bg-emerald-500/15',
-                  )}
-                >
-                  <div>
-                    <p
+                return (
+                  <div
+                    key={dayKey}
+                    className={cn(
+                      'flex flex-col min-h-[260px] lg:min-h-[440px] relative',
+                      idx > 0 && 'lg:border-l lg:border-border',
+                      idx > 0 && idx < 7 && 'sm:border-l sm:border-border max-lg:border-l-0',
+                      idx >= 2 && 'max-sm:border-t max-sm:border-border',
+                      weekend && 'bg-muted/10',
+                    )}
+                  >
+                    <div
                       className={cn(
-                        'text-[10px] uppercase tracking-wider font-semibold',
-                        today ? 'text-foreground' : 'text-muted-foreground',
+                        'px-3 py-2.5 border-b border-border flex items-center justify-between',
+                        today && 'bg-emerald-500/15',
+                        isOverloaded && !today && 'bg-warning/[0.06]',
                       )}
                     >
-                      {format(day, 'EEEE', { locale: fr })}
-                    </p>
-                    <p className="font-display text-base font-bold leading-none mt-0.5 tabular-nums tracking-tight text-foreground">
-                      {format(day, 'd MMM', { locale: fr })}
-                    </p>
+                      <div>
+                        <p
+                          className={cn(
+                            'text-[10px] uppercase tracking-wider font-semibold',
+                            today ? 'text-foreground' : 'text-muted-foreground',
+                          )}
+                        >
+                          {format(day, 'EEEE', { locale: fr })}
+                        </p>
+                        <p className="font-display text-base font-bold leading-none mt-0.5 tabular-nums tracking-tight text-foreground">
+                          {format(day, 'd MMM', { locale: fr })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {isOverloaded && (
+                          <AlertTriangle
+                            className="w-3 h-3 text-warning"
+                            aria-label="Journée surchargée"
+                          />
+                        )}
+                        {dayEvents.length > 0 && (
+                          <span
+                            className={cn(
+                              'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums',
+                              today
+                                ? 'bg-foreground text-background'
+                                : 'bg-foreground/10 text-foreground',
+                            )}
+                          >
+                            {dayEvents.length}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Events area + heure courante line */}
+                    <div className="flex-1 p-2 space-y-2 overflow-y-auto relative">
+                      {/* Ligne heure courante (today only) */}
+                      {nowOffsetPct != null && (
+                        <div
+                          className="absolute left-2 right-2 z-10 pointer-events-none flex items-center gap-1"
+                          style={{ top: `${nowOffsetPct}%` }}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-destructive shadow-[0_0_0_3px_rgba(239,68,68,0.15)]" />
+                          <div className="flex-1 h-px bg-destructive" />
+                        </div>
+                      )}
+                      {isLoading ? (
+                        <div className="space-y-2">
+                          {[1, 2].map((i) => (
+                            <div key={i} className="h-24 rounded-xl bg-muted/40 animate-pulse" />
+                          ))}
+                        </div>
+                      ) : dayEvents.length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const slotDate = new Date(day);
+                            slotDate.setHours(10, 0, 0, 0);
+                            openCreate(slotDate);
+                          }}
+                          className="flex items-center justify-center h-full w-full opacity-20 hover:opacity-60 transition-opacity"
+                          title="Programmer un entretien ce jour"
+                        >
+                          <Plus className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      ) : (
+                        dayEvents.map((event) => (
+                          <EventCard
+                            key={event.id}
+                            event={event}
+                            onClick={() => openEvent(event)}
+                            hasConflict={conflictIds.has(event.id)}
+                            hasBuffer={bufferIds.has(event.id)}
+                            compact={false}
+                          />
+                        ))
+                      )}
+                    </div>
                   </div>
-                  {dayEvents.length > 0 && (
-                    <span
-                      className={cn(
-                        'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums',
-                        today ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground',
-                      )}
-                    >
-                      {dayEvents.length}
-                    </span>
-                  )}
-                </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                {/* Events */}
-                <div className="flex-1 p-2 space-y-2 overflow-y-auto">
-                  {isLoading ? (
-                    <div className="space-y-2">
-                      {[1, 2].map((i) => (
-                        <div key={i} className="h-24 rounded-xl bg-muted/40 animate-pulse" />
-                      ))}
-                    </div>
-                  ) : dayEvents.length === 0 ? (
-                    <div className="flex items-center justify-center h-full opacity-30">
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                        —
-                      </span>
-                    </div>
-                  ) : (
-                    dayEvents.map((event) => (
-                      <EventCard
-                        key={event.id}
-                        event={event}
-                        onClick={() => openEvent(event)}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {view === 'day' && (
+          <CalendarDayView
+            day={weekStart}
+            events={events}
+            onEventClick={openEvent}
+            onSlotClick={(d) => openCreate(d)}
+            conflictIds={conflictIds}
+            bufferIds={bufferIds}
+            renderEvent={(e, opts) => (
+              <EventCard
+                event={e}
+                onClick={() => openEvent(e)}
+                hasConflict={conflictIds.has(e.id)}
+                hasBuffer={bufferIds.has(e.id)}
+                compact={opts.compact}
+              />
+            )}
+          />
+        )}
+
+        {view === 'list' && (
+          <CalendarListView
+            days={days}
+            events={events}
+            onEventClick={openEvent}
+            renderEvent={(e) => (
+              <EventCard
+                event={e}
+                onClick={() => openEvent(e)}
+                hasConflict={conflictIds.has(e.id)}
+                hasBuffer={bufferIds.has(e.id)}
+                compact={false}
+              />
+            )}
+          />
+        )}
       </motion.div>
 
       {/* Legend */}
@@ -432,6 +691,28 @@ export default function CalendarPage() {
 
       {/* Detail sheet */}
       <EventDetailSheet event={selectedEvent} open={sheetOpen} onOpenChange={setSheetOpen} />
+
+      {/* Create event modal */}
+      <CreateEventModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        defaultDate={createDefaultDate}
+      />
+
+      {/* Aide raccourcis clavier — discret en bas */}
+      <div className="mt-6 text-[10px] text-muted-foreground/60 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>Raccourcis :</span>
+        <kbd className="font-mono px-1 py-0.5 rounded border border-border bg-muted/40">J</kbd>
+        <span>précédent</span>
+        <kbd className="font-mono px-1 py-0.5 rounded border border-border bg-muted/40">K</kbd>
+        <span>suivant</span>
+        <kbd className="font-mono px-1 py-0.5 rounded border border-border bg-muted/40">T</kbd>
+        <span>aujourd'hui</span>
+        <kbd className="font-mono px-1 py-0.5 rounded border border-border bg-muted/40">N</kbd>
+        <span>nouvel entretien</span>
+        <kbd className="font-mono px-1 py-0.5 rounded border border-border bg-muted/40">1/2/3</kbd>
+        <span>semaine/jour/liste</span>
+      </div>
     </PageLayout>
   );
 }
@@ -439,9 +720,15 @@ export default function CalendarPage() {
 const EventCard = React.memo(function EventCard({
   event,
   onClick,
+  hasConflict = false,
+  hasBuffer = false,
+  compact = false,
 }: {
   event: CalendarEvent;
   onClick: () => void;
+  hasConflict?: boolean;
+  hasBuffer?: boolean;
+  compact?: boolean;
 }) {
   const style = TYPE_STYLES[event.type];
   const meta = event.meta || {};
@@ -478,9 +765,19 @@ const EventCard = React.memo(function EventCard({
         style.bg,
         style.border,
         isPast && 'opacity-50',
+        // Conflit : ring rouge fort
+        hasConflict && 'ring-2 ring-destructive/60 border-destructive/40',
+        // Buffer : ring warning subtle
+        hasBuffer && !hasConflict && 'ring-1 ring-warning/50',
       )}
-      title={event.title}
-      aria-label={`${style.label} à ${time}: ${event.title}`}
+      title={
+        hasConflict
+          ? `⚠ Conflit d'horaire — ${event.title}`
+          : hasBuffer
+          ? `⚠ Moins de 10 min depuis l'event précédent — ${event.title}`
+          : event.title
+      }
+      aria-label={`${style.label} à ${time}: ${event.title}${hasConflict ? ' (conflit)' : ''}`}
     >
       {/* Top row : time + duration + badges (round, calendly, type) */}
       <div className="flex items-center justify-between gap-2 mb-2">

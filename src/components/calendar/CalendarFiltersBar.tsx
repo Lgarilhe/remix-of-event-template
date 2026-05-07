@@ -13,7 +13,7 @@
  * Active filter count badge sur la pill, "Effacer" CTA quand filtres actifs.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Briefcase,
   User as UserIcon,
@@ -22,6 +22,10 @@ import {
   X,
   CheckCircle2,
   Filter,
+  Bookmark,
+  BookmarkPlus,
+  Trash2,
+  ChevronDown,
 } from 'lucide-react';
 import {
   Popover,
@@ -35,6 +39,7 @@ import type {
   CalendarEventFormat,
   CalendarEventType,
 } from '@/hooks/useCalendarEvents';
+import type { CalendarFilterPreset } from '@/hooks/useCalendarFiltersPersistence';
 
 export interface CalendarFilters {
   /** Types autorisés. Vide = tous. */
@@ -66,6 +71,11 @@ interface CalendarFiltersBarProps {
   /** Tous les events de la semaine — sert à dériver les options uniques (managers/missions) */
   allEvents: CalendarEvent[];
   currentUserId: string | null;
+  /** Presets sauvegardés par l'user (filter combos nommés) */
+  presets?: CalendarFilterPreset[];
+  onSavePreset?: (name: string) => void;
+  onLoadPreset?: (presetId: string) => void;
+  onDeletePreset?: (presetId: string) => void;
 }
 
 const TYPE_OPTIONS: { value: CalendarEventType; label: string }[] = [
@@ -123,7 +133,12 @@ export const CalendarFiltersBar: React.FC<CalendarFiltersBarProps> = ({
   onFiltersChange,
   allEvents,
   currentUserId,
+  presets = [],
+  onSavePreset,
+  onLoadPreset,
+  onDeletePreset,
 }) => {
+  const [presetName, setPresetName] = useState('');
   // Dérive les managers uniques depuis les events de la semaine
   const managers = useMemo(() => {
     const map = new Map<string, { userId: string; displayName: string }>();
@@ -333,6 +348,104 @@ export const CalendarFiltersBar: React.FC<CalendarFiltersBarProps> = ({
             ))}
           </div>
         </FilterPill>
+      )}
+
+      {/* Presets dropdown — uniquement si onSavePreset fourni */}
+      {onSavePreset && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              className={cn(
+                'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors shrink-0',
+                presets.length > 0 && 'gap-2',
+              )}
+              title="Filtres sauvegardés"
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+              <span>Vues</span>
+              {presets.length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-foreground/10 text-foreground text-[10px] font-bold tabular-nums">
+                  {presets.length}
+                </span>
+              )}
+              <ChevronDown className="w-3 h-3" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3 rounded-xl border-border" align="end">
+            <div className="space-y-3">
+              {/* Save current as preset */}
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Sauvegarder cette vue
+                </label>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <input
+                    type="text"
+                    placeholder="Ex: Mes entretiens semaine"
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && presetName.trim() && activeCount > 0) {
+                        onSavePreset(presetName.trim());
+                        setPresetName('');
+                      }
+                    }}
+                    className="flex-1 h-8 px-2.5 rounded-lg bg-background border border-border text-xs focus:outline-none focus:ring-1 focus:ring-foreground/30"
+                  />
+                  <button
+                    onClick={() => {
+                      if (presetName.trim() && activeCount > 0) {
+                        onSavePreset(presetName.trim());
+                        setPresetName('');
+                      }
+                    }}
+                    disabled={!presetName.trim() || activeCount === 0}
+                    className="h-8 w-8 flex items-center justify-center rounded-lg bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
+                    title={activeCount === 0 ? 'Active des filtres pour sauver' : 'Sauvegarder'}
+                  >
+                    <BookmarkPlus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {activeCount === 0 && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Active au moins 1 filtre pour pouvoir le sauvegarder.
+                  </p>
+                )}
+              </div>
+
+              {/* Saved presets list */}
+              {presets.length > 0 && (
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                    Vues sauvegardées
+                  </label>
+                  <div className="mt-1.5 space-y-1">
+                    {presets.map((p) => (
+                      <div
+                        key={p.id}
+                        className="group flex items-center gap-1 rounded-lg hover:bg-muted/40 transition-colors"
+                      >
+                        <button
+                          onClick={() => onLoadPreset?.(p.id)}
+                          className="flex-1 text-left px-2.5 py-1.5 text-xs font-medium text-foreground truncate"
+                        >
+                          {p.name}
+                        </button>
+                        <button
+                          onClick={() => onDeletePreset?.(p.id)}
+                          className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
 
       {/* Clear all */}

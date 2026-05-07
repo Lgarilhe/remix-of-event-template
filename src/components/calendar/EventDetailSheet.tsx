@@ -429,27 +429,46 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
         </div>
 
         {/* Footer actions */}
-        <div className="border-t border-border px-6 py-4 flex items-center gap-2 bg-card sticky bottom-0">
-          {locationMeta.href ? (
-            <a
-              href={locationMeta.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              <Video className="w-4 h-4" />
-              Rejoindre la réunion
-            </a>
-          ) : (
+        <div className="border-t border-border px-6 py-4 bg-card sticky bottom-0 space-y-2">
+          {/* CTA Préparer l'entretien — uniquement pour les qualifs avec candidat */}
+          {event.type === 'qualification' && meta.candidateId && (
             <button
               type="button"
-              onClick={() => onOpenChange(false)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-border bg-background hover:bg-accent text-sm font-medium text-foreground transition-colors"
+              onClick={() => {
+                navigate(
+                  `/pipeline?candidate=${meta.candidateId}&tab=evaluation&prepareInterview=1`,
+                );
+                onOpenChange(false);
+              }}
+              className="w-full inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/15 text-foreground text-sm font-medium transition-colors"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              OK
+              <Sparkles className="w-4 h-4" />
+              Préparer l'entretien (scorecard IA)
             </button>
           )}
+
+          <div className="flex items-center gap-2">
+            {locationMeta.href ? (
+              <a
+                href={locationMeta.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                <Video className="w-4 h-4" />
+                Rejoindre la réunion
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-border bg-background hover:bg-accent text-sm font-medium text-foreground transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                OK
+              </button>
+            )}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
