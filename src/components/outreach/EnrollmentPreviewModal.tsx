@@ -28,6 +28,7 @@ import { ScoringPopover } from './enrollment-preview/ScoringPopover';
 import { HistoryPopover } from './enrollment-preview/HistoryPopover';
 import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
 import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
+import { useOrganization } from '@/hooks/useOrganization';
 
 // ── Types ──
 
@@ -144,6 +145,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   job,
   onSuccess,
 }) => {
+  const { organizationId } = useOrganization();
   const steps = useMemo(() => mapSteps(sequence.steps), [sequence.steps]);
   const isSingle = profiles.length === 1;
   const isBulk = profiles.length > 10;
@@ -405,6 +407,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               job_id: normalizedJobId,
               job_title: job?.title,
               created_by: userId,
+              organization_id: organizationId, // requis par RLS org_members_all
               user_timezone: userTimezone,
               current_step_order: 0,
               status: 'active',
@@ -441,6 +444,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 step_order: firstStep.step_order ?? firstStep.stepOrder ?? 0,
                 scheduled_at: scheduledAt.toISOString(),
                 status: 'scheduled',
+                organization_id: organizationId, // RLS multi-tenant
               });
           }
 
@@ -457,6 +461,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
                 status: 'messaged',
                 created_by: userId,
+                organization_id: organizationId, // RLS multi-tenant
               }, { onConflict: 'job_id,candidate_id,created_by' });
           }
         } catch (err: any) {
