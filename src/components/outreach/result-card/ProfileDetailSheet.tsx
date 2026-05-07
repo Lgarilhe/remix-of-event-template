@@ -171,6 +171,10 @@ interface ProfileDetailSheetProps {
    *  (ex: Profil = Exp+Form+Skills combinés). Réduit le bruit visuel de
    *  13 tabs → 8 onglets pertinents. */
   hideStandardTabs?: boolean;
+  /** Tab à activer par défaut à l'ouverture (clé d'un extraTab ou tab standard).
+   *  Permet d'ouvrir la modale directement sur "evaluation" depuis un
+   *  deep-link (ex: CTA "Préparer l'entretien" du calendar). */
+  initialTab?: string;
 }
 
 export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
@@ -196,6 +200,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   extraTabs,
   pipelineMeta,
   hideStandardTabs,
+  initialTab,
 }) => {
   const [showMessageModal, setShowMessageModal] = useState(false);
 
@@ -915,6 +920,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 onProfileTreated={onProfileTreated}
                 extraTabs={extraTabs}
                 hideStandardTabs={hideStandardTabs}
+                initialTab={initialTab}
               />
             </div>
           </div>

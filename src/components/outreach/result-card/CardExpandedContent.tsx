@@ -50,6 +50,8 @@ interface CardExpandedContentProps {
    *  (Profil = Exp+Form+Skills, Messages = LinkedIn DMs) pour réduire le
    *  bruit de 13 onglets → 8 onglets pertinents. Default false (sourcing). */
   hideStandardTabs?: boolean;
+  /** Tab à activer par défaut à l'ouverture (clé d'un extraTab ou tab standard). */
+  initialTab?: string;
 }
 
 const getTenureLabel = (start?: { year?: number; month?: number }, end?: { year?: number; month?: number }) => {
@@ -74,6 +76,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   onProfileTreated,
   extraTabs,
   hideStandardTabs,
+  initialTab,
 }) => {
   const { education, skills, fullName } = profileData;
   const workExperience = profile.work_experience || [];
@@ -81,7 +84,9 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   // Si extraTabs présents (pipeline mode), on default sur le premier
   // extraTab — typiquement plus utile à voir en premier que l'XP brute
   // (ex: l'user vient de cliquer sur un candidat pour voir son scoring).
-  const defaultTab = extraTabs && extraTabs.length > 0 ? extraTabs[0].key : 'experience';
+  // Sauf si initialTab explicite (ex: deep-link "?tab=evaluation").
+  const fallbackTab = extraTabs && extraTabs.length > 0 ? extraTabs[0].key : 'experience';
+  const defaultTab = initialTab || fallbackTab;
 
   // 🔧 Ordre des tabs (fix 2026-05-06) :
   // Si extraTabs présents (pipeline mode) → ils sont rendus EN PREMIER,

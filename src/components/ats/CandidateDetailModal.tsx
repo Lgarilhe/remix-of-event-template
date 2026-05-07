@@ -50,6 +50,11 @@ interface CandidateDetailModalProps {
   onStageChange: (candidateId: string, newStage: string) => void;
   onTagsChange?: (candidateId: string, tags: string[]) => void;
   onRefresh: () => void;
+  /** Tab à activer par défaut (deep-link depuis calendar / tasks / etc.) */
+  initialTab?: string;
+  /** Si true, auto-trigger la génération de scorecard à l'ouverture
+   *  (utile pour le CTA "Préparer l'entretien" depuis le calendrier). */
+  autoGenerateScorecard?: boolean;
 }
 
 interface Note {
@@ -69,6 +74,7 @@ interface Reminder {
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
+  initialTab, autoGenerateScorecard,
 }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -345,6 +351,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           enrichedProfile={enrichedProfile}
           fullProfile={fullProfile}
           onOpenMobileProfile={() => setMobileProfileOpen(true)}
+          autoGenerate={autoGenerateScorecard}
         />
       ),
     },
@@ -467,6 +474,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       }}
       extraTabs={extraTabs}
       hideStandardTabs
+      initialTab={initialTab}
     />
   );
 };

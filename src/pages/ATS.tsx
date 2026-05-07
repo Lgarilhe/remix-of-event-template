@@ -53,6 +53,12 @@ export default function ATS() {
     ['kanban', 'table', 'timeline', 'shortlist', 'analytics'].includes(initialView) ? initialView : 'kanban'
   );
 
+  // Deep-link support : ?candidate=ID (+ optionnel ?tab=evaluation&prepareInterview=1)
+  // pour ouvrir la modale d'un candidat depuis le calendar/inbox/dashboard.
+  const deepLinkCandidateId = searchParams.get('candidate');
+  const deepLinkTab = searchParams.get('tab');
+  const deepLinkPrepare = searchParams.get('prepareInterview') === '1';
+
   // Sync view → URL pour bookmark / partage de lien direct
   const setActiveView = useCallback(
     (next: 'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics') => {
@@ -159,6 +165,31 @@ export default function ATS() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, []);
+
+  // Deep-link : ?candidate=ID → résout dans la liste et ouvre la modale.
+  // Re-run quand la liste candidates est chargée (sinon on rate la 1re fois)
+  // ou quand le query param change.
+  useEffect(() => {
+    if (!deepLinkCandidateId || candidates.length === 0) return;
+    if (selectedCandidate?.candidateId === deepLinkCandidateId) return; // déjà ouvert
+    const found = candidates.find(c => c.candidateId === deepLinkCandidateId);
+    if (found) {
+      setSelectedCandidate(found);
+    }
+  }, [deepLinkCandidateId, candidates, selectedCandidate?.candidateId]);
+
+  // Quand l'user ferme la modale, on retire les query params de deep-link
+  // pour pas que ça re-trigger à chaque navigation
+  const handleCloseCandidate = useCallback(() => {
+    setSelectedCandidate(null);
+    if (deepLinkCandidateId || deepLinkTab || deepLinkPrepare) {
+      const params = new URLSearchParams(searchParams);
+      params.delete('candidate');
+      params.delete('tab');
+      params.delete('prepareInterview');
+      setSearchParams(params, { replace: true });
+    }
+  }, [deepLinkCandidateId, deepLinkTab, deepLinkPrepare, searchParams, setSearchParams]);
 
   // Get unique values for filters
   const filterOptions = useMemo(() => {
@@ -437,10 +468,12 @@ export default function ATS() {
       {selectedCandidate && (
         <CandidateDetailModal
           candidate={selectedCandidate}
-          onClose={() => setSelectedCandidate(null)}
+          onClose={handleCloseCandidate}
           onStageChange={handleStageChange}
           onTagsChange={handleTagsChange}
           onRefresh={refetch}
+          initialTab={deepLinkTab || undefined}
+          autoGenerateScorecard={deepLinkPrepare}
         />
       )}
 

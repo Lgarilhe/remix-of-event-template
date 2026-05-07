@@ -23,6 +23,10 @@ interface ScorecardTabProps {
   enrichedProfile: EnrichedProfile | null;
   onOpenProfile?: () => void;
   autoStartCoaching?: boolean;
+  /** Si true, déclenche la génération AI à l'ouverture (utilisé par le
+   *  CTA "Préparer l'entretien" du calendrier). Idempotent : ne déclenche
+   *  qu'une fois et seulement si aucune scorecard n'existe déjà. */
+  autoGenerate?: boolean;
 }
 
 interface Criterion {
@@ -75,7 +79,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dotColor: 
   motivation: { label: 'Motiv.', color: 'border-success/40 bg-success/10 text-success', dotColor: 'bg-success' },
 };
 
-export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching }) => {
+export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedProfile, onOpenProfile, autoStartCoaching, autoGenerate }) => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
   const [evaluations, setEvaluations] = useState<EvaluationData[]>([]);
@@ -298,6 +302,26 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
       setGenerating(false);
     }
   }, [candidate, enrichedProfile, activeIndex, selectedStage, activeEval]);
+
+  // Auto-generate scorecard si demandé via prop (CTA "Préparer l'entretien"
+  // depuis le calendrier). Idempotent : ne déclenche qu'une fois et
+  // seulement si AUCUNE scorecard n'existe déjà (sinon on ouvre celle qui
+  // est là plutôt que d'en générer une de plus).
+  const autoGenTriggered = React.useRef(false);
+  useEffect(() => {
+    if (!autoGenerate || autoGenTriggered.current) return;
+    if (loading || generating) return; // attend que le load des existing finisse
+
+    autoGenTriggered.current = true;
+
+    if (evaluations.length > 0) {
+      // Une scorecard existe déjà → on l'ouvre, on ne re-génère pas
+      setActiveIndex(0);
+      return;
+    }
+    // Aucune scorecard existante → trigger gen
+    void handleGenerate();
+  }, [autoGenerate, loading, generating, evaluations.length, handleGenerate]);
 
   const computeOverallScore = useCallback((ratings: Record<string, number>, criteria: Criterion[]): number | null => {
     const rated = criteria.filter(c => ratings[c.id] != null);

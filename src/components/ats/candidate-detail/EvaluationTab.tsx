@@ -35,10 +35,14 @@ interface Props {
   enrichedProfile: EnrichedProfile | null;
   fullProfile: CandidateFullProfile;
   onOpenMobileProfile: () => void;
+  /** Si true, déclenche la génération de scorecard automatiquement à
+   *  l'ouverture (utilisé par le CTA "Préparer l'entretien" du calendrier). */
+  autoGenerate?: boolean;
 }
 
 export const EvaluationTab: React.FC<Props> = ({
   candidate, candidateWithProfileData, enrichedProfile, fullProfile, onOpenMobileProfile,
+  autoGenerate,
 }) => {
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -61,6 +65,7 @@ export const EvaluationTab: React.FC<Props> = ({
           candidate={candidate}
           enrichedProfile={enrichedProfile}
           onOpenProfile={onOpenMobileProfile}
+          autoGenerate={autoGenerate}
         />
       </SectionCard>
 
