@@ -40,7 +40,7 @@ export const NotificationDropdown: React.FC = () => {
       >
         <img src={iconBell3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 z-20 min-w-[14px] h-3.5 flex items-center justify-center px-0.5 text-[8px] font-bold bg-destructive text-destructive-foreground rounded-full">
+          <span className="absolute top-1 right-1 z-20 min-w-[14px] h-3.5 flex items-center justify-center px-0.5 text-3xs font-bold bg-destructive text-destructive-foreground rounded-full">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}

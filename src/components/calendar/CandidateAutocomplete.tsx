@@ -106,13 +106,13 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
               {value.name}
             </span>
             {value.candidateId === null && (
-              <span className="inline-flex items-center text-[9px] uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded-full ring-1 ring-emerald-500/30">
+              <span className="inline-flex items-center text-3xs uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded-full ring-1 ring-emerald-500/30">
                 Nouveau
               </span>
             )}
           </div>
           {value.headline && (
-            <div className="text-[11px] text-muted-foreground truncate">{value.headline}</div>
+            <div className="text-2xs text-muted-foreground truncate">{value.headline}</div>
           )}
         </div>
         <button
@@ -165,7 +165,7 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
           {/* Existing candidates */}
           {results.length > 0 && (
             <div className="py-1">
-              <div className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              <div className="px-3 pt-1.5 pb-1 text-3xs uppercase tracking-wider font-semibold text-muted-foreground">
                 Candidats existants
               </div>
               {results.map((r) => (
@@ -185,7 +185,7 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
                       {r.name}
                     </div>
                     {r.headline && (
-                      <div className="text-[11px] text-muted-foreground truncate">
+                      <div className="text-2xs text-muted-foreground truncate">
                         {r.headline}
                       </div>
                     )}
@@ -223,7 +223,7 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
                     Créer "<span className="font-bold">{query.trim()}</span>" comme nouveau
                     candidat
                   </div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Ajouté au pipeline en "Pressenti" sur la mission sélectionnée
                   </div>
                 </div>

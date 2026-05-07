@@ -258,10 +258,10 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                           <div className="flex items-center gap-2">
                             <p className="font-bold text-sm text-foreground truncate">{template.name}</p>
                             {template.is_system && (
-                              <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30 rounded-full">Konekt</Badge>
+                              <Badge className="text-3xs bg-primary/10 text-primary border-primary/30 rounded-full">Konekt</Badge>
                             )}
                             {cat && (
-                              <Badge variant="outline" className="text-[9px] rounded-full border-border">
+                              <Badge variant="outline" className="text-3xs rounded-full border-border">
                                 {cat.emoji} {cat.label}
                               </Badge>
                             )}
@@ -275,7 +275,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                                 {ACTION_ICONS[s.action_type || s.actionType] || <MessageSquare className="w-3 h-3" />}
                               </div>
                             ))}
-                            <span className="text-[10px] text-muted-foreground ml-1">
+                            <span className="text-3xs text-muted-foreground ml-1">
                               {(template.steps_config || []).length} étapes
                             </span>
                           </div>
@@ -308,7 +308,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                           {ACTION_ICONS[s.action_type] || <MessageSquare className="w-3 h-3" />}
                         </div>
                       ))}
-                      <span className="text-[10px] text-muted-foreground ml-1">
+                      <span className="text-3xs text-muted-foreground ml-1">
                         {seq.steps.length} étapes
                       </span>
                     </div>

@@ -268,7 +268,7 @@ export default function ScorecardFullPage() {
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="text-[9.5px] uppercase tracking-wider text-muted-foreground font-bold leading-none mb-0.5 hidden sm:block">
+              <p className="text-3xs uppercase tracking-wider text-muted-foreground font-bold leading-none mb-0.5 hidden sm:block">
                 Scorecard d'entretien
               </p>
               <h1 className="font-display text-[14px] sm:text-[15px] font-bold truncate leading-tight">
@@ -287,7 +287,7 @@ export default function ScorecardFullPage() {
             <div className="hidden md:flex items-center gap-3 shrink-0">
               {/* Progress bar */}
               <div className="flex items-center gap-2">
-                <span className="text-[11px] tabular-nums font-display font-bold text-foreground">
+                <span className="text-2xs tabular-nums font-display font-bold text-foreground">
                   {quickEval.ratedCount}/{quickEval.criteriaCount}
                 </span>
                 <div className="h-1.5 w-24 rounded-full bg-muted/40 overflow-hidden">
@@ -302,7 +302,7 @@ export default function ScorecardFullPage() {
               {quickEval.overallScore != null && (
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-card">
                   <Sparkles className="w-3 h-3 text-foreground/60" />
-                  <span className="text-[11px] font-bold tabular-nums">
+                  <span className="text-2xs font-bold tabular-nums">
                     {quickEval.overallScore.toFixed(1)}/5
                   </span>
                 </div>
@@ -312,7 +312,7 @@ export default function ScorecardFullPage() {
               {recoTone && (
                 <span
                   className={cn(
-                    'inline-flex items-center text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full border',
+                    'inline-flex items-center text-3xs uppercase tracking-wider font-bold px-2.5 py-1 rounded-full border',
                     recoTone.bg, recoTone.text, recoTone.border,
                   )}
                 >
@@ -329,7 +329,7 @@ export default function ScorecardFullPage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
               </span>
-              <span className="text-[10.5px] text-destructive uppercase tracking-wider font-bold inline-flex items-center gap-1">
+              <span className="text-2xs text-destructive uppercase tracking-wider font-bold inline-flex items-center gap-1">
                 <Mic className="w-3 h-3" />
                 Coaching Live
               </span>
@@ -352,7 +352,7 @@ export default function ScorecardFullPage() {
           <button
             onClick={() => setMobilePane('sidebar')}
             className={cn(
-              'flex-1 py-2 text-[11px] font-medium text-center transition-colors',
+              'flex-1 py-2 text-2xs font-medium text-center transition-colors',
               mobilePane === 'sidebar' ? 'text-foreground border-b-2 border-foreground' : 'text-muted-foreground',
             )}
           >
@@ -361,7 +361,7 @@ export default function ScorecardFullPage() {
           <button
             onClick={() => setMobilePane('scorecard')}
             className={cn(
-              'flex-1 py-2 text-[11px] font-medium text-center transition-colors',
+              'flex-1 py-2 text-2xs font-medium text-center transition-colors',
               mobilePane === 'scorecard' ? 'text-foreground border-b-2 border-foreground' : 'text-muted-foreground',
             )}
           >
@@ -396,7 +396,7 @@ export default function ScorecardFullPage() {
             <button
               onClick={() => setSidebarTab('candidate')}
               className={cn(
-                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-colors',
+                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium transition-colors',
                 sidebarTab === 'candidate'
                   ? 'bg-foreground text-background shadow-sm'
                   : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
@@ -408,7 +408,7 @@ export default function ScorecardFullPage() {
             <button
               onClick={() => setSidebarTab('job')}
               className={cn(
-                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-colors',
+                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium transition-colors',
                 sidebarTab === 'job'
                   ? 'bg-foreground text-background shadow-sm'
                   : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
@@ -435,7 +435,7 @@ export default function ScorecardFullPage() {
                       {candidate.name}
                     </h2>
                     {enrichedProfile?.headline && (
-                      <p className="text-[11.5px] text-muted-foreground line-clamp-2 leading-snug mt-0.5">
+                      <p className="text-2xs text-muted-foreground line-clamp-2 leading-snug mt-0.5">
                         {enrichedProfile.headline}
                       </p>
                     )}
@@ -446,10 +446,10 @@ export default function ScorecardFullPage() {
                 {quickEval && quickEval.criteriaCount > 0 && (
                   <div className="rounded-xl border border-border bg-card p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                      <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
                         Progression
                       </p>
-                      <span className="text-[11px] font-bold tabular-nums">
+                      <span className="text-2xs font-bold tabular-nums">
                         {quickEval.ratedCount}/{quickEval.criteriaCount}
                       </span>
                     </div>
@@ -460,13 +460,13 @@ export default function ScorecardFullPage() {
                       />
                     </div>
                     {quickEval.overallScore != null && (
-                      <div className="flex items-center justify-between text-[11px] mt-2">
+                      <div className="flex items-center justify-between text-2xs mt-2">
                         <span className="text-muted-foreground">Score moyen</span>
                         <span className="font-bold tabular-nums">{quickEval.overallScore.toFixed(2)}/5</span>
                       </div>
                     )}
                     {recoTone && (
-                      <div className={cn('mt-2 px-2 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold border text-center', recoTone.bg, recoTone.text, recoTone.border)}>
+                      <div className={cn('mt-2 px-2 py-1 rounded-full text-3xs uppercase tracking-wider font-bold border text-center', recoTone.bg, recoTone.text, recoTone.border)}>
                         {recoTone.label}
                       </div>
                     )}
@@ -490,10 +490,10 @@ export default function ScorecardFullPage() {
                       {candidate.score}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                      <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
                         Score IA initial
                       </p>
-                      <p className="text-[11.5px] font-medium text-foreground truncate">
+                      <p className="text-2xs font-medium text-foreground truncate">
                         {candidate.recommendation === 'shortlist' ? 'Recommandé' :
                          candidate.recommendation === 'skip' ? 'Non recommandé' :
                          'À évaluer'}
@@ -505,19 +505,19 @@ export default function ScorecardFullPage() {
                 {/* Meta row */}
                 <div className="flex flex-wrap gap-1.5">
                   {enrichedProfile?.currentCompany && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
                       <Building2 className="w-3 h-3" />
                       {enrichedProfile.currentCompany}
                     </span>
                   )}
                   {enrichedProfile?.location && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
                       <MapPin className="w-3 h-3" />
                       {enrichedProfile.location.split(',')[0]}
                     </span>
                   )}
                   {enrichedProfile?.yearsOfExperience && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
+                    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
                       <Sparkles className="w-3 h-3" />
                       {enrichedProfile.yearsOfExperience} ans
                     </span>
@@ -530,7 +530,7 @@ export default function ScorecardFullPage() {
                     href={candidate.linkedin}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent transition-colors"
+                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background hover:bg-accent transition-colors"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     Ouvrir LinkedIn
@@ -554,7 +554,7 @@ export default function ScorecardFullPage() {
                         />
                       ))}
                       {enrichedProfile!.experiences.length > 4 && (
-                        <p className="text-[10.5px] text-muted-foreground/70 italic pl-9">
+                        <p className="text-2xs text-muted-foreground/70 italic pl-9">
                           +{enrichedProfile!.experiences.length - 4} autres
                         </p>
                       )}
@@ -580,9 +580,9 @@ export default function ScorecardFullPage() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[11.5px] font-semibold truncate">{edu.school}</p>
+                            <p className="text-2xs font-semibold truncate">{edu.school}</p>
                             {(edu.degree || edu.field) && (
-                              <p className="text-[10.5px] text-muted-foreground truncate">
+                              <p className="text-2xs text-muted-foreground truncate">
                                 {[edu.degree, edu.field].filter(Boolean).join(' · ')}
                               </p>
                             )}
@@ -604,13 +604,13 @@ export default function ScorecardFullPage() {
                       {enrichedProfile!.skills.slice(0, 14).map((skill, i) => (
                         <span
                           key={i}
-                          className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border max-w-full break-words"
+                          className="inline-flex items-center text-2xs px-1.5 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border max-w-full break-words"
                         >
                           {skill}
                         </span>
                       ))}
                       {enrichedProfile!.skills.length > 14 && (
-                        <span className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
+                        <span className="inline-flex items-center text-2xs px-1.5 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
                           +{enrichedProfile!.skills.length - 14}
                         </span>
                       )}
@@ -622,14 +622,14 @@ export default function ScorecardFullPage() {
               // ═══ Job sidebar ═══
               <div className="p-4 space-y-4 w-full min-w-0 max-w-full">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                  <p className="text-3xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
                     Mission
                   </p>
                   <h2 className="font-display font-bold text-[15px] tracking-tight leading-tight">
                     {candidate.jobTitle || jobDetails?.title || 'Poste non spécifié'}
                   </h2>
                   {jobDetails?.client?.name && (
-                    <p className="text-[11.5px] text-muted-foreground mt-0.5">
+                    <p className="text-2xs text-muted-foreground mt-0.5">
                       {jobDetails.client.name}
                       {jobDetails.location && ` · ${jobDetails.location}`}
                     </p>
@@ -639,17 +639,17 @@ export default function ScorecardFullPage() {
                 {jobDetails && (
                   <div className="flex flex-wrap gap-1.5">
                     {jobDetails.seniority && (
-                      <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30 font-medium">
+                      <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30 font-medium">
                         {jobDetails.seniority}
                       </span>
                     )}
                     {jobDetails.contractType && (
-                      <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                      <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
                         {jobDetails.contractType}
                       </span>
                     )}
                     {jobDetails.remote && (
-                      <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
+                      <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
                         Remote
                       </span>
                     )}
@@ -659,7 +659,7 @@ export default function ScorecardFullPage() {
                 {candidate.jobId && (
                   <button
                     onClick={() => setJobOpen(true)}
-                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background hover:bg-accent transition-colors"
+                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background hover:bg-accent transition-colors"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     Voir tous les détails
@@ -674,7 +674,7 @@ export default function ScorecardFullPage() {
                   >
                     <div className="flex flex-wrap gap-1">
                       {(jobDetails as any).mustHave.map((s: string, i: number) => (
-                        <span key={i} className="inline-flex items-center text-[10.5px] px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
+                        <span key={i} className="inline-flex items-center text-2xs px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
                           <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
                           {s}
                         </span>
@@ -685,7 +685,7 @@ export default function ScorecardFullPage() {
 
                 {jobDetails?.description && (
                   <SidebarSection icon={Briefcase} title="Description du poste">
-                    <p className="text-[11.5px] text-foreground/85 leading-relaxed line-clamp-8 whitespace-pre-line">
+                    <p className="text-2xs text-foreground/85 leading-relaxed line-clamp-8 whitespace-pre-line">
                       {jobDetails.description}
                     </p>
                   </SidebarSection>
@@ -749,7 +749,7 @@ function SidebarSection({
             {title}
           </h3>
           {eyebrow && (
-            <p className="text-[9.5px] uppercase tracking-wider font-semibold text-muted-foreground/70 truncate">
+            <p className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/70 truncate">
               {eyebrow}
             </p>
           )}
@@ -790,18 +790,18 @@ function CompactExperienceItem({
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[11.5px] font-semibold leading-tight truncate">
+        <p className="text-2xs font-semibold leading-tight truncate">
           {exp.title}
           {exp.isCurrent && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1 py-0 rounded-full bg-success/10 text-success border border-success/30 ml-1.5 align-middle">
+            <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1 py-0 rounded-full bg-success/10 text-success border border-success/30 ml-1.5 align-middle">
               <span className="h-1 w-1 rounded-full bg-success animate-pulse" />
               Actuel
             </span>
           )}
         </p>
-        <p className="text-[10.5px] text-muted-foreground truncate">{exp.company}</p>
+        <p className="text-2xs text-muted-foreground truncate">{exp.company}</p>
         {(exp.startDate || exp.endDate) && (
-          <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-0.5">
+          <p className="text-3xs text-muted-foreground/70 tabular-nums mt-0.5">
             {exp.startDate} {exp.endDate ? `→ ${exp.endDate}` : '→ Présent'}
           </p>
         )}

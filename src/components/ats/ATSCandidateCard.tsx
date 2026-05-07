@@ -116,7 +116,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         <div className="flex items-center gap-1 flex-shrink-0">
           {candidate.score != null && candidate.score > 0 && (
             <span
-              className={`inline-flex items-center text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded-full border ${
+              className={`inline-flex items-center text-2xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border ${
                 candidate.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
                 candidate.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
                 'border-destructive/40 bg-destructive/10 text-destructive'
@@ -140,25 +140,25 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
       {/* Source & Job & Outreach Status */}
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-border bg-foreground/[0.06] uppercase tracking-wider font-semibold text-foreground/85">
+        <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-border bg-foreground/[0.06] uppercase tracking-wider font-semibold text-foreground/85">
           {sourceConfig.icon}
           {sourceConfig.label}
         </span>
 
         {candidate.outreachStatus === 'interested' && (
-          <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-success/40 bg-success/10 text-success uppercase tracking-wider font-bold">
+          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-success/40 bg-success/10 text-success uppercase tracking-wider font-bold">
             <ThumbsUp className="w-3 h-3" />
             Intéressé
           </span>
         )}
         {candidate.outreachStatus === 'not_interested' && (
-          <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-destructive/40 bg-destructive/5 text-destructive uppercase tracking-wider font-bold">
+          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-destructive/40 bg-destructive/5 text-destructive uppercase tracking-wider font-bold">
             <ThumbsDown className="w-3 h-3" />
             Pas intéressé
           </span>
         )}
         {candidate.outreachStatus === 'replied' && (
-          <span className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-full border border-info/40 bg-info/10 text-info uppercase tracking-wider font-bold">
+          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-info/40 bg-info/10 text-info uppercase tracking-wider font-bold">
             <MessageCircle className="w-3 h-3" />
             Répondu
           </span>
@@ -166,7 +166,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
 
         {candidate.jobTitle && (
           <span
-            className={`inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full border border-border bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:bg-accent hover:text-foreground transition-colors' : ''}`}
+            className={`inline-flex items-center text-2xs px-2 py-0.5 rounded-full border border-border bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:bg-accent hover:text-foreground transition-colors' : ''}`}
             onClick={(e) => {
               if (candidate.jobId && onJobClick) {
                 e.stopPropagation();
@@ -187,7 +187,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           <GitBranch className="w-3 h-3" />
           {candidate.sequenceName}
           {candidate.sequenceStatus && (
-            <span className="inline-flex items-center rounded-full border border-border bg-foreground/[0.06] px-1.5 py-0 text-[9px] uppercase tracking-wider font-semibold">
+            <span className="inline-flex items-center rounded-full border border-border bg-foreground/[0.06] px-1.5 py-0 text-3xs uppercase tracking-wider font-semibold">
               {candidate.sequenceStatus}
             </span>
           )}
@@ -198,12 +198,12 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
       {(candidate.tags || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {(candidate.tags || []).slice(0, 3).map(tag => (
-            <span key={tag} className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-accent/20 text-foreground border border-accent/40 font-medium">
+            <span key={tag} className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-accent/20 text-foreground border border-accent/40 font-medium">
               {tag}
             </span>
           ))}
           {(candidate.tags || []).length > 3 && (
-            <span className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
+            <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
               +{(candidate.tags || []).length - 3}
             </span>
           )}
@@ -224,13 +224,13 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           {candidate.expertise.slice(0, 3).map(skill => (
             <span
               key={skill}
-              className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
+              className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
             >
               {skill}
             </span>
           ))}
           {candidate.expertise.length > 3 && (
-            <span className="inline-flex items-center text-[10.5px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
+            <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
               +{candidate.expertise.length - 3}
             </span>
           )}

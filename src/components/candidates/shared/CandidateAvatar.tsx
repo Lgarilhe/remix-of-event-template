@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils';
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 const SIZE_CLASSES: Record<AvatarSize, { box: string; text: string }> = {
-  xs: { box: 'w-6 h-6', text: 'text-[9px]' },
-  sm: { box: 'w-8 h-8', text: 'text-[10px]' },
+  xs: { box: 'w-6 h-6', text: 'text-3xs' },
+  sm: { box: 'w-8 h-8', text: 'text-3xs' },
   md: { box: 'w-10 h-10', text: 'text-xs' },
   lg: { box: 'w-12 h-12', text: 'text-sm' },
   xl: { box: 'w-16 h-16', text: 'text-base' },

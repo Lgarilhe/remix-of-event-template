@@ -89,7 +89,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
               {profile.name}
             </p>
             {state.skipped && (
-              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-warning/30 bg-warning/10 text-warning shrink-0">
+              <Badge variant="outline" className="text-3xs h-4 px-1.5 border-warning/30 bg-warning/10 text-warning shrink-0">
                 Passé
               </Badge>
             )}
@@ -103,7 +103,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
               les headlines LinkedIn sont souvent longues, 2 lignes lisibles >>
               "Tech Lead | Software Architect | Symfony C..." en 1 ligne tronquée */}
           <p
-            className="text-[11.5px] text-muted-foreground mt-0.5 leading-snug min-w-0 overflow-hidden"
+            className="text-2xs text-muted-foreground mt-0.5 leading-snug min-w-0 overflow-hidden"
             style={{
               display: '-webkit-box',
               WebkitLineClamp: 2,
@@ -148,7 +148,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
       </div>
 
       {/* Meta row : meilleure typographie + score plus visible */}
-      <div className="flex items-center gap-2 pl-[44px] flex-wrap text-[10.5px]">
+      <div className="flex items-center gap-2 pl-[44px] flex-wrap text-2xs">
         {profile.location && (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <MapPin className="w-2.5 h-2.5" />

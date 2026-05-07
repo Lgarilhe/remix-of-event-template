@@ -330,7 +330,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                       </AvatarFallback>
                     </Avatar>
                     {networkDistance && networkDistance <= 3 && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center text-[8px] font-bold text-primary">
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center text-3xs font-bold text-primary">
                         {networkDistance}°
                       </span>
                     )}
@@ -397,7 +397,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (
-                    <span className="text-[8px] font-bold px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
+                    <span className="text-3xs font-bold px-1 py-0.5 border border-border text-muted-foreground shrink-0" title={companyType.signals.join(' · ')}>
                       {companyType.label}
                     </span>
                   )}
@@ -461,12 +461,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 {skills.length > 0 && (
                   <div className="flex flex-wrap gap-0.5 mt-1.5 pt-1.5 border-t border-border/40">
                     {skills.slice(0, 6).map((skill: any, index: number) => (
-                      <Badge key={index} variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground font-normal leading-none">
+                      <Badge key={index} variant="secondary" className="text-3xs px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground font-normal leading-none">
                         {skill.name || skill}
                       </Badge>
                     ))}
                     {skills.length > 6 && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary font-medium leading-none">
+                      <Badge variant="secondary" className="text-3xs px-1.5 py-0 h-4 bg-primary/10 text-primary font-medium leading-none">
                         +{skills.length - 6}
                       </Badge>
                     )}

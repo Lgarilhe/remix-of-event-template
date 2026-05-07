@@ -613,8 +613,8 @@ function ReconnectForm({
           <li className="flex gap-2">
             <span className="font-mono font-bold text-info shrink-0">1.</span>
             <div>
-              Dans <strong>Chrome</strong>, ouvrez une <strong>fenêtre de navigation privée</strong> (<kbd className="px-1 bg-muted border border-border text-[10px]">Ctrl+Shift+N</kbd>).
-              <span className="block text-muted-foreground text-[11px] mt-0.5">Cela évite d'invalider votre session LinkedIn Recruiter actuelle.</span>
+              Dans <strong>Chrome</strong>, ouvrez une <strong>fenêtre de navigation privée</strong> (<kbd className="px-1 bg-muted border border-border text-3xs">Ctrl+Shift+N</kbd>).
+              <span className="block text-muted-foreground text-2xs mt-0.5">Cela évite d'invalider votre session LinkedIn Recruiter actuelle.</span>
             </div>
           </li>
           <li className="flex gap-2">
@@ -624,8 +624,8 @@ function ReconnectForm({
           <li className="flex gap-2">
             <span className="font-mono font-bold text-info shrink-0">3.</span>
             <div>
-              Appuyez sur <kbd className="px-1 bg-muted border border-border text-[10px]">F12</kbd> pour ouvrir les DevTools.
-              <span className="block text-muted-foreground text-[11px] mt-0.5">Sur Mac : <kbd className="px-1 bg-muted border border-border text-[10px]">Cmd+Opt+I</kbd></span>
+              Appuyez sur <kbd className="px-1 bg-muted border border-border text-3xs">F12</kbd> pour ouvrir les DevTools.
+              <span className="block text-muted-foreground text-2xs mt-0.5">Sur Mac : <kbd className="px-1 bg-muted border border-border text-3xs">Cmd+Opt+I</kbd></span>
             </div>
           </li>
           <li className="flex gap-2">
@@ -643,8 +643,8 @@ function ReconnectForm({
           <li className="flex gap-2">
             <span className="font-mono font-bold text-info shrink-0">6.</span>
             <div>
-              Dans la colonne <strong>Value</strong> (à droite), <strong>double-cliquez sur la valeur</strong> (longue chaîne de caractères type <code className="text-[10px] bg-muted px-1">AQEDATxxxxxx...</code>) et faites <kbd className="px-1 bg-muted border border-border text-[10px]">Ctrl+C</kbd>.
-              <p className="text-destructive text-[11px] mt-0.5">⚠️ Copiez UNIQUEMENT la valeur, pas le nom "li_at" ni le signe "=". Pas d'espaces à la fin.</p>
+              Dans la colonne <strong>Value</strong> (à droite), <strong>double-cliquez sur la valeur</strong> (longue chaîne de caractères type <code className="text-3xs bg-muted px-1">AQEDATxxxxxx...</code>) et faites <kbd className="px-1 bg-muted border border-border text-3xs">Ctrl+C</kbd>.
+              <p className="text-destructive text-2xs mt-0.5">⚠️ Copiez UNIQUEMENT la valeur, pas le nom "li_at" ni le signe "=". Pas d'espaces à la fin.</p>
             </div>
           </li>
           <li className="flex gap-2">
@@ -684,13 +684,13 @@ function ReconnectForm({
           aria-invalid={liAtCookie.length > 0 && !liAtValidation.ok}
         />
         {liAtCookie && !liAtValidation.ok && (
-          <p className="text-[10px] text-destructive flex items-center gap-1">
+          <p className="text-3xs text-destructive flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" aria-hidden="true" />
             {liAtValidation.reason}
           </p>
         )}
-        <p className="text-[10px] text-muted-foreground leading-relaxed">
-          Dans LinkedIn (Chrome/Firefox) : <kbd className="px-1 bg-muted border border-border text-[9px]">F12</kbd> → <strong>Application</strong> → <strong>Cookies</strong> → <strong>linkedin.com</strong> → clic sur <strong>li_at</strong> → copier uniquement la <strong>colonne "Value"</strong> (pas le nom).
+        <p className="text-3xs text-muted-foreground leading-relaxed">
+          Dans LinkedIn (Chrome/Firefox) : <kbd className="px-1 bg-muted border border-border text-3xs">F12</kbd> → <strong>Application</strong> → <strong>Cookies</strong> → <strong>linkedin.com</strong> → clic sur <strong>li_at</strong> → copier uniquement la <strong>colonne "Value"</strong> (pas le nom).
         </p>
       </div>
 
@@ -700,7 +700,7 @@ function ReconnectForm({
           <button
             type="button"
             onClick={handleUseMyUA}
-            className="text-[10px] text-info hover:text-info/80 underline underline-offset-2"
+            className="text-3xs text-info hover:text-info/80 underline underline-offset-2"
           >
             Utiliser mon navigateur actuel
           </button>
@@ -719,12 +719,12 @@ function ReconnectForm({
           aria-invalid={userAgent.length > 0 && !uaValid}
         />
         {userAgent && !uaValid && (
-          <p className="text-[10px] text-destructive flex items-center gap-1">
+          <p className="text-3xs text-destructive flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" aria-hidden="true" />
             Ceci ne ressemble pas à un User-Agent. Un UA commence par "Mozilla/" — ce n'est pas votre email ni votre nom. Laissez vide en cas de doute.
           </p>
         )}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-3xs text-muted-foreground">
           Chaîne technique de votre navigateur (pas un email ni un nom). Si vide, un UA Chrome par défaut sera utilisé.
         </p>
       </div>

@@ -95,10 +95,10 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
     <section className="mt-1.5 pt-1.5 border-t border-border/40">
       <header className="flex items-center gap-1 mb-0.5">
         <GraduationCap className="w-2.5 h-2.5 text-muted-foreground/70" aria-hidden="true" />
-        <h4 className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/80">
+        <h4 className="text-3xs font-bold uppercase tracking-wider text-muted-foreground/80">
           Formation
         </h4>
-        <span className="text-[9px] text-muted-foreground/50 font-mono tabular-nums">
+        <span className="text-3xs text-muted-foreground/50 font-mono tabular-nums">
           {sorted.length}
         </span>
       </header>
@@ -134,7 +134,7 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
               )}
 
               {/* Tout sur 1 ligne : École · Diplôme · Dates */}
-              <div className="flex-1 min-w-0 truncate text-[11px]">
+              <div className="flex-1 min-w-0 truncate text-2xs">
                 <span className="font-medium text-foreground/90">{edu.school || 'École'}</span>
                 {degreeOrField && (
                   <>
@@ -145,7 +145,7 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
                 {dateRange && (
                   <>
                     <span className="text-muted-foreground/30 mx-1" aria-hidden="true">·</span>
-                    <span className="text-[10px] text-muted-foreground/70 tabular-nums">{dateRange}</span>
+                    <span className="text-3xs text-muted-foreground/70 tabular-nums">{dateRange}</span>
                   </>
                 )}
               </div>
@@ -159,7 +159,7 @@ export const ProfileEducationList: React.FC<ProfileEducationListProps> = ({
           type="button"
           onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
           onPointerDown={(e) => e.stopPropagation()}
-          className="mt-0.5 text-[10px] text-info hover:text-info/80 font-medium flex items-center gap-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-0.5 text-3xs text-info hover:text-info/80 font-medium flex items-center gap-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           data-no-detail
         >
           {expanded ? (

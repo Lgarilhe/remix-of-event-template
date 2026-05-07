@@ -154,7 +154,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/30 py-2">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <AlertTitle className="text-destructive text-xs">Aucun compte LinkedIn connecté</AlertTitle>
-          <AlertDescription className="text-destructive/80 text-[11px]">
+          <AlertDescription className="text-destructive/80 text-2xs">
             Connectez votre compte LinkedIn dans Paramètres pour accéder au sourcing.
           </AlertDescription>
         </Alert>
@@ -388,15 +388,15 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             <div className="bg-background border border-border p-2 sm:p-2.5">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Sparkles className="w-3 h-3 text-primary" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Suggestions IA</span>
+                <span className="text-3xs font-bold uppercase tracking-wider text-muted-foreground">Suggestions IA</span>
               </div>
               <div className="flex flex-wrap gap-1">
                 {chips.slice(0, 8).map(chip => (
                   <span
                     key={chip.key}
-                    className="inline-flex items-center gap-0.5 pl-2 pr-0.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-[11px] text-foreground group"
+                    className="inline-flex items-center gap-0.5 pl-2 pr-0.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-2xs text-foreground group"
                   >
-                    <span className="text-[9px] text-primary/60 font-medium mr-0.5">{chip.category}</span>
+                    <span className="text-3xs text-primary/60 font-medium mr-0.5">{chip.category}</span>
                     <span className="truncate max-w-[100px]">{chip.label}</span>
                     <button
                       type="button"
@@ -424,7 +424,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
           <div className="bg-background border border-border p-2.5 sm:p-3">
-            <label className="text-[10px] sm:text-xs font-bold text-muted-foreground mb-1 sm:mb-1.5 block uppercase tracking-wider">
+            <label className="text-3xs sm:text-xs font-bold text-muted-foreground mb-1 sm:mb-1.5 block uppercase tracking-wider">
               Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
             </label>
             <textarea

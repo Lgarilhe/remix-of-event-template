@@ -302,7 +302,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                       <Briefcase className="w-3 h-3 text-muted-foreground" />
                       <span className="truncate">{p.name}</span>
                       {p.client_name && (
-                        <span className="text-[10px] text-muted-foreground">· {p.client_name}</span>
+                        <span className="text-3xs text-muted-foreground">· {p.client_name}</span>
                       )}
                     </div>
                   </SelectItem>
@@ -316,7 +316,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             <label className="text-xs font-medium text-foreground">Candidat</label>
             <CandidateAutocomplete value={candidate} onChange={setCandidate} />
             {!candidate && (
-              <p className="text-[10.5px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Cherche dans tes candidats existants ou crée-en un nouveau au passage.
               </p>
             )}
@@ -327,7 +327,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
               <UserIcon className="w-3.5 h-3.5" />
               Manager
-              <span className="text-[10px] text-muted-foreground font-normal">
+              <span className="text-3xs text-muted-foreground font-normal">
                 · qui anime l'entretien
               </span>
             </label>
@@ -354,11 +354,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                         />
                         <span className="truncate">{label}</span>
                         {isMe && (
-                          <span className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground">
+                          <span className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
                             (moi)
                           </span>
                         )}
-                        <span className="text-[10px] text-muted-foreground capitalize">
+                        <span className="text-3xs text-muted-foreground capitalize">
                           · {m.role}
                         </span>
                       </div>
@@ -418,7 +418,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                   type="button"
                   onClick={() => setLocationPreset(p.value)}
                   className={cn(
-                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors',
+                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-2xs font-medium transition-colors',
                     locationPreset === p.value
                       ? 'bg-foreground text-background border-foreground'
                       : 'border-border bg-background hover:bg-accent text-foreground',

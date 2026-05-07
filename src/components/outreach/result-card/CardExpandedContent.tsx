@@ -128,7 +128,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                   <span className="hidden sm:inline">{tab.label}</span>
                   <span className="sm:hidden">{tab.shortLabel || tab.label}</span>
                   {tab.count != null && tab.count > 0 && (
-                    <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 rounded-full bg-foreground/10 text-foreground text-[9px] font-bold tabular-nums">
+                    <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 rounded-full bg-foreground/10 text-foreground text-3xs font-bold tabular-nums">
                       {tab.count}
                     </span>
                   )}

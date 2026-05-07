@@ -306,12 +306,12 @@ export default function CandidatePortal() {
                       {stage.label}
                     </span>
                     {isCurrent && (
-                      <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-accent border border-border font-bold uppercase tracking-wider animate-pulse">
+                      <span className="ml-2 text-3xs px-1.5 py-0.5 bg-accent border border-border font-bold uppercase tracking-wider animate-pulse">
                         En cours
                       </span>
                     )}
                     {isPast && (
-                      <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-foreground text-background font-bold uppercase tracking-wider">
+                      <span className="ml-2 text-3xs px-1.5 py-0.5 bg-foreground text-background font-bold uppercase tracking-wider">
                         ✓
                       </span>
                     )}

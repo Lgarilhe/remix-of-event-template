@@ -93,7 +93,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
           {/* Content */}
           <div className="flex-1 min-w-0">
             {!compact && (
-              <div className="text-[10px] text-muted-foreground/50 leading-none mb-0.5 font-medium uppercase tracking-wider">
+              <div className="text-3xs text-muted-foreground/50 leading-none mb-0.5 font-medium uppercase tracking-wider">
                 Étape {index + 1}
               </div>
             )}
@@ -104,12 +104,12 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
               {STEP_LABELS[step.actionType] || step.actionType}
             </div>
             {!compact && msgType && (
-              <div className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full w-fit mt-1", msgType.color)}>
+              <div className={cn("text-3xs font-semibold px-1.5 py-0.5 rounded-full w-fit mt-1", msgType.color)}>
                 {msgType.shortLabel}
               </div>
             )}
             {hasDelay && (
-              <div className={cn("flex items-center gap-1 text-muted-foreground/60 mt-0.5", compact ? "text-[9px]" : "text-[10px]")}>
+              <div className={cn("flex items-center gap-1 text-muted-foreground/60 mt-0.5", compact ? "text-3xs" : "text-3xs")}>
                 <Clock className="w-2.5 h-2.5" />
                 {delayLabel}
               </div>

@@ -184,7 +184,7 @@ function ScoreHero({
             <span className="font-display font-bold text-[22px] tabular-nums leading-none" style={{ color: colors.text }}>
               {score}
             </span>
-            <span className="text-[9px] uppercase tracking-wider font-bold opacity-60 mt-0.5" style={{ color: colors.text }}>
+            <span className="text-3xs uppercase tracking-wider font-bold opacity-60 mt-0.5" style={{ color: colors.text }}>
               /100
             </span>
           </div>
@@ -193,12 +193,12 @@ function ScoreHero({
         {/* Texte droite */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+            <span className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
               Score IA · mission active
             </span>
             {recoLabel && (
               <span
-                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider border"
+                className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider border"
                 style={{ background: colors.bg, color: colors.text, borderColor: colors.border }}
               >
                 <Target className="w-2.5 h-2.5" />
@@ -245,7 +245,7 @@ function SectionCard({
             {title}
           </h3>
           {eyebrow && (
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 mt-0.5">
+            <p className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/70 mt-0.5">
               {eyebrow}
             </p>
           )}
@@ -289,7 +289,7 @@ function CollapsibleCard({
             {title}
           </h3>
           {eyebrow && (
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 mt-0.5">
+            <p className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/70 mt-0.5">
               {eyebrow}
             </p>
           )}

@@ -37,7 +37,7 @@ const Field = ({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
+      <label className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
       {type === 'textarea' ? (
         <textarea
           value={localValue}
@@ -86,7 +86,7 @@ const SelectField = ({
   readOnly?: boolean;
 }) => (
   <div className="space-y-1.5">
-    <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
+    <label className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
@@ -133,7 +133,7 @@ const TagInput = ({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
+      <label className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag, i) => (
           <motion.span
@@ -141,7 +141,7 @@ const TagInput = ({
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
-            className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full border', color)}
+            className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 text-2xs font-bold uppercase tracking-wider rounded-full border', color)}
           >
             {tag}
             {!readOnly && (
@@ -530,7 +530,7 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
     </div>
     <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." readOnly={readOnly} />
     <div className="pt-5 border-t-2 border-border">
-      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">Hiring Manager</p>
+      <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-4">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Nom" value={d.client?.hiring_manager?.name} onChange={(v) => updateField('client.hiring_manager.name', v)} readOnly={readOnly} />
         <Field label="Titre" value={d.client?.hiring_manager?.title} onChange={(v) => updateField('client.hiring_manager.title', v)} placeholder="Ex: CTO" readOnly={readOnly} />
@@ -639,11 +639,11 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
+        <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Répartition des poids (total = 100%)</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {Object.entries(CATEGORY_OPTIONS).map(([key, label]) => (
             <div key={key} className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
+              <label className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">{label}</label>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
@@ -670,7 +670,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Critères ({criteria.length})</p>
+          <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">Critères ({criteria.length})</p>
           {!readOnly && !adding && (
             <button
               type="button"
@@ -749,7 +749,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                 <div className="flex items-start gap-3">
                   <span
                     className={cn(
-                      'mt-0.5 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider shrink-0 rounded-full border',
+                      'mt-0.5 px-2 py-0.5 text-2xs font-bold uppercase tracking-wider shrink-0 rounded-full border',
                       c.weight === 3
                         ? 'bg-destructive text-destructive-foreground border-destructive'
                         : c.weight === 2
@@ -764,12 +764,12 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                       <span className="text-sm font-bold text-foreground">{c.label}</span>
                       <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{CATEGORY_OPTIONS[c.category] || c.category}</span>
                       {c.deal_breaker && (
-                        <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground border border-destructive">Deal breaker</span>
+                        <span className="text-3xs font-bold uppercase tracking-wider px-1.5 py-0.5 bg-destructive text-destructive-foreground border border-destructive">Deal breaker</span>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
+                        <label className="text-3xs font-bold uppercase tracking-wider text-muted-foreground">Mon 10/10 c'est...</label>
                         <input
                           defaultValue={c.level_10 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_10: e.target.value || undefined })}
@@ -783,7 +783,7 @@ const StepEvaluation = ({ d, onUpdate, readOnly }: { d: JobDetails; onUpdate: (p
                         />
                       </div>
                       <div className="space-y-0.5">
-                        <label className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Rédhibitoire si...</label>
+                        <label className="text-3xs font-bold uppercase tracking-wider text-muted-foreground">Rédhibitoire si...</label>
                         <input
                           defaultValue={c.level_1 || ''}
                           onBlur={(e) => updateCriterion(c.id, { level_1: e.target.value || undefined })}

@@ -255,7 +255,7 @@ function ActionCard({
           <p className="text-[13px] font-semibold text-foreground tracking-tight">
             {ACTION_LABELS[step.actionType] || step.actionType}
           </p>
-          <p className="text-[10.5px] text-muted-foreground tabular-nums uppercase tracking-wider mt-0.5">
+          <p className="text-2xs text-muted-foreground tabular-nums uppercase tracking-wider mt-0.5">
             Étape {step.stepOrder + 1}
           </p>
         </div>
@@ -314,7 +314,7 @@ function DecisionFork({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-[9.5px] uppercase tracking-wider font-bold text-brand-purple">
+                <p className="text-3xs uppercase tracking-wider font-bold text-brand-purple">
                   Décision · Étape {step.stepOrder + 1}
                 </p>
               </div>
@@ -322,7 +322,7 @@ function DecisionFork({
                 {label}
               </p>
               {description && (
-                <p className="text-[11.5px] text-muted-foreground mt-1 leading-snug">
+                <p className="text-2xs text-muted-foreground mt-1 leading-snug">
                   {description}
                 </p>
               )}
@@ -412,8 +412,8 @@ function BranchHeader({
     <div className="flex justify-center">
       <span className={
         variant === 'primary'
-          ? 'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-brand-purple bg-brand-purple/10 border border-brand-purple/40 rounded-full px-2.5 py-1'
-          : 'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-muted/40 border border-border rounded-full px-2.5 py-1'
+          ? 'inline-flex items-center gap-1 text-3xs uppercase tracking-wider font-bold text-brand-purple bg-brand-purple/10 border border-brand-purple/40 rounded-full px-2.5 py-1'
+          : 'inline-flex items-center gap-1 text-3xs uppercase tracking-wider font-bold text-muted-foreground bg-muted/40 border border-border rounded-full px-2.5 py-1'
       }>
         {variant === 'primary' ? (
           <CheckCheck className="w-3 h-3" strokeWidth={2.5} />
@@ -442,7 +442,7 @@ function BranchPlaceholder({
   }[tone];
   return (
     <div className={`rounded-xl border border-dashed ${colors} px-3 py-3 text-center`}>
-      <p className="text-[11.5px] font-medium leading-snug">
+      <p className="text-2xs font-medium leading-snug">
         {text}
       </p>
     </div>
@@ -455,7 +455,7 @@ function BranchPlaceholder({
 function FallbackHint() {
   return (
     <div className="rounded-lg bg-warning/5 border border-warning/30 px-2.5 py-1.5">
-      <p className="text-[10.5px] text-warning leading-snug">
+      <p className="text-2xs text-warning leading-snug">
         ⓘ Utilisé uniquement si le candidat n'accepte pas la connexion dans le délai
       </p>
     </div>
@@ -513,7 +513,7 @@ function SimpleConnector({
             <button
               type="button"
               className={cn(
-                'inline-flex items-center gap-1 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full border transition-colors',
+                'inline-flex items-center gap-1 text-3xs tabular-nums px-1.5 py-0.5 rounded-full border transition-colors',
                 isOverridden
                   ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/30 font-semibold'
                   : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted hover:border-border hover:text-foreground'
@@ -525,7 +525,7 @@ function SimpleConnector({
             </button>
           </DelayEditor>
         ) : (
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-3xs text-muted-foreground tabular-nums">
             {formatDelay(effDays, effHours)}
           </span>
         )
@@ -563,7 +563,7 @@ function InitialDelayChip({
   if (!onChange) {
     // Pas d'éditeur → simple texte
     return (
-      <p className="text-[10.5px] uppercase tracking-wider text-muted-foreground text-center mb-1">
+      <p className="text-2xs uppercase tracking-wider text-muted-foreground text-center mb-1">
         {formatDelay(effDays, effHours)}
       </p>
     );
@@ -584,7 +584,7 @@ function InitialDelayChip({
         <button
           type="button"
           className={cn(
-            'inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full border transition-colors',
+            'inline-flex items-center gap-1 text-3xs uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full border transition-colors',
             isOverridden
               ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/40'
               : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
@@ -655,17 +655,17 @@ function DelayEditor({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1">
+          <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-1">
             {title || 'Délai avant ce step'}
           </p>
-          <p className="text-[11.5px] text-muted-foreground leading-snug">
+          <p className="text-2xs text-muted-foreground leading-snug">
             Modifie le délai pour <span className="font-semibold text-foreground">cette inscription uniquement</span>. Le template de la séquence n'est pas modifié.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
+            <label className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
               Jours
             </label>
             <input
@@ -678,7 +678,7 @@ function DelayEditor({
             />
           </div>
           <div>
-            <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
+            <label className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
               Heures
             </label>
             <input
@@ -693,7 +693,7 @@ function DelayEditor({
         </div>
 
         {isOverridden && (
-          <div className="text-[10.5px] text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1.5">
+          <div className="text-2xs text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1.5">
             Défaut séquence : <span className="font-semibold tabular-nums">{defaultDays}j {defaultHours}h</span>
           </div>
         )}
@@ -703,7 +703,7 @@ function DelayEditor({
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
+              className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
               title="Revenir au délai du template"
             >
               <RotateCcw className="w-3 h-3" />
@@ -714,14 +714,14 @@ function DelayEditor({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
+            className="text-2xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
           >
             Annuler
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="text-[11px] font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors"
+            className="text-2xs font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors"
           >
             Appliquer
           </button>
@@ -746,7 +746,7 @@ function TimeoutEditor({
 
   if (!onChange) {
     return (
-      <p className="text-[10px] text-warning inline-flex items-center gap-1">
+      <p className="text-3xs text-warning inline-flex items-center gap-1">
         <Clock className="w-2.5 h-2.5" />
         Timeout après {effTimeout} jour{effTimeout > 1 ? 's' : ''}
       </p>
@@ -764,7 +764,7 @@ function TimeoutEditor({
       <button
         type="button"
         className={cn(
-          'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors',
+          'inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full border transition-colors',
           isOverridden
             ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/30 font-semibold'
             : 'bg-warning/10 text-warning border-warning/30 hover:bg-warning/15'
@@ -822,16 +822,16 @@ function TimeoutEditorPopover({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1">
+          <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-1">
             Timeout
           </p>
-          <p className="text-[11.5px] text-muted-foreground leading-snug">
+          <p className="text-2xs text-muted-foreground leading-snug">
             Nombre de jours d'attente avant de basculer sur la branche alternative (ex : InMail si l'invitation n'est pas acceptée).
           </p>
         </div>
 
         <div>
-          <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
+          <label className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/80 block mb-1">
             Jours d'attente
           </label>
           <input
@@ -845,7 +845,7 @@ function TimeoutEditorPopover({
         </div>
 
         {isOverridden && (
-          <div className="text-[10.5px] text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1.5">
+          <div className="text-2xs text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1.5">
             Défaut séquence : <span className="font-semibold tabular-nums">{defaultDays} jour{defaultDays > 1 ? 's' : ''}</span>
           </div>
         )}
@@ -855,7 +855,7 @@ function TimeoutEditorPopover({
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
+              className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
             >
               <RotateCcw className="w-3 h-3" />
               Réinitialiser
@@ -865,14 +865,14 @@ function TimeoutEditorPopover({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
+            className="text-2xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
           >
             Annuler
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="text-[11px] font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors"
+            className="text-2xs font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors"
           >
             Appliquer
           </button>

@@ -420,7 +420,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                             {item.sub} taux
                           </span>
                         )}
-                        <span className="text-[8px] text-muted-foreground uppercase tracking-wider mt-1 font-medium">
+                        <span className="text-3xs text-muted-foreground uppercase tracking-wider mt-1 font-medium">
                           {item.label}
                         </span>
                       </div>
@@ -621,7 +621,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground">
                       Taux de réponse par étape — colore en vert si ≥20%, orange si ≥10%, gris sinon.
                     </p>
                   </div>

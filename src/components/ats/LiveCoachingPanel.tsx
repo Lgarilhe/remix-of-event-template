@@ -623,7 +623,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           )}
           {/* Criteria checklist */}
           <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-2">Checklist critères</p>
+            <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-2">Checklist critères</p>
             <div className="grid grid-cols-2 gap-1">
               {criteria.map(c => {
                 const status = criteriaStatus[c.id];
@@ -668,7 +668,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <Search className="w-3 h-3 text-muted-foreground" />
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">À creuser</p>
+              <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">À creuser</p>
             </div>
             {digDeeper.length === 0 ? (
               <p className="text-xs text-muted-foreground italic px-2">
@@ -699,7 +699,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
           {/* Transcription */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+              <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
                 Transcription
               </p>
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -716,7 +716,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   seg.speaker === 0 ? "border-info" : "border-success"
                 )}>
                   <span className={cn(
-                    "font-bold uppercase tracking-wider text-[8px] block mb-0.5",
+                    "font-bold uppercase tracking-wider text-3xs block mb-0.5",
                     seg.speaker === 0 ? "text-info" : "text-success"
                   )}>
                     {speakerLabel(seg.speaker)}
@@ -831,7 +831,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
           {/* Debrief actions */}
           <div className="pt-3 border-t border-border">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-2">Actions post-entretien</p>
+            <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-2">Actions post-entretien</p>
             <div className="flex flex-wrap gap-2">
               {report.recommendation === 'GO' && (
                 <button

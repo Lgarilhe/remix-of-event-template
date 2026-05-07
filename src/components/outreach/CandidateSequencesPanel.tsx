@@ -236,7 +236,7 @@ function EnrollmentCard({
             <h4 className="font-semibold text-[13.5px] tracking-tight truncate">
               {enrollment.sequence_name || 'Séquence'}
             </h4>
-            <Badge variant="outline" className={cn('text-[10px] px-1.5 h-5', statusCfg.color)}>
+            <Badge variant="outline" className={cn('text-3xs px-1.5 h-5', statusCfg.color)}>
               <span className="inline-flex items-center gap-1">
                 {statusCfg.icon}
                 {statusCfg.label}
@@ -245,7 +245,7 @@ function EnrollmentCard({
           </div>
 
           {enrollment.job_title && (
-            <p className="text-[11.5px] text-muted-foreground truncate mt-0.5 inline-flex items-center gap-1">
+            <p className="text-2xs text-muted-foreground truncate mt-0.5 inline-flex items-center gap-1">
               <Briefcase className="w-3 h-3 shrink-0" />
               {enrollment.job_title}
             </p>
@@ -262,14 +262,14 @@ function EnrollmentCard({
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-[10.5px] tabular-nums text-muted-foreground font-medium shrink-0">
+            <span className="text-2xs tabular-nums text-muted-foreground font-medium shrink-0">
               {sentCount}/{totalSteps}
             </span>
           </div>
 
           {/* Next action */}
           {isActive && enrollment.next_scheduled_at && (
-            <p className="text-[11px] text-info mt-1.5 inline-flex items-center gap-1">
+            <p className="text-2xs text-info mt-1.5 inline-flex items-center gap-1">
               <Clock className="w-3 h-3" />
               Prochaine action :{' '}
               <span className="font-medium">
@@ -279,7 +279,7 @@ function EnrollmentCard({
             </p>
           )}
           {enrollment.replied_at && (
-            <p className="text-[11px] text-muted-foreground mt-1.5">
+            <p className="text-2xs text-muted-foreground mt-1.5">
               Répondu {formatDistanceToNow(new Date(enrollment.replied_at), { addSuffix: true, locale: fr })}
             </p>
           )}
@@ -291,7 +291,7 @@ function EnrollmentCard({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 px-2 text-[11px]"
+              className="h-7 px-2 text-2xs"
               onClick={onStop}
             >
               <StopCircle className="w-3 h-3 mr-1" />
@@ -302,7 +302,7 @@ function EnrollmentCard({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 px-2 text-[11px]"
+              className="h-7 px-2 text-2xs"
               onClick={onResume}
             >
               <Play className="w-3 h-3 mr-1" />
@@ -334,7 +334,7 @@ function EnrollmentCard({
       {/* Timeline expandable */}
       {isExpanded && enrollment.executions.length > 0 && (
         <div className="border-t border-border bg-muted/10 px-4 py-3 space-y-2">
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-2">
+          <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
             Timeline ({enrollment.executions.length} actions)
           </p>
           {enrollment.executions.map((exec, idx) => (
@@ -347,7 +347,7 @@ function EnrollmentCard({
       {!isExpanded && enrollment.executions.length > 0 && (
         <button
           onClick={onToggleExpand}
-          className="w-full px-4 py-1.5 border-t border-border bg-muted/5 text-[10.5px] text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors flex items-center justify-center gap-1"
+          className="w-full px-4 py-1.5 border-t border-border bg-muted/5 text-2xs text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors flex items-center justify-center gap-1"
         >
           <ChevronDown className="w-3 h-3" />
           Voir la timeline ({enrollment.executions.length} étapes)
@@ -380,9 +380,9 @@ function ExecutionRow({
     : '—';
 
   return (
-    <div className="flex items-start gap-2.5 text-[11.5px]">
+    <div className="flex items-start gap-2.5 text-2xs">
       {/* Step number circle */}
-      <div className="h-5 w-5 rounded-full bg-background border border-border grid place-items-center text-[9px] font-bold text-muted-foreground shrink-0 mt-0.5 tabular-nums">
+      <div className="h-5 w-5 rounded-full bg-background border border-border grid place-items-center text-3xs font-bold text-muted-foreground shrink-0 mt-0.5 tabular-nums">
         {index + 1}
       </div>
 
@@ -397,15 +397,15 @@ function ExecutionRow({
             {statusCfg.label}
           </span>
         </div>
-        <p className="text-[10.5px] text-muted-foreground mt-0.5">{dateLabel}</p>
+        <p className="text-2xs text-muted-foreground mt-0.5">{dateLabel}</p>
         {!compact && execution.final_subject && (
-          <p className="text-[11px] text-foreground/70 mt-1 italic truncate">
+          <p className="text-2xs text-foreground/70 mt-1 italic truncate">
             <span className="font-semibold not-italic">Objet :</span> {execution.final_subject}
           </p>
         )}
         {!compact && execution.final_message && execution.status === 'sent' && (
           <p
-            className="text-[11px] text-foreground/70 mt-0.5 line-clamp-2"
+            className="text-2xs text-foreground/70 mt-0.5 line-clamp-2"
             title={execution.final_message}
           >
             {execution.final_message.length > 200
@@ -414,12 +414,12 @@ function ExecutionRow({
           </p>
         )}
         {execution.error_message && (
-          <p className="text-[10.5px] text-destructive mt-0.5">
+          <p className="text-2xs text-destructive mt-0.5">
             ⚠ {formatSequenceError(execution.error_message)}
           </p>
         )}
         {execution.skip_reason && execution.status !== 'sent' && (
-          <p className="text-[10.5px] text-muted-foreground mt-0.5 italic">
+          <p className="text-2xs text-muted-foreground mt-0.5 italic">
             Raison : {execution.skip_reason}
           </p>
         )}

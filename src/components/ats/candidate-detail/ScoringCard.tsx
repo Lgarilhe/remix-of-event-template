@@ -84,7 +84,7 @@ export const ScoringCard = React.memo<ScoringCardProps>(({ scoring }) => {
                         <span className="flex items-center gap-1 text-muted-foreground">
                           {cfg.icon}
                           {cfg.label}
-                          <span className="text-[8px] text-muted-foreground/60">({dim.weight}%)</span>
+                          <span className="text-3xs text-muted-foreground/60">({dim.weight}%)</span>
                         </span>
                         <span className={cn("font-bold",
                           dim.score >= 70 ? 'text-success' :

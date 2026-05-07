@@ -54,7 +54,7 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
                   <td className="p-2 font-medium text-foreground flex items-center gap-1.5">
                     Variante {r.variant}
                     {isWinner && (
-                      <Badge className="bg-accent text-foreground text-[9px] px-1 py-0 h-4 rounded-full">
+                      <Badge className="bg-accent text-foreground text-3xs px-1 py-0 h-4 rounded-full">
                         <Star className="w-2.5 h-2.5 mr-0.5" />
                         Gagnant
                       </Badge>

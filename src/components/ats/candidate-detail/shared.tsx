@@ -138,12 +138,12 @@ export function ExperienceItem({ exp }: { exp: { title: string; company: string;
         </div>
         <div className="text-right shrink-0">
           <p className="text-xs text-muted-foreground">{formatExpDate(exp.startDate)} — {exp.isCurrent ? 'Auj.' : formatExpDate(exp.endDate)}</p>
-          {duration && <p className="text-[8px] text-muted-foreground/70">{duration}</p>}
+          {duration && <p className="text-3xs text-muted-foreground/70">{duration}</p>}
         </div>
       </div>
       {exp.description && (
         <>
-          <button onClick={() => setExpanded(!expanded)} className="text-[8px] text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
+          <button onClick={() => setExpanded(!expanded)} className="text-3xs text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
             {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
             {expanded ? 'Masquer' : 'Détails'}
           </button>
@@ -180,7 +180,7 @@ export function EducationItem({ edu }: { edu: { school: string; logo?: string; d
       </div>
       {hasDetails && (
         <>
-          <button onClick={() => setExpanded(!expanded)} className="text-[8px] text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
+          <button onClick={() => setExpanded(!expanded)} className="text-3xs text-muted-foreground hover:text-foreground mt-0.5 flex items-center gap-0.5">
             {expanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
             {expanded ? 'Masquer' : 'Détails'}
           </button>

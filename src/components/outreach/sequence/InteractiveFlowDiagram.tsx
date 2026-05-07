@@ -129,7 +129,7 @@ const StepNode: React.FC<{
           <div className={cn("w-5 h-5 rounded flex items-center justify-center shrink-0", iconBg)}>
             {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-3 h-3" /> : Icon ? <Icon className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
           </div>
-          <span className="text-[11px] font-medium truncate">{STEP_LABELS[step.actionType]}</span>
+          <span className="text-2xs font-medium truncate">{STEP_LABELS[step.actionType]}</span>
         </div>
         {canRemove && (
           <button
@@ -160,17 +160,17 @@ const StepNode: React.FC<{
           {isWhatsApp ? <img src={whatsappLogo} alt="WhatsApp" className="w-4 h-4" /> : Icon ? <Icon className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] text-muted-foreground/50 leading-none mb-0.5">Étape {index + 1}</div>
+          <div className="text-3xs text-muted-foreground/50 leading-none mb-0.5">Étape {index + 1}</div>
           <div className="text-xs font-semibold truncate leading-tight">
             {STEP_LABELS[step.actionType]}
           </div>
           {msgType && (
-            <div className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full w-fit mt-1", msgType.color)}>
+            <div className={cn("text-3xs font-medium px-1.5 py-0.5 rounded-full w-fit mt-1", msgType.color)}>
               {msgType.shortLabel}
             </div>
           )}
           {hasDelay && (
-            <div className="text-[10px] text-muted-foreground/50 mt-0.5">{delayLabel}</div>
+            <div className="text-3xs text-muted-foreground/50 mt-0.5">{delayLabel}</div>
           )}
         </div>
       </div>
@@ -251,7 +251,7 @@ const BranchColumn: React.FC<{
 
   return (
     <div className="flex flex-col items-center min-w-[110px]">
-      <div className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border mb-1.5", labelColor)}>
+      <div className={cn("flex items-center gap-1 text-3xs font-semibold px-2 py-0.5 rounded-full border mb-1.5", labelColor)}>
         <LabelIcon className="w-2.5 h-2.5" />
         {label}
       </div>
@@ -285,7 +285,7 @@ const BranchColumn: React.FC<{
       ) : (
         <button
           onClick={() => onAddBranchStep(branchType)}
-          className={cn("flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-dashed text-[10px] font-medium transition-colors", addBorder)}
+          className={cn("flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-dashed text-3xs font-medium transition-colors", addBorder)}
         >
           <Plus className="w-3 h-3" />
           Ajouter

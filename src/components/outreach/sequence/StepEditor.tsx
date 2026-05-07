@@ -78,14 +78,14 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className={cn(
-              "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
+              "text-3xs font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
               stepIsTrigger ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
             )}>
               {stepIsTrigger ? 'trigger' : 'action'}
             </span>
             <span className="text-xs font-semibold">{stepConfig?.label}</span>
           </div>
-          <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+          <div className="text-3xs text-muted-foreground/60 mt-0.5">
             Étape {stepIndex + 1}
             {msgType && (
               <> · <span className="font-medium">{msgType.label}</span></>
@@ -99,15 +99,15 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <Section label="Délai">
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <Label className="text-[10px] text-muted-foreground">Jours</Label>
+              <Label className="text-3xs text-muted-foreground">Jours</Label>
               <Input type="number" min={0} value={step.delayDays} onChange={(e) => onUpdate({ delayDays: parseInt(e.target.value) || 0 })} className="mt-0.5 h-7 text-xs" />
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">Heures</Label>
+              <Label className="text-3xs text-muted-foreground">Heures</Label>
               <Input type="number" min={0} max={23} value={step.delayHours} onChange={(e) => onUpdate({ delayHours: parseInt(e.target.value) || 0 })} className="mt-0.5 h-7 text-xs" />
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">Min</Label>
+              <Label className="text-3xs text-muted-foreground">Min</Label>
               <Input type="number" min={0} max={59} value={step.delayMinutes || 0} onChange={(e) => onUpdate({ delayMinutes: parseInt(e.target.value) || 0 })} className="mt-0.5 h-7 text-xs" />
             </div>
           </div>
@@ -116,21 +116,21 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
       {/* Send hours */}
       <Collapsible>
-        <CollapsibleTrigger className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+        <CollapsibleTrigger className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
           <ChevronRight className="w-3 h-3" />
           Créneau d'envoi
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[10px] text-muted-foreground">Pas avant</Label>
+              <Label className="text-3xs text-muted-foreground">Pas avant</Label>
               <Select value={String(step.preferredHourStart ?? 9)} onValueChange={(value) => onUpdate({ preferredHourStart: parseInt(value) })}>
                 <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{HOURS.map(h => <SelectItem key={h.value} value={String(h.value)}>{h.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">Pas après</Label>
+              <Label className="text-3xs text-muted-foreground">Pas après</Label>
               <Select value={String(step.preferredHourEnd ?? 18)} onValueChange={(value) => onUpdate({ preferredHourEnd: parseInt(value) })}>
                 <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{HOURS.map(h => <SelectItem key={h.value} value={String(h.value)}>{h.label}</SelectItem>)}</SelectContent>
@@ -152,11 +152,11 @@ export const StepEditor: React.FC<StepEditorProps> = ({
             </SelectContent>
           </Select>
           {isCrossChannelCondition(step.actionType, step.conditionType) && (
-            <p className="text-[10px] text-warning mt-1">⚠️ Condition email uniquement</p>
+            <p className="text-3xs text-warning mt-1">⚠️ Condition email uniquement</p>
           )}
           {step.conditionType === 'if_score_above' && (
             <div className="mt-2">
-              <Label className="text-[10px] text-muted-foreground">Seuil (0-100)</Label>
+              <Label className="text-3xs text-muted-foreground">Seuil (0-100)</Label>
               <Input type="number" min={0} max={100} value={step.conditionValue || '70'} onChange={(e) => onUpdate({ conditionValue: e.target.value })} className={cn("mt-0.5 w-24 h-7 text-xs", !step.conditionValue?.trim() && "border-destructive")} />
             </div>
           )}
@@ -177,7 +177,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               })}
             </SelectContent>
           </Select>
-          <p className="text-[10px] text-muted-foreground/60 mt-1">Vers quelle étape aller après celle-ci</p>
+          <p className="text-3xs text-muted-foreground/60 mt-1">Vers quelle étape aller après celle-ci</p>
         </Section>
       )}
 
@@ -186,15 +186,15 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <div className="space-y-3 p-3 bg-warning/10 border border-warning/30 rounded-lg">
           <div className="flex items-center gap-1.5 text-warning">
             <Zap className="w-3 h-3" />
-            <span className="text-[11px] font-semibold">Trigger</span>
+            <span className="text-2xs font-semibold">Trigger</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-[10px] text-muted-foreground">Timeout (j)</Label>
+              <Label className="text-3xs text-muted-foreground">Timeout (j)</Label>
               <Input type="number" min={1} value={step.timeoutDays || 3} onChange={(e) => onUpdate({ timeoutDays: parseInt(e.target.value) || 3 })} className="mt-0.5 h-7 text-xs" />
             </div>
             <div>
-              <Label className="text-[10px] text-muted-foreground">Si timeout</Label>
+              <Label className="text-3xs text-muted-foreground">Si timeout</Label>
               <Select value={step.timeoutAction || 'skip'} onValueChange={(value) => onUpdate({ timeoutAction: value as SequenceStep['timeoutAction'] })}>
                 <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{TIMEOUT_ACTIONS.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
@@ -203,7 +203,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
           {step.timeoutAction === 'alternative_step' && (
             <div>
-              <Label className="text-[10px] text-muted-foreground">Step alternatif</Label>
+              <Label className="text-3xs text-muted-foreground">Step alternatif</Label>
               <Select value={step.timeoutBranchStepId || '__none__'} onValueChange={(value) => onUpdate({ timeoutBranchStepId: value === '__none__' ? undefined : value })}>
                 <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue placeholder="Choisir..." /></SelectTrigger>
                 <SelectContent>
@@ -224,10 +224,10 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <div className="space-y-3 p-3 bg-info/10 border border-info/30 rounded-lg">
           <div className="flex items-center gap-1.5 text-info">
             <GitBranch className="w-3 h-3" />
-            <span className="text-[11px] font-semibold">Branchement</span>
+            <span className="text-2xs font-semibold">Branchement</span>
           </div>
           <div>
-            <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Label className="text-3xs text-muted-foreground flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-success" />Si connecté
             </Label>
             <Select value={step.ifTrueGotoStep || '__next__'} onValueChange={(value) => onUpdate({ ifTrueGotoStep: value === '__next__' ? undefined : value })}>
@@ -242,7 +242,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
             </Select>
           </div>
           <div>
-            <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Label className="text-3xs text-muted-foreground flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-warning" />Si non connecté
             </Label>
             <Select value={step.ifFalseGotoStep || '__next__'} onValueChange={(value) => onUpdate({ ifFalseGotoStep: value === '__next__' ? undefined : value })}>
@@ -264,10 +264,10 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <div className="space-y-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
           <div className="flex items-center gap-1.5 text-destructive">
             <GitBranch className="w-3 h-3" />
-            <span className="text-[11px] font-semibold">Branchement</span>
+            <span className="text-2xs font-semibold">Branchement</span>
           </div>
           <div>
-            <Label className="text-[10px] text-muted-foreground">Condition</Label>
+            <Label className="text-3xs text-muted-foreground">Condition</Label>
             <Select value={step.conditionType} onValueChange={(value) => onUpdate({ conditionType: value as SequenceStep['conditionType'] })}>
               <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>{ALL_CONDITION_TYPES.filter(c => c.value !== 'always').map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
@@ -275,12 +275,12 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           </div>
           {step.conditionType === 'if_score_above' && (
             <div>
-              <Label className="text-[10px] text-muted-foreground">Seuil (0-100)</Label>
+              <Label className="text-3xs text-muted-foreground">Seuil (0-100)</Label>
               <Input type="number" min={0} max={100} value={step.conditionValue || '70'} onChange={(e) => onUpdate({ conditionValue: e.target.value })} className="mt-0.5 w-24 h-7 text-xs" />
             </div>
           )}
           <div>
-            <Label className="text-[10px] text-muted-foreground">Si faux</Label>
+            <Label className="text-3xs text-muted-foreground">Si faux</Label>
             <Select value={step.timeoutAction || 'skip'} onValueChange={(value) => onUpdate({ timeoutAction: value as SequenceStep['timeoutAction'] })}>
               <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>{TIMEOUT_ACTIONS.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
@@ -293,7 +293,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       {needsMessage(step.actionType) && (
         <div className="space-y-4">
           {isWhatsAppStep(step.actionType) && (
-            <div className="text-[10px] text-success bg-success/10 border border-success/30 rounded-md px-3 py-2">
+            <div className="text-3xs text-success bg-success/10 border border-success/30 rounded-md px-3 py-2">
               📱 WhatsApp — candidats sans numéro skippés.
             </div>
           )}
@@ -302,7 +302,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
           <div className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-md">
             <div className="flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-              <span className="text-[11px] font-medium">Personnalisation IA</span>
+              <span className="text-2xs font-medium">Personnalisation IA</span>
             </div>
             <Switch
               checked={step.useAiPersonalization}
@@ -312,32 +312,32 @@ export const StepEditor: React.FC<StepEditorProps> = ({
 
           {step.useAiPersonalization ? (
             <div>
-              <Label className="text-[10px] text-muted-foreground">Ton</Label>
+              <Label className="text-3xs text-muted-foreground">Ton</Label>
               <Select value={step.aiTone || 'professional'} onValueChange={(value) => onUpdate({ aiTone: value as SequenceStep['aiTone'] })}>
                 <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{AI_TONES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
               </Select>
-              <p className="text-[10px] text-muted-foreground/60 mt-1.5">Message généré au moment de l'envoi, basé sur le profil et le brief.</p>
+              <p className="text-3xs text-muted-foreground/60 mt-1.5">Message généré au moment de l'envoi, basé sur le profil et le brief.</p>
             </div>
           ) : (
             <>
               {needsSubject(step.actionType) && (
                 <div>
                   <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-muted-foreground">Objet</Label>
+                    <Label className="text-3xs text-muted-foreground">Objet</Label>
                     <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => onUpdate({ subjectTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                   </div>
                   <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => onUpdate({ subjectTemplate: e.target.value })} placeholder={step.actionType === 'email' ? "Objet de l'email" : "Objet de l'InMail"} className={cn("mt-0.5 h-7 text-xs", needsSubject(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
-                  {needsSubject(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-[10px] text-destructive mt-0.5">Objet requis</p>}
+                  {needsSubject(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-3xs text-destructive mt-0.5">Objet requis</p>}
                 </div>
               )}
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-[10px] text-muted-foreground">Message</Label>
+                  <Label className="text-3xs text-muted-foreground">Message</Label>
                   <div className="flex items-center gap-1.5">
                     <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} showEmailVariables={step.actionType === 'email'} />
                     {step.actionType === 'connection_request' && (
-                      <span className={cn("text-[10px]", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground/50")}>
+                      <span className={cn("text-3xs", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground/50")}>
                         {step.messageTemplate?.length || 0}/300
                       </span>
                     )}
@@ -358,28 +358,28 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               {step.actionType === 'email' && (
                 <div className="space-y-3 pt-3 border-t border-border/30">
                   <Collapsible>
-                    <CollapsibleTrigger className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+                    <CollapsibleTrigger className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
                       <ChevronRight className="w-3 h-3" />CC / BCC
                     </CollapsibleTrigger>
                     <CollapsibleContent className="space-y-2 pt-2">
                       <div>
-                        <Label className="text-[10px] text-muted-foreground">CC</Label>
+                        <Label className="text-3xs text-muted-foreground">CC</Label>
                         <Input value={(step.ccEmails || []).join(', ')} onChange={(e) => onUpdate({ ccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="email@ex.com" className="mt-0.5 h-7 text-xs" />
                       </div>
                       <div>
-                        <Label className="text-[10px] text-muted-foreground">BCC</Label>
+                        <Label className="text-3xs text-muted-foreground">BCC</Label>
                         <Input value={(step.bccEmails || []).join(', ')} onChange={(e) => onUpdate({ bccEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="email@ex.com" className="mt-0.5 h-7 text-xs" />
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
 
                   <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-muted-foreground">Désinscription</Label>
+                    <Label className="text-3xs text-muted-foreground">Désinscription</Label>
                     <Switch checked={step.includeUnsubscribe ?? false} onCheckedChange={(checked) => onUpdate({ includeUnsubscribe: checked })} />
                   </div>
 
                   <div>
-                    <Label className="text-[10px] text-muted-foreground">Signature</Label>
+                    <Label className="text-3xs text-muted-foreground">Signature</Label>
                     <Select value={step.signatureId || '__none__'} onValueChange={(value) => onUpdate({ signatureId: value === '__none__' ? undefined : value })}>
                       <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue placeholder="Aucune" /></SelectTrigger>
                       <SelectContent>
@@ -403,7 +403,7 @@ const Section: React.FC<{ label: string; icon?: React.ReactNode; children: React
   <div className="space-y-1.5">
     <div className="flex items-center gap-1.5">
       {icon}
-      <Label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">{label}</Label>
+      <Label className="text-3xs font-medium uppercase tracking-wider text-muted-foreground/60">{label}</Label>
     </div>
     {children}
   </div>
