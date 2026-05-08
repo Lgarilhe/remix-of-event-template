@@ -134,6 +134,178 @@ const DELAY_BETWEEN_BATCHES_MS = 200;
 const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 const MAX_LLM_RETRIES = 2;
 
+/**
+ * SYSTEM prompt — persona, rules, rubric, output schema.
+ *
+ * Stable across all scoring calls → marked with `cache_control: ephemeral`
+ * on the Anthropic API (5min TTL). Min cacheable size on Sonnet 4.6 is 1024
+ * tokens, on Haiku 4.5 is 2048 tokens. This prompt is ~2800 tokens → safely
+ * cacheable on both models.
+ *
+ * Previously inlined in the user prompt — caused 60-70 % of input token
+ * waste on multi-batch scorings (rules re-sent at full cost on each call).
+ */
+const SCORING_SYSTEM_PROMPT = `Tu es un recruteur expert senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours, pedigree. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell, etc.) et les skills implicites dans les descriptions d'expérience. Tu peux scorer un seul candidat ou plusieurs en une passe. Réponds en JSON compact, sans markdown.
+
+=== TA MISSION (par candidat) ===
+
+1. **Adéquation technique** (0-100) : maîtrise des compétences requises ?
+   → Synonymes : VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell.
+   → Skills implicites : skills TRÈS PROBABLES (>80% confiance) selon contexte employeur+rôle.
+     Ex OUI : "SRE chez OVH" → infra cloud, Linux, monitoring très probables.
+     Ex NON : "Chef de projet infra chez BNP" → ne PAS supposer datacenter/cloud.
+   → En cas de doute, ne compte PAS le skill matché. Mentionne dans concerns.
+
+2. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
+
+3. **Pedigree** (0-100) : Qualité des expériences. Suit la règle d'équité géo ci-dessous.
+
+4. **Score global** (0-100) : Note finale de match candidat/poste.
+   Intègre la qualité du pedigree dans le score global.
+
+5. **Cohérence du parcours** : Progression logique, spécialisation, pertinence sectorielle.
+
+6. **Likely to Switch** (0-100) : probabilité d'ouverture au changement.
+   → Tenure courte au poste actuel (<2 ans) = +20
+   → Promotion récente sans scope = +15
+   → Pattern de changement tous les 2-3 ans = +15
+   → Restructuration/layoffs visibles = +20
+   → Open to Work LinkedIn = +30
+   → Longue tenure (5+ ans même poste) = -20
+
+7. **Career Growth** (0-100) : trajectoire de progression.
+   → Promotions visibles = +30
+   → Entreprises de plus en plus prestigieuses = +20
+   → Montée en séniorité constante = +20
+   → Reconversion réussie = +15
+   → Stagnation (même titre 5+ ans) = -20
+
+=== RUBRIC MUST-HAVE (CRITIQUE pour ne PAS écarter à tort les profils light) ===
+
+Pour chaque must-have du poste, choisis UN verdict :
+
+- "passed" : INCLUT 2 cas
+  (a) Preuve EXPLICITE dans le profil (skill listée, projet visible, etc.)
+  (b) PROFIL THIN (peu d'infos détaillées) MAIS signaux contextuels COHÉRENTS
+      (titre + séniorité + entreprise actuelle + parcours).
+      Ex 1 : Lead Backend chez Doctolib avec 8 ans XP → must-have "Go" = passed
+             (la stack Doctolib = Go, le titre = backend senior).
+      Ex 2 : Tech Lead 10 ans XP, ancien Stripe + Datadog → must-have
+             "microservices distribués" = passed (impossible sans toucher).
+      **Test mental** : "en call de 30 min, ce candidat pourrait-il parler du
+      sujet pendant 10 min sans coller ?" Si OUI → passed.
+
+- "failed" : profil CONTREDIT clairement le critère (domaine totalement
+  différent, absence de signaux ET incompatibilité explicite).
+  Ex : Frontend React-only depuis 8 ans pour un must-have "Go backend
+  distribué" = failed.
+
+- "uncertain" : RÉSERVÉ aux cas où :
+  (a) Profil minimal (juste nom + 1 ligne) ET aucun signal contextuel
+  (b) OU critère très pointu (techno de niche) ET aucun signal pour/contre
+  → Si les SIGNAUX CONTEXTUELS supportent même sans preuve explicite, choisis
+    "passed" PAS "uncertain". Mieux vaut faire confiance qu'écarter un bon profil.
+  → "uncertain" n'est PAS le défaut quand on hésite. Seulement quand on n'a
+    vraiment AUCUN signal pour trancher.
+
+Si les critères listent plusieurs options avec "parmi/ou/dont", au moins UNE
+suffit. Sois intelligent sur les noms d'écoles, certifs, synonymes techniques.
+
+=== RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE — pedigree (NON NÉGOCIABLE) ===
+
+Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT — PAS de
+la géographie. Tu n'as PAS le droit de baisser le pedigree parce qu'une
+entreprise est "moins connue du recruteur français" — tu reconnais son statut
+local.
+
+→ **Bonus FORT** : scale-ups reconnues GLOBALEMENT, peu importe le pays :
+  • EU/FR : Doctolib, Alan, Datadog, Contentsquare, Mirakl, Qonto, Back Market...
+  • US : GAFAM, FAANG, Stripe, Airbnb, Uber, Snowflake, Databricks...
+  • Africa : Andela, Flutterwave, Wave, Yoco, Chipper Cash, Yassir, Twiga, Kuda...
+  • LATAM : MercadoLibre, Rappi, Nubank, Kavak, dLocal, Cornershop...
+  • Asia : Grab, Gojek, Razorpay, Coupang, Sea/Shopee, Tokopedia, Klook...
+  • MEA : Careem, Talabat, Swvl, Tabby, Kitopi...
+  + GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1.
+
+→ **Bonus modéré** : startups funded reconnues localement, PME tech innovantes.
+→ **Neutre** : grands groupes traditionnels (CAC40, admins, PME non-tech).
+→ **Signal négatif LIMITÉ** : ESN/SSII body shopping pure (rotation 3-6 mois
+   chez 5 clients en 2 ans, titre "consultant junior" dans grosse SSII).
+   ⚠️ NE PAS pénaliser une boîte juste parce qu'elle fait du service offshore.
+   Un profil basé à l'étranger avec un rôle Engineer/Lead/Architect dans une
+   boîte qui livre du software (même offshore) reste valide.
+
+⚠️ Durée et titre comptent autant que le nom de la boîte :
+→ Stage/alternance dans une bonne boîte = bonus FAIBLE
+→ < 6 mois dans une boîte top = bonus FAIBLE (période d'essai/passage éclair)
+→ 1-2 ans poste pertinent dans une boîte exigeante = bonus FORT
+→ 3+ ans poste senior/lead dans une boîte reconnue = bonus TRÈS FORT
+→ Titre non pertinent (support, admin, RH) dans une boîte tech ≠ bonus tech
+→ Seules les expériences sur des POSTES PERTINENTS pour le job comptent.
+
+=== RÈGLE D'ÉQUITÉ DIPLÔME (NON NÉGOCIABLE) ===
+
+Le diplôme COMPTE pour ce qu'il valide TECHNIQUEMENT, pas pour son prestige
+géographique :
+- Diplôme d'ingé/Master/MBA d'un pays QUELCONQUE = qualification valide.
+- École française "non-grande école" (UTC, INSA, INP, EPITA, EPITECH, IUT/BUT)
+  ≠ pénalité — ces écoles forment d'excellents profils.
+- École étrangère reconnue dans son pays (IIT en Inde, FUOYE/UI au Nigeria,
+  ITAM/ITESM au Mexique, NUS/NTU à Singapour, FUTO en Afrique, USP/UNICAMP
+  au Brésil...) = équivalent d'une bonne école FR.
+- Test = "le candidat a-t-il un cursus tech complet ?" Si oui → OK.
+- École inconnue → ne pénalise PAS, marque "diplôme international" en neutre.
+
+=== VÉRIFICATIONS DE COMPATIBILITÉ ===
+
+Impactent le score global ET les concerns :
+
+- **Contrat** : si poste CDI mais candidat freelance/indépendant explicite
+  (headline/À propos) → score global plafonné à 45, concern "Profil freelance
+  vs poste CDI". Inversement si poste freelance et profil "carrière CDI 10+
+  ans en grand groupe" → concern "Risque attractivité freelance".
+
+- **Salaire/TJM** : si profil mentionne explicitement un TJM/salaire (ex
+  "TJM 800€/j", "Cherche poste 70k€") incompatible avec le range du poste
+  (>15% au-dessus du max) → concern "Attente salariale > range" et baisse
+  score de 10-15 points.
+
+- **Remote** : si poste 100% on-site dans une ville et profil dans une autre
+  région française sans signal de mobilité → concern "Distance géo, mobilité
+  à confirmer". Si poste full-remote → ne JAMAIS pénaliser pour la location.
+
+- **Localisation** : si poste France et profil à l'étranger (USA, UK, Asie...)
+  sans signal de retour → score global plafonné à 40, concern "Profil basé à
+  l'étranger".
+
+Renseigne ces concerns spécifiques dans le tableau "concerns" en plus des
+concerns techniques.
+
+=== ÉVALUATION DES CRITÈRES DU MANAGER ===
+
+Si des critères d'évaluation sont fournis dans le contexte du poste, évalue
+CHAQUE critère individuellement. Pour chaque : verdict ("pass"/"partial"/
+"fail"/"unknown") + justification courte (max 20 mots). Respecte les
+deal-breakers et les poids.
+
+=== FORMAT DE RÉPONSE ===
+
+Mode SINGLE (1 candidat) — réponds avec UN objet :
+{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,
+"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],
+"missingCriticalSkills":["skill2"],"summary":"max 25 mots",
+"strengths":["max 4"],"concerns":["max 4"],
+"mustHavePassed":"passed|failed|uncertain","mustHaveDetails":null,
+"notableCompanies":["max 3"],
+"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif"}],
+"switchSignals":["signal1"],
+"contractMismatch":null,"locationMismatch":null,"salaryMismatch":null}
+
+Mode BATCH (N candidats) — réponds avec UN ARRAY, un objet par candidat dans
+l'ordre, chaque objet inclut "id":"<id du candidat>" en plus des champs ci-dessus.
+
+JSON uniquement, sans markdown, sans prose autour.`;
+
 // ─── Skill Synonyms ─────────────────────────────────────────────────────────
 // Synchronized with src/hooks/linkedin/skillSynonyms.ts — keep both in sync.
 // Used for hard-filter pre-computation and implicit skill extraction.
@@ -611,104 +783,6 @@ async function applyHardFilters(profile: ProfileData, job: JobData): Promise<{ p
   return { passed: true };
 }
 
-// Legacy must-have AI function kept as fallback (unused in normal flow)
-async function evaluateMustHaveWithAI(
-  profile: ProfileData,
-  job: JobData,
-  modelOverride?: string,
-): Promise<{ passed: boolean; reason?: string }> {
-  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!ANTHROPIC_API_KEY) {
-    console.warn("[must-have-ai] No ANTHROPIC_API_KEY, skipping must-have check");
-    return { passed: true };
-  }
-
-  const educationEntries = (profile.education || [])
-    .map((e: any) => {
-      if (typeof e === "string") return e;
-      return [e.school, e.school_details?.name, e.degree, e.field, e.field_of_study].filter(Boolean).join(" - ");
-    })
-    .filter(Boolean);
-
-  const profileSummary = [
-    `Nom: ${profile.name}`,
-    profile.headline ? `Headline: ${profile.headline}` : "",
-    profile.currentRole ? `Poste actuel: ${profile.currentRole}` : "",
-    profile.currentCompany ? `Entreprise: ${profile.currentCompany}` : "",
-    (profile.skills || []).length > 0 ? `Skills: ${profile.skills!.join(", ")}` : "",
-    educationEntries.length > 0
-      ? `Formations:\n${educationEntries.map((e, i) => `  ${i + 1}. ${e}`).join("\n")}`
-      : "Formation: non renseignée",
-    profile.yearsOfExperience !== undefined ? `XP: ${profile.yearsOfExperience} ans` : "",
-    (profile.workExperience || []).length > 0
-      ? `Expériences:\n${profile
-          .workExperience!
-          .map((w) => {
-            let line = `- ${w.role} @ ${w.company}`;
-            if (w.duration) line += ` (${w.duration})`;
-            if (w.description) line += ` — ${w.description.substring(0, 200)}`;
-            return line;
-          })
-          .join("\n")}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const prompt = sanitizeText(
-    `Tu es un recruteur expert. Vérifie si ce candidat satisfait les critères OBLIGATOIRES (must-have) du poste.
-
-CRITÈRES OBLIGATOIRES: ${job.mustHave}
-
-PROFIL CANDIDAT:
-${profileSummary}
-
-RÈGLES:
-- Si les critères listent plusieurs écoles/formations avec "parmi", "ou", "dont", le candidat doit en avoir AU MOINS UNE.
-- Vérifie TOUTES les formations listées dans le profil.
-- Sois intelligent sur les noms d'écoles : "École Polytechnique" = "Polytechnique" = "X". "CentraleSupélec" = "Centrale" = "Supélec".
-- Pour les skills techniques, accepte les synonymes évidents (React = ReactJS, K8s = Kubernetes, etc.)
-- Sois strict mais juste.
-
-Réponds UNIQUEMENT avec un JSON: {"passed": true/false, "reason": "explication courte si refusé, null si accepté"}`,
-  );
-
-  try {
-    const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelOverride || CLAUDE_MODEL_DEFAULT,
-        max_tokens: 150,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }, 30000);
-
-    if (!res.ok) {
-      console.error(`[must-have-ai] Anthropic error ${res.status}`);
-      return { passed: true }; // Don't block on API errors
-    }
-
-    const data = await res.json();
-    const text = data.content?.[0]?.text || "";
-    console.log(`[must-have-ai] ${profile.name}: ${text.substring(0, 200)}`);
-
-    const parsed = extractJsonRobust(text);
-    return {
-      passed: !!parsed.passed,
-      reason: parsed.passed ? undefined : parsed.reason || "Must-have non satisfait (IA)",
-    };
-  } catch (err) {
-    console.error("[must-have-ai] Error:", err);
-    return { passed: true };
-  }
-}
-
 // ─── Layer 2: Weighted Criteria Scoring (quantifiable dimensions only) ────────
 // Tech/skill matching is delegated to the LLM for universal accuracy.
 // This layer focuses on dimensions that can be computed deterministically.
@@ -1047,57 +1121,25 @@ interface LLMResult {
   tokensUsed: { input: number; output: number };
 }
 
-async function callLLM(
-  profile: ProfileData,
-  job: JobData,
+interface BatchLLMInput {
+  profile: ProfileData;
   preComputedData: {
     weightedScore: number;
     dimensions: Record<string, DimensionScore>;
     matchedSkills: string[];
     missingSkills: string[];
     semanticScore: number | null;
-  },
-  customScoringInstructions?: string,
-  modelOverride?: string,
-): Promise<LLMResult> {
-  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
+  };
+}
 
-  // Build comprehensive work experience text — include descriptions for accurate assessment
-  const workExpText =
-    (profile.workExperience || [])
-      .map((w) => {
-        let line = `- ${w.role} @ ${w.company}`;
-        if (w.duration) line += ` (${w.duration})`;
-        if (w.description) line += ` — ${w.description.substring(0, 500)}`;
-        if (w.skills && w.skills.length > 0) line += ` [Skills: ${w.skills.join(", ")}]`;
-        return line;
-      })
-      .join("\n") ||
-    (profile.pastPositions || [])
-      .map((p) => `- ${p}`)
-      .join("\n") ||
-    "Aucune expérience renseignée";
-
-  // Build education text
-  const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
-
-  const hasDescriptions = (profile.workExperience || []).some(w => w.description && w.description.length > 30);
-  const dataWarning = !hasDescriptions
-    ? `\n⚠️ DONNÉES INCOMPLÈTES: Les descriptions d'expérience sont absentes. Évalue sur les titres, entreprises, et skills déclarés. NE PÉNALISE PAS le candidat pour manque de détails — ajuste ton score de confiance plutôt que le score technique.\n`
-    : "";
-
-  const prompt = sanitizeText(
-    `Tu es un recruteur expert senior. Évalue la correspondance COMPLÈTE de ce candidat avec le poste.
-
-=== CONTEXTE ALGO (indicatif, tu peux corriger) ===
-Score quantitatif: ${preComputedData.weightedScore}/100
-Skills heuristiques matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun (heuristique limitée)"}
-Skills heuristiques manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
-Similarité sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
-XP: ${preComputedData.dimensions.seniority?.details || "?"} | Location: ${preComputedData.dimensions.location?.details || "?"} | Réceptivité: ${preComputedData.dimensions.receptivity?.details || "?"}
-
-=== POSTE ===
+/**
+ * Build the job context block. Shared across all profiles in a batch.
+ * Marked with cache_control on the API → second cache breakpoint after the
+ * system prompt. Reused for free across batches of the same job within 5min.
+ */
+function buildJobContext(job: JobData, customScoringInstructions?: string): string {
+  return sanitizeText(
+    `=== POSTE ===
 ${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}
 Skills requis: ${(job.skills || []).join(", ") || "Non spécifiés"}
 ${job.description ? "Description: " + job.description.substring(0, 500) : ""}
@@ -1115,142 +1157,64 @@ ${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriter
 ${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
 ${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
 ${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
-
-=== CANDIDAT ===
-${profile.name} — ${profile.headline || profile.currentRole || "?"}
-${profile.location ? "📍 " + profile.location : ""}
-${dataWarning}${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
-Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
-${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 400) : ""}
-
-Formation:
-${educationText}
-
-Expériences:
-${workExpText}
-
-=== TA MISSION (COMPLÈTE) ===
-Évalue TOUTES ces dimensions :
-
-1. **Adéquation technique** (0-100) : Le candidat maîtrise-t-il les compétences requises ?
-   → Synonymes : VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell.
-   → Skills implicites : considère les skills TRÈS PROBABLES (>80% confiance) selon le contexte employeur+rôle.
-     Exemple OUI : "SRE chez OVH" → infra cloud, Linux, monitoring très probables.
-     Exemple NON : "Chef de projet infra chez BNP Paribas" → ne PAS supposer datacenter/cloud.
-   → En cas de doute sur un skill implicite, ne le compte PAS comme matché. Mentionne-le dans concerns.
-   → Liste les skills effectivement matchés ET les skills critiques manquants.
-
-2. **Must-have** : Si des critères sont marqués must-have/obligatoires, le candidat les satisfait-il ?
-   → Si les critères listent plusieurs options avec "parmi", "ou", "dont", au moins UNE suffit.
-   → Sois intelligent sur les noms d'écoles, certifications, et synonymes techniques.
-   → 3 verdicts possibles :
-     - "passed" : profil satisfait le critère. INCLUT 2 cas :
-       (a) Preuve EXPLICITE dans le profil (skill listée, projet visible, etc.)
-       (b) PROFIL THIN (peu d'infos détaillées) MAIS signaux contextuels COHÉRENTS
-           avec le critère : titre du poste, séniorité, entreprise actuelle, parcours.
-           Ex 1 : Lead Backend Engineer chez Doctolib avec 8 ans d'XP → must-have "Go" =
-                  passed même si "Go" n'apparaît pas littéralement (la stack Doctolib =
-                  Go, le titre = backend senior).
-           Ex 2 : Tech Lead avec 10 ans d'XP, ancien Stripe + Datadog → must-have
-                  "microservices distribués" = passed (impossible d'avoir bossé là
-                  sans toucher à ça).
-           **Le test mental** : "si on l'avait en call de 30 min, est-ce que ce candidat
-           pourrait raisonnablement parler du sujet pendant 10 min sans coller ?"
-           Si OUI → passed.
-     - "failed" : le profil CONTREDIT clairement le critère (domaine totalement différent,
-       absence de signaux ET incompatibilité explicite). Ex : Frontend React-only depuis
-       8 ans pour un must-have "Go backend distribué" = failed.
-     - "uncertain" : RÉSERVÉ aux cas où :
-       (a) Le profil est minimal (juste nom + 1 ligne) ET aucun signal contextuel
-           (pas de titre clair, pas de séniorité, pas d'entreprise pertinente)
-       (b) OU le critère est très pointu (techno de niche) ET aucun signal le confirme
-           ni le contredit
-       → Si les SIGNAUX CONTEXTUELS supportent le critère même sans preuve explicite,
-         choisis "passed" PAS "uncertain". Mieux vaut faire confiance qu'écarter un bon profil.
-       → "uncertain" n'est PAS le défaut quand on hésite. C'est seulement quand on n'a
-         vraiment AUCUN signal pour trancher.
-
-3. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
-
-4. **Qualité des expériences & pedigree** : Évalue la QUALITÉ des entreprises ET la pertinence de l'expérience (durée + titre).
-
-   🌍 RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE (CRITIQUE) :
-   Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT de l'entreprise — PAS de sa
-   géographie. Une scale-up africaine (Andela, Flutterwave, Wave, Twiga, Yassir...), latino-américaine
-   (MercadoLibre, Rappi, Nubank, Kavak, dLocal...), asiatique (Grab, Gojek, Razorpay, Coupang, Shopee...)
-   ou moyen-orientale (Careem, Talabat, Swvl...) reconnue dans son marché vaut autant qu'une scale-up
-   française ou US équivalente. Tu n'as PAS le droit de pénaliser un profil parce que ses entreprises
-   sont moins connues du recruteur français — tu fais l'effort de RECONNAÎTRE leur statut local.
-   En cas de doute sur une entreprise étrangère, va voir le rôle (Lead Engineer dans une boîte de
-   1000+ personnes = pedigree fort, peu importe le pays).
-
-   → **Bonus fort** : scale-ups reconnues GLOBALEMENT, peu importe la géographie :
-     • EU/FR : Doctolib, Alan, Datadog, Contentsquare, Mirakl, Qonto, Back Market, Spendesk...
-     • US : GAFAM, FAANG, Stripe, Airbnb, Uber, Snowflake, Databricks...
-     • Africa : Andela, Flutterwave, Wave, Yoco, Chipper Cash, Yassir, Twiga, Kuda...
-     • LATAM : MercadoLibre, Rappi, Nubank, Kavak, dLocal, Cornershop...
-     • Asia : Grab, Gojek, Razorpay, Coupang, Sea/Shopee, Tokopedia, Klook...
-     • MEA : Careem, Talabat, Swvl, Tabby, Kitopi...
-     + GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1 (McKinsey, BCG, etc.).
-   → **Bonus modéré** : startups funded reconnues dans leur niche/marché local, PME tech innovantes.
-   → **Neutre** : grands groupes traditionnels (CAC40, administrations, PME non-tech).
-   → **Signal négatif (LIMITÉ)** : ESN/SSII body shopping pure (Alten, Altran, Sopra, CGI sur des missions
-     génériques = neutre-négatif), intérim généraliste.
-     ⚠️ NE PAS pénaliser une boîte juste parce qu'elle fait du service offshore. Si le candidat a un
-     titre Engineer/Lead/Architect dans une boîte qui livre du software à des clients (même offshore),
-     son expérience reste valide. Le signal négatif s'applique aux profils QUI ONT FAIT du body
-     shopping (mission courte 3-6 mois, rotation rapide chez 5 clients en 2 ans, titre "consultant junior"
-     dans grosse SSII), pas aux profils basés ou ayant travaillé à l'étranger en général.
-
-   ⚠️ IMPORTANT — La durée et le titre comptent autant que le nom de la boîte :
-   → Stage ou alternance dans une bonne boîte = bonus FAIBLE (formation mais pas de vraie responsabilité)
-   → < 6 mois dans une boîte top = bonus FAIBLE (période d'essai ou passage éclair, pas de vrai impact)
-   → 1-2 ans sur un poste pertinent dans une boîte exigeante = bonus FORT
-   → 3+ ans sur un poste senior/lead dans une boîte reconnue = bonus TRÈS FORT
-   → Titre non pertinent (support, admin, RH) dans une boîte tech ≠ bonus tech
-   → Seules les expériences sur des POSTES PERTINENTS pour le job évalué comptent pour le pedigree
-
-   🎓 RÈGLE D'ÉQUITÉ DIPLÔME (CRITIQUE) :
-   Le diplôme COMPTE pour ce qu'il valide TECHNIQUEMENT, pas pour son prestige géographique.
-   - Diplôme d'ingé/Master/MBA d'une école de N'IMPORTE QUEL pays = qualification valide.
-   - École française "non-grande école" (UTC, INSA, INP, EPITA, EPITECH, IUT/BUT) ≠ pénalité, ce sont
-     des écoles qui forment de très bons profils.
-   - École étrangère reconnue dans son pays (IIT en Inde, FUOYE/UI au Nigeria, ITAM/ITESM au Mexique,
-     NUS/NTU à Singapour, FUTO en Afrique, USP/UNICAMP au Brésil...) = équivalent d'une bonne école FR.
-   - Tu n'as PAS le droit de baisser le pedigree parce que l'école est étrangère ou peu connue du
-     recruteur français. Le test = "le candidat a-t-il un cursus tech complet ?" Si oui → OK.
-   - Si tu ne connais pas une école, tu NE pénalises pas — tu marques "diplôme international" en neutre.
-
-5. **Cohérence du parcours** : Progression logique, spécialisation pertinente, pertinence sectorielle.
-
-6. **Signaux d'alerte** : Job-hopping, surqualification, expertise complètement hors-sujet.
-
-7. **Score global** (0-100) : Ta note finale de correspondance candidat/poste. Intègre la qualité du pedigree dans le score global — un candidat avec les bonnes compétences ET un parcours dans des boîtes exigeantes mérite un score supérieur à un profil équivalent dans des ESN.
-
-8. **Évaluation des critères du manager** : Si des critères d'évaluation sont fournis dans "Détails" (section CRITÈRES D'ÉVALUATION DU MANAGER), évalue CHAQUE critère individuellement. Pour chaque critère, donne un verdict ("pass", "partial", "fail", "unknown") et une justification courte (max 20 mots). Respecte les deal-breakers et les poids.
-
-9. **Likely to Switch** (0-100) : Évalue la probabilité que le candidat soit ouvert au changement. Signaux:
-   → Tenure courte au poste actuel (< 2 ans) = +20
-   → Promotion récente sans augmentation visible de scope = +15
-   → Pattern de changement tous les 2-3 ans = +15
-   → Entreprise en restructuration/layoffs = +20
-   → Open to Work activé sur LinkedIn = +30
-   → Longue tenure (5+ ans au même poste) = -20
-   → Retourne un score 0-100 et les signaux détectés.
-
-10. **Career Growth** (0-100) : Évalue la trajectoire de progression du candidat:
-   → Promotions visibles (Junior→Senior, IC→Lead, etc.) = +30
-   → Entreprises de plus en plus prestigieuses = +20
-   → Montée en séniorité constante = +20
-   → Reconversion réussie = +15
-   → Stagnation (même titre/niveau 5+ ans) = -20
-   → Retourne un score 0-100.
-${customScoringInstructions ? "\nConsignes supplémentaires de l'utilisateur: " + customScoringInstructions.slice(0, 400) : ""}
-
-Réponds UNIQUEMENT en JSON compact :
-{"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 3"],"criteriaEvaluations":[{"label":"nom du critère","verdict":"pass","reason":"justification courte"}],"switchSignals":["signal1"]}
-pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "failed" / "uncertain". criteriaEvaluations: évaluation de chaque critère du manager si fournis, sinon [].`,
+${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 400) : ""}`
   );
+}
+
+/**
+ * Build a compact profile section for the user prompt.
+ * Variable per profile → not cacheable.
+ */
+function buildProfileSection(profile: ProfileData, preComputedData: BatchLLMInput["preComputedData"], idx: number): string {
+  const workExpText = (profile.workExperience || []).length > 0
+    ? (profile.workExperience || []).slice(0, 6).map((w, i) =>
+      `  ${i + 1}. ${w.role} @ ${w.company}${w.duration ? " (" + w.duration + ")" : ""}${w.description ? "\n     " + w.description.substring(0, 200) : ""}${w.skills?.length ? "\n     Skills: " + w.skills.join(", ") : ""}`
+    ).join("\n") : "  Aucune expérience listée";
+
+  const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
+
+  const hasDescriptions = (profile.workExperience || []).some(w => w.description && w.description.length > 30);
+  const dataWarning = !hasDescriptions ? " [DONNÉES INCOMPLÈTES: évalue sur titres/entreprises/skills]" : "";
+
+  return sanitizeText(
+    `--- CANDIDAT ${idx + 1} (id: ${profile.id}) ---
+${profile.name} — ${profile.headline || profile.currentRole || "?"}${dataWarning}
+${profile.location ? "📍 " + profile.location : ""}
+${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
+Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
+Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
+Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
+${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 300) : ""}
+Formation: ${educationText}
+Expériences:
+${workExpText}`
+  );
+}
+
+/**
+ * Single-profile LLM call. Used as fallback when batch parsing fails.
+ *
+ * Same caching architecture as callLLMBatch :
+ * - system prompt (cached)
+ * - user content split: jobContext (cached) + profile section (variable).
+ */
+async function callLLM(
+  profile: ProfileData,
+  job: JobData,
+  preComputedData: BatchLLMInput["preComputedData"],
+  customScoringInstructions?: string,
+  modelOverride?: string,
+): Promise<LLMResult> {
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
+
+  const jobContext = buildJobContext(job, customScoringInstructions);
+  const profileSection = buildProfileSection(profile, preComputedData, 0);
+  const profileBlock = `=== 1 CANDIDAT À ÉVALUER ===
+
+${profileSection}
+
+Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prompt, sans le champ "id".`;
 
   let lastError: Error | null = null;
   let data: any = null;
@@ -1272,8 +1236,14 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
       },
       body: JSON.stringify({
         model: modelOverride || CLAUDE_MODEL_DEFAULT,
-        system: [{ type: "text", text: "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Réponds en JSON compact, sans markdown.", cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: prompt }],
+        system: [{ type: "text", text: SCORING_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: jobContext, cache_control: { type: "ephemeral" } },
+            { type: "text", text: profileBlock },
+          ],
+        }],
         max_tokens: 800,
         temperature: 0.1,
       }),
@@ -1298,7 +1268,10 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
   if (!data) throw lastError || new Error("LLM call failed after retries");
 
   const rawContent = data.content?.[0]?.text || "";
-  console.log(`[llm] ${profile.name}: ${rawContent.substring(0, 300)}`);
+  if (data.usage) {
+    const u = data.usage;
+    console.log(`[llm] ${profile.name} tokens: in=${u.input_tokens || 0} out=${u.output_tokens || 0} cache_read=${u.cache_read_input_tokens || 0} cache_create=${u.cache_creation_input_tokens || 0}`);
+  }
   const parsed = extractJsonRobust(rawContent);
 
   return {
@@ -1331,18 +1304,7 @@ pedigreeScore: 0-100, qualité des entreprises. mustHavePassed: "passed" / "fail
 
 // ─── Batch LLM Scoring ─────────────────────────────────────────────────────
 // Score multiple profiles in a single API call to reduce latency and token cost.
-// The job context + system prompt are sent ONCE, profiles are listed together.
-
-interface BatchLLMInput {
-  profile: ProfileData;
-  preComputedData: {
-    weightedScore: number;
-    dimensions: Record<string, DimensionScore>;
-    matchedSkills: string[];
-    missingSkills: string[];
-    semanticScore: number | null;
-  };
-}
+// System prompt + job context are sent ONCE (cached), profiles are listed together.
 
 async function callLLMBatch(
   inputs: BatchLLMInput[],
@@ -1355,103 +1317,20 @@ async function callLLMBatch(
 
   if (inputs.length === 0) return new Map();
 
-  // Build job context (shared across all profiles)
-  const jobContext = sanitizeText(
-    `=== POSTE ===
-${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}
-Skills requis: ${(job.skills || []).join(", ") || "Non spécifiés"}
-${job.description ? "Description: " + job.description.substring(0, 500) : ""}
-${job.requirements ? "Exigences: " + job.requirements.substring(0, 400) : ""}
-${job.mustHave ? "\n⚠️ CRITÈRES OBLIGATOIRES (must-have): " + job.mustHave : ""}
-${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
-${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
-${job.seniority ? "Séniorité: " + job.seniority : ""}
-${job.contractType ? "Contrat proposé: " + job.contractType : ""}
-${job.remote ? "Politique remote: " + job.remote : ""}
-${job.location ? "Localisation poste: " + job.location : ""}
-${job.salaryMin || job.salaryMax ? `Salaire: ${job.salaryMin ? Math.round(job.salaryMin/1000) + "k" : "?"}${job.salaryMax ? "-" + Math.round(job.salaryMax/1000) + "k" : ""}€ brut annuel` : ""}
-${job.tjmMin || job.tjmMax ? `TJM: ${job.tjmMin || "?"}${job.tjmMax ? "-" + job.tjmMax : ""}€/jour` : ""}
-${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
-${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
-${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
-${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
-${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 400) : ""}`
-  );
+  const jobContext = buildJobContext(job, customScoringInstructions);
+  const profileSections = inputs.map(({ profile, preComputedData }, idx) =>
+    buildProfileSection(profile, preComputedData, idx)
+  ).join("\n\n");
 
-  // Build per-profile sections
-  const profileSections = inputs.map(({ profile, preComputedData }, idx) => {
-    const workExpText = (profile.workExperience || []).length > 0
-      ? (profile.workExperience || []).slice(0, 6).map((w, i) =>
-        `  ${i + 1}. ${w.role} @ ${w.company}${w.duration ? " (" + w.duration + ")" : ""}${w.description ? "\n     " + w.description.substring(0, 200) : ""}${w.skills?.length ? "\n     Skills: " + w.skills.join(", ") : ""}`
-      ).join("\n") : "  Aucune expérience listée";
-
-    const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
-
-    const hasDescriptions = (profile.workExperience || []).some(w => w.description && w.description.length > 30);
-    const dataWarning = !hasDescriptions ? " [DONNÉES INCOMPLÈTES: évalue sur titres/entreprises/skills]" : "";
-
-    return sanitizeText(
-      `--- CANDIDAT ${idx + 1} (id: ${profile.id}) ---
-${profile.name} — ${profile.headline || profile.currentRole || "?"}${dataWarning}
-${profile.location ? "📍 " + profile.location : ""}
-${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
-Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
-Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
-Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
-${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 300) : ""}
-Formation: ${educationText}
-Expériences:
-${workExpText}`
-    );
-  }).join("\n\n");
-
-  const prompt = `${jobContext}
-
-=== ${inputs.length} CANDIDATS À ÉVALUER ===
+  // The user prompt is now split in 2 content blocks:
+  // - block 1 (jobContext): marked cacheable → reused across batches of the
+  //   same job within 5 min (TTL ephemeral).
+  // - block 2 (profiles): variable, not cached.
+  const profilesBlock = `=== ${inputs.length} CANDIDATS À ÉVALUER ===
 
 ${profileSections}
 
-=== TA MISSION ===
-Pour CHAQUE candidat, évalue : adéquation technique (0-100), soft skills (0-100), pedigree (0-100), score global (0-100), must-have ("passed"/"failed"/"uncertain").
-
-🔑 MUST-HAVE — RÈGLE CRITIQUE pour ne PAS écarter à tort les profils light :
-- "passed" = preuve EXPLICITE OU signaux contextuels COHÉRENTS (titre + séniorité + entreprise actuelle).
-  Ex : Lead Backend chez Doctolib avec 8 ans XP → must-have "Go" = passed (la stack le suggère).
-  Test mental : "en call de 30 min, ce candidat pourrait-il parler du sujet 10 min sans coller ?" Si OUI → passed.
-- "uncertain" = RÉSERVÉ aux profils MINIMAUX (juste nom + 1 ligne) ET aucun signal contextuel.
-  PAS le défaut quand on hésite — le défaut c'est "passed" si les signaux supportent.
-- "failed" = profil CONTREDIT le critère (domaine totalement différent).
-Mieux vaut faire confiance qu'écarter un bon profil sur un manque de preuve explicite.
-
-🌍 RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE — pedigree (NON NÉGOCIABLE) :
-Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT de l'entreprise — PAS de sa
-géographie. Une scale-up africaine (Andela, Flutterwave, Wave, Yassir...), latino-américaine (MercadoLibre,
-Rappi, Nubank, Kavak...), asiatique (Grab, Gojek, Razorpay, Shopee...) ou moyen-orientale (Careem, Talabat,
-Tabby...) reconnue dans son marché vaut autant qu'une scale-up FR/US équivalente. Tu n'as PAS le droit
-de baisser le pedigree parce qu'une entreprise est "moins connue du recruteur français" — tu reconnais
-son statut local. En cas de doute → regarde le rôle et la taille (Lead Engineer dans une boîte de
-1000+ personnes = pedigree fort, peu importe le pays).
-
-🎓 RÈGLE D'ÉQUITÉ DIPLÔME — NE JAMAIS pénaliser un diplôme étranger reconnu dans son pays (IIT en Inde,
-ITESM au Mexique, NUS à Singapour, FUOYE/UI au Nigeria, USP au Brésil...). Pas de bias sur l'origine.
-
-⚠️ Le terme "offshore" comme signal négatif est LIMITÉ aux profils qui ont fait du body shopping (rotation
-3-6 mois chez 5 clients en 2 ans dans une grosse SSII). Un profil basé à l'étranger qui a un rôle
-Engineer/Lead/Architect dans une boîte qui livre du software = expérience valide, PAS un offshore négatif.
-
-⚠️ VÉRIFICATIONS DE COMPATIBILITÉ (impactent le score global ET les concerns) :
-- **Contrat** : si le poste est en CDI mais le candidat se présente comme freelance/indépendant dans son headline ou son À propos → score global plafonné à 45, concern "Profil freelance vs poste CDI". Inversement si poste freelance et profil "carrière CDI 10+ ans en grand groupe", concern "Risque attractivité freelance".
-- **Salaire/TJM** : si le profil mentionne explicitement un TJM ou un salaire (ex "TJM 800€/j", "Cherche poste 70k€") incompatible avec le range du poste (>15% au-dessus du max) → concern "Attente salariale > range" et baisse le score de 10-15 points.
-- **Remote** : si poste 100% on-site dans une ville et profil dans une autre région française sans signal de mobilité → concern "Distance géo, mobilité à confirmer". Si poste full-remote → ne JAMAIS pénaliser pour la location.
-- **Localisation** : si poste France et profil à l'étranger (USA, UK, Asie...) sans signal de retour → score global plafonné à 40, concern "Profil basé à l'étranger".
-
-Renseigne ces concerns spécifiques dans le tableau "concerns" en plus des concerns techniques.
-
-Réponds UNIQUEMENT avec un JSON ARRAY, un objet par candidat dans l'ORDRE, format :
-[{"id":"<id du candidat>","techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],"summary":"max 25 mots","strengths":["max 3"],"concerns":["max 3"],"mustHavePassed":"passed","mustHaveDetails":null,"notableCompanies":["max 2"],"criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif courte"}],"switchSignals":["signal1"],"contractMismatch":null,"locationMismatch":null,"salaryMismatch":null}]
-verdict: "pass"/"partial"/"fail"/"unknown". criteriaEvaluations: évalue chaque critère du manager si fournis dans le contexte du poste, sinon [].
-contractMismatch/locationMismatch/salaryMismatch : null si OK, sinon string courte expliquant le problème.
-JSON uniquement, sans markdown.`;
+Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre, chaque objet inclut "id". Format défini dans le system prompt.`;
 
   console.log(`[llm-batch] Scoring ${inputs.length} profiles in single call`);
 
@@ -1475,8 +1354,19 @@ JSON uniquement, sans markdown.`;
       },
       body: JSON.stringify({
         model: modelOverride || CLAUDE_MODEL_DEFAULT,
-        system: [{ type: "text", text: "Tu es un expert recruteur senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, etc.) et les skills implicites dans les descriptions d'expérience. Tu scores PLUSIEURS candidats en une seule passe. Réponds en JSON compact, sans markdown.", cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: prompt }],
+        // Cache breakpoint #1 — system prompt (~2800 tokens of persona +
+        // rules + rubric + output schema). Stable forever → reused for free
+        // (10% cost) across all scoring calls within the 5min TTL.
+        system: [{ type: "text", text: SCORING_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        // User content split in 2 blocks — cache breakpoint #2 on jobContext
+        // → reused across all batches of the same job within 5min TTL.
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: jobContext, cache_control: { type: "ephemeral" } },
+            { type: "text", text: profilesBlock },
+          ],
+        }],
         max_tokens: inputs.length * 250 + 200, // ~250 tokens per profile + overhead
         temperature: 0.1,
       }),
@@ -1500,6 +1390,11 @@ JSON uniquement, sans markdown.`;
   if (!data) throw lastError || new Error("LLM batch call failed after retries");
 
   const rawContent = data.content?.[0]?.text || "";
+  // Log cache hit/miss stats — useful to verify caching is actually working
+  if (data.usage) {
+    const u = data.usage;
+    console.log(`[llm-batch] tokens: in=${u.input_tokens || 0} out=${u.output_tokens || 0} cache_read=${u.cache_read_input_tokens || 0} cache_create=${u.cache_creation_input_tokens || 0}`);
+  }
   console.log(`[llm-batch] Response (${rawContent.length} chars): ${rawContent.substring(0, 200)}...`);
 
   // Parse the JSON array — robust extraction for LLM output
@@ -1881,247 +1776,6 @@ async function maybeEnrichProfile(
   }
 }
 
-// ─── Main Scoring Pipeline ───────────────────────────────────────────────────
-
-async function scoreProfile(
-  supabase: SupabaseClient,
-  profile: ProfileData,
-  job: JobData,
-  customScoringInstructions?: string,
-  enrichmentCtx?: EnrichmentContext | null,
-  claudeModel?: string,
-): Promise<ScoringResult> {
-  const startTime = Date.now();
-  const candidateId = profile.id; // Stable ID from your candidates table
-
-  // Check cache
-  const cached = await getCachedScore(supabase, candidateId, job.id);
-  if (cached) return cached;
-
-  // Layer 1: Hard Filters (cheapest first, AI must-have last)
-  const hardFilter = await applyHardFilters(profile, job);
-  if (!hardFilter.passed) {
-    const result: ScoringResult = {
-      name: profile.name,
-      score: 0,
-      recommendation: "NO_MATCH",
-      summary: hardFilter.reason || "Éliminé par filtre",
-      strengths: [],
-      concerns: [hardFilter.reason || "Hard filter KO"],
-      missingSkills: [],
-      hardFilterPassed: false,
-      hardFilterKO: hardFilter.reason,
-      weightedCriteriaScore: 0,
-      semanticScore: null,
-      llmScore: null,
-      finalScore: 0,
-      confidenceScore: 100,
-      dimensions: {},
-      dataCompleteness: "full",
-      missingDataPoints: [],
-      skippedLLM: true,
-      processingTimeMs: Date.now() - startTime,
-      tokensUsed: null,
-      skipReason: hardFilter.reason,
-    };
-    await setCachedScore(supabase, candidateId, job.id, result);
-    return result;
-  }
-
-  // ─── Enrichment: after hard filter pass, before weighted scoring ──────────
-  // Only enrich profiles that passed hard filters and lack experience descriptions
-  if (enrichmentCtx) {
-    const enriched = await maybeEnrichProfile(profile, enrichmentCtx);
-    if (enriched) {
-      enrichmentCtx.dailyCount++;
-    }
-  }
-
-  // Layer 2: Weighted Criteria (now returns matched/missing skills too)
-  const weighted = computeWeightedScore(profile, job);
-
-  // Layer 3: Semantic Similarity
-  const semanticScore = await getSemanticScore(supabase, candidateId, job.id);
-
-  // Layer 4: LLM — COMPLETE assessment for ALL profiles passing hard filter
-  // No more skipping: the LLM is the primary judge of technical fit.
-  let llmResult: LLMResult | null = null;
-  let skippedLLM = false;
-
-  try {
-    llmResult = await callLLM(
-      profile,
-      job,
-      {
-        weightedScore: weighted.score,
-        dimensions: weighted.dimensions,
-        matchedSkills: weighted.matchedSkills,
-        missingSkills: weighted.missingSkills,
-        semanticScore,
-      },
-      customScoringInstructions,
-      claudeModel,
-    );
-
-    // If LLM says must-have clearly failed, treat as hard filter KO
-    // If "uncertain" (not enough info), keep but penalize score
-    if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
-      const koResult: ScoringResult = {
-        name: profile.name,
-        score: 0,
-        recommendation: "NO_MATCH",
-        summary: llmResult.mustHaveDetails || "Must-have non satisfait (évaluation IA)",
-        strengths: llmResult.strengths || [],
-        concerns: [llmResult.mustHaveDetails || "Must-have KO", ...(llmResult.concerns || [])],
-        missingSkills: llmResult.missingCriticalSkills || [],
-        hardFilterPassed: false,
-        hardFilterKO: llmResult.mustHaveDetails || "Must-have non satisfait",
-        weightedCriteriaScore: weighted.score,
-        semanticScore,
-        llmScore: llmResult.overallScore,
-        finalScore: 0,
-        confidenceScore: 100,
-        dimensions: weighted.dimensions,
-        dataCompleteness: weighted.dataCompleteness,
-        missingDataPoints: weighted.missingDataPoints,
-        skippedLLM: false,
-        processingTimeMs: Date.now() - startTime,
-        tokensUsed: llmResult.tokensUsed,
-        skipReason: llmResult.mustHaveDetails,
-      };
-      await setCachedScore(supabase, candidateId, job.id, koResult);
-      return koResult;
-    }
-
-    // If must-have is uncertain, light penalty + soft flag for review.
-    // Réduit de -15 à -5 : un profil thin avec signaux contextuels positifs
-    // ne doit pas être pénalisé deux fois (déjà cap 75 dans capScoreOnMustHaveFail).
-    if ((llmResult as any).mustHaveUncertain) {
-      llmResult.overallScore = Math.max(0, (llmResult.overallScore || 0) - 5);
-      llmResult.concerns = [
-        ...(llmResult.concerns || []),
-        "ℹ️ Profil léger sur LinkedIn — must-have à confirmer en call (probablement OK vu les signaux contextuels)",
-      ];
-      if (llmResult.mustHaveDetails) {
-        llmResult.concerns.push(llmResult.mustHaveDetails);
-      }
-    }
-
-    // Inject LLM dimensions into weighted result for visibility
-    weighted.dimensions.tech_fit_llm = {
-      score: llmResult.techFitScore,
-      weight: 0, // Not counted in algo score — already in LLM score
-      details: "Évaluation technique IA",
-    };
-    weighted.dimensions.soft_skills_llm = {
-      score: llmResult.softSkillsScore,
-      weight: 0,
-      details: "Évaluation soft skills IA",
-    };
-  } catch (err) {
-    console.error(`[llm] Error for ${profile.name}:`, err);
-    skippedLLM = true;
-    // When LLM is unavailable, we still score with algo + semantic only
-  }
-
-  const rawFinalScore = computeFinalScore(weighted.score, semanticScore, llmResult?.overallScore ?? null);
-  // Cap le score si must-have manquant — évite qu'un LLM trop bienveillant
-  // donne 80 à un profil qui n'a pas la compétence obligatoire.
-  const finalScore = capScoreOnMustHaveFail(
-    rawFinalScore,
-    llmResult?.mustHavePassed,
-    llmResult?.mustHaveUncertain,
-  );
-
-  const recommendation = getRecommendation(finalScore);
-
-  // Build summary, strengths, concerns — prefer LLM output when available
-  let summary =
-    llmResult?.summary ||
-    (finalScore >= 60
-      ? `Bon match algo (${weighted.score}/100)`
-      : finalScore >= 40
-        ? `Match partiel (${weighted.score}/100)`
-        : `Faible match (${weighted.score}/100)`);
-  // Annote le summary si on a capped à cause d'un must-have manquant
-  if (rawFinalScore !== finalScore && llmResult?.mustHavePassed === false) {
-    summary = `⚠️ Compétence obligatoire manquante — ${summary}`;
-  }
-
-  const strengths = llmResult?.strengths || [];
-  const concerns = llmResult?.concerns || [];
-  if (rawFinalScore !== finalScore && llmResult?.mustHavePassed === false) {
-    concerns.unshift(`Score plafonné (${rawFinalScore} → ${finalScore}) car must-have manquant`);
-  }
-
-  // Surface explicit compatibility issues at the top of concerns
-  if (llmResult?.contractMismatch && !concerns.some(c => c.toLowerCase().includes("contrat") || c.toLowerCase().includes("freelance"))) {
-    concerns.unshift(`Contrat: ${llmResult.contractMismatch}`);
-  }
-  if (llmResult?.locationMismatch && !concerns.some(c => c.toLowerCase().includes("localisation") || c.toLowerCase().includes("location") || c.toLowerCase().includes("distance"))) {
-    concerns.unshift(`Localisation: ${llmResult.locationMismatch}`);
-  }
-  if (llmResult?.salaryMismatch && !concerns.some(c => c.toLowerCase().includes("salaire") || c.toLowerCase().includes("tjm"))) {
-    concerns.unshift(`Rémunération: ${llmResult.salaryMismatch}`);
-  }
-
-  // Use LLM's skill analysis when available, fallback to heuristic
-  const matchedSkills = llmResult?.matchedSkills?.length ? llmResult.matchedSkills : weighted.matchedSkills;
-  const missingSkills = llmResult?.missingCriticalSkills?.length ? llmResult.missingCriticalSkills : weighted.missingSkills;
-
-  if (skippedLLM) {
-    concerns.push("⚠️ Évaluation IA indisponible — score basé uniquement sur l'algorithme");
-  }
-
-  const result: ScoringResult = {
-    name: profile.name,
-    score: finalScore,
-    recommendation,
-    summary,
-    strengths: strengths.slice(0, 5),
-    concerns: concerns.slice(0, 5),
-    missingSkills,
-    seniorityMatch: weighted.dimensions.seniority?.details,
-    locationMatch: weighted.dimensions.location?.details,
-    experienceMatch: weighted.dimensions.seniority?.details,
-    tenureAnalysis: weighted.dimensions.tenure?.details,
-    receptivityScore: weighted.dimensions.receptivity?.score ?? null,
-    internationalExperienceValidation: "none",
-    locationCompatibility:
-      weighted.dimensions.location?.score && weighted.dimensions.location.score > 60 ? "compatible" : "partial",
-    candidatePreferencesConflict: (() => {
-      // Aggregate non-null LLM-detected mismatches into a single readable string
-      const parts: string[] = [];
-      if (llmResult?.locationMismatch) parts.push(`Localisation: ${llmResult.locationMismatch}`);
-      if (llmResult?.salaryMismatch) parts.push(`Salaire: ${llmResult.salaryMismatch}`);
-      return parts.length > 0 ? parts.join(" | ") : null;
-    })(),
-    contractMismatch: llmResult?.contractMismatch
-      || (weighted.dimensions.contract_fit?.details !== "Neutre" ? weighted.dimensions.contract_fit?.details || null : null),
-    skipReason: finalScore < 40 ? summary : null,
-    matchedSkills,
-    matchedSkillCount: matchedSkills.length,
-    totalRequiredSkills: weighted.allJobSkills.length,
-    hardFilterPassed: true,
-    weightedCriteriaScore: weighted.score,
-    semanticScore,
-    llmScore: llmResult?.overallScore ?? null,
-    pedigreeScore: (llmResult as any)?.pedigreeScore ?? null,
-    notableCompanies: (llmResult as any)?.notableCompanies ?? null,
-    finalScore,
-    confidenceScore: weighted.confidenceScore,
-    dimensions: weighted.dimensions,
-    dataCompleteness: weighted.dataCompleteness,
-    missingDataPoints: weighted.missingDataPoints,
-    skippedLLM,
-    processingTimeMs: Date.now() - startTime,
-    tokensUsed: llmResult?.tokensUsed ?? null,
-  };
-
-  await setCachedScore(supabase, candidateId, job.id, result);
-  return result;
-}
-
 // ─── HTTP Handler ────────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -2221,7 +1875,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ─── Enrichment Context Setup ──────────────────────────────────────────────
-    // Enrichment happens INSIDE scoreProfile, AFTER hard filter pass.
+    // Enrichment happens AFTER hard filter pass (inside the preScored loop).
     // This avoids wasting get_profile calls on profiles that would be eliminated.
     const ENRICHMENT_DAILY_LIMIT = 500;
     // Resolve Unipile credentials from org_integrations with env fallback
