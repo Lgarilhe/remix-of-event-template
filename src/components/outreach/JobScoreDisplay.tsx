@@ -273,10 +273,12 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
 
   return (
     <div className="space-y-4">
-      {/* Header: 3 rings + summary + pills */}
-      <div className="flex items-start gap-4">
+      {/* Header: 3 rings + summary + pills.
+          Sur mobile (< sm = 640px) : stack vertical (rings au-dessus, texte en-dessous full width).
+          Sur desktop (≥ sm) : flex row, rings + texte côte à côte. */}
+      <div className="flex flex-col sm:flex-row items-start sm:gap-4 gap-3">
         {showThreeRings ? (
-          <div className="flex items-start gap-3 shrink-0">
+          <div className="flex items-start gap-3 shrink-0 w-full sm:w-auto justify-start">
             <ScoreRing score={result.match_score} size={64} label="Fit" tone="primary" />
             {confidence != null && (
               <ScoreRing
