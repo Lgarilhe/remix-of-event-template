@@ -1309,15 +1309,53 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
       locationScore = 100;
       locationDetails = `Match direct: ${profile.location}`;
     } else {
+      // Same metro area check — Paris area first (cas le + fréquent en FR).
+      // Fix faux positif "Greater Paris vs Courbevoie" : on reconnaît qu'une
+      // commune Île-de-France et "Greater Paris / Île-de-France" = même zone.
+      const PARIS_AREA_KEYWORDS = [
+        'paris', 'ile-de-france', 'idf',
+        'greater paris', 'paris metropolitan', 'region parisienne',
+        // Communes principales 92, 93, 94, 78, 91, 95, 77 (les plus fréquentes)
+        'courbevoie', 'la defense', 'puteaux', 'levallois', 'levallois-perret',
+        'neuilly', 'neuilly-sur-seine', 'boulogne', 'boulogne-billancourt',
+        'issy-les-moulineaux', 'montrouge', 'malakoff', 'vanves',
+        'saint-denis', 'aubervilliers', 'pantin', 'montreuil',
+        'creteil', 'vincennes', 'saint-mande', 'charenton',
+        'nanterre', 'rueil-malmaison', 'meudon', 'sevres', 'clichy',
+        'versailles', 'saint-germain-en-laye', 'massy', 'orsay',
+      ];
+      const LYON_AREA_KEYWORDS = [
+        'lyon', 'greater lyon', 'metropole de lyon', 'metropole lyon',
+        'villeurbanne', 'caluire', 'venissieux', 'bron', 'oullins',
+      ];
+      const MARSEILLE_AREA_KEYWORDS = [
+        'marseille', 'aix-en-provence', 'aix en provence', 'aubagne', 'gardanne',
+      ];
+      const isJobInArea = (kw: string[]) => kw.some(c => jn.includes(c));
+      const isProfInArea = (kw: string[]) => kw.some(c => pn.includes(c));
+
+      const sameMetro =
+        (isJobInArea(PARIS_AREA_KEYWORDS) && isProfInArea(PARIS_AREA_KEYWORDS)) ||
+        (isJobInArea(LYON_AREA_KEYWORDS) && isProfInArea(LYON_AREA_KEYWORDS)) ||
+        (isJobInArea(MARSEILLE_AREA_KEYWORDS) && isProfInArea(MARSEILLE_AREA_KEYWORDS));
+
       // Same country / region check
-      const frenchCities = ["france", "paris", "lyon", "marseille", "toulouse", "nantes", "bordeaux", "lille", "strasbourg", "rennes", "montpellier", "nice", "nancy", "grenoble"];
+      const frenchCities = [
+        ...PARIS_AREA_KEYWORDS, ...LYON_AREA_KEYWORDS, ...MARSEILLE_AREA_KEYWORDS,
+        "france", "toulouse", "nantes", "bordeaux", "lille", "strasbourg",
+        "rennes", "montpellier", "nice", "nancy", "grenoble",
+      ];
       const isFranceJob = frenchCities.some((c) => jn.includes(c));
       const isFranceProfile = frenchCities.some((c) => pn.includes(c));
       const foreignSignals = ["united states", "usa", "uk", "germany", "spain", "india", "canada", "australia", "brazil"];
       const isAbroad = foreignSignals.some((s) => pn.includes(s));
       const isOnSiteJob = job.remote && !["full", "full remote", "remote", "full_remote", "hybrid", "hybride"].includes(job.remote.toLowerCase());
 
-      if (isFranceJob && isFranceProfile) {
+      if (sameMetro) {
+        // Même métropole = compatible (ex: Greater Paris ↔ Courbevoie)
+        locationScore = 95;
+        locationDetails = `Même métropole: ${profile.location} / ${job.location}`;
+      } else if (isFranceJob && isFranceProfile) {
         // Same country mais ville différente : pénaliser plus si on-site
         if (isOnSiteJob) {
           locationScore = 45;
@@ -3249,7 +3287,15 @@ Deno.serve(async (req) => {
         // mapping frontend qui utilise raw.experienceMatchKind en priorité).
         experienceMatch: weighted.dimensions.seniority?.details,
         experienceMatchKind: weighted.experienceMatchKind,
-        locationMatchKind: weighted.locationMatchKind,
+        // Override LLM : si le LLM a évalué le profil avec succès et n'a relevé
+        // AUCUN locationMismatch (= il considère la location OK), on upgrade
+        // le verdict algo (souvent plus restrictif que la réalité, ex: cas
+        // "Greater Paris ↔ Courbevoie" qu'il faut reconnaître comme même
+        // métropole). Permet au LLM de corriger les faux positifs algo.
+        locationMatchKind:
+          llmResult && !llmResult.locationMismatch && (weighted.locationMatchKind === 'partial' || weighted.locationMatchKind === 'incertain' || weighted.locationMatchKind === 'incompatible')
+            ? 'compatible'
+            : weighted.locationMatchKind,
         tenureAnalysis: weighted.dimensions.tenure?.details,
         receptivityScore: weighted.dimensions.receptivity?.score ?? null,
         hardFilterPassed: true,
