@@ -408,6 +408,66 @@ export function useLinkedInSearch({
       if ((jd as any).outreach_config) {
         (job as any).outreachConfig = (jd as any).outreach_config;
       }
+      // ─── Sprint D : best-in-class context — fields structurés ───────
+      // Avant : on sérialisait evaluation_criteria en TEXTE dans bodyContent.
+      // Maintenant : on transmet aussi la structure brute pour que le LLM
+      // voie explicitement les deal-breakers, weights, level_10/level_1.
+      const jdAny = jd as any;
+      if (jd.evaluation_criteria?.length) {
+        (job as any).evaluationCriteria = jd.evaluation_criteria.slice(0, 12).map((c: any) => ({
+          label: c.label,
+          description: c.description,
+          category: c.category,
+          weight: c.weight,
+          dealBreaker: !!c.deal_breaker,
+          level10: c.level_10,
+          level1: c.level_1,
+          interviewStage: c.interview_stage,
+        }));
+      }
+      if (jdAny.evaluation_weights) {
+        (job as any).evaluationWeights = jdAny.evaluation_weights;
+      }
+      if (jd.target_companies?.length) {
+        (job as any).targetCompanies = jd.target_companies.slice(0, 6).map((cat: any) => ({
+          category: cat.category,
+          companies: (cat.companies || []).slice(0, 8).map((c: any) => c.name).filter(Boolean),
+        }));
+      }
+      if (jd.calibration_profiles?.length) {
+        (job as any).calibrationProfiles = jd.calibration_profiles.slice(0, 5).map((p: any) => ({
+          name: p.name,
+          headline: p.headline,
+          linkedinUrl: p.linkedin_url,
+          whyGoodFit: p.why_good_fit,
+          areasOfImprovement: p.areas_of_improvement,
+        }));
+      }
+      if (jd.skills_to_avoid?.length) {
+        (job as any).skillsToAvoid = jd.skills_to_avoid;
+      }
+      if (jd.languages?.length) {
+        (job as any).requiredLanguages = jd.languages.map((l: any) => ({
+          language: l.language, level: l.level,
+        }));
+      }
+      if (jd.certifications?.length) {
+        (job as any).requiredCertifications = jd.certifications;
+      }
+      if (jd.client?.size || jd.client?.culture_notes) {
+        const existingClient = job.client || (jd.client?.name ? { name: jd.client.name, sector: jd.client.sector } : null);
+        if (existingClient) {
+          job.client = {
+            ...existingClient,
+            size: jd.client?.size,
+            cultureNotes: jd.client?.culture_notes,
+          } as any;
+        }
+      }
+      if (jdAny.urgency) (job as any).urgency = jdAny.urgency;
+      if (jd.team_size) (job as any).teamSize = jd.team_size;
+      if (jd.reports_to) (job as any).reportsTo = jd.reports_to;
+      if (jd.manages) (job as any).manages = jd.manages;
       return job;
     };
 

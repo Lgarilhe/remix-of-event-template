@@ -28,6 +28,12 @@ interface ProfileData {
   currentCompany?: string;
   location?: string;
   skills?: string[];
+  /**
+   * Skills enrichies avec endorsement_count quand dispo. Le LLM s'en sert
+   * pour calibrer le niveau de validation pair (ex: "Go" avec 50 endorsements
+   * = vraiment maîtrisé, vs "Go" avec 0 endorsement = mentionné pour faire bien).
+   */
+  skillsWithEndorsements?: Array<{ name: string; endorsements?: number }>;
   summary?: string;
   workExperience?: WorkExperienceItem[];
   pastPositions?: string[];
@@ -40,12 +46,43 @@ interface ProfileData {
   profileUrl?: string;
   providerId?: string;
   noAiScoring?: boolean;
+  // ─── Best-in-class enrichments (Sprint B) ─────────────────────────────
+  /** Recommandations LinkedIn reçues (texte + auteur). Signal humain validé. */
+  recommendations?: Array<{ text: string; author?: string; authorHeadline?: string }>;
+  /** Posts récents (5 derniers max). Signal d'expertise et d'activité. */
+  recentPosts?: Array<{ text?: string; title?: string; date?: string; reactions?: number }>;
+  /** Projets persos / side projects. Souvent stack non-déclarée explicitement. */
+  projects?: Array<{ name: string; description?: string; skills?: string[] }>;
+  /** Certifications (AWS SAA, CKA, etc.). Preuve formelle pour les must-have. */
+  certifications?: Array<{ name: string; organization?: string }>;
+  /** Volunteering — soft skills, leadership, engagement. */
+  volunteering?: Array<{ role?: string; company?: string; description?: string }>;
+  /** Langues parlées avec niveau (Native, C1, B2...). Critique sur poste international. */
+  languages?: Array<{ name: string; proficiency?: string }>;
+  /** Hashtags / interests / topics suivis (signal de focus métier). */
+  interests?: string[];
+  /** Réseau : connexions et second-degré partagés (warm intro possible). */
+  connectionsCount?: number;
+  followersCount?: number;
+  sharedConnectionsCount?: number;
+  /** Activity flags Recruiter (recently_hired, mentioned_in_news, etc.) */
+  recentlyHired?: boolean;
+  mentionedInNews?: boolean;
+  isCreator?: boolean;
+  isHiring?: boolean;
 }
 
 interface JobData {
   id: string;
   title: string;
-  client?: { name: string; sector: string } | null;
+  client?: {
+    name: string;
+    sector: string;
+    /** Taille entreprise client : startup / scale-up / mid-market / enterprise */
+    size?: string;
+    /** Notes culture (ex: "remote-first, low ego, vélocité forte") */
+    cultureNotes?: string;
+  } | null;
   skills: string[];
   requirements?: string;
   description?: string;
@@ -74,6 +111,58 @@ interface JobData {
       Utilisé par le LLM pour récupérer les nuances que l'extraction IA
       a pu rater (ex: "passé par une scale-up santé", soft requirements). */
   originalBriefText?: string;
+  // ─── Sprint D : enrichissement brief (sources : sourcing_projects.job_details) ─
+  /** Skills à éviter explicitement (signal négatif fort). */
+  skillsToAvoid?: string[];
+  /** Langues requises pour le poste (avec niveau attendu). */
+  requiredLanguages?: Array<{ language: string; level?: string }>;
+  /** Certifications requises pour le poste. */
+  requiredCertifications?: string[];
+  /** Entreprises cibles "gold standard" (provenance idéale du candidat). */
+  targetCompanies?: Array<{ category?: string; companies: string[] }>;
+  /**
+   * Calibration profiles — 3-5 profils gold standard que le manager a
+   * identifiés comme "j'embaucherais demain". Few-shot learning natif.
+   * Le LLM compare le candidat à ces refs sur LE TYPE de personne, pas
+   * un match littéral.
+   */
+  calibrationProfiles?: Array<{
+    name?: string;
+    headline?: string;
+    linkedinUrl?: string;
+    whyGoodFit?: string[];
+    areasOfImprovement?: string;
+  }>;
+  /**
+   * Critères d'évaluation structurés du manager (avec weight, deal_breaker,
+   * level_10, level_1). Avant on envoyait juste une représentation textuelle
+   * via bodyContent — le LLM ne voyait pas la structure (deal-breaker explicite,
+   * pondération précise, anchor points level_10/level_1).
+   */
+  evaluationCriteria?: Array<{
+    label: string;
+    description?: string;
+    category?: string;
+    weight?: number;            // 1=bonus, 2=important, 3=critique
+    dealBreaker?: boolean;
+    level10?: string;            // "Mon 10/10 c'est..."
+    level1?: string;             // "Mon rédhibitoire c'est..."
+    interviewStage?: string;
+  }>;
+  /** Pondération globale par dimension (% du total). */
+  evaluationWeights?: {
+    technical?: number;
+    soft_skill?: number;
+    culture_fit?: number;
+    motivation?: number;
+    experience?: number;
+  };
+  /** Urgence ('low' / 'medium' / 'high' / 'critical') — peut influencer engagement. */
+  urgency?: string;
+  /** Taille équipe + reports_to pour contextualiser le poste. */
+  teamSize?: number;
+  reportsTo?: string;
+  manages?: number;
 }
 
 interface DimensionScore {
@@ -121,6 +210,17 @@ interface ScoringResult {
   switchSignals?: string[];
   finalScore: number;
   confidenceScore: number;
+  // ─── Sprint C : 3 axes + investigation + shape ──────────────────────
+  /** Confidence score LLM (0-100, distinct du confidenceScore data-completeness algo) */
+  llmConfidenceScore?: number | null;
+  /** Engagement score (0-100) — probabilité réponse positive outreach */
+  engagementScore?: number | null;
+  /** True si profil mérite d'être investigué (fit ≥60 mais confidence <70) */
+  investigationNeeded?: boolean;
+  /** 2-3 questions ciblées si investigationNeeded=true */
+  investigationFocus?: string[];
+  /** Shape du profil : silencieux_competent / optimiseur / shadow_worker / freelance / narratif / debutant / chaotique */
+  shape?: string | null;
   dimensions: Record<string, DimensionScore>;
   dataCompleteness: "full" | "partial" | "minimal";
   missingDataPoints: string[];
@@ -139,115 +239,361 @@ const CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 const MAX_LLM_RETRIES = 2;
 
 /**
- * SYSTEM prompt — persona, rules, rubric, output schema.
+ * SYSTEM prompt — persona, méthode d'inférence, rubric, output schema.
  *
  * Stable across all scoring calls → marked with `cache_control: ephemeral`
  * on the Anthropic API (5min TTL). Min cacheable size on Sonnet 4.6 is 1024
- * tokens, on Haiku 4.5 is 2048 tokens. This prompt is ~2800 tokens → safely
- * cacheable on both models.
+ * tokens, on Haiku 4.5 is 2048 tokens. Ce prompt fait ~5500 tokens — safely
+ * cacheable, et après le 1er call les hits coûtent 10 % du prix normal.
  *
- * Previously inlined in the user prompt — caused 60-70 % of input token
- * waste on multi-batch scorings (rules re-sent at full cost on each call).
+ * Best-in-class scoring : ne se contente pas de matcher des mots-clés mais
+ * INFÈRE comme un humain expert. Pense comme un top recruteur : la pauvreté
+ * du contenu déclaratif n'est pas une absence de signal, c'est un signal
+ * qu'il faut chercher autrement (boîte, titre, durée, recos, posts, réseau).
  */
-const SCORING_SYSTEM_PROMPT = `Tu es un recruteur expert senior avec 15 ans d'expérience dans le matching candidat/poste. Tu évalues TOUTES les dimensions : technique, soft skills, cohérence de parcours, pedigree. Tu comprends nativement les synonymes techniques (VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell, etc.) et les skills implicites dans les descriptions d'expérience. Tu peux scorer un seul candidat ou plusieurs en une passe. Réponds en JSON compact, sans markdown.
+const SCORING_SYSTEM_PROMPT = `Tu es un recruteur expert senior avec 15 ans d'expérience dans le matching candidat/poste sur des missions tech, data, produit, et leadership. Tu maîtrises l'art d'évaluer un profil **sous incertitude** : tirer les bonnes conclusions à partir d'informations partielles, sans tomber dans les biais classiques. Tu réponds toujours en JSON compact, sans markdown.
 
-=== TA MISSION (par candidat) ===
+═══════════════════════════════════════════════════════════════
+═══ PRINCIPE FONDAMENTAL — L'INVERSION PARADOXALE DU SOURCING
+═══════════════════════════════════════════════════════════════
 
-1. **Adéquation technique** (0-100) : maîtrise des compétences requises ?
-   → Synonymes : VMware=vSphere, K8s=Kubernetes, "admin Linux" implique bash/shell.
-   → Skills implicites : skills TRÈS PROBABLES (>80% confiance) selon contexte employeur+rôle.
-     Ex OUI : "SRE chez OVH" → infra cloud, Linux, monitoring très probables.
-     Ex NON : "Chef de projet infra chez BNP" → ne PAS supposer datacenter/cloud.
-   → En cas de doute, ne compte PAS le skill matché. Mentionne dans concerns.
+Les meilleurs candidats ont SOUVENT les profils LinkedIn les MOINS détaillés.
+Un Senior Engineer chez Stripe ou Doctolib aura 4 lignes : pas par humilité,
+mais parce qu'il ne cherche pas. À l'inverse, les profils ultra-bullet-pointed
+avec 50 skills listées et 3 résumés sont fréquemment des juniors/mids très
+conscients de leur "personal branding".
 
-2. **Soft skills** (0-100) : Communication, leadership, curiosité, adaptabilité.
+→ **Si tu pénalises les profils thin par défaut, tu écartes systématiquement
+les meilleurs candidats du marché.** C'est l'erreur #1 de tous les outils de
+sourcing actuels — tu ne dois PAS la commettre.
 
-3. **Pedigree** (0-100) : Qualité des expériences. Suit la règle d'équité géo ci-dessous.
+→ **Règle d'or** : en cas de doute sur un profil thin mais avec signaux
+contextuels positifs (boîte exigeante + titre senior + tenure long),
+fais CONFIANCE plutôt que d'écarter. Un faux négatif (bon profil dismissed)
+coûte beaucoup plus cher qu'un faux positif (profil moyen qui passe en
+short-list et se révèle moyen au call).
 
-4. **Score global** (0-100) : Note finale de match candidat/poste.
-   Intègre la qualité du pedigree dans le score global.
+═══════════════════════════════════════════════════════════════
+═══ MÉTHODE D'INFÉRENCE — 7 DIMENSIONS DU SIGNAL
+═══════════════════════════════════════════════════════════════
 
-5. **Cohérence du parcours** : Progression logique, spécialisation, pertinence sectorielle.
+L'information sur un candidat n'est pas seulement dans son texte déclaratif.
+Elle est DISTRIBUÉE sur 7 dimensions. Plus tu en exploites, mieux tu calibres.
 
-6. **Likely to Switch** (0-100) : probabilité d'ouverture au changement.
-   → Tenure courte au poste actuel (<2 ans) = +20
+**Dimension 1 — Déclaratif explicite** (ce qui est écrit)
+Titre, summary, descriptions d'expérience, skills listés, formations.
+→ Force : direct. Faiblesse : optimisé pour la recherche, biaisé, souvent
+  absent ou périmé. NE T'Y FIE PAS UNIQUEMENT.
+
+**Dimension 2 — Contextuel inféré** (ce qu'on DÉDUIT du contexte)
+Une boîte + un titre + une durée → 80% de la stack technique probable.
+→ "Lead Backend chez Doctolib (4 ans)" → Go, microservices, Kubernetes,
+  observability, scale.
+→ "DevOps SRE chez OVH (3 ans)" → infra cloud, Linux, monitoring, networking.
+→ "Software Engineer chez BNP (5 ans)" → Java/Spring 80%, COBOL legacy 20%.
+→ Force : ne dépend pas de la qualité de rédaction du candidat.
+
+**Dimension 3 — Structurel** (la FORME du profil parle)
+- Pattern de progression : Junior → Mid → Senior (croissance) ou stagnation ?
+- Cadence des postes : 2-3 ans = stable / 5+ ans = enraciné / <12 mois =
+  job-hopper ou layoffs
+- Trajectoire géographique : France-only / international / retour
+- Trajectoire sectorielle : focus = expert / mouvant = curieux ou sans cap
+→ Force : informatif même quand le contenu manque.
+
+**Dimension 4 — Relationnel** (le réseau parle)
+- Reco LinkedIn d'un VP Eng chez Stripe = signal très fort
+- Reco générique d'un junior = signal faible
+- Endorsement count par skill : 50 sur "Go" + 0 sur "PHP" → spécialisation claire
+- shared_connections > 5 → warm intro possible (qualité humaine implicite)
+- connections_count > 1000 → actif sur LinkedIn
+→ NE JAMAIS IGNORER les recommandations reçues : c'est du signal humain validé.
+
+**Dimension 5 — Comportemental** (l'activité)
+- recent_posts : sujets ? Si publie sur "Rust async runtimes" → vrai expert
+- is_creator / is_influencer : positionnement public
+- last_outreach_activity : déjà contacté récemment ? par qui ?
+- recently_hired : signal négatif fort pour likely-to-switch
+- mentioned_in_the_news : visibilité publique = pedigree
+
+**Dimension 6 — Historique Konekt** (cross-mission)
+- Score IA passé sur missions similaires
+- Verdicts post-call (GO/NO-GO/MAYBE + notes)
+- Notes manuelles du recruteur
+- Conversations passées : ouvert, fermé, à recontacter
+→ Si fourni dans le contexte, USE-LE.
+
+**Dimension 7 — Intent / réceptivité**
+- open_to_work (déclaratif fort)
+- open_profile (signal modéré)
+- Tenure courte + promotion récente plate → likely to switch
+- Posts du type "I'm looking for new opportunities" → explicit
+
+**Règle** : un profil n'est jamais évalué que sur la dimension 1.
+Les dimensions 2-7 sont là pour COMPENSER quand 1 est pauvre.
+
+═══════════════════════════════════════════════════════════════
+═══ TAXONOMIE DES PROFILS THIN — différencier 5 types
+═══════════════════════════════════════════════════════════════
+
+Un profil pauvre n'est PAS un signal négatif. C'est un signal AMBIGU à
+calibrer selon son TYPE :
+
+**Type 1 — Le silencieux compétent**
+Senior +8 ans, en poste stable, ne cherche pas. 3 expériences listées, pas de
+descriptions, 5 skills max. Signal positif caché : son réseau (1000+
+connections), recos rares mais qualifiées, workExp dans des boîtes exigeantes.
+→ NE PAS PÉNALISER. Inférer depuis dimensions 2, 4, 6.
+
+**Type 2 — Le débutant sans histoire**
+0-2 ans XP, 1 poste, peu à dire. Signal positif caché : projets persos, side
+gigs, hashtags/intérêts (curiosité), formation.
+→ Évaluer sur dimensions 5, 7 + diplôme.
+
+**Type 3 — Le shadow worker**
+Bosse en défense/finance/juridique sensible où c'est interdit/déconseillé
+d'exposer le détail. Signal positif : titre + boîte + durée. NDA implicite.
+→ Inférer depuis dimensions 2, 3.
+
+**Type 4 — Le freelance discret**
+Headline "Consultant"/"Indépendant"/vague. Très bons specialists mais
+incompatible CDI. Détecter via TJM keywords, "missions chez", "available for".
+→ Pour mission CDI : signal négatif. Pour mission freelance : signal positif.
+
+**Type 5 — Le vrai pauvre signal**
+Profil créé récemment, 0 connections, 0 reco, headline générique. Signal
+négatif : probablement bot/fake/non-actif.
+→ uncertain ou écarter.
+
+→ **Avant de noter un profil thin, identifie SON TYPE.** Ça change tout.
+
+═══════════════════════════════════════════════════════════════
+═══ INFÉRENCE LANGAGE / STACK — quand absent du déclaratif
+═══════════════════════════════════════════════════════════════
+
+Quand un must-have demande un langage spécifique (Go, Java, JS/TS, Python,
+Rust, etc.) et que le candidat NE LE DÉCLARE PAS explicitement, NE rejette
+PAS d'office. Inférer en cascade :
+
+**Couche 1 — Stack connue de l'employeur** (signal le plus fort)
+- Boîtes connues **Go** : Doctolib, Ankorstore, Algolia, Mirakl, Datadog,
+  Stripe, Cloudflare, HashiCorp, Twitch, Snowflake, Mistral AI, Hugging Face
+- Boîtes connues **Java/Spring** : grandes banques FR (BNP, SG, AXA, CA),
+  eBay, Netflix (partiel), LinkedIn, Spotify, Pinterest, ESN sur missions
+  banque/assurance
+- Boîtes connues **JS/TS** : Vercel, Linear, Notion, Figma, BackMarket,
+  ContentSquare, Qonto, Alma, Aircall (front)
+- Boîtes connues **Python** : research labs, ML startups, data platforms
+  (Hugging Face, Mistral, Dataiku)
+- Boîtes connues **Rust** : Discord, Cloudflare workers, Figma rendering
+- Big-tech polyglottes (Google, Meta, Amazon, MS) : NE PAS inférer un
+  langage sur la base de la boîte seule, requérir d'autres signaux.
+
+**Couche 2 — Frameworks/outils mentionnés** (trahissent le langage)
+| Framework / outil dans description ou skills | Langage quasi-certain |
+|---|---|
+| Spring, Spring Boot, Hibernate, JPA, JUnit, Maven, Gradle, Quarkus | **Java** |
+| .NET, ASP.NET, Entity Framework, Blazor | **C#** |
+| Django, Flask, FastAPI, Pandas, NumPy, PyTorch, TensorFlow | **Python** |
+| React, Vue, Next.js, Nuxt, Svelte, Angular | **JS / TS** |
+| Express, NestJS, Fastify, Hono | **Node.js / TS** |
+| Rails, Sidekiq, Devise | **Ruby** |
+| Laravel, Symfony, Doctrine | **PHP** |
+| Gin, Echo, Fiber, Cobra, gRPC-Go | **Go** |
+| Actix, Axum, Tokio, Diesel, Cargo | **Rust** |
+| Akka, Play Framework, sbt | **Scala** |
+| Kafka deep + Cassandra + Spark | **Java/Scala** |
+| Kubernetes contributor / operators | **Go** (réel) |
+
+**Couche 3 — Patterns de titre + secteur**
+- "Backend/Platform/SRE" chez scale-up tech récente → forte probabilité **Go**
+- "Backend/Software" chez banque/assurance/grand groupe FR → forte proba **Java**
+- "iOS Engineer" → **Swift** (95%)
+- "Android Engineer" → **Kotlin** (90%, ou Java legacy)
+- "Data Engineer" → **Python + SQL** (80%), Scala/Java (banques)
+- "ML Engineer" → **Python** (95%)
+- "DevOps/Platform/SRE" → Go + Python + Bash
+- "Embedded/Systems" → **C/C++** (90%), Rust de plus en plus
+- "Smart Contract/Solidity" → Solidity + JS/TS pour le front
+
+**Couche 4 — Formation et premier poste**
+- Diplômé EPITA/EPITECH/42 → polyvalent (souvent JS/Python/Java)
+- ENSIMAG/INSA/UTC → systems-oriented, plus de Go/Rust/C++
+- Premier poste banque FR → Java/COBOL/mainframe
+- Premier poste agence web → PHP/JS/WordPress
+
+**Couche 5 — Signaux secondaires souvent décisifs**
+- **Recommandations** : texte mentionnant explicitement le langage
+  ("meilleur dev Go que j'ai managé") → certitude
+- **Posts récents** : #golang, #java, #typescript → vraie expertise active
+- **Endorsement_count** par skill : concentration = spécialisation claire
+- **Projects** persos : stack visible = preuve directe
+- **Hashtags / interests**
+
+**Couche 6 — Cross-référencement (la VRAIE magie)**
+Aucun signal isolé ne suffit. Mais 2-3 signaux faibles en cohérence = certitude.
+
+Exemple thin Go probable :
+- Titre : "Backend Engineer @ Doctolib (3 ans)"
+- Avant : "Software Engineer @ OVHcloud (2 ans)"
+- Skills déclarés : aucun
+- Recos : "Strong systems engineer, helped us migrate our legacy services"
+→ Doctolib (stack Go) + OVH (Go) + "systems migration" = **Go à 85%** →
+  must-have "Go" = **passed** (confidence modérée).
+
+Exemple ambigu :
+- Titre : "Senior Software Engineer @ Google (5 ans)"
+- Skills : Distributed Systems, Algorithms, ML
+→ Google = polyglotte, peut être C++/Java/Go/Python. Sans plus de signal,
+  must-have spécifique = **uncertain** (à valider en call).
+
+**Méthode synthétique en 5 questions** :
+1. Boîte actuelle : sa stack publique pointe-t-elle vers le langage ?
+2. Frameworks/outils mentionnés : trahissent-ils le langage ?
+3. Titres et patterns : pointent-ils vers le langage ?
+4. Recos / posts / endorsements : mentionnent-ils explicitement ?
+5. Cohérence des 4 réponses ?
+
+→ 3+ signaux concordants = **passed** (confidence proportionnelle)
+→ Signaux contradictoires ou 1 seul = **uncertain**
+→ Aucun signal cohérent = **failed**
+
+⚠️ **NE JAMAIS écarter sur "pas de Go déclaré"** quand la boîte + le titre +
+le tenure suggèrent fortement le langage.
+
+═══════════════════════════════════════════════════════════════
+═══ LES 7 MAXIMES DU TOP RECRUTEUR
+═══════════════════════════════════════════════════════════════
+
+1. **Le silence est un signal, pas une absence de signal** — un profil thin
+   a souvent plus à dire qu'un profil verbeux, sache écouter autrement.
+
+2. **L'addition vaut plus que les éléments** — un Master + 5 ans chez Stripe
+   + Lead title + 3 recos d'anciens managers + 200 endorsements sur Go =
+   senior confirmé, **même sans description workExp**.
+
+3. **La cohérence vaut plus que le contenu** — un parcours qui raconte une
+   histoire (progression Junior → Senior dans des boîtes de + en + exigeantes)
+   vaut plus qu'un parcours bullet-pointé sans direction.
+
+4. **Mieux vaut faire confiance qu'écarter** — le coût d'un faux négatif >
+   coût d'un faux positif. En cas de doute, on call.
+
+5. **Le candidat n'existe pas isolément** — son historique, son réseau, ses
+   traces digitales font partie de l'évaluation.
+
+6. **L'intent compte autant que le fit** — un profil parfait mais inaccessible
+   ne vaut rien. Un profil 80% open-to-work vaut plus qu'un 95% verrouillé.
+
+7. **Connaître ses biais** — l'IA n'est pas neutre. Compense activement :
+   profils bien rédigés, occidentaux, GAFAM-pedigreed sont sur-scorés par
+   défaut. Les profils thin de seniors silencieux sont sous-scorés.
+
+═══════════════════════════════════════════════════════════════
+═══ TA MISSION (par candidat) — DIMENSIONS À ÉVALUER
+═══════════════════════════════════════════════════════════════
+
+1. **Adéquation technique** (techFitScore 0-100) : maîtrise des compétences
+   requises ? Synonymes natifs (VMware=vSphere, K8s=Kubernetes...). Skills
+   IMPLICITES (>80% confiance) inférés du contexte employeur+rôle.
+
+2. **Soft skills** (softSkillsScore 0-100) : Communication, leadership,
+   curiosité, adaptabilité — inférables des descriptions, recos, posts.
+
+3. **Pedigree** (pedigreeScore 0-100) : Qualité des expériences (boîte +
+   durée + titre). Suit la règle d'équité géo ci-dessous.
+
+4. **Score global** (overallScore 0-100) : Note finale candidat/poste.
+   Intègre tech + soft + pedigree + cohérence.
+
+5. **Cohérence du parcours** : Progression logique, spécialisation,
+   pertinence sectorielle. Mentionne dans concerns si incohérence.
+
+6. **Likely to Switch** (likelyToSwitchScore 0-100) — probabilité d'ouverture :
+   → Tenure courte poste actuel (<2 ans) = +20
    → Promotion récente sans scope = +15
    → Pattern de changement tous les 2-3 ans = +15
    → Restructuration/layoffs visibles = +20
    → Open to Work LinkedIn = +30
+   → Recently hired = -30 (vient d'être chassé, peu probable de bouger)
    → Longue tenure (5+ ans même poste) = -20
 
-7. **Career Growth** (0-100) : trajectoire de progression.
+7. **Career Growth** (careerGrowthScore 0-100) — trajectoire de progression :
    → Promotions visibles = +30
    → Entreprises de plus en plus prestigieuses = +20
    → Montée en séniorité constante = +20
    → Reconversion réussie = +15
    → Stagnation (même titre 5+ ans) = -20
 
-=== RUBRIC MUST-HAVE (CRITIQUE pour ne PAS écarter à tort les profils light) ===
+═══════════════════════════════════════════════════════════════
+═══ RUBRIC MUST-HAVE — ne PAS écarter à tort les profils light
+═══════════════════════════════════════════════════════════════
 
 Pour chaque must-have du poste, choisis UN verdict :
 
-- "passed" : INCLUT 2 cas
+- **"passed"** : INCLUT 2 cas
   (a) Preuve EXPLICITE dans le profil (skill listée, projet visible, etc.)
-  (b) PROFIL THIN (peu d'infos détaillées) MAIS signaux contextuels COHÉRENTS
-      (titre + séniorité + entreprise actuelle + parcours).
-      Ex 1 : Lead Backend chez Doctolib avec 8 ans XP → must-have "Go" = passed
-             (la stack Doctolib = Go, le titre = backend senior).
+  (b) PROFIL THIN MAIS signaux contextuels COHÉRENTS (titre + séniorité +
+      entreprise actuelle + parcours).
+      Ex 1 : Lead Backend chez Doctolib avec 8 ans XP → must-have "Go" =
+             passed (la stack Doctolib = Go, le titre = backend senior).
       Ex 2 : Tech Lead 10 ans XP, ancien Stripe + Datadog → must-have
              "microservices distribués" = passed (impossible sans toucher).
-      **Test mental** : "en call de 30 min, ce candidat pourrait-il parler du
-      sujet pendant 10 min sans coller ?" Si OUI → passed.
+  **Test mental** : "en call de 30 min, ce candidat pourrait-il parler du
+  sujet pendant 10 min sans coller ?" Si OUI → passed.
 
-- "failed" : profil CONTREDIT clairement le critère (domaine totalement
+- **"failed"** : profil CONTREDIT clairement le critère (domaine totalement
   différent, absence de signaux ET incompatibilité explicite).
-  Ex : Frontend React-only depuis 8 ans pour un must-have "Go backend
+  Ex : Frontend React-only depuis 8 ans pour must-have "Go backend
   distribué" = failed.
 
-- "uncertain" : RÉSERVÉ aux cas où :
+- **"uncertain"** : RÉSERVÉ aux cas où :
   (a) Profil minimal (juste nom + 1 ligne) ET aucun signal contextuel
   (b) OU critère très pointu (techno de niche) ET aucun signal pour/contre
-  → Si les SIGNAUX CONTEXTUELS supportent même sans preuve explicite, choisis
-    "passed" PAS "uncertain". Mieux vaut faire confiance qu'écarter un bon profil.
+  → Si SIGNAUX CONTEXTUELS supportent même sans preuve explicite, choisis
+    "passed" PAS "uncertain". Mieux vaut faire confiance qu'écarter.
   → "uncertain" n'est PAS le défaut quand on hésite. Seulement quand on n'a
     vraiment AUCUN signal pour trancher.
 
-Si les critères listent plusieurs options avec "parmi/ou/dont", au moins UNE
-suffit. Sois intelligent sur les noms d'écoles, certifs, synonymes techniques.
+Si critères avec "parmi/ou/dont", au moins UNE option suffit. Sois intelligent
+sur les noms d'écoles, certifs, synonymes techniques.
 
-=== RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE — pedigree (NON NÉGOCIABLE) ===
+═══════════════════════════════════════════════════════════════
+═══ RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE — pedigree (NON NÉGOCIABLE)
+═══════════════════════════════════════════════════════════════
 
-Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT — PAS de
-la géographie. Tu n'as PAS le droit de baisser le pedigree parce qu'une
-entreprise est "moins connue du recruteur français" — tu reconnais son statut
-local.
+Le pedigree dépend de la PERTINENCE TECHNIQUE et de la TAILLE/IMPACT — PAS
+de la géographie. Tu n'as PAS le droit de baisser le pedigree parce qu'une
+entreprise est "moins connue du recruteur français" — tu reconnais son
+statut local.
 
 → **Bonus FORT** : scale-ups reconnues GLOBALEMENT, peu importe le pays :
-  • EU/FR : Doctolib, Alan, Datadog, Contentsquare, Mirakl, Qonto, Back Market...
-  • US : GAFAM, FAANG, Stripe, Airbnb, Uber, Snowflake, Databricks...
-  • Africa : Andela, Flutterwave, Wave, Yoco, Chipper Cash, Yassir, Twiga, Kuda...
-  • LATAM : MercadoLibre, Rappi, Nubank, Kavak, dLocal, Cornershop...
-  • Asia : Grab, Gojek, Razorpay, Coupang, Sea/Shopee, Tokopedia, Klook...
-  • MEA : Careem, Talabat, Swvl, Tabby, Kitopi...
+  • EU/FR : Doctolib, Alan, Datadog, Contentsquare, Mirakl, Qonto, Back Market
+  • US : GAFAM, FAANG, Stripe, Airbnb, Uber, Snowflake, Databricks
+  • Africa : Andela, Flutterwave, Wave, Yoco, Chipper Cash, Yassir, Twiga, Kuda
+  • LATAM : MercadoLibre, Rappi, Nubank, Kavak, dLocal, Cornershop
+  • Asia : Grab, Gojek, Razorpay, Coupang, Sea/Shopee, Tokopedia, Klook
+  • MEA : Careem, Talabat, Swvl, Tabby, Kitopi
   + GAFAM/FAANG, licornes, éditeurs software reconnus, cabinets tier-1.
 
 → **Bonus modéré** : startups funded reconnues localement, PME tech innovantes.
 → **Neutre** : grands groupes traditionnels (CAC40, admins, PME non-tech).
 → **Signal négatif LIMITÉ** : ESN/SSII body shopping pure (rotation 3-6 mois
-   chez 5 clients en 2 ans, titre "consultant junior" dans grosse SSII).
+   chez 5 clients en 2 ans, "consultant junior" dans grosse SSII).
    ⚠️ NE PAS pénaliser une boîte juste parce qu'elle fait du service offshore.
-   Un profil basé à l'étranger avec un rôle Engineer/Lead/Architect dans une
-   boîte qui livre du software (même offshore) reste valide.
+   Profil basé étranger avec rôle Engineer/Lead/Architect dans boîte qui
+   livre du software (même offshore) = expérience valide.
 
 ⚠️ Durée et titre comptent autant que le nom de la boîte :
 → Stage/alternance dans une bonne boîte = bonus FAIBLE
-→ < 6 mois dans une boîte top = bonus FAIBLE (période d'essai/passage éclair)
+→ < 6 mois dans une boîte top = bonus FAIBLE (passage éclair)
 → 1-2 ans poste pertinent dans une boîte exigeante = bonus FORT
 → 3+ ans poste senior/lead dans une boîte reconnue = bonus TRÈS FORT
 → Titre non pertinent (support, admin, RH) dans une boîte tech ≠ bonus tech
-→ Seules les expériences sur des POSTES PERTINENTS pour le job comptent.
 
-=== RÈGLE D'ÉQUITÉ DIPLÔME (NON NÉGOCIABLE) ===
+═══════════════════════════════════════════════════════════════
+═══ RÈGLE D'ÉQUITÉ DIPLÔME (NON NÉGOCIABLE)
+═══════════════════════════════════════════════════════════════
 
 Le diplôme COMPTE pour ce qu'il valide TECHNIQUEMENT, pas pour son prestige
 géographique :
@@ -260,55 +606,149 @@ géographique :
 - Test = "le candidat a-t-il un cursus tech complet ?" Si oui → OK.
 - École inconnue → ne pénalise PAS, marque "diplôme international" en neutre.
 
-=== VÉRIFICATIONS DE COMPATIBILITÉ ===
+═══════════════════════════════════════════════════════════════
+═══ VÉRIFICATIONS DE COMPATIBILITÉ
+═══════════════════════════════════════════════════════════════
 
 Impactent le score global ET les concerns :
 
-- **Contrat** : si poste CDI mais candidat freelance/indépendant explicite
-  (headline/À propos) → score global plafonné à 45, concern "Profil freelance
-  vs poste CDI". Inversement si poste freelance et profil "carrière CDI 10+
-  ans en grand groupe" → concern "Risque attractivité freelance".
+- **Contrat** : poste CDI mais candidat freelance/indépendant explicite
+  (headline/À propos) → score plafonné à 45, concern "Profil freelance vs
+  poste CDI". Inversement poste freelance et profil "carrière CDI 10+ ans
+  grand groupe" → concern "Risque attractivité freelance".
 
-- **Salaire/TJM** : si profil mentionne explicitement un TJM/salaire (ex
-  "TJM 800€/j", "Cherche poste 70k€") incompatible avec le range du poste
-  (>15% au-dessus du max) → concern "Attente salariale > range" et baisse
-  score de 10-15 points.
+- **Salaire/TJM** : profil mentionne TJM/salaire (ex "TJM 800€/j",
+  "Cherche poste 70k€") incompatible avec range poste (>15% au-dessus du
+  max) → concern "Attente salariale > range" et baisse score 10-15 points.
 
-- **Remote** : si poste 100% on-site dans une ville et profil dans une autre
-  région française sans signal de mobilité → concern "Distance géo, mobilité
-  à confirmer". Si poste full-remote → ne JAMAIS pénaliser pour la location.
+- **Remote** : poste 100% on-site dans une ville et profil dans autre
+  région française sans signal de mobilité → concern "Distance géo,
+  mobilité à confirmer". Si poste full-remote → JAMAIS pénaliser location.
 
-- **Localisation** : si poste France et profil à l'étranger (USA, UK, Asie...)
-  sans signal de retour → score global plafonné à 40, concern "Profil basé à
-  l'étranger".
+- **Localisation** : poste France et profil à l'étranger (USA, UK, Asie)
+  sans signal de retour → score plafonné à 40, concern "Profil basé
+  à l'étranger".
 
-Renseigne ces concerns spécifiques dans le tableau "concerns" en plus des
-concerns techniques.
+═══════════════════════════════════════════════════════════════
+═══ CALIBRATION PROFILES — quand fournis dans le job context
+═══════════════════════════════════════════════════════════════
 
-=== ÉVALUATION DES CRITÈRES DU MANAGER ===
+Si le brief contient des "calibration profiles" (3-5 profils gold standard
+identifiés par le manager), c'est ton **gold standard de référence**.
+Compare le candidat à ces profils sur :
+- Le TYPE de personne (parcours, valeurs, trajectoire) — pas le clone exact
+- Les TRAITS COMMUNS qui les rendent fit
+- La LOGIQUE SOUS-JACENTE du choix manager
 
-Si des critères d'évaluation sont fournis dans le contexte du poste, évalue
-CHAQUE critère individuellement. Pour chaque : verdict ("pass"/"partial"/
-"fail"/"unknown") + justification courte (max 20 mots). Respecte les
-deal-breakers et les poids.
+⚠️ Ces profils représentent le **minimum requis et au-dessus**, PAS un
+template à imiter strictement. Un candidat avec d'autres forces
+complémentaires reste valide.
 
-=== FORMAT DE RÉPONSE ===
+═══════════════════════════════════════════════════════════════
+═══ ÉVALUATION DES CRITÈRES MANAGER
+═══════════════════════════════════════════════════════════════
+
+Si le brief contient "evaluation_criteria" structurés (avec label,
+description, weight 1-3, deal_breaker, level_10, level_1) :
+- Évalue CHAQUE critère individuellement
+- Verdict : "pass" / "partial" / "fail" / "unknown"
+- Justification courte (max 20 mots)
+- **Respecte les deal-breakers** : si un deal_breaker est "fail", overallScore
+  doit être ≤ 50 même si le reste est excellent.
+- **Respecte les poids** : weight=3 (critique) compte 3x plus dans
+  l'overallScore que weight=1 (bonus).
+- **Utilise level_10 et level_1** : ce sont les anchors du manager.
+
+═══════════════════════════════════════════════════════════════
+═══ GESTION DE L'INCERTITUDE — 3 axes de score séparés
+═══════════════════════════════════════════════════════════════
+
+Ne te contente PAS d'un seul score. Évalue 3 axes distincts :
+
+**1. fitScore** (= overallScore, 0-100) — Si tout ce qu'on déduit est vrai,
+   à quel point ce candidat correspond ? Score de FOND.
+
+**2. confidenceScore** (0-100) — À quel point on est SÛRS de l'évaluation ?
+   - 90-100 : profil riche, recos, posts, descriptions détaillées, must-have
+     EXPLICITES → on est confiant.
+   - 70-89 : profil moyen, signaux suffisants pour conclure.
+   - 50-69 : profil thin avec signaux contextuels positifs (must-have inféré
+     mais pas explicite). À CONFIRMER en call.
+   - <50 : profil très thin, beaucoup d'inférence, doute majeur.
+
+**3. engagementScore** (0-100) — Probabilité d'obtenir une réponse positive :
+   - open_to_work + tenure courte + recently_hired=false = élevé
+   - Recos récentes / posts actifs = bon (atteignable)
+   - Profil silencieux sans signal d'ouverture = moyen
+   - recently_hired + 1st degree + connections + open_profile = excellent
+
+**investigationNeeded** (boolean) — true si fitScore ≥ 60 ET confidenceScore < 70.
+Le profil mérite d'être investigué (call court, demande CV, recherche complé)
+avant de l'écarter ou de l'avancer.
+
+**investigationFocus** (array<string>) — si investigationNeeded=true, liste
+2-3 questions ciblées pour le recruteur :
+  - "Confirmer expérience Go production scale"
+  - "Valider niveau anglais (poste international)"
+  - "Vérifier intérêt mission scale-up vs grand groupe actuel"
+
+═══════════════════════════════════════════════════════════════
+═══ SHAPE DU PROFIL — méta-signal qui ajuste l'interprétation
+═══════════════════════════════════════════════════════════════
+
+Au-delà du contenu, la FORME du profil dit énormément. Identifie le shape :
+
+- **silencieux_competent** : profil minimaliste (4 lignes) MAIS boîte
+  exigeante + tenure long + recos qualifiées. Senior confirmé qui ne se vend
+  pas. Pondère le contenu pauvre par le contexte fort.
+
+- **optimiseur** : profil ultra bullet-pointed avec 13+ skills listées,
+  tenure court, plusieurs résumés. Junior/mid très conscient de son
+  personal branding. Calibrer le scepticisme — la quantité ≠ qualité.
+
+- **shadow_worker** : titre + boîte + durée seulement. Pas de description.
+  Souvent défense, finance sensible, juridique. NDA implicite. Inférer
+  depuis dimensions 2 et 3.
+
+- **freelance** : Headline "Consultant"/"Indépendant"/TJM keywords.
+  Spécialiste mais incompatible CDI.
+
+- **narratif** : paragraphes, storytelling. Souvent business/sales/management.
+
+- **debutant** : <2 ans XP, peu de contenu. Évaluer sur projets, formation,
+  posts.
+
+- **chaotique** : profil incohérent, rotation rapide, titres incompatibles.
+  Signal négatif.
+
+→ La shape ne donne pas le score, mais AJUSTE l'interprétation du contenu.
+
+═══════════════════════════════════════════════════════════════
+═══ FORMAT DE RÉPONSE
+═══════════════════════════════════════════════════════════════
 
 Mode SINGLE (1 candidat) — réponds avec UN objet :
 {"techFitScore":N,"softSkillsScore":N,"pedigreeScore":N,"overallScore":N,
-"likelyToSwitchScore":N,"careerGrowthScore":N,"matchedSkills":["skill1"],
-"missingCriticalSkills":["skill2"],"summary":"max 25 mots",
-"strengths":["max 4"],"concerns":["max 4"],
+"confidenceScore":N,"engagementScore":N,
+"likelyToSwitchScore":N,"careerGrowthScore":N,
+"matchedSkills":["skill1"],"missingCriticalSkills":["skill2"],
+"summary":"max 25 mots","strengths":["max 4"],"concerns":["max 4"],
 "mustHavePassed":"passed|failed|uncertain","mustHaveDetails":null,
 "notableCompanies":["max 3"],
 "criteriaEvaluations":[{"label":"critère","verdict":"pass","reason":"justif"}],
 "switchSignals":["signal1"],
+"shape":"silencieux_competent|optimiseur|shadow_worker|freelance|narratif|debutant|chaotique",
+"investigationNeeded":true|false,
+"investigationFocus":["question 1","question 2"],
 "contractMismatch":null,"locationMismatch":null,"salaryMismatch":null}
 
 Mode BATCH (N candidats) — réponds avec UN ARRAY, un objet par candidat dans
-l'ordre, chaque objet inclut "id":"<id du candidat>" en plus des champs ci-dessus.
+l'ordre, chaque objet inclut "id":"<id du candidat>" en plus des champs
+ci-dessus.
 
-JSON uniquement, sans markdown, sans prose autour.`;
+JSON uniquement, sans markdown, sans prose autour. **Suis l'esprit du prompt
+plus que la lettre** : raisonne comme un humain expert, pas comme un
+matcher de mots-clés.`;
 
 // ─── Skill Synonyms ─────────────────────────────────────────────────────────
 // Synchronized with src/hooks/linkedin/skillSynonyms.ts — keep both in sync.
@@ -1152,6 +1592,17 @@ interface LLMResult {
   contractMismatch?: string | null;
   locationMismatch?: string | null;
   salaryMismatch?: string | null;
+  // ─── Sprint C : 3 axes de score séparés + investigation + shape ───
+  /** Confidence score (0-100) : à quel point le LLM est sûr de l'évaluation. */
+  confidenceScore: number | null;
+  /** Engagement score (0-100) : probabilité de réponse positive à un outreach. */
+  engagementScore: number | null;
+  /** True si fit ≥60 mais confidence <70 → mérite un call court avant de trancher. */
+  investigationNeeded: boolean;
+  /** Si investigation_needed=true : 2-3 questions ciblées à valider en call. */
+  investigationFocus: string[];
+  /** Shape du profil — méta-signal qui ajuste l'interprétation. */
+  shape: string | null;
   tokensUsed: { input: number; output: number };
 }
 
@@ -1172,26 +1623,89 @@ interface BatchLLMInput {
  * system prompt. Reused for free across batches of the same job within 5min.
  */
 function buildJobContext(job: JobData, customScoringInstructions?: string): string {
+  // ─── Critères d'évaluation structurés (Sprint D) ─────────────────────
+  // Avant : envoyés en texte libre via bodyContent. Le LLM ne voyait pas la
+  // structure (weight, deal_breaker, level_10/level_1) — devait inférer.
+  // Maintenant : sérialisés explicitement pour qu'il respecte les règles.
+  const criteriaBlock = job.evaluationCriteria?.length
+    ? "\n=== CRITÈRES MANAGER STRUCTURÉS (respecte impérativement les deal-breakers et poids) ===\n"
+      + job.evaluationCriteria.slice(0, 12).map((c, i) => {
+          const weight = c.weight === 3 ? 'CRITIQUE' : c.weight === 2 ? 'important' : c.weight === 1 ? 'bonus' : '';
+          let line = `${i + 1}. [${c.category || '?'} · ${weight}${c.dealBreaker ? ' · ⚠️DEAL-BREAKER' : ''}] ${c.label}`;
+          if (c.description) line += `\n   Description: ${c.description.slice(0, 150)}`;
+          if (c.level10) line += `\n   ✓ Excellence (10/10) : "${c.level10.slice(0, 200)}"`;
+          if (c.level1) line += `\n   ✗ Rédhibitoire (1/10) : "${c.level1.slice(0, 200)}"`;
+          return line;
+        }).join("\n")
+    : "";
+
+  const weightsBlock = job.evaluationWeights
+    ? `\nPondération manager : technique ${job.evaluationWeights.technical || 0}% · soft skills ${job.evaluationWeights.soft_skill || 0}% · culture fit ${job.evaluationWeights.culture_fit || 0}% · motivation ${job.evaluationWeights.motivation || 0}% · expérience ${job.evaluationWeights.experience || 0}%`
+    : "";
+
+  // ─── Calibration profiles (Sprint D) — gold standard du manager ──────
+  // Few-shot learning : le LLM compare le candidat à ces refs sur LE TYPE
+  // de personne, pas un match littéral. Énorme levier de précision.
+  const calibrationBlock = job.calibrationProfiles?.length
+    ? "\n=== CALIBRATION PROFILES — gold standard du manager (few-shot) ===\nCe sont des profils que le manager a identifiés comme \"j'embaucherais demain\". Compare le candidat à ces refs sur LE TYPE de personne, pas un match exact.\n"
+      + job.calibrationProfiles.slice(0, 5).map((p, i) => {
+          let line = `${i + 1}. ${p.name || 'Anonyme'} — ${p.headline || '?'}`;
+          if (p.whyGoodFit?.length) line += `\n   ✓ Pourquoi fit : ${p.whyGoodFit.slice(0, 4).join(' · ').slice(0, 300)}`;
+          if (p.areasOfImprovement) line += `\n   ⚠ À améliorer : ${p.areasOfImprovement.slice(0, 150)}`;
+          return line;
+        }).join("\n")
+    : "";
+
+  // ─── Target companies (Sprint D) — provenance idéale ─────────────────
+  const targetCompaniesBlock = job.targetCompanies?.length
+    ? "\nEntreprises cibles (provenance idéale) :\n" + job.targetCompanies.slice(0, 6).map(cat =>
+        `  • ${cat.category ? cat.category + ' : ' : ''}${(cat.companies || []).slice(0, 8).join(', ')}`
+      ).join("\n")
+    : "";
+
+  // ─── Skills à éviter (Sprint D) ─────────────────────────────────────
+  const skillsToAvoidBlock = job.skillsToAvoid?.length
+    ? `\n⛔ Skills à ÉVITER (signal négatif si présents) : ${job.skillsToAvoid.join(', ')}`
+    : "";
+
+  // ─── Langues / certifications requises (Sprint D) ───────────────────
+  const langsBlock = job.requiredLanguages?.length
+    ? `\nLangues requises pour le poste : ${job.requiredLanguages.map(l => `${l.language}${l.level ? ` (${l.level})` : ''}`).join(', ')}`
+    : "";
+  const certsRequiredBlock = job.requiredCertifications?.length
+    ? `\nCertifications requises : ${job.requiredCertifications.join(', ')}`
+    : "";
+
+  // ─── Contexte équipe (Sprint D) ─────────────────────────────────────
+  const teamContextBlock = (job.teamSize || job.reportsTo || job.manages)
+    ? `\nContexte équipe :${job.teamSize ? ` taille ${job.teamSize}` : ''}${job.reportsTo ? ` · reporte à ${job.reportsTo}` : ''}${job.manages ? ` · manage ${job.manages} personnes` : ''}`
+    : "";
+
+  const urgencyBlock = job.urgency && ['high', 'critical'].includes(job.urgency)
+    ? `\n⏱️ Urgence : ${job.urgency.toUpperCase()} — favoriser les profils likely-to-switch`
+    : "";
+
   return sanitizeText(
     `=== POSTE ===
-${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}
+${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}${job.client?.size ? " · " + job.client.size : ""}
+${job.client?.cultureNotes ? "Culture client : " + job.client.cultureNotes.slice(0, 250) : ""}
 Skills requis: ${(job.skills || []).join(", ") || "Non spécifiés"}
 ${job.description ? "Description: " + job.description.substring(0, 500) : ""}
 ${job.requirements ? "Exigences: " + job.requirements.substring(0, 400) : ""}
 ${job.mustHave ? "\n⚠️ CRITÈRES OBLIGATOIRES (must-have): " + job.mustHave : ""}
 ${job.shouldHave ? "Should-have: " + job.shouldHave : ""}
-${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}
+${job.niceToHave ? "Nice-to-have: " + job.niceToHave : ""}${skillsToAvoidBlock}${langsBlock}${certsRequiredBlock}
 ${job.seniority ? "Séniorité: " + job.seniority : ""}
 ${job.contractType ? "Contrat proposé: " + job.contractType : ""}
 ${job.remote ? "Politique remote: " + job.remote : ""}
-${job.location ? "Localisation poste: " + job.location : ""}
+${job.location ? "Localisation poste: " + job.location : ""}${teamContextBlock}${urgencyBlock}
 ${job.salaryMin || job.salaryMax ? `Salaire: ${job.salaryMin ? Math.round(job.salaryMin/1000) + "k" : "?"}${job.salaryMax ? "-" + Math.round(job.salaryMax/1000) + "k" : ""}€ brut annuel` : ""}
 ${job.tjmMin || job.tjmMax ? `TJM: ${job.tjmMin || "?"}${job.tjmMax ? "-" + job.tjmMax : ""}€/jour` : ""}
-${job.transversalCriteria?.context ? "Contexte client: " + job.transversalCriteria.context.substring(0, 300) : ""}
-${job.transversalCriteria?.must ? "Critères transversaux obligatoires: " + job.transversalCriteria.must : ""}
-${job.bodyContent ? "Critères du manager:\n" + job.bodyContent.substring(0, 1500) : ""}
+${job.transversalCriteria?.context ? "Contexte client : " + job.transversalCriteria.context.substring(0, 300) : ""}
+${job.transversalCriteria?.must ? "Critères transversaux obligatoires : " + job.transversalCriteria.must : ""}${targetCompaniesBlock}${weightsBlock}${criteriaBlock}${calibrationBlock}
+${job.bodyContent ? "\nCritères additionnels (texte libre) :\n" + job.bodyContent.substring(0, 1500) : ""}
 ${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
-${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringInstructions.slice(0, 400) : ""}`
+${customScoringInstructions ? "\nConsignes supplémentaires : " + customScoringInstructions.slice(0, 400) : ""}`
   );
 }
 
@@ -1200,6 +1714,7 @@ ${customScoringInstructions ? "\nConsignes supplémentaires: " + customScoringIn
  * Variable per profile → not cacheable.
  */
 function buildProfileSection(profile: ProfileData, preComputedData: BatchLLMInput["preComputedData"], idx: number): string {
+  // Work experience — 6 dernières, description 200 chars (idem qu'avant)
   const workExpText = (profile.workExperience || []).length > 0
     ? (profile.workExperience || []).slice(0, 6).map((w, i) =>
       `  ${i + 1}. ${w.role} @ ${w.company}${w.duration ? " (" + w.duration + ")" : ""}${w.description ? "\n     " + w.description.substring(0, 200) : ""}${w.skills?.length ? "\n     Skills: " + w.skills.join(", ") : ""}`
@@ -1208,20 +1723,92 @@ function buildProfileSection(profile: ProfileData, preComputedData: BatchLLMInpu
   const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
 
   const hasDescriptions = (profile.workExperience || []).some(w => w.description && w.description.length > 30);
-  const dataWarning = !hasDescriptions ? " [DONNÉES INCOMPLÈTES: évalue sur titres/entreprises/skills]" : "";
+  const dataWarning = !hasDescriptions ? " [PROFIL THIN: évalue sur titres/entreprises + signaux contextuels (recos/posts/réseau) + INFÈRE]" : "";
+
+  // ─── Sprint B : signaux secondaires souvent décisifs ──────────────────
+  // Skills avec endorsements (signal de validation pair)
+  const skillsLine = profile.skillsWithEndorsements?.length
+    ? profile.skillsWithEndorsements.slice(0, 15)
+        .map(s => s.endorsements && s.endorsements > 0 ? `${s.name}(${s.endorsements})` : s.name)
+        .join(", ")
+    : (profile.skills || []).join(", ") || "Non renseignés";
+
+  // Recommandations LinkedIn — signal humain validé (très précieux pour profils thin)
+  const recosBlock = profile.recommendations?.length
+    ? "\nRecommandations reçues (signal humain) :\n" + profile.recommendations.slice(0, 4).map((r, i) =>
+        `  ${i + 1}. ${r.author ? r.author + (r.authorHeadline ? ` (${r.authorHeadline.slice(0, 60)})` : '') + ' : ' : ''}"${(r.text || '').slice(0, 250)}"`
+      ).join("\n")
+    : "";
+
+  // Posts récents — expertise + activité + signal likely-to-switch
+  const postsBlock = profile.recentPosts?.length
+    ? "\nPosts récents (expertise/activité) :\n" + profile.recentPosts.slice(0, 5).map((p, i) =>
+        `  ${i + 1}. ${p.title ? p.title + ' — ' : ''}${(p.text || '').slice(0, 180)}${p.reactions ? ` [${p.reactions} réactions]` : ''}`
+      ).join("\n")
+    : "";
+
+  // Projets — souvent stack non-déclarée explicitement
+  const projectsBlock = profile.projects?.length
+    ? "\nProjets : " + profile.projects.slice(0, 5).map(p =>
+        `${p.name}${p.description ? ' (' + p.description.slice(0, 80) + ')' : ''}${p.skills?.length ? ' [' + p.skills.slice(0, 5).join(', ') + ']' : ''}`
+      ).join(" ; ")
+    : "";
+
+  // Certifications — preuve formelle pour les must-have
+  const certsBlock = profile.certifications?.length
+    ? "\nCertifications : " + profile.certifications.slice(0, 8).map(c =>
+        `${c.name}${c.organization ? ' (' + c.organization + ')' : ''}`
+      ).join(", ")
+    : "";
+
+  // Langues — critique sur poste international
+  const langsBlock = profile.languages?.length
+    ? "\nLangues : " + profile.languages.map(l => `${l.name}${l.proficiency ? ' (' + l.proficiency + ')' : ''}`).join(", ")
+    : "";
+
+  // Volunteering — soft skills
+  const volBlock = profile.volunteering?.length
+    ? "\nVolontariat : " + profile.volunteering.slice(0, 3).map(v =>
+        `${v.role || ''} @ ${v.company || ''}`.trim()
+      ).join(", ")
+    : "";
+
+  // Intérêts/topics
+  const interestsBlock = profile.interests?.length
+    ? "\nIntérêts/topics : " + profile.interests.slice(0, 10).join(", ")
+    : "";
+
+  // Réseau (warm intro possible si shared > 5)
+  const networkSignals: string[] = [];
+  if (profile.networkDistance === 1) networkSignals.push("1st degree");
+  else if (profile.networkDistance === 2) networkSignals.push("2nd degree");
+  if (profile.connectionsCount && profile.connectionsCount > 0) networkSignals.push(`${profile.connectionsCount} connections`);
+  if (profile.followersCount && profile.followersCount > 100) networkSignals.push(`${profile.followersCount} followers`);
+  if (profile.sharedConnectionsCount && profile.sharedConnectionsCount > 0) networkSignals.push(`${profile.sharedConnectionsCount} connexions partagées`);
+  const networkBlock = networkSignals.length ? "\nRéseau : " + networkSignals.join(" · ") : "";
+
+  // Activity flags (likely-to-switch signals)
+  const activityFlags: string[] = [];
+  if (profile.openToWork) activityFlags.push("Open to Work");
+  if (profile.openProfile) activityFlags.push("Open Profile");
+  if (profile.recentlyHired) activityFlags.push("⚠️ Recently hired (peu probable de bouger)");
+  if (profile.mentionedInNews) activityFlags.push("Mentionné dans la presse");
+  if (profile.isCreator) activityFlags.push("Creator/Influencer LinkedIn");
+  if (profile.isHiring) activityFlags.push("Recrute (manager actif)");
+  const activityBlock = activityFlags.length ? "\nSignaux d'activité : " + activityFlags.join(" · ") : "";
 
   return sanitizeText(
     `--- CANDIDAT ${idx + 1} (id: ${profile.id}) ---
 ${profile.name} — ${profile.headline || profile.currentRole || "?"}${dataWarning}
 ${profile.location ? "📍 " + profile.location : ""}
-${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}
+${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience + " ans" : ""}${profile.averageTenureMonths ? ` | Tenure moy: ${Math.round(profile.averageTenureMonths)} mois` : ''}
 Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
 Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
-Skills déclarés: ${(profile.skills || []).join(", ") || "Non renseignés"}
+Skills déclarés: ${skillsLine}
 ${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 300) : ""}
 Formation: ${educationText}
 Expériences:
-${workExpText}`
+${workExpText}${recosBlock}${postsBlock}${projectsBlock}${certsBlock}${langsBlock}${volBlock}${interestsBlock}${networkBlock}${activityBlock}`
   );
 }
 
@@ -1329,6 +1916,12 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
     contractMismatch: typeof parsed.contractMismatch === 'string' && parsed.contractMismatch.trim() ? parsed.contractMismatch.trim() : null,
     locationMismatch: typeof parsed.locationMismatch === 'string' && parsed.locationMismatch.trim() ? parsed.locationMismatch.trim() : null,
     salaryMismatch: typeof parsed.salaryMismatch === 'string' && parsed.salaryMismatch.trim() ? parsed.salaryMismatch.trim() : null,
+    // ─── Sprint C : 3 axes de score + investigation + shape ─────────────
+    confidenceScore: typeof parsed.confidenceScore === 'number' ? Math.max(0, Math.min(100, parsed.confidenceScore)) : null,
+    engagementScore: typeof parsed.engagementScore === 'number' ? Math.max(0, Math.min(100, parsed.engagementScore)) : null,
+    investigationNeeded: parsed.investigationNeeded === true,
+    investigationFocus: Array.isArray(parsed.investigationFocus) ? parsed.investigationFocus.slice(0, 5) : [],
+    shape: typeof parsed.shape === 'string' && parsed.shape.trim() ? parsed.shape.trim() : null,
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
       output: data.usage?.output_tokens || 0,
@@ -1514,6 +2107,12 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
       contractMismatch: typeof parsed.contractMismatch === 'string' && parsed.contractMismatch.trim() ? parsed.contractMismatch.trim() : null,
       locationMismatch: typeof parsed.locationMismatch === 'string' && parsed.locationMismatch.trim() ? parsed.locationMismatch.trim() : null,
       salaryMismatch: typeof parsed.salaryMismatch === 'string' && parsed.salaryMismatch.trim() ? parsed.salaryMismatch.trim() : null,
+      // ─── Sprint C : 3 axes de score + investigation + shape ─────────────
+      confidenceScore: typeof parsed.confidenceScore === 'number' ? Math.max(0, Math.min(100, parsed.confidenceScore)) : null,
+      engagementScore: typeof parsed.engagementScore === 'number' ? Math.max(0, Math.min(100, parsed.engagementScore)) : null,
+      investigationNeeded: parsed.investigationNeeded === true,
+      investigationFocus: Array.isArray(parsed.investigationFocus) ? parsed.investigationFocus.slice(0, 5) : [],
+      shape: typeof parsed.shape === 'string' && parsed.shape.trim() ? parsed.shape.trim() : null,
       tokensUsed: tokensPerProfile,
     });
   }
@@ -2144,15 +2743,22 @@ Deno.serve(async (req) => {
         for (const input of batchInputs) {
           const r = llmResultMap.get(input.profile.id);
           if (!r) continue;
-          // Critères d'escalation :
+          // Critères d'escalation (étendus Sprint C) :
           // 1. Score borderline 50-75 → zone d'hésitation, le modèle plus
           //    nuancé peut trancher mieux (faux positif vs faux négatif).
           // 2. mustHaveUncertain → le 1er modèle n'a pas pu trancher sur
           //    le must-have, c'est exactement le cas où Sonnet/Opus brille
           //    (raisonnement multi-signal).
+          // 3. confidenceScore < 70 ET overallScore ≥ 50 → profil
+          //    potentiellement bon mais signal faible, à re-évaluer
+          //    (mieux vaut payer Sonnet sur 1 profil que rater un bon).
+          // 4. investigationNeeded === true → le LLM lui-même a flaggé le
+          //    besoin d'une seconde lecture.
           const isBorderline = r.overallScore >= 50 && r.overallScore <= 75;
           const isUncertain = r.mustHaveUncertain === true;
-          if (isBorderline || isUncertain) toEscalate.push(input);
+          const lowConfidence = r.confidenceScore !== null && r.confidenceScore < 70 && r.overallScore >= 50;
+          const flaggedForInvestigation = r.investigationNeeded === true;
+          if (isBorderline || isUncertain || lowConfidence || flaggedForInvestigation) toEscalate.push(input);
         }
 
         if (toEscalate.length > 0) {
@@ -2338,6 +2944,12 @@ Deno.serve(async (req) => {
         likelyToSwitchScore: llmResult?.likelyToSwitchScore ?? null,
         careerGrowthScore: llmResult?.careerGrowthScore ?? null,
         switchSignals: llmResult?.switchSignals || [],
+        // ─── Sprint C : 3 axes de score + investigation + shape ────────
+        llmConfidenceScore: llmResult?.confidenceScore ?? null,
+        engagementScore: llmResult?.engagementScore ?? null,
+        investigationNeeded: llmResult?.investigationNeeded ?? false,
+        investigationFocus: llmResult?.investigationFocus ?? [],
+        shape: llmResult?.shape ?? null,
         skippedLLM: llmResult === null,
         processingTimeMs: Date.now() - ps.startTime,
         tokensUsed: llmResult?.tokensUsed ?? null,
