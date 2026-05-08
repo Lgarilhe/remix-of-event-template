@@ -185,12 +185,16 @@ serve(async (req: Request) => {
   console.log(`[resolve-pedigree] Using account ${ctx.accountId.slice(0, 8)}… (org ${ctx.orgId.slice(0, 8)}…)`);
 
   // ─── Body : optional filters ──────────────────────────────────────────────
-  let body: { entity?: 'school' | 'company' | 'all'; force?: boolean } = {};
+  let body: { entity?: 'school' | 'company' | 'competitor' | 'all'; force?: boolean } = {};
   try { body = await req.json(); } catch { /* empty body OK */ }
   const entity = body.entity || 'all';
   const force = body.force === true;
 
-  const stats = { schools: { processed: 0, resolved: 0, failed: 0 }, companies: { processed: 0, resolved: 0, failed: 0 } };
+  const stats = {
+    schools: { processed: 0, resolved: 0, failed: 0 },
+    companies: { processed: 0, resolved: 0, failed: 0 },
+    competitors: { processed: 0, resolved: 0, failed: 0 },
+  };
 
   const monthAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
 
@@ -254,6 +258,36 @@ serve(async (req: Request) => {
         console.warn(`[resolve-pedigree] ✗ Company "${c.canonical_name}" — ${result.error}`);
       }
       await supabase.from('pedigree_company_directory').update(update).eq('id', c.id);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  // ─── Competitors (per-org) ───────────────────────────────────────────────
+  // Résout les linkedin_company_id manquants sur client_competitors. Permet le
+  // mode chirurgical Unipile (restrict search aux concurrents).
+  if (entity === 'competitor' || entity === 'all') {
+    let query = supabase
+      .from('client_competitors')
+      .select('id, competitor_name, country');
+    if (!force) {
+      query = query.is('linkedin_company_id', null);
+    }
+    const { data: competitors, error } = await query.limit(500);
+    if (error) console.error('[resolve-pedigree] competitors fetch error:', error);
+    for (const c of (competitors || []) as Array<{ id: string; competitor_name: string; country: string | null }>) {
+      stats.competitors.processed++;
+      const result = await resolveOne(ctx.dsn, ctx.apiKey, ctx.accountId, 'COMPANY', c.competitor_name, []);
+      if (result.id) {
+        await supabase
+          .from('client_competitors')
+          .update({ linkedin_company_id: result.id })
+          .eq('id', c.id);
+        stats.competitors.resolved++;
+        console.log(`[resolve-pedigree] ✓ Competitor "${c.competitor_name}" → ${result.id} (matched: "${result.matchedTitle}")`);
+      } else {
+        stats.competitors.failed++;
+        console.warn(`[resolve-pedigree] ✗ Competitor "${c.competitor_name}" — ${result.error}`);
+      }
       await new Promise((r) => setTimeout(r, 300));
     }
   }
