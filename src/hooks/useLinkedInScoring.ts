@@ -333,6 +333,11 @@ export function buildProfileData(profile: LinkedInProfile) {
     currentCompany: currentJob?.company,
     location: profile.location,
     skills: profile.skills?.map((s: any) => s.name || s).slice(0, 15) || [],
+    // Skills enrichies avec endorsement_count — signal de validation pair
+    skillsWithEndorsements: profile.skills?.slice(0, 15).map((s: any) => ({
+      name: typeof s === 'string' ? s : s.name,
+      endorsements: typeof s === 'object' ? s.endorsement_count : undefined,
+    })).filter((s: { name: string }) => s.name) || undefined,
     summary: profile.summary?.slice(0, 300) || undefined,
     workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
     pastPositions: pastJobs.map(p => `${p.role || p.position} chez ${p.company}`),
@@ -352,6 +357,57 @@ export function buildProfileData(profile: LinkedInProfile) {
     profileUrl: profile.public_profile_url || profile.profile_url || undefined,
     providerId: profile.provider_id || profile.public_identifier || undefined,
     noAiScoring: (profile as any).no_ai_scoring === true || undefined,
+    // ─── Sprint B : signaux secondaires souvent décisifs ─────────────────
+    // Recommandations LinkedIn — texte rédigé par d'anciens collègues/managers,
+    // signal humain à très haute crédibilité. Particulièrement précieux pour
+    // les profils thin (silencieux compétents, shadow workers).
+    recommendations: (profile as any).recommendations?.received?.slice(0, 4).map((r: any) => ({
+      text: r.text || r.caption || '',
+      author: r.actor ? `${r.actor.first_name || ''} ${r.actor.last_name || ''}`.trim() : undefined,
+      authorHeadline: r.actor?.headline,
+    })).filter((r: { text: string }) => r.text && r.text.length > 20) || undefined,
+    // Posts récents — expertise réelle (vs déclarative) + signal d'activité.
+    // Tronqués à 180 chars pour rester compact.
+    recentPosts: (profile as any).recent_posts?.slice(0, 5).map((p: any) => ({
+      text: p.text?.slice(0, 180),
+      title: p.title?.slice(0, 100),
+      date: p.date,
+      reactions: p.reaction_counter,
+    })).filter((p: { text?: string; title?: string }) => p.text || p.title) || undefined,
+    // Projets persos — souvent stack non-déclarée explicitement (Rust en perso
+    // = vrai dev systems même si poste actuel = autre).
+    projects: (profile as any).projects?.slice(0, 5).map((p: any) => ({
+      name: p.name,
+      description: p.description?.slice(0, 120),
+      skills: p.skills?.slice(0, 5),
+    })).filter((p: { name?: string }) => p.name) || undefined,
+    // Certifications — preuve formelle pour les must-have (AWS SAA, CKA, etc.)
+    certifications: (profile as any).certifications?.slice(0, 8).map((c: any) => ({
+      name: c.name,
+      organization: c.organization,
+    })).filter((c: { name?: string }) => c.name) || undefined,
+    // Volunteering — soft skills, leadership, engagement
+    volunteering: (profile as any).volunteering_experience?.slice(0, 3).map((v: any) => ({
+      role: v.role,
+      company: v.company,
+      description: v.description?.slice(0, 100),
+    })).filter((v: { role?: string; company?: string }) => v.role || v.company) || undefined,
+    // Langues — critique sur poste international (LinkedInProfile.languages)
+    languages: (profile as any).languages?.map((l: any) => ({
+      name: l.name,
+      proficiency: l.proficiency,
+    })).filter((l: { name?: string }) => l.name) || undefined,
+    // Hashtags / interests — focus métier
+    interests: profile.interests?.slice(0, 10) || (profile as any).hashtags?.slice(0, 10) || undefined,
+    // Réseau (warm intro possible si shared > 5)
+    connectionsCount: profile.connections_count,
+    followersCount: (profile as any).followers_count,
+    sharedConnectionsCount: profile.shared_connections_count,
+    // Activity flags
+    recentlyHired: profile.recently_hired,
+    mentionedInNews: profile.mentioned_in_the_news,
+    isCreator: profile.is_creator || profile.is_influencer,
+    isHiring: profile.is_hiring,
   };
 }
 
@@ -415,6 +471,12 @@ function mapScoringResult(raw: any): JobMatchResult {
     hardFilterPassed: raw.hardFilterPassed,
     hardFilterKO: raw.hardFilterKO,
     confidenceScore: raw.confidenceScore,
+    // ─── Sprint C : 3 axes + investigation + shape ─────────────────────
+    llmConfidenceScore: raw.llmConfidenceScore ?? null,
+    engagementScore: raw.engagementScore ?? null,
+    investigationNeeded: raw.investigationNeeded === true,
+    investigationFocus: Array.isArray(raw.investigationFocus) ? raw.investigationFocus : [],
+    shape: typeof raw.shape === 'string' ? raw.shape : null,
     dimensions: raw.dimensions,
     dataCompleteness: raw.dataCompleteness,
     missingDataPoints: raw.missingDataPoints,
@@ -579,6 +641,18 @@ export function useLinkedInScoring({
           bodyContent: selectedJob.bodyContent,
           originalBriefText: (selectedJob as any).originalBriefText,
           transversalCriteria: selectedJob.transversalCriteria,
+          // ─── Sprint D : enrichissements brief structurés ─────────────
+          evaluationCriteria: (selectedJob as any).evaluationCriteria,
+          evaluationWeights: (selectedJob as any).evaluationWeights,
+          targetCompanies: (selectedJob as any).targetCompanies,
+          calibrationProfiles: (selectedJob as any).calibrationProfiles,
+          skillsToAvoid: (selectedJob as any).skillsToAvoid,
+          requiredLanguages: (selectedJob as any).requiredLanguages,
+          requiredCertifications: (selectedJob as any).requiredCertifications,
+          urgency: (selectedJob as any).urgency,
+          teamSize: (selectedJob as any).teamSize,
+          reportsTo: (selectedJob as any).reportsTo,
+          manages: (selectedJob as any).manages,
         },
         customScoringInstructions,
         accountId: accountId || undefined,
@@ -729,7 +803,21 @@ export function useLinkedInScoring({
         shouldHave: selectedJob.shouldHave,
         niceToHave: selectedJob.niceToHave,
         bodyContent: selectedJob.bodyContent,
+        // originalBriefText oublié dans le batch jobPayload — fix : transmis aussi
+        originalBriefText: (selectedJob as any).originalBriefText,
         transversalCriteria: selectedJob.transversalCriteria,
+        // ─── Sprint D : enrichissements brief structurés ─────────────
+        evaluationCriteria: (selectedJob as any).evaluationCriteria,
+        evaluationWeights: (selectedJob as any).evaluationWeights,
+        targetCompanies: (selectedJob as any).targetCompanies,
+        calibrationProfiles: (selectedJob as any).calibrationProfiles,
+        skillsToAvoid: (selectedJob as any).skillsToAvoid,
+        requiredLanguages: (selectedJob as any).requiredLanguages,
+        requiredCertifications: (selectedJob as any).requiredCertifications,
+        urgency: (selectedJob as any).urgency,
+        teamSize: (selectedJob as any).teamSize,
+        reportsTo: (selectedJob as any).reportsTo,
+        manages: (selectedJob as any).manages,
       };
 
       const allResults: JobMatchResult[] = [];

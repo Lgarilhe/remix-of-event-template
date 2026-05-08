@@ -60,6 +60,17 @@ export interface JobMatchResult {
   likelyToSwitchScore?: number | null;
   careerGrowthScore?: number | null;
   switchSignals?: string[];
+  // ─── Sprint C : 3 axes de score + investigation + shape ────────────
+  /** Confidence LLM (0-100) — distinct du confidenceScore data-completeness algo. */
+  llmConfidenceScore?: number | null;
+  /** Engagement (0-100) — probabilité de réponse positive à un outreach. */
+  engagementScore?: number | null;
+  /** True si profil mérite un call court avant de trancher (fit haut + confidence basse). */
+  investigationNeeded?: boolean;
+  /** 2-3 questions ciblées si investigationNeeded. */
+  investigationFocus?: string[];
+  /** Shape du profil — méta-signal (silencieux_competent, optimiseur, etc.). */
+  shape?: string | null;
   skippedLLM?: boolean;
   processingTimeMs?: number;
   tokensUsed?: { input: number; output: number } | null;
