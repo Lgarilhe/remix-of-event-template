@@ -166,6 +166,9 @@ verify_jwt = false
 [functions.refine-search-filters]
 verify_jwt = false
 
+[functions.resolve-pedigree-directory]
+verify_jwt = false
+
 [functions.rgpd-erase-contact]
 verify_jwt = false
 
