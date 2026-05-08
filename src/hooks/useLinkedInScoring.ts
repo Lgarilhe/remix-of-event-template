@@ -411,6 +411,38 @@ export function buildProfileData(profile: LinkedInProfile) {
   };
 }
 
+/**
+ * Convert any value to a safe React-renderable string.
+ *
+ * Évite l'erreur React #31 ("Objects are not valid as a React child") quand
+ * le LLM retourne occasionnellement un objet là où un string est attendu
+ * (ex: criteriaEvaluations[].label = {nested: "..."} au lieu de "...").
+ *
+ * Stratégie : essaie .name → .label → .text → .value avant de renvoyer ''
+ * (préfère masquer un champ à crasher tout l'écran).
+ */
+function safeStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(safeStr).filter(Boolean).join(', ');
+  if (typeof v === 'object') {
+    const obj = v as Record<string, unknown>;
+    if (typeof obj.name === 'string') return obj.name;
+    if (typeof obj.label === 'string') return obj.label;
+    if (typeof obj.text === 'string') return obj.text;
+    if (typeof obj.value === 'string') return obj.value;
+    return '';
+  }
+  return String(v);
+}
+
+/** Sanitize an array : keep only safe strings, drop empties. */
+function safeStrArray(v: unknown, max = 50): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map(safeStr).filter(Boolean).slice(0, max);
+}
+
 // Map edge function result keys to JobMatchResult interface
 function mapScoringResult(raw: any): JobMatchResult {
   const recMap: Record<string, string> = {
@@ -430,10 +462,14 @@ function mapScoringResult(raw: any): JobMatchResult {
   // .experience?.details` (undefined car la dimension s'appelle 'seniority'),
   // donc 'incertain' s'affichait pour tous les profils → "XP à vérifier"
   // visible sur 100% des cards même quand l'XP était parfaitement compatible.
-  const experienceMatchValue = raw.experienceMatchKind
-    || expMap[raw.experienceMatch]
-    || raw.experience_match
+  // Sécurité : on garantit que c'est une string parmi les 4 verdicts attendus
+  // par le composant JobScoreDisplay (sinon, expLabel fallback sur 'À vérifier').
+  const validExpVerdicts = new Set(['compatible', 'trop_junior', 'trop_senior', 'incertain']);
+  const candidateExpValue = (typeof raw.experienceMatchKind === 'string' && raw.experienceMatchKind)
+    || (typeof raw.experienceMatch === 'string' ? expMap[raw.experienceMatch] : null)
+    || (typeof raw.experience_match === 'string' && raw.experience_match)
     || 'incertain';
+  const experienceMatchValue = validExpVerdicts.has(candidateExpValue) ? candidateExpValue : 'incertain';
   // Verdict location : on accepte 'compatible' OU 'remote_ok' comme positif.
   // Le champ booléen historique location_match est conservé pour rétrocompat.
   const locationMatchKind = raw.locationMatchKind;
@@ -443,30 +479,41 @@ function mapScoringResult(raw: any): JobMatchResult {
   return {
     profile_name: raw.name || raw.profile_name || '',
     match_score: Math.max(0, Math.min(100, Number(raw.score ?? raw.match_score ?? raw.finalScore) || 0)),
-    matching_skills: raw.matching_skills || raw.matchedSkills || [],
-    missing_skills: raw.missing_skills || raw.missingSkills || [],
+    // Sanitize : le LLM peut retourner des objets dans certains cas → safeStr
+    // pour éviter l'erreur React #31 au render. Cap à 30 max pour la perf.
+    matching_skills: safeStrArray(raw.matching_skills || raw.matchedSkills, 30),
+    missing_skills: safeStrArray(raw.missing_skills || raw.missingSkills, 30),
     experience_match: experienceMatchValue as JobMatchResult['experience_match'],
     location_match: locationMatchBool,
-    summary: raw.summary || '',
-    recommendation: (recMap[raw.recommendation] || raw.recommendation || 'maybe') as JobMatchResult['recommendation'],
+    summary: safeStr(raw.summary),
+    recommendation: (recMap[raw.recommendation] || (typeof raw.recommendation === 'string' ? raw.recommendation : 'maybe')) as JobMatchResult['recommendation'],
     salary_analysis: raw.salary_analysis,
     scoring_details: {
-      strengths: raw.strengths || [],
-      concerns: raw.concerns || [],
-      seniorityMatch: raw.seniorityMatch || raw.seniority_match || undefined,
-      tenureAnalysis: raw.tenureAnalysis || raw.tenure_analysis || undefined,
+      strengths: safeStrArray(raw.strengths, 10),
+      concerns: safeStrArray(raw.concerns, 10),
+      seniorityMatch: safeStr(raw.seniorityMatch || raw.seniority_match) || undefined,
+      tenureAnalysis: safeStr(raw.tenureAnalysis || raw.tenure_analysis) || undefined,
       receptivityScore: raw.receptivityScore ?? raw.receptivity_score ?? null,
-      foreignDiplomaRisk: raw.internationalExperienceValidation || raw.foreignDiplomaRisk || raw.foreign_diploma_risk || 'none',
-      locationCompatibility: raw.locationCompatibility || raw.location_compatibility || 'unknown',
-      candidatePreferencesConflict: raw.candidatePreferencesConflict || raw.candidate_preferences_conflict || null,
-      contractMismatch: raw.contractMismatch || raw.contract_mismatch || null,
-      skipReason: raw.skipReason || raw.skip_reason || null,
+      foreignDiplomaRisk: safeStr(raw.internationalExperienceValidation || raw.foreignDiplomaRisk || raw.foreign_diploma_risk) || 'none',
+      locationCompatibility: safeStr(raw.locationCompatibility || raw.location_compatibility) || 'unknown',
+      candidatePreferencesConflict: safeStr(raw.candidatePreferencesConflict || raw.candidate_preferences_conflict) || null,
+      contractMismatch: safeStr(raw.contractMismatch || raw.contract_mismatch) || null,
+      skipReason: safeStr(raw.skipReason || raw.skip_reason) || null,
     },
-    // Criteria evaluations (per brief criteria)
-    criteriaEvaluations: raw.criteriaEvaluations || [],
+    // Criteria evaluations (per brief criteria) — sanitize chaque entry pour
+    // éviter le crash React #31 si le LLM retourne des objets imbriqués.
+    criteriaEvaluations: Array.isArray(raw.criteriaEvaluations)
+      ? raw.criteriaEvaluations
+          .map((ce: any) => ({
+            label: safeStr(ce?.label),
+            verdict: (typeof ce?.verdict === 'string' ? ce.verdict : 'unknown') as 'pass' | 'partial' | 'fail' | 'unknown',
+            reason: safeStr(ce?.reason),
+          }))
+          .filter((ce: { label: string }) => ce.label)
+      : [],
     likelyToSwitchScore: raw.likelyToSwitchScore ?? null,
     careerGrowthScore: raw.careerGrowthScore ?? null,
-    switchSignals: raw.switchSignals || [],
+    switchSignals: safeStrArray(raw.switchSignals, 10),
     // V2 fields passthrough
     hardFilterPassed: raw.hardFilterPassed,
     hardFilterKO: raw.hardFilterKO,
@@ -475,7 +522,7 @@ function mapScoringResult(raw: any): JobMatchResult {
     llmConfidenceScore: raw.llmConfidenceScore ?? null,
     engagementScore: raw.engagementScore ?? null,
     investigationNeeded: raw.investigationNeeded === true,
-    investigationFocus: Array.isArray(raw.investigationFocus) ? raw.investigationFocus : [],
+    investigationFocus: safeStrArray(raw.investigationFocus, 5),
     shape: typeof raw.shape === 'string' ? raw.shape : null,
     dimensions: raw.dimensions,
     dataCompleteness: raw.dataCompleteness,
