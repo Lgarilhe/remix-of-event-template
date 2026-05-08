@@ -735,7 +735,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 <Button
                   onClick={onLoadMore}
                   disabled={loadingMore}
-                  className="gap-2 bg-primary hover:bg-primary/90"
+                  className="gap-2 bg-foreground text-background hover:bg-foreground/90"
                 >
                   {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
                   Charger le lot suivant
@@ -1044,7 +1044,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       </div>
                       <Button
                         onClick={onLoadMore}
-                        className="gap-2 bg-primary hover:bg-primary/90"
+                        className="gap-2 bg-foreground text-background hover:bg-foreground/90"
                         size="default"
                       >
                         Lot suivant
