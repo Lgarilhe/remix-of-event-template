@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban, ChevronDown, Sparkles, Zap, Lightbulb } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban, ChevronDown, Sparkles, Zap, Lightbulb, Shield } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScoringBreakdown } from './ScoringBreakdown';
 import { CriteriaIndicators } from './CriteriaIndicators';
@@ -72,6 +72,16 @@ export interface JobMatchResult {
   investigationFocus?: string[];
   /** Shape du profil — méta-signal (silencieux_competent, optimiseur, etc.). */
   shape?: string | null;
+  /** Évaluation explicite du preset pedigree client (si présent). */
+  pedigreeAssessment?: {
+    presetName?: string;
+    strictMode?: boolean;
+    verdict?: 'match' | 'partial' | 'mismatch';
+    matched?: string[];
+    missed?: string[];
+    capped?: boolean;
+    detail?: string;
+  } | null;
   skippedLLM?: boolean;
   processingTimeMs?: number;
   tokensUsed?: { input: number; output: number } | null;
@@ -439,6 +449,11 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
         </div>
       )}
 
+      {/* ─── PRESET PEDIGREE CLIENT (si appliqué) ──────────────────────── */}
+      {result.pedigreeAssessment && (
+        <PedigreeAssessmentBlock assessment={result.pedigreeAssessment} />
+      )}
+
       {/* ─── CRITÈRES DU BRIEF (collapsible si > 3) ───────────────────── */}
       {result.criteriaEvaluations && result.criteriaEvaluations.length > 0 && (
         <CriteriaSection criteriaEvaluations={result.criteriaEvaluations} />
@@ -527,6 +542,42 @@ const PowerScoreChip: React.FC<{ icon: React.ElementType; label: string; score: 
       <TooltipTrigger asChild>{chip}</TooltipTrigger>
       <TooltipContent className="max-w-xs"><p className="text-xs">{tooltip}</p></TooltipContent>
     </Tooltip>
+  );
+};
+
+// ── Pedigree preset assessment ──
+const PedigreeAssessmentBlock: React.FC<{ assessment: NonNullable<JobMatchResult['pedigreeAssessment']> }> = ({ assessment }) => {
+  if (!assessment) return null;
+  const verdictConfig = {
+    match: { icon: CheckCircle2, label: 'Conforme au preset', cls: 'text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+    partial: { icon: AlertCircle, label: 'Partiellement conforme', cls: 'text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/5' },
+    mismatch: { icon: XCircle, label: 'Non conforme', cls: 'text-destructive border-destructive/30 bg-destructive/5' },
+  }[assessment.verdict || 'partial'];
+  const Icon = verdictConfig.icon;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+        <Shield className="w-3.5 h-3.5" />
+        Preset client {assessment.presetName ? `— ${assessment.presetName}` : ''}
+        {assessment.strictMode && <span className="text-3xs font-medium text-amber-600 dark:text-amber-400">(strict)</span>}
+      </p>
+      <div className={cn('flex items-start gap-2 px-2.5 py-2 border rounded-md text-xs', verdictConfig.cls)}>
+        <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="font-semibold">
+            {verdictConfig.label}
+            {assessment.capped && <span className="ml-2 text-3xs uppercase font-bold tracking-wider">— score plafonné</span>}
+          </div>
+          {assessment.detail && <p className="text-muted-foreground">{assessment.detail}</p>}
+          {assessment.matched && assessment.matched.length > 0 && (
+            <p className="text-3xs"><span className="font-bold uppercase tracking-wider">Match</span> · {assessment.matched.join(' · ')}</p>
+          )}
+          {assessment.missed && assessment.missed.length > 0 && (
+            <p className="text-3xs"><span className="font-bold uppercase tracking-wider">Manque</span> · {assessment.missed.join(' · ')}</p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 

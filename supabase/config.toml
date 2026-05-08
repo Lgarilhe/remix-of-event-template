@@ -163,7 +163,13 @@ verify_jwt = false
 [functions.process-sequences]
 verify_jwt = false
 
+[functions.generate-client-competitors]
+verify_jwt = false
+
 [functions.refine-search-filters]
+verify_jwt = false
+
+[functions.resolve-pedigree-directory]
 verify_jwt = false
 
 [functions.rgpd-erase-contact]

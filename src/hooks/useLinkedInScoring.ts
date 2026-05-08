@@ -527,6 +527,15 @@ function mapScoringResult(raw: any): JobMatchResult {
     investigationNeeded: raw.investigationNeeded === true,
     investigationFocus: safeStrArray(raw.investigationFocus, 5),
     shape: typeof raw.shape === 'string' ? raw.shape : null,
+    pedigreeAssessment: (raw.pedigreeAssessment && typeof raw.pedigreeAssessment === 'object') ? {
+      presetName: typeof raw.pedigreeAssessment.presetName === 'string' ? raw.pedigreeAssessment.presetName : undefined,
+      strictMode: raw.pedigreeAssessment.strictMode === true,
+      verdict: ['match', 'partial', 'mismatch'].includes(raw.pedigreeAssessment.verdict) ? raw.pedigreeAssessment.verdict : undefined,
+      matched: safeStrArray(raw.pedigreeAssessment.matched, 8),
+      missed: safeStrArray(raw.pedigreeAssessment.missed, 8),
+      capped: raw.pedigreeAssessment.capped === true,
+      detail: typeof raw.pedigreeAssessment.detail === 'string' ? raw.pedigreeAssessment.detail : undefined,
+    } : null,
     dimensions: raw.dimensions,
     dataCompleteness: raw.dataCompleteness,
     missingDataPoints: raw.missingDataPoints,
@@ -733,6 +742,10 @@ export function useLinkedInScoring({
           teamSize: (selectedJob as any).teamSize,
           reportsTo: (selectedJob as any).reportsTo,
           manages: (selectedJob as any).manages,
+          pedigreeRequirements: (selectedJob as any).pedigreeRequirements,
+          pedigreePresetName: (selectedJob as any).pedigreePresetName,
+          clientCompetitors: (selectedJob as any).clientCompetitors,
+          restrictSearchToCompetitors: (selectedJob as any).restrictSearchToCompetitors,
         },
         customScoringInstructions,
         accountId: accountId || undefined,
@@ -898,6 +911,10 @@ export function useLinkedInScoring({
         teamSize: (selectedJob as any).teamSize,
         reportsTo: (selectedJob as any).reportsTo,
         manages: (selectedJob as any).manages,
+        pedigreeRequirements: (selectedJob as any).pedigreeRequirements,
+        pedigreePresetName: (selectedJob as any).pedigreePresetName,
+        clientCompetitors: (selectedJob as any).clientCompetitors,
+        restrictSearchToCompetitors: (selectedJob as any).restrictSearchToCompetitors,
       };
 
       const allResults: JobMatchResult[] = [];

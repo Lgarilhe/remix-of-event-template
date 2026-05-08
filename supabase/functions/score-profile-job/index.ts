@@ -163,6 +163,39 @@ interface JobData {
   teamSize?: number;
   reportsTo?: string;
   manages?: number;
+  /**
+   * Exigences pedigree client (preset). Surchargent les règles d'équité par
+   * défaut quand renseignées. Schema cf. src/types/pedigreePreset.ts.
+   */
+  pedigreeRequirements?: {
+    schools_required?: string[];
+    diploma_must_be_from?: 'france' | 'eu' | 'any';
+    companies_required_provenance?: string[];
+    companies_specific_required?: string[];
+    companies_avoid?: string[];
+    min_seniority?: string;
+    strict_mode?: boolean;
+    custom_instructions?: string;
+  };
+  pedigreePresetName?: string;
+  /**
+   * Concurrents directs du client (org_competitors per client_name).
+   * Bonus scoring fort si le profil a bossé chez l'un d'eux.
+   */
+  clientCompetitors?: Array<{
+    name: string;
+    relationKind?: 'direct' | 'adjacent' | 'inspirational';
+    country?: string | null;
+    domain?: string | null;
+    linkedinCompanyId?: string | null;
+  }>;
+  /**
+   * Mode chirurgical : si true + résolution OK, la search Unipile a déjà
+   * été restreinte aux profils issus des concurrents. Le LLM doit alors
+   * considérer la provenance "concurrent" comme un MATCH explicite (très
+   * positif) plutôt qu'un signal additionnel parmi d'autres.
+   */
+  restrictSearchToCompetitors?: boolean;
 }
 
 interface DimensionScore {
@@ -179,6 +212,16 @@ interface ScoringResult {
   summary: string;
   strengths: string[];
   concerns: string[];
+  /** Évaluation explicite du preset pedigree client (si présent dans le brief). */
+  pedigreeAssessment?: {
+    presetName?: string;
+    strictMode?: boolean;
+    verdict?: 'match' | 'partial' | 'mismatch';
+    matched?: string[];
+    missed?: string[];
+    capped?: boolean;
+    detail?: string;
+  } | null;
   missingSkills: string[];
   seniorityMatch?: string;
   locationMatch?: string;
@@ -559,6 +602,30 @@ Si critères avec "parmi/ou/dont", au moins UNE option suffit. Sois intelligent
 sur les noms d'écoles, certifs, synonymes techniques.
 
 ═══════════════════════════════════════════════════════════════
+═══ EXCEPTION — EXIGENCES PEDIGREE CLIENT EXPLICITES
+═══════════════════════════════════════════════════════════════
+
+Si le user prompt contient une section "=== EXIGENCES PEDIGREE CLIENT (PRESET ...) ===",
+le client a EXPLICITEMENT défini des critères de provenance/école/diplôme.
+Dans ce cas, ces critères SURCLASSENT les règles d'équité par défaut ci-dessous :
+
+→ Si l'exigence dit "diplôme délivré par établissement français" → tu peux et tu
+  DOIS pénaliser un diplôme étranger non-FR (sauf équivalent UE si l'exigence est 'eu').
+  Ce n'est PAS une discrimination : c'est un critère client objectif sur l'établissement,
+  pas sur la nationalité du candidat.
+→ Si l'exigence dit "scale-up Series B+ requise" → tu peux et tu DOIS pénaliser
+  un parcours 100% ESN/PME traditionnelle, même si techniquement excellent.
+→ Si "strict_mode" est activé → un profil non-conforme à au moins UN critère est
+  PLAFONNÉ à 50/100 (force "skip" ou "maybe"), peu importe ses autres qualités.
+→ Si "strict_mode" est désactivé → ajuste le score (+/- 10 à 20 pts selon centralité
+  du critère) sans plafonnement strict.
+
+Évalue chaque critère explicitement dans le champ \`pedigreeAssessment\` du JSON de sortie.
+Mentionne match/mismatch dans \`strengths\` ou \`concerns\`.
+
+EN L'ABSENCE de cette section, applique les règles d'équité ci-dessous (défaut).
+
+═══════════════════════════════════════════════════════════════
 ═══ RÈGLE D'ÉQUITÉ GÉOGRAPHIQUE — pedigree (NON NÉGOCIABLE)
 ═══════════════════════════════════════════════════════════════
 
@@ -740,7 +807,8 @@ Mode SINGLE (1 candidat) — réponds avec UN objet :
 "shape":"silencieux_competent|optimiseur|shadow_worker|freelance|narratif|debutant|chaotique",
 "investigationNeeded":true|false,
 "investigationFocus":["question 1","question 2"],
-"contractMismatch":null,"locationMismatch":null,"salaryMismatch":null}
+"contractMismatch":null,"locationMismatch":null,"salaryMismatch":null,
+"pedigreeAssessment":null|{"presetName":"...","strictMode":true|false,"verdict":"match|partial|mismatch","matched":["critère ok"],"missed":["critère ko"],"capped":true|false,"detail":"max 30 mots"}}
 
 Mode BATCH (N candidats) — réponds avec UN ARRAY, un objet par candidat dans
 l'ordre, chaque objet inclut "id":"<id du candidat>" en plus des champs
@@ -1652,6 +1720,16 @@ interface LLMResult {
   investigationFocus: string[];
   /** Shape du profil — méta-signal qui ajuste l'interprétation. */
   shape: string | null;
+  /** Évaluation explicite du preset pedigree client (si présent). */
+  pedigreeAssessment?: {
+    presetName?: string;
+    strictMode?: boolean;
+    verdict?: 'match' | 'partial' | 'mismatch';
+    matched?: string[];
+    missed?: string[];
+    capped?: boolean;
+    detail?: string;
+  } | null;
   tokensUsed: { input: number; output: number };
 }
 
@@ -1734,6 +1812,92 @@ function buildJobContext(job: JobData, customScoringInstructions?: string): stri
     ? `\n⏱️ Urgence : ${job.urgency.toUpperCase()} — favoriser les profils likely-to-switch`
     : "";
 
+  // ─── Concurrents du client (signal positif fort dans le scoring) ────────
+  // Si l'org a configuré une liste de concurrents pour ce client, les profils
+  // qui en viennent sont des cibles "poach" naturelles. On distingue 3 niveaux :
+  // - direct : concurrent frontal (même produit, même marché)
+  // - adjacent : secteur / produit adjacent
+  // - inspirational : boîte plus grosse / pionnière (signal modéré)
+  const competitorsBlock = (() => {
+    const list = job.clientCompetitors;
+    if (!list || list.length === 0) return "";
+    const direct = list.filter(c => !c.relationKind || c.relationKind === 'direct').map(c => c.name);
+    const adjacent = list.filter(c => c.relationKind === 'adjacent').map(c => c.name);
+    const inspirational = list.filter(c => c.relationKind === 'inspirational').map(c => c.name);
+    const lines: string[] = [];
+    lines.push("\n=== CONCURRENTS DU CLIENT (poach signals) ===");
+    if (job.restrictSearchToCompetitors) {
+      lines.push("⚠️ MODE CHIRURGICAL : la search a été restreinte aux profils issus de ces concurrents. Considère la provenance \"concurrent\" comme un MATCH explicite (bonus très fort, +15 à +25 pts sur pedigree). Si le candidat n'a AUCUN passage chez eux, c'est un signal d'alerte (peut-être faux positif Unipile).");
+    } else {
+      lines.push("Bonus scoring fort si le candidat a bossé chez l'un de ces concurrents (+10 à +20 pts pedigree selon centralité). Mentionne-le explicitement dans `strengths` ou `notableCompanies`.");
+    }
+    if (direct.length) lines.push(`Direct : ${direct.slice(0, 12).join(', ')}.`);
+    if (adjacent.length) lines.push(`Adjacent : ${adjacent.slice(0, 8).join(', ')}.`);
+    if (inspirational.length) lines.push(`Inspirational : ${inspirational.slice(0, 5).join(', ')}.`);
+    return lines.join("\n");
+  })();
+
+  // ─── Pedigree requirements (preset client) ───────────────────────────
+  // Quand un preset client est appliqué, ses critères ÉCRASENT les règles
+  // d'équité par défaut du SCORING_SYSTEM_PROMPT (ex: "ne pas pénaliser
+  // l'origine du diplôme") car le client EXIGE EXPLICITEMENT ces critères.
+  // Cf section "RÈGLES D'ÉQUITÉ" du prompt système qui précise cette
+  // hiérarchie de priorité.
+  const pedigreeBlock = (() => {
+    const pr = job.pedigreeRequirements;
+    if (!pr) return "";
+    const lines: string[] = [];
+    lines.push(`\n=== EXIGENCES PEDIGREE CLIENT (PRESET${job.pedigreePresetName ? ` "${job.pedigreePresetName}"` : ''}) — PRIORITÉ ABSOLUE ===`);
+    lines.push("Le client a explicitement défini ces critères. Ils SURCLASSENT les règles d'équité par défaut.");
+    if (pr.strict_mode) {
+      lines.push("⚠️ MODE STRICT activé : tout profil non-conforme à AU MOINS UN critère ci-dessous est plafonné à 50/100 (force \"skip\" ou \"maybe\"). Note explicitement la non-conformité dans `concerns`.");
+    } else {
+      lines.push("Mode préférence : les critères sont des préférences fortes qui ajustent le score (+/- 10 à 20 points selon centralité), sans plafonnement strict.");
+    }
+    if (pr.schools_required?.length) {
+      lines.push(`\n• Écoles requises (au moins une) : ${pr.schools_required.join(', ')}.`);
+      lines.push("  Utilise ta connaissance des aliases (ex: \"X\" = \"École Polytechnique\", \"CentraleSupélec\" = \"Centrale Paris\" + \"Supélec\", \"HEC\" = \"HEC Paris\"). Match large mais cohérent.");
+    }
+    if (pr.diploma_must_be_from && pr.diploma_must_be_from !== 'any') {
+      const map: Record<string, string> = {
+        france: 'France (établissement français — Polytechnique, Centrale, HEC, EM, Sciences Po, Mines, Ponts, Sup de co, université française, etc.)',
+        eu: 'Union Européenne (FR, UK, DE, IT, ES, NL, BE, etc.)',
+      };
+      lines.push(`\n• Origine du diplôme : ${map[pr.diploma_must_be_from] || pr.diploma_must_be_from}.`);
+      lines.push("  ⚠️ Ce critère cible l'établissement délivrant le diplôme, PAS la nationalité du candidat. Un candidat tunisien diplômé EPITA Paris = OK avec 'france'. RGPD safe.");
+    }
+    if (pr.companies_required_provenance?.length) {
+      const provenanceMap: Record<string, string> = {
+        gafam: 'GAFAM (Google, Apple, Meta, Amazon, Microsoft)',
+        big_tech_us: 'Big Tech US (Stripe, Airbnb, Uber, Datadog, Snowflake, Databricks, Figma, Notion, Linear...)',
+        scale_up: 'Scale-up reconnue (Series B+ ou 100+ employés : Doctolib, Alan, Qonto, Mirakl, Ankorstore, Pennylane, Spendesk, Swile, Aircall, ManoMano, BackMarket, Vinted, Veepee...)',
+        startup_funded: 'Startup funded (Seed ou Series A early-stage)',
+        banque_assurance: 'Banque / Assurance (BNP, SG, AXA, Crédit Agricole, Allianz, BPCE, Natixis, etc.)',
+        cabinet_strategy: 'Cabinet stratégie (McKinsey, BCG, Bain, Roland Berger, Oliver Wyman, AT Kearney)',
+        esn: 'ESN/SSII (Capgemini, Sopra Steria, Atos, CGI, Accenture, Cognizant)',
+      };
+      lines.push(`\n• Provenance entreprises (au moins UNE expérience significative 1+ an) : ${pr.companies_required_provenance.map(c => provenanceMap[c] || c).join(' OU ')}.`);
+    }
+    if (pr.companies_specific_required?.length) {
+      lines.push(`\n• Boîtes spécifiques requises (au moins une) : ${pr.companies_specific_required.join(', ')}.`);
+    }
+    if (pr.companies_avoid?.length) {
+      const avoidMap: Record<string, string> = {
+        esn_body_shopping: 'ESN body shopping (rotation 3-6 mois, junior, missions génériques) — signal négatif fort',
+        small_consulting: 'Petits cabinets de conseil non-spécialisés — signal négatif modéré',
+      };
+      lines.push(`\n• ⛔ Provenance à éviter : ${pr.companies_avoid.map(c => avoidMap[c] || c).join(' · ')}.`);
+    }
+    if (pr.min_seniority) {
+      lines.push(`\n• Séniorité minimale exigée : ${pr.min_seniority}.`);
+    }
+    if (pr.custom_instructions?.trim()) {
+      lines.push(`\n• Instructions additionnelles du client : "${pr.custom_instructions.slice(0, 400)}"`);
+    }
+    lines.push("\n→ Évalue chaque critère explicitement dans `pedigreeAssessment` (cf JSON schema). Mentionne match/mismatch dans `strengths`/`concerns`.");
+    return lines.join("\n");
+  })();
+
   return sanitizeText(
     `=== POSTE ===
 ${job.title}${job.client?.name ? " @ " + job.client.name : ""}${job.client?.sector ? " (" + job.client.sector + ")" : ""}${job.client?.size ? " · " + job.client.size : ""}
@@ -1751,7 +1915,7 @@ ${job.location ? "Localisation poste: " + job.location : ""}${teamContextBlock}$
 ${job.salaryMin || job.salaryMax ? `Salaire: ${job.salaryMin ? Math.round(job.salaryMin/1000) + "k" : "?"}${job.salaryMax ? "-" + Math.round(job.salaryMax/1000) + "k" : ""}€ brut annuel` : ""}
 ${job.tjmMin || job.tjmMax ? `TJM: ${job.tjmMin || "?"}${job.tjmMax ? "-" + job.tjmMax : ""}€/jour` : ""}
 ${job.transversalCriteria?.context ? "Contexte client : " + job.transversalCriteria.context.substring(0, 300) : ""}
-${job.transversalCriteria?.must ? "Critères transversaux obligatoires : " + job.transversalCriteria.must : ""}${targetCompaniesBlock}${weightsBlock}${criteriaBlock}${calibrationBlock}
+${job.transversalCriteria?.must ? "Critères transversaux obligatoires : " + job.transversalCriteria.must : ""}${targetCompaniesBlock}${weightsBlock}${criteriaBlock}${calibrationBlock}${pedigreeBlock}${competitorsBlock}
 ${job.bodyContent ? "\nCritères additionnels (texte libre) :\n" + job.bodyContent.substring(0, 1500) : ""}
 ${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
 ${customScoringInstructions ? "\nConsignes supplémentaires : " + customScoringInstructions.slice(0, 400) : ""}`
@@ -1971,10 +2135,27 @@ Réponds avec UN objet JSON (mode SINGLE) — format défini dans le system prom
     investigationNeeded: parsed.investigationNeeded === true,
     investigationFocus: Array.isArray(parsed.investigationFocus) ? parsed.investigationFocus.slice(0, 5) : [],
     shape: typeof parsed.shape === 'string' && parsed.shape.trim() ? parsed.shape.trim() : null,
+    pedigreeAssessment: parsePedigreeAssessment(parsed.pedigreeAssessment),
     tokensUsed: {
       input: data.usage?.input_tokens || 0,
       output: data.usage?.output_tokens || 0,
     },
+  };
+}
+
+/** Parse + sanitize le pedigreeAssessment du LLM (peut être null/manquant si pas de preset). */
+function parsePedigreeAssessment(raw: unknown): LLMResult['pedigreeAssessment'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const verdict = typeof r.verdict === 'string' && ['match', 'partial', 'mismatch'].includes(r.verdict) ? r.verdict as 'match' | 'partial' | 'mismatch' : undefined;
+  return {
+    presetName: typeof r.presetName === 'string' ? r.presetName.slice(0, 80) : undefined,
+    strictMode: r.strictMode === true,
+    verdict,
+    matched: Array.isArray(r.matched) ? r.matched.filter((s): s is string => typeof s === 'string').slice(0, 8) : undefined,
+    missed: Array.isArray(r.missed) ? r.missed.filter((s): s is string => typeof s === 'string').slice(0, 8) : undefined,
+    capped: r.capped === true,
+    detail: typeof r.detail === 'string' ? r.detail.slice(0, 250) : undefined,
   };
 }
 
@@ -2162,6 +2343,7 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
       investigationNeeded: parsed.investigationNeeded === true,
       investigationFocus: Array.isArray(parsed.investigationFocus) ? parsed.investigationFocus.slice(0, 5) : [],
       shape: typeof parsed.shape === 'string' && parsed.shape.trim() ? parsed.shape.trim() : null,
+      pedigreeAssessment: parsePedigreeAssessment(parsed.pedigreeAssessment),
       tokensUsed: tokensPerProfile,
     });
   }
@@ -3290,6 +3472,29 @@ Deno.serve(async (req) => {
         }
       }
 
+      // ─── Pedigree preset strict_mode cap ─────────────────────────────
+      // Si le client a configuré un preset en mode strict ET que le LLM a
+      // détecté un mismatch (verdict="mismatch" OU capped=true), on plafonne
+      // à 50/100 pour forcer un "skip" ou "maybe", peu importe la qualité
+      // des autres dimensions. Le LLM a déjà traité ça via le system prompt,
+      // mais on applique le cap côté serveur en fail-safe au cas où il
+      // aurait produit un score >50 par optimisme.
+      const pedigreeReq = job.pedigreeRequirements;
+      const assessment = llmResult?.pedigreeAssessment;
+      if (pedigreeReq?.strict_mode && assessment) {
+        const shouldCap = assessment.capped === true || assessment.verdict === 'mismatch';
+        if (shouldCap && finalScore > 50) {
+          const before = finalScore;
+          finalScore = 50;
+          if (llmResult?.concerns) {
+            llmResult.concerns = [
+              `Score plafonné (${before} → 50) — preset client strict : ${(assessment.missed || []).slice(0, 2).join(', ') || 'critères pedigree non remplis'}`,
+              ...llmResult.concerns,
+            ];
+          }
+        }
+      }
+
       const recommendation = getRecommendation(finalScore);
 
       // Annote concerns si on a capped à cause d'un must-have failed
@@ -3362,6 +3567,7 @@ Deno.serve(async (req) => {
         investigationNeeded: llmResult?.investigationNeeded ?? false,
         investigationFocus: llmResult?.investigationFocus ?? [],
         shape: llmResult?.shape ?? null,
+        pedigreeAssessment: llmResult?.pedigreeAssessment ?? null,
         skippedLLM: llmResult === null,
         processingTimeMs: Date.now() - ps.startTime,
         tokensUsed: llmResult?.tokensUsed ?? null,

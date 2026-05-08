@@ -1,3 +1,5 @@
+import type { PedigreeRequirements } from './pedigreePreset';
+
 /** Structured job brief stored in sourcing_projects.job_details (JSONB) */
 export interface JobDetails {
   // ── Identité du poste ──
@@ -94,6 +96,25 @@ export interface JobDetails {
   voice_transcript?: string;
   voice_audio_url?: string;
   brief_video_url?: string;
+
+  // ── Pedigree requirements (snapshot du preset client appliqué au scoring) ──
+  /**
+   * Critères pedigree client appliqués sur le scoring (top école, scale-up, etc).
+   * Snapshot du preset au moment de la sélection — survit même si le preset
+   * est modifié ou supprimé. Le preset_id reste la source live (pour propager
+   * des updates à toutes les missions du client si on le souhaite).
+   */
+  pedigree_requirements?: PedigreeRequirements;
+  pedigree_preset_id?: string | null;
+  pedigree_preset_name?: string | null;
+
+  // ── Concurrents du client (signal positif scoring + mode chirurgical Unipile) ──
+  /**
+   * Si true, la search Unipile est restreinte aux profils ayant bossé chez les
+   * concurrents (cf table client_competitors org-scoped, lookup par
+   * client.name_normalized). Sinon, les concurrents servent juste au scoring.
+   */
+  restrict_search_to_competitors?: boolean;
 
   // ── Configuration outreach (influence la rédaction des messages IA) ──
   outreach_config?: {

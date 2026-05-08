@@ -6,6 +6,8 @@ import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
+import { useClientCompetitors } from '@/hooks/useClientCompetitors';
+import { usePedigreeAugmentation } from '@/hooks/usePedigreeAugmentation';
 import { useLinkedInScoring } from '@/hooks/useLinkedInScoring';
 import { useFilteredResults, type ScoredSortBy } from '@/hooks/useFilteredResults';
 import { useAutoFillFilters } from '@/hooks/useAutoFillFilters';
@@ -260,6 +262,38 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Search history (must be after search hook)
   const searchHistory = useSearchHistory(search.selectedJob?.id || null);
 
+  // ─── Pedigree augmentation : injecte les IDs LinkedIn pré-résolus
+  // (annuaire global + concurrents client) dans les filtres Unipile au moment
+  // du submit. Permet pré-filtrage côté Unipile au lieu de reranking post-search.
+  const jdForAug = (activeProject as any)?.job_details || {};
+  const clientNameForAug = jdForAug.client?.name || activeProject?.client_name || null;
+  const { enabledCompetitors } = useClientCompetitors(clientNameForAug);
+  const pedigreeAug = usePedigreeAugmentation(
+    jdForAug.pedigree_requirements,
+    enabledCompetitors,
+    /* enabled */ !!activeProject,
+  );
+  // Mode chirurgical : restrict_search_to_competitors + il y a des IDs concurrents résolus
+  const restrictMode = !!jdForAug.restrict_search_to_competitors;
+  const augmentationForActions = useMemo(() => {
+    if (!pedigreeAug) return null;
+    const competitorCompanyIds = pedigreeAug.companyIds.filter(c => c.source === 'competitor');
+    if (restrictMode && competitorCompanyIds.length > 0) {
+      // Mode chirurgical : ne garder que les concurrents (pas le preset specific/provenance)
+      return {
+        schoolIds: pedigreeAug.schoolIds,
+        companyIds: competitorCompanyIds,
+        restrictCompaniesToAugmented: true,
+      };
+    }
+    // Mode standard : merge tout (preset + concurrents)
+    return {
+      schoolIds: pedigreeAug.schoolIds,
+      companyIds: pedigreeAug.companyIds,
+      restrictCompaniesToAugmented: false,
+    };
+  }, [pedigreeAug, restrictMode]);
+
   // Search actions hook
   const { handleSearch, handleLoadMore } = useLinkedInSearchActions(
     {
@@ -283,6 +317,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         getStatus: search.candidateStatus.getStatus,
         batchDiscover: search.candidateStatus.batchDiscover,
       },
+      pedigreeAugmentation: augmentationForActions,
     },
     {
       setLoading: search.setLoading,
@@ -912,6 +947,36 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         loading={search.loading}
         hasSearched={search.hasSearched}
       />
+
+      {/* Bandeau pedigree : info des IDs auto-injectés dans la recherche */}
+      {pedigreeAug && (pedigreeAug.counts.schools + pedigreeAug.counts.companies > 0 || (pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0) && (
+        <div className="mx-2 sm:mx-0 mb-2 flex flex-wrap items-center gap-2 px-3 py-2 border border-foreground/15 bg-foreground/[0.03] rounded-md text-xs">
+          <span className="font-bold uppercase tracking-wider text-3xs">
+            {restrictMode ? 'Mode chirurgical' : 'Filtres pedigree'}
+          </span>
+          {pedigreeAug.counts.schools > 0 && (
+            <span className="text-muted-foreground">
+              {pedigreeAug.counts.schools} école{pedigreeAug.counts.schools > 1 ? 's' : ''}
+            </span>
+          )}
+          {pedigreeAug.counts.companies > 0 && (
+            <span className="text-muted-foreground">
+              {pedigreeAug.counts.companies} entreprise{pedigreeAug.counts.companies > 1 ? 's' : ''}
+            </span>
+          )}
+          {pedigreeAug.counts.fromCompetitors > 0 && (
+            <span className="text-muted-foreground">
+              · dont {pedigreeAug.counts.fromCompetitors} concurrent{pedigreeAug.counts.fromCompetitors > 1 ? 's' : ''}
+            </span>
+          )}
+          <span className="text-muted-foreground">injecté{pedigreeAug.counts.schools + pedigreeAug.counts.companies > 1 ? 's' : ''} dans la recherche Unipile</span>
+          {(pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0 && (
+            <span className="text-amber-700 dark:text-amber-400 ml-auto">
+              {pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length} non encore résolu{pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length > 1 ? 's' : ''} (cron mensuel)
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Filters modal — large overlay */}
       <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>

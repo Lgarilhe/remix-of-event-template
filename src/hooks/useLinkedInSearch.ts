@@ -5,6 +5,7 @@ import { useUnipileQuota } from '@/hooks/useUnipileQuota';
 import { useJobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { useClientCompetitors } from '@/hooks/useClientCompetitors';
 
 import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
@@ -143,6 +144,13 @@ export function useLinkedInSearch({
   const filtersRef = useRef<LinkedInFiltersState>(INITIAL_FILTERS);
   const pendingLocationRef = useRef<string | null>(null);
 
+
+  // ── Concurrents du client (org_competitors per client_name) ─────────────
+  // Sert au scoring (signal positif fort) et au mode chirurgical Unipile.
+  const clientNameForCompetitors = (activeProject as any)?.job_details?.client?.name
+    || activeProject?.client_name
+    || null;
+  const { enabledCompetitors } = useClientCompetitors(clientNameForCompetitors);
 
   // Backward-compatible wrappers for search state (support both direct values and updater functions)
   const setFilters = useCallback((fOrUpdater: LinkedInFiltersState | ((prev: LinkedInFiltersState) => LinkedInFiltersState)) => {
@@ -468,6 +476,27 @@ export function useLinkedInSearch({
       if (jd.team_size) (job as any).teamSize = jd.team_size;
       if (jd.reports_to) (job as any).reportsTo = jd.reports_to;
       if (jd.manages) (job as any).manages = jd.manages;
+      // Pedigree requirements (preset client) — forward au scoring pour que le
+      // LLM honore "top école FR / scale-up Series B+" avec priorité sur les
+      // règles d'équité par défaut.
+      if (jdAny.pedigree_requirements) {
+        (job as any).pedigreeRequirements = jdAny.pedigree_requirements;
+      }
+      if (jdAny.pedigree_preset_name) {
+        (job as any).pedigreePresetName = jdAny.pedigree_preset_name;
+      }
+      // Concurrents client — signal positif fort dans le scoring + base
+      // pour le mode chirurgical Unipile (filtre company restreint aux IDs).
+      if (enabledCompetitors && enabledCompetitors.length > 0) {
+        (job as any).clientCompetitors = enabledCompetitors.slice(0, 20).map((c) => ({
+          name: c.competitor_name,
+          relationKind: c.relation_kind,
+          country: c.country,
+          domain: c.domain,
+          linkedinCompanyId: c.linkedin_company_id,
+        }));
+        (job as any).restrictSearchToCompetitors = !!jdAny.restrict_search_to_competitors;
+      }
       return job;
     };
 
@@ -487,7 +516,7 @@ export function useLinkedInSearch({
       });
       setSelectedJob(synthetic as Job);
     }
-  }, [activeProject?.id, activeProject?.job_details]); // Re-run when brief data changes
+  }, [activeProject?.id, activeProject?.job_details, enabledCompetitors]); // Re-run when brief or competitors change
 
   // Deferred location resolution: when selectedAccount becomes available and we have a pending location
   useEffect(() => {

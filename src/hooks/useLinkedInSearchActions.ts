@@ -87,6 +87,9 @@ interface SearchContext {
   autoHideTreatedRef: React.MutableRefObject<boolean>;
   /** Search source: 'linkedin' (default) or 'database' (Konekt base) */
   searchSource?: 'linkedin' | 'database';
+  /** Optional pedigree/competitors augmentation : injecte les IDs résolus
+   *  dans filters.school + filters.company avant submit Unipile. */
+  pedigreeAugmentation?: SearchAugmentation | null;
   quota: {
     canPerformAction: (action: string, count: number) => boolean;
     recordAction: (action: string, count: number) => void;
@@ -116,7 +119,28 @@ interface SearchSetters {
   setHasSearched: (v: boolean) => void;
 }
 
-export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount: string): Record<string, unknown> {
+/** Optional augmentation : injecte des IDs LinkedIn pré-résolus (annuaire
+ *  pedigree global ou concurrents client) dans les filtres avant submit. */
+export interface SearchAugmentation {
+  schoolIds?: Array<{ id: string; name: string }>;
+  /** Mode "ajout" : merge dans filters.company (élargit les sources). */
+  companyIds?: Array<{ id: string; name: string }>;
+  /** Mode "restrict" : si true, les companyIds REMPLACENT filters.company
+   *  (mode chirurgical / poach — recherche restreinte aux concurrents). */
+  restrictCompaniesToAugmented?: boolean;
+}
+
+export function buildSearchParams(
+  filtersInput: LinkedInFiltersState,
+  selectedAccount: string,
+  augmentation?: SearchAugmentation,
+): Record<string, unknown> {
+  // Clone défensif : l'augmentation pedigree mute filters.school / filters.company
+  // ci-dessous, on évite de modifier l'objet du caller.
+  const filters: LinkedInFiltersState = augmentation
+    ? { ...filtersInput, school: [...filtersInput.school], company: [...filtersInput.company] }
+    : filtersInput;
+
   const baseParams: Record<string, unknown> = {
     action: 'search',
     account_id: selectedAccount,
@@ -169,6 +193,20 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
     }
   }
 
+  // ─── Augmentation : merge IDs annuaire (preset.schools_required) ───
+  // Les écoles requises par le preset sont déjà résolues en IDs LinkedIn
+  // par le cron resolve-pedigree-directory. On les ajoute au filtre school
+  // pour pré-filtrer côté Unipile (au lieu de scorer après search).
+  if (augmentation?.schoolIds?.length) {
+    const existing = new Set(filters.school.map(s => s.id));
+    for (const aug of augmentation.schoolIds) {
+      if (!existing.has(aug.id)) {
+        filters.school.push({ id: aug.id, name: aug.name } as typeof filters.school[number]);
+        existing.add(aug.id);
+      }
+    }
+  }
+
   // School - with priority handling
   const effectiveSchool =
     filters.api === 'recruiter'
@@ -202,6 +240,25 @@ export function buildSearchParams(filters: LinkedInFiltersState, selectedAccount
       baseParams.industry = filters.industry.map(f => f.name || f.id).filter(n => !/^\d+$/.test(n));
     } else {
       baseParams.industry = { include: filters.industry.map(f => f.id) };
+    }
+  }
+
+  // ─── Augmentation : merge ou remplace les IDs entreprise ──────────────
+  // Mode "ajout" (preset companies_specific_required + provenance) : on
+  // élargit le filtre company avec les IDs résolus.
+  // Mode "restrict" (mode chirurgical concurrents) : on REMPLACE le filtre
+  // par les IDs des concurrents → search Unipile restreinte.
+  if (augmentation?.companyIds?.length) {
+    if (augmentation.restrictCompaniesToAugmented) {
+      filters.company = augmentation.companyIds.map(c => ({ id: c.id, name: c.name } as typeof filters.company[number]));
+    } else {
+      const existing = new Set(filters.company.map(c => c.id));
+      for (const aug of augmentation.companyIds) {
+        if (!existing.has(aug.id)) {
+          filters.company.push({ id: aug.id, name: aug.name } as typeof filters.company[number]);
+          existing.add(aug.id);
+        }
+      }
     }
   }
 
@@ -580,6 +637,7 @@ export function useLinkedInSearchActions(
     autoHideTreatedRef,
     quota,
     candidateStatus,
+    pedigreeAugmentation,
   } = context;
 
   const {
@@ -648,7 +706,7 @@ export function useLinkedInSearchActions(
           await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        const baseParams = buildSearchParams(currentFilters, selectedAccount);
+        const baseParams = buildSearchParams(currentFilters, selectedAccount, pedigreeAugmentation || undefined);
         const params: Record<string, unknown> = {
           ...baseParams,
           limit: RESULTS_PER_BATCH,

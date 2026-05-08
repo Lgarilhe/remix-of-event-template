@@ -35,6 +35,7 @@ import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
 import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
 import { AgencySettings } from '@/components/settings/AgencySettings';
 import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
+import { PedigreePresetsSettings } from '@/components/settings/PedigreePresetsSettings';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 
@@ -108,6 +109,7 @@ const Settings = () => {
     if (tab === 'templates') return 'templates';
     if (tab === 'connectors' && !isCollaborator) return 'connectors';
     if (tab === 'team' && !isCollaborator) return 'team';
+    if (tab === 'presets' && !isCollaborator) return 'presets';
     if (tab === 'agency' && isAgency) return 'agency';
     if (tab === 'marketplace') return 'marketplace';
     return 'general';
@@ -132,6 +134,7 @@ const Settings = () => {
     ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon3d: iconTeam3d }] : []),
     ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
     { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
+    ...(!isCollaborator ? [{ value: 'presets', label: 'Presets clients', icon3d: iconBuilding3d }] : []),
     ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d }] : []),
     ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
     ...(isAgency ? [{ value: 'agency', label: 'Agence', icon3d: iconTeam3d }] : []),
@@ -399,6 +402,10 @@ const Settings = () => {
 
             {activeTab === 'connectors' && (
               <ConnectorSettings />
+            )}
+
+            {activeTab === 'presets' && !isCollaborator && (
+              <PedigreePresetsSettings />
             )}
 
             {activeTab === 'integrations' && isAdmin && (
