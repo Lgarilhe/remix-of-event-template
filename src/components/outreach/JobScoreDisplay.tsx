@@ -1,5 +1,6 @@
 import React from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban, ChevronDown, Sparkles, Zap, Lightbulb } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScoringBreakdown } from './ScoringBreakdown';
 import { CriteriaIndicators } from './CriteriaIndicators';
 import { cn } from '@/lib/utils';
@@ -271,43 +272,38 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
   const engagement = result.engagementScore ?? null;
   const showThreeRings = confidence != null || engagement != null;
 
+  // Forces (strengths) et points d'attention (concerns) sont les highlights
+  // les plus précieux du LLM. On les met en avant visuellement.
+  const strengths = (result.scoring_details?.strengths || []).slice(0, 3);
+  const concerns = (result.scoring_details?.concerns || []).slice(0, 3);
+
   return (
-    <div className="space-y-4">
-      {/* Header: 3 rings + summary + pills.
-          Sur mobile (< sm = 640px) : stack vertical (rings au-dessus, texte en-dessous full width).
-          Sur desktop (≥ sm) : flex row, rings + texte côte à côte. */}
-      <div className="flex flex-col sm:flex-row items-start sm:gap-4 gap-3">
-        {showThreeRings ? (
-          <div className="flex items-start gap-3 shrink-0 w-full sm:w-auto justify-start">
-            <ScoreRing score={result.match_score} size={64} label="Fit" tone="primary" />
-            {confidence != null && (
-              <ScoreRing
-                score={confidence}
-                size={48}
-                label="Confiance"
-                tone={confidence >= 70 ? 'success' : confidence >= 50 ? 'amber' : 'muted'}
-              />
-            )}
-            {engagement != null && (
-              <ScoreRing
-                score={engagement}
-                size={48}
-                label="Engagement"
-                tone={engagement >= 70 ? 'success' : engagement >= 50 ? 'amber' : 'muted'}
-              />
-            )}
-          </div>
-        ) : (
-          <ScoreRing score={result.match_score} size={72} />
-        )}
-        <div className="flex-1 min-w-0 space-y-2">
-          {jobTitle && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold">
-              <Target className="w-3 h-3" />
-              Match pour: <span className="text-foreground">{jobTitle}</span>
-            </div>
+    <div className="space-y-5">
+      {/* ─── HEADER : 3 scores ronds + verdict + summary ──────────────── */}
+      <div className="flex flex-col sm:flex-row items-start sm:gap-5 gap-4">
+        {/* Bloc rings : sur mobile en row full-width centré, desktop compact à gauche */}
+        <div className="flex items-center gap-4 shrink-0 w-full sm:w-auto justify-around sm:justify-start">
+          <ScoreRing score={result.match_score} size={72} label="Fit" tone="primary" />
+          {confidence != null && (
+            <ScoreRing
+              score={confidence}
+              size={52}
+              label="Confiance"
+              tone={confidence >= 70 ? 'success' : confidence >= 50 ? 'amber' : 'muted'}
+            />
           )}
-          <p className="text-sm text-foreground/90 leading-relaxed">{result.summary}</p>
+          {engagement != null && (
+            <ScoreRing
+              score={engagement}
+              size={52}
+              label="Engagement"
+              tone={engagement >= 70 ? 'success' : engagement >= 50 ? 'amber' : 'muted'}
+            />
+          )}
+        </div>
+
+        {/* Bloc texte : recommandation + match pour + summary */}
+        <div className="flex-1 min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <RecommendationPill rec={result.recommendation} />
             {result.investigationNeeded && (
@@ -333,26 +329,78 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
               </Tooltip>
             )}
             {!result.investigationNeeded && confidenceBadge}
-            <MetaPill icon={Briefcase} label={expLabel.text} ok={expLabel.ok} />
-            <MetaPill icon={MapPin} label={result.location_match ? 'Localisation OK' : 'Localisation ?'} ok={result.location_match} />
-            <SalaryBadge analysis={result.salary_analysis} />
           </div>
+          {jobTitle && (
+            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Target className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>Match pour <span className="text-foreground font-semibold">{jobTitle}</span></span>
+            </div>
+          )}
+          {result.summary && (
+            <p className="text-sm text-foreground/90 leading-relaxed">{result.summary}</p>
+          )}
         </div>
       </div>
 
-      {/* Criteria indicators */}
-      {result.dimensions && Object.values(result.dimensions).some(v => v != null) && (
-        <CriteriaIndicators dimensions={result.dimensions} />
+      {/* ─── CRITÈRES CLÉS : 3 indicateurs visuels (XP, Localisation, Salaire) ───── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <CompatChip icon={Briefcase} label="Expérience" value={expLabel.text} ok={expLabel.ok} />
+        <CompatChip icon={MapPin} label="Localisation" value={result.location_match ? 'Compatible' : 'À vérifier'} ok={!!result.location_match} />
+        <SalaryCompatChip analysis={result.salary_analysis} />
+      </div>
+
+      {/* ─── FORCES & POINTS D'ATTENTION (highlights LLM) ──────────────────── */}
+      {(strengths.length > 0 || concerns.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {strengths.length > 0 && (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                <Sparkles className="w-3.5 h-3.5" />
+                Forces ({strengths.length})
+              </div>
+              <ul className="space-y-1 text-xs text-foreground/90">
+                {strengths.map((s, i) => (
+                  <li key={i} className="flex gap-1.5">
+                    <span className="text-emerald-500 shrink-0">·</span>
+                    <span className="leading-relaxed">{typeof s === 'string' ? s : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {concerns.length > 0 && (
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600">
+                <AlertCircle className="w-3.5 h-3.5" />
+                Points d'attention ({concerns.length})
+              </div>
+              <ul className="space-y-1 text-xs text-foreground/90">
+                {concerns.map((c, i) => (
+                  <li key={i} className="flex gap-1.5">
+                    <span className="text-amber-500 shrink-0">·</span>
+                    <span className="leading-relaxed">{typeof c === 'string' ? c : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Skills — unified row */}
+      {/* ─── SKILLS ──────────────────────────────────────────────── */}
       {allSkills.length > 0 && (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <div className="flex items-center gap-3 text-xs font-bold text-muted-foreground">
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Matchés ({result.matching_skills.length})</span>
-            <span className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Manquants ({result.missing_skills.length})</span>
+            <span className="flex items-center gap-1 text-emerald-600">
+              <CheckCircle2 className="w-3.5 h-3.5" /> {result.matching_skills.length} matchés
+            </span>
+            {result.missing_skills.length > 0 && (
+              <span className="flex items-center gap-1">
+                <XCircle className="w-3.5 h-3.5" /> {result.missing_skills.length} manquants
+              </span>
+            )}
           </div>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {allSkills.map((s, i) => (
               <SkillTag key={i} skill={s.name} matched={s.matched} />
             ))}
@@ -360,74 +408,168 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
         </div>
       )}
 
-      {/* Power Scores: Likely to Switch + Career Growth */}
+      {/* ─── POWER SCORES (mobilité + progression carrière) ───────────────────── */}
       {(result.likelyToSwitchScore != null || result.careerGrowthScore != null) && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           {result.likelyToSwitchScore != null && (
-            <div className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md",
-              result.likelyToSwitchScore >= 70 ? "text-accent border-accent/30 bg-accent/5" :
-              result.likelyToSwitchScore >= 40 ? "text-warning border-warning/30 bg-warning/5" :
-              "text-muted-foreground border-border bg-muted/30"
-            )}>
-              <span>🔄</span>
-              <span>Mobilité: {result.likelyToSwitchScore}/100</span>
-            </div>
+            <PowerScoreChip
+              icon={Zap}
+              label="Mobilité"
+              score={result.likelyToSwitchScore}
+              tooltip="Probabilité que le candidat soit ouvert au changement (Open to Work, tenure courte, signaux d'activité)"
+            />
           )}
           {result.careerGrowthScore != null && (
-            <div className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md",
-              result.careerGrowthScore >= 70 ? "text-accent border-accent/30 bg-accent/5" :
-              result.careerGrowthScore >= 40 ? "text-warning border-warning/30 bg-warning/5" :
-              "text-muted-foreground border-border bg-muted/30"
-            )}>
-              <span>📈</span>
-              <span>Progression: {result.careerGrowthScore}/100</span>
-            </div>
+            <PowerScoreChip
+              icon={TrendingUp}
+              label="Progression"
+              score={result.careerGrowthScore}
+              tooltip="Trajectoire de carrière (promotions, montée en séniorité, qualité des entreprises)"
+            />
           )}
-          {result.switchSignals?.length ? (
-            <div className="w-full flex flex-wrap gap-1 mt-0.5">
-              {result.switchSignals.map((signal, i) => (
-                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
+          {result.switchSignals && result.switchSignals.length > 0 && (
+            <div className="basis-full flex flex-wrap gap-1 mt-1">
+              {result.switchSignals.slice(0, 5).map((signal, i) => (
+                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted/50 text-muted-foreground rounded">
                   {typeof signal === 'string' ? signal : ''}
                 </span>
               ))}
             </div>
-          ) : null}
+          )}
         </div>
       )}
 
-      {/* Criteria evaluations from brief */}
+      {/* ─── CRITÈRES DU BRIEF (collapsible si > 3) ───────────────────── */}
       {result.criteriaEvaluations && result.criteriaEvaluations.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-bold text-muted-foreground flex items-center gap-1">
-            <Target className="w-3 h-3" /> Critères du brief
-          </p>
-          <div className="space-y-1">
-            {result.criteriaEvaluations.map((ce, i) => {
-              const verdictConfig = {
-                pass: { icon: CheckCircle2, cls: 'text-accent border-accent/30 bg-accent/5', label: 'OK' },
-                partial: { icon: AlertCircle, cls: 'text-warning border-warning/30 bg-warning/5', label: 'Partiel' },
-                fail: { icon: XCircle, cls: 'text-destructive border-destructive/30 bg-destructive/5', label: 'KO' },
-                unknown: { icon: Search, cls: 'text-muted-foreground border-border bg-muted/30', label: '?' },
-              }[ce.verdict] || { icon: AlertCircle, cls: 'text-muted-foreground border-border bg-muted/30', label: '?' };
-              const Icon = verdictConfig.icon;
-              return (
-                <div key={i} className={cn("flex items-start gap-2 px-2.5 py-1.5 border rounded-md text-xs", verdictConfig.cls)}>
-                  <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <span className="font-semibold">{typeof ce.label === 'string' ? ce.label : ''}</span>
-                    {ce.reason && <span className="text-muted-foreground ml-1.5">— {typeof ce.reason === 'string' ? ce.reason : ''}</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <CriteriaSection criteriaEvaluations={result.criteriaEvaluations} />
       )}
 
-      {/* Scoring breakdown */}
-      {result.scoring_details && <ScoringBreakdown result={result} />}
+      {/* ─── DÉTAIL TECHNIQUE (collapsible) — dimensions algo brut ──────── */}
+      {(result.dimensions && Object.values(result.dimensions).some(v => v != null)) || result.scoring_details ? (
+        <Collapsible>
+          <CollapsibleTrigger className="group w-full flex items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors hover:bg-muted/30">
+            <span className="flex items-center gap-1.5">
+              <Lightbulb className="w-3.5 h-3.5" />
+              Détail du scoring
+            </span>
+            <ChevronDown className="w-4 h-4 transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3 space-y-3">
+            {result.dimensions && Object.values(result.dimensions).some(v => v != null) && (
+              <CriteriaIndicators dimensions={result.dimensions} />
+            )}
+            {result.scoring_details && <ScoringBreakdown result={result} />}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
+    </div>
+  );
+};
+
+// ── Compat chip (XP, Localisation, Salaire) — design moderne ──
+const CompatChip: React.FC<{ icon: React.ElementType; label: string; value: string; ok: boolean }> = ({
+  icon: Icon, label, value, ok,
+}) => (
+  <div
+    className={cn(
+      'flex items-center gap-2.5 px-3 py-2 border rounded-md transition-colors',
+      ok
+        ? 'border-emerald-500/30 bg-emerald-500/5'
+        : 'border-border bg-muted/30',
+    )}
+  >
+    <Icon className={cn('w-4 h-4 shrink-0', ok ? 'text-emerald-500' : 'text-muted-foreground')} />
+    <div className="flex-1 min-w-0">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</p>
+      <p className={cn('text-xs font-semibold mt-0.5 truncate', ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
+        {value}
+      </p>
+    </div>
+  </div>
+);
+
+// ── Salary compat chip dédié (gère les 3 cas analysed/null/range) ──
+const SalaryCompatChip: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis }) => {
+  if (!analysis) {
+    return <CompatChip icon={DollarSign} label="Rémunération" value="Non vérifiée" ok={false} />;
+  }
+  const ok = analysis.compatible !== false && !analysis.over_max;
+  return (
+    <CompatChip
+      icon={DollarSign}
+      label="Rémunération"
+      value={analysis.compatible ? 'Compatible' : analysis.over_max ? '> max' : '?'}
+      ok={ok}
+    />
+  );
+};
+
+// ── Power score chip (Mobilité, Progression) ──
+const PowerScoreChip: React.FC<{ icon: React.ElementType; label: string; score: number; tooltip?: string }> = ({
+  icon: Icon, label, score, tooltip,
+}) => {
+  const tone = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+  const cls = tone === 'high'
+    ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
+    : tone === 'medium'
+    ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+    : 'border-border bg-muted/30 text-muted-foreground';
+  const chip = (
+    <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-md', cls)}>
+      <Icon className="w-3.5 h-3.5" />
+      <span>{label}</span>
+      <span className="font-bold tabular-nums">{score}</span>
+    </div>
+  );
+  if (!tooltip) return chip;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipContent className="max-w-xs"><p className="text-xs">{tooltip}</p></TooltipContent>
+    </Tooltip>
+  );
+};
+
+// ── Criteria section (collapsible si > 3) ──
+const CriteriaSection: React.FC<{ criteriaEvaluations: NonNullable<JobMatchResult['criteriaEvaluations']> }> = ({ criteriaEvaluations }) => {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? criteriaEvaluations : criteriaEvaluations.slice(0, 3);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <Target className="w-3.5 h-3.5" />
+          Critères du brief ({criteriaEvaluations.length})
+        </p>
+        {criteriaEvaluations.length > 3 && (
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showAll ? 'Réduire' : `+ ${criteriaEvaluations.length - 3} autres`}
+          </button>
+        )}
+      </div>
+      <div className="space-y-1">
+        {visible.map((ce, i) => {
+          const verdictConfig = {
+            pass: { icon: CheckCircle2, cls: 'text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+            partial: { icon: AlertCircle, cls: 'text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/5' },
+            fail: { icon: XCircle, cls: 'text-destructive border-destructive/30 bg-destructive/5' },
+            unknown: { icon: Search, cls: 'text-muted-foreground border-border bg-muted/30' },
+          }[ce.verdict] || { icon: AlertCircle, cls: 'text-muted-foreground border-border bg-muted/30' };
+          const Icon = verdictConfig.icon;
+          return (
+            <div key={i} className={cn('flex items-start gap-2 px-2.5 py-1.5 border rounded-md text-xs', verdictConfig.cls)}>
+              <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold">{typeof ce.label === 'string' ? ce.label : ''}</span>
+                {ce.reason && <span className="text-muted-foreground ml-1.5">— {typeof ce.reason === 'string' ? ce.reason : ''}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
