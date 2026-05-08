@@ -708,19 +708,70 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             <div className="w-20 h-20 bg-muted flex items-center justify-center mb-6">
               <Search className="w-10 h-10" />
             </div>
-            <p className="text-lg font-medium text-foreground/60 mb-2">Aucun profil trouvé</p>
-            <p className="text-sm text-center max-w-md mb-4">
-              Essayez d'ajuster vos filtres pour élargir votre recherche
-            </p>
-            {selectedJob && (
-              <Button
-                onClick={() => onRefineSearch('expand')}
-                disabled={refineLoading}
-                className="gap-2 bg-foreground text-background hover:bg-foreground/90"
-              >
-                {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
-                Élargir les filtres avec l'IA
-              </Button>
+            {/*
+              Empty state contextualisé : on évite "Aucun profil trouvé →
+              Élargir les filtres" quand en réalité l'user a juste tout traité
+              dans le lot actuel et qu'il y a encore des profils à charger
+              côté LinkedIn (pagination Unipile non épuisée).
+
+              Cas 1 : statusFilter='untreated' + hasMoreResults + cursor
+                → tous les profils chargés ont été traités, mais il reste des
+                  profils à découvrir → CTA "Charger le lot suivant"
+              Cas 2 : statusFilter ≠ 'all' + total > 0 (results filtrés mais
+                d'autres profils existent dans d'autres statuts)
+                → "Voir tous les profils" (reset statusFilter à 'all')
+              Cas 3 (défaut) : vraie absence de résultats
+                → "Élargir les filtres"
+            */}
+            {statusFilter === 'untreated' && hasMoreResults && cursor && results.length > 0 ? (
+              <>
+                <p className="text-lg font-medium text-foreground/60 mb-2">Lot actuel traité ✓</p>
+                <p className="text-sm text-center max-w-md mb-4">
+                  Tu as traité les {results.length} profils chargés.
+                  {total !== null && total > results.length && (
+                    <> Il reste <span className="font-semibold text-foreground">{total - results.length} profils</span> à découvrir sur LinkedIn.</>
+                  )}
+                </p>
+                <Button
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                  className="gap-2 bg-primary hover:bg-primary/90"
+                >
+                  {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                  Charger le lot suivant
+                </Button>
+              </>
+            ) : statusFilter !== 'all' && (mergedResults.length > 0 || total !== null && total > 0) ? (
+              <>
+                <p className="text-lg font-medium text-foreground/60 mb-2">Aucun profil dans ce filtre</p>
+                <p className="text-sm text-center max-w-md mb-4">
+                  Tes profils sont peut-être dans une autre catégorie. Affiche tous les profils pour les retrouver.
+                </p>
+                <Button
+                  onClick={() => onSetStatusFilter('all')}
+                  variant="default"
+                  className="gap-2"
+                >
+                  Voir tous les profils
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-medium text-foreground/60 mb-2">Aucun profil trouvé</p>
+                <p className="text-sm text-center max-w-md mb-4">
+                  Essayez d'ajuster vos filtres pour élargir votre recherche
+                </p>
+                {selectedJob && (
+                  <Button
+                    onClick={() => onRefineSearch('expand')}
+                    disabled={refineLoading}
+                    className="gap-2 bg-foreground text-background hover:bg-foreground/90"
+                  >
+                    {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />}
+                    Élargir les filtres avec l'IA
+                  </Button>
+                )}
+              </>
             )}
           </div>
         ) : (
