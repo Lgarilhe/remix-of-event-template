@@ -707,6 +707,8 @@ export function useLinkedInScoring({
               hardFiltered: (aggregatedStats?.hardFiltered || 0) + (stats.hardFiltered || 0),
               llmSkipped: (aggregatedStats?.llmSkipped || 0) + (stats.llmSkipped || 0),
               llmCalled: (aggregatedStats?.llmCalled || 0) + (stats.llmCalled || 0),
+              escalated: (aggregatedStats?.escalated || 0) + (stats.escalated || 0),
+              escalationModel: stats.escalationModel ?? aggregatedStats?.escalationModel ?? null,
               avgScore: stats.avgScore || 0,
               totalTokens: (aggregatedStats?.totalTokens || 0) + (stats.totalTokens || 0),
             };
