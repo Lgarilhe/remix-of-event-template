@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ModelPicker } from '@/components/ai/ModelPicker';
 
 interface SearchResultsPanelProps {
   // Results
@@ -116,7 +117,11 @@ interface SearchResultsPanelProps {
   batchStats?: BatchScoringStatsType | null;
   batchDurationMs?: number;
   onClearBatchReport?: () => void;
-  
+
+  // Scoring model picker (per-mission, persisted in localStorage)
+  scoringModel?: string | null;
+  onScoringModelChange?: (model: string | null) => void;
+
   // Refs
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   loadMoreTriggerRef: React.RefObject<HTMLDivElement>;
@@ -190,6 +195,8 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   batchStats: batchStatsData,
   batchDurationMs,
   onClearBatchReport,
+  scoringModel,
+  onScoringModelChange,
   scrollAreaRef,
   loadMoreTriggerRef,
 }) => {
@@ -510,6 +517,17 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
                 <span className="hidden md:inline">Scorer</span>
               </button>
+              {onScoringModelChange && (
+                <div className="hidden lg:inline-flex">
+                  <ModelPicker
+                    actionId="scoring"
+                    value={scoringModel}
+                    onChange={onScoringModelChange}
+                    compact
+                    disabled={scoringInProgress}
+                  />
+                </div>
+              )}
               <BulkEnrichButton
                 profiles={selectableProfiles.filter(p => selectedProfiles.has(p.id))}
               />
