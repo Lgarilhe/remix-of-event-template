@@ -83,7 +83,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Pushing migrations to production ==="
-          supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --include-all
+          # Sans --include-all : ne pousse QUE les migrations qui ne sont pas
+          # déjà dans la table supabase_migrations remote. --include-all
+          # tenterait de re-appliquer les ~100 migrations historiques → plantage.
+          supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
 
       - name: Dry run — skipped actual push
         if: ${{ inputs.dry_run == true }}
