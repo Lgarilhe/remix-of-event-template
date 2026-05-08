@@ -94,6 +94,10 @@ interface ScoringResult {
   seniorityMatch?: string;
   locationMatch?: string;
   experienceMatch?: string;
+  /** Verdict structuré pour l'XP (utilisé par le mapping frontend) */
+  experienceMatchKind?: "compatible" | "trop_junior" | "trop_senior" | "incertain";
+  /** Verdict structuré pour la localisation */
+  locationMatchKind?: "compatible" | "partial" | "incompatible" | "remote_ok" | "incertain";
   tenureAnalysis?: string;
   receptivityScore?: number | null;
   internationalExperienceValidation?: string;
@@ -797,6 +801,10 @@ interface WeightedResult {
   matchedSkills: string[];
   missingSkills: string[];
   allJobSkills: string[];
+  // Verdicts structurés (pour le mapping frontend, distincts des `details`
+  // textuels stockés dans `dimensions.{seniority,location}.details`).
+  experienceMatchKind: "compatible" | "trop_junior" | "trop_senior" | "incertain";
+  locationMatchKind: "compatible" | "partial" | "incompatible" | "remote_ok" | "incertain";
 }
 
 function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResult {
@@ -1065,6 +1073,30 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
   const dataCompleteness: "full" | "partial" | "minimal" =
     missingDataPoints.length === 0 ? "full" : missingDataPoints.length <= 2 ? "partial" : "minimal";
 
+  // ─── Verdicts structurés (pour mapping frontend) ─────────────────────────
+  // Avant : on retournait uniquement les `details` textuels (ex: "8ans XP vs
+  // 5-10ans requis") et le frontend essayait de les matcher contre 'MATCH'/
+  // 'OVER'/'UNDER'/'UNKNOWN' → never matched → fallback 'incertain' pour
+  // tout le monde → badge "XP à vérifier" / "Localisation ?" affichés à tort
+  // sur 100% des profils. Bug silencieux mais visuel sur chaque card.
+  let experienceMatchKind: WeightedResult["experienceMatchKind"] = "incertain";
+  if (profile.yearsOfExperience !== undefined && (job.xpMin || job.xpMax)) {
+    const xp = profile.yearsOfExperience;
+    const xpMin = job.xpMin || 0;
+    const xpMax = job.xpMax || xpMin + 5;
+    if (xp >= xpMin && xp <= xpMax) experienceMatchKind = "compatible";
+    else if (xp < xpMin) experienceMatchKind = "trop_junior";
+    else experienceMatchKind = "trop_senior";
+  }
+
+  let locationMatchKind: WeightedResult["locationMatchKind"] = "incertain";
+  const locScore = dimensions.location?.score ?? 50;
+  if (job.remote && ["full", "full remote", "remote", "full_remote"].includes(job.remote.toLowerCase())) {
+    locationMatchKind = "remote_ok";
+  } else if (locScore >= 95) locationMatchKind = "compatible";
+  else if (locScore >= 60) locationMatchKind = "partial";
+  else if (locScore >= 30) locationMatchKind = "incompatible";
+
   return {
     score,
     dimensions,
@@ -1074,6 +1106,8 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
     matchedSkills: matched,
     missingSkills: missing,
     allJobSkills,
+    experienceMatchKind,
+    locationMatchKind,
   };
 }
 
@@ -2281,7 +2315,14 @@ Deno.serve(async (req) => {
         totalRequiredSkills: (job.skills || []).length,
         seniorityMatch: weighted.dimensions.seniority?.details,
         locationMatch: weighted.dimensions.location?.details,
-        experienceMatch: weighted.dimensions.experience?.details,
+        // experienceMatch utilisait `weighted.dimensions.experience?.details`
+        // qui n'existe PAS (la dimension s'appelle 'seniority', pas 'experience')
+        // → toujours undefined → frontend tombait sur 'incertain' systématique.
+        // On retourne maintenant les verdicts structurés (compatibles avec le
+        // mapping frontend qui utilise raw.experienceMatchKind en priorité).
+        experienceMatch: weighted.dimensions.seniority?.details,
+        experienceMatchKind: weighted.experienceMatchKind,
+        locationMatchKind: weighted.locationMatchKind,
         tenureAnalysis: weighted.dimensions.tenure?.details,
         receptivityScore: weighted.dimensions.receptivity?.score ?? null,
         hardFilterPassed: true,

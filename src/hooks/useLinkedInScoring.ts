@@ -362,17 +362,35 @@ function mapScoringResult(raw: any): JobMatchResult {
     'POSSIBLE_MATCH': 'maybe', 'WEAK_MATCH': 'skip',
     'NO_MATCH': 'skip', 'ERROR': 'skip',
   };
+  // Legacy mapping pour l'ancien format ('MATCH'/'OVER'/'UNDER'/'UNKNOWN'),
+  // gardé en fallback si le backend renvoie ces strings.
   const expMap: Record<string, string> = {
     'MATCH': 'compatible', 'OVER': 'trop_senior',
     'UNDER': 'trop_junior', 'UNKNOWN': 'incertain',
   };
+  // Verdict XP : priorité au champ structuré experienceMatchKind (backend
+  // moderne), fallback expMap legacy, fallback experience_match snake_case,
+  // sinon 'incertain'. Avant ce fix, le backend renvoyait `weighted.dimensions
+  // .experience?.details` (undefined car la dimension s'appelle 'seniority'),
+  // donc 'incertain' s'affichait pour tous les profils → "XP à vérifier"
+  // visible sur 100% des cards même quand l'XP était parfaitement compatible.
+  const experienceMatchValue = raw.experienceMatchKind
+    || expMap[raw.experienceMatch]
+    || raw.experience_match
+    || 'incertain';
+  // Verdict location : on accepte 'compatible' OU 'remote_ok' comme positif.
+  // Le champ booléen historique location_match est conservé pour rétrocompat.
+  const locationMatchKind = raw.locationMatchKind;
+  const locationMatchBool = locationMatchKind
+    ? (locationMatchKind === 'compatible' || locationMatchKind === 'remote_ok')
+    : (raw.location_match ?? (raw.locationMatch === 'MATCH' || raw.locationMatch === 'REMOTE_OK'));
   return {
     profile_name: raw.name || raw.profile_name || '',
     match_score: Math.max(0, Math.min(100, Number(raw.score ?? raw.match_score ?? raw.finalScore) || 0)),
     matching_skills: raw.matching_skills || raw.matchedSkills || [],
     missing_skills: raw.missing_skills || raw.missingSkills || [],
-    experience_match: (expMap[raw.experienceMatch] || raw.experience_match || 'incertain') as JobMatchResult['experience_match'],
-    location_match: raw.location_match ?? (raw.locationMatch === 'MATCH' || raw.locationMatch === 'REMOTE_OK'),
+    experience_match: experienceMatchValue as JobMatchResult['experience_match'],
+    location_match: locationMatchBool,
     summary: raw.summary || '',
     recommendation: (recMap[raw.recommendation] || raw.recommendation || 'maybe') as JobMatchResult['recommendation'],
     salary_analysis: raw.salary_analysis,
