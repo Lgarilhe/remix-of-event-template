@@ -106,6 +106,26 @@ describe('resolveModel', () => {
     const model = resolveModel('default', 'nonexistent-model');
     expect(model).toBe('claude-sonnet-4-6');
   });
+
+  it('action.autoDefault is honored when no user/org override (scoring → Haiku)', () => {
+    const model = resolveModel('default', null, null, 'scoring');
+    expect(model).toBe('claude-haiku-4-5');
+  });
+
+  it('orgDefault still wins over autoDefault', () => {
+    const model = resolveModel('default', null, 'claude-opus-4-6', 'scoring');
+    expect(model).toBe('claude-opus-4-6');
+  });
+
+  it('userOverride still wins over autoDefault', () => {
+    const model = resolveModel('default', 'claude-sonnet-4-6', null, 'scoring');
+    expect(model).toBe('claude-sonnet-4-6');
+  });
+
+  it('autoDefault falls back to tier default when action has none', () => {
+    const model = resolveModel('default', null, null, 'outreach_message');
+    expect(model).toBe('claude-sonnet-4-6');
+  });
 });
 
 // ─── MODEL_CATALOG ──────────────────────────────────────────────────────────

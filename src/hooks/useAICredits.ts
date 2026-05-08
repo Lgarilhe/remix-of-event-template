@@ -67,7 +67,7 @@ export const useAICredits = () => {
   const getEstimate = (actionId: string, modelId?: string): number => {
     const action = ACTION_COSTS[actionId];
     if (!action) return 1;
-    const resolvedModel = modelId || resolveModel(action.routingTier);
+    const resolvedModel = modelId || resolveModel(action.routingTier, null, null, actionId);
     return estimateCredits(actionId, resolvedModel);
   };
 

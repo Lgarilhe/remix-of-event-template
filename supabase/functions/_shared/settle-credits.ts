@@ -52,7 +52,7 @@ export function extractAIParams(
   const routingTier = action?.routingTier ?? "default";
 
   const userModel = typeof body._ai_model === "string" ? body._ai_model : undefined;
-  const modelId = getModel(routingTier, userModel, orgModelDefault);
+  const modelId = getModel(routingTier, userModel, orgModelDefault, aiAction);
 
   const description = typeof body._ai_description === "string"
     ? body._ai_description.slice(0, 200)

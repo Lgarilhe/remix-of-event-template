@@ -50,9 +50,9 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
   const action = ACTION_COSTS[aiAction];
   const routingTier = action?.routingTier ?? 'default';
 
-  // Resolve which model to use (user override > org default from localStorage > auto)
+  // Resolve which model to use (user override > org default from localStorage > action.autoDefault > tier default)
   const orgDefault = options?.orgModelDefault || getOrgModelDefault();
-  const model = resolveModel(routingTier, options?.modelOverride, orgDefault);
+  const model = resolveModel(routingTier, options?.modelOverride, orgDefault, aiAction);
 
   // Step 1: PRE-AUTH — verify credits before calling the AI
   // Graceful: if pre-auth fails (no balance table, network error), proceed anyway
