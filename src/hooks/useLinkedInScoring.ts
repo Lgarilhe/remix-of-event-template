@@ -338,7 +338,10 @@ export function buildProfileData(profile: LinkedInProfile) {
       name: typeof s === 'string' ? s : s.name,
       endorsements: typeof s === 'object' ? s.endorsement_count : undefined,
     })).filter((s: { name: string }) => s.name) || undefined,
-    summary: profile.summary?.slice(0, 300) || undefined,
+    // Summary tronqué à 700 chars (~175 mots) pour capturer les bios
+    // LinkedIn longues type "I help startups build reliable data infra...".
+    // Le backend re-tronque à 700 aussi (cohérent).
+    summary: profile.summary?.slice(0, 700) || undefined,
     workExperience: enrichedWorkExperience.length > 0 ? enrichedWorkExperience : undefined,
     pastPositions: pastJobs.map(p => `${p.role || p.position} chez ${p.company}`),
     education: education.map((e: any) => {
