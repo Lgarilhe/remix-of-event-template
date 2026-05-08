@@ -124,6 +124,20 @@ export interface AIActionCost {
   category: "sourcing" | "outreach" | "qualification" | "agent";
   /** Restrict model selection to these providers. If omitted, all providers are available. */
   providers?: ModelProvider[];
+  /**
+   * Per-action override of the auto-routing default.
+   * Used when the user has NOT explicitly chosen a model (no userOverride,
+   * no orgDefault). Lets us pick a cheaper/faster model than the tier's
+   * generic default for tasks where it's known to be sufficient.
+   *
+   * Priority order in getModel(): userOverride > orgDefault > autoDefault
+   *   > ROUTING_DEFAULTS[tier]
+   *
+   * Example: scoring uses tier "default" (so org Sonnet/Opus choices are
+   * honored) but autoDefault "claude-haiku-4-5" so the auto mode gets
+   * Haiku instead of Sonnet — well-structured task, Haiku handles it.
+   */
+  autoDefault?: string;
 }
 
 export const ACTION_COSTS: Record<string, AIActionCost> = {
@@ -134,6 +148,11 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 4_000,
     routingTier: "default",
     category: "sourcing",
+    // Auto mode → Haiku 4.5. Scoring est une tâche bien structurée
+    // (rubric explicite, output JSON, contexte fourni) → Haiku suffit pour
+    // 80-90 % des cas. Les orgs qui ont mis Sonnet/Opus en default
+    // gardent leur choix (orgDefault override autoDefault).
+    autoDefault: "claude-haiku-4-5",
   },
   outreach_message: {
     action: "outreach_message",
@@ -415,7 +434,7 @@ export function calculateUSDCost(
 
 /**
  * Resolve which model to use.
- * Priority: userOverride > orgDefault > routing tier default
+ * Priority: userOverride > orgDefault > action.autoDefault > ROUTING_DEFAULTS[tier]
  *
  * For "fast" tier actions, orgDefault is ignored (always use budget models
  * to protect margin and speed).
@@ -423,7 +442,8 @@ export function calculateUSDCost(
 export function getModel(
   routingTier: RoutingTier,
   userOverride?: string | null,
-  orgDefault?: string | null
+  orgDefault?: string | null,
+  actionId?: string | null
 ): string {
   // User explicitly chose a model — always respect
   if (userOverride && MODEL_CATALOG[userOverride]) {
@@ -433,6 +453,13 @@ export function getModel(
   // Org default — skip for "fast" tier (always stay on budget models)
   if (routingTier !== "fast" && orgDefault && MODEL_CATALOG[orgDefault]) {
     return orgDefault;
+  }
+
+  // Per-action auto default (e.g. scoring → Haiku) takes priority over
+  // the tier's generic default
+  if (actionId) {
+    const auto = ACTION_COSTS[actionId]?.autoDefault;
+    if (auto && MODEL_CATALOG[auto]) return auto;
   }
 
   return ROUTING_DEFAULTS[routingTier];

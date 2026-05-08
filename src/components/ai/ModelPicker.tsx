@@ -49,7 +49,7 @@ export const ModelPicker = ({
 
   const action = ACTION_COSTS[actionId];
   const routingTier: RoutingTier = action?.routingTier ?? 'default';
-  const resolvedModelId = resolveModel(routingTier, value, orgDefault);
+  const resolvedModelId = resolveModel(routingTier, value, orgDefault, actionId);
   const resolvedModel = MODEL_CATALOG[resolvedModelId];
   const isAutoRouted = !value;
   const estimatedCost = estimateCredits(actionId, resolvedModelId);

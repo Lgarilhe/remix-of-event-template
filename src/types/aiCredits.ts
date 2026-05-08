@@ -100,10 +100,19 @@ export interface AIActionCost {
   category: "sourcing" | "outreach" | "qualification" | "agent";
   /** Restrict model selection to these providers. If omitted, all providers are available. */
   providers?: ModelProvider[];
+  /**
+   * Per-action override of the auto-routing default (mirror of backend).
+   * Used when the user has NOT explicitly chosen a model. Lets us pick a
+   * cheaper model than the tier's default for tasks where it suffices.
+   *
+   * Priority in resolveModel(): userOverride > orgDefault > autoDefault
+   *   > ROUTING_DEFAULTS[tier]
+   */
+  autoDefault?: string;
 }
 
 export const ACTION_COSTS: Record<string, AIActionCost> = {
-  scoring: { action: "scoring", label: "Scoring candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing" },
+  scoring: { action: "scoring", label: "Scoring candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-haiku-4-5" },
   outreach_message: { action: "outreach_message", label: "Message d'approche", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "outreach" },
   analyze_response: { action: "analyze_response", label: "Analyse réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   screen_candidate: { action: "screen_candidate", label: "Screening rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
@@ -155,16 +164,21 @@ export function getDefaultModel(routingTier: RoutingTier): string {
 }
 
 /**
- * Resolve model: userOverride > orgDefault > routing default.
+ * Resolve model: userOverride > orgDefault > action.autoDefault > tier default.
  * For "fast" tier, orgDefault is ignored.
  */
 export function resolveModel(
   routingTier: RoutingTier,
   userOverride?: string | null,
-  orgDefault?: string | null
+  orgDefault?: string | null,
+  actionId?: string | null
 ): string {
   if (userOverride && MODEL_CATALOG[userOverride]) return userOverride;
   if (routingTier !== "fast" && orgDefault && MODEL_CATALOG[orgDefault]) return orgDefault;
+  if (actionId) {
+    const auto = ACTION_COSTS[actionId]?.autoDefault;
+    if (auto && MODEL_CATALOG[auto]) return auto;
+  }
   return ROUTING_DEFAULTS[routingTier];
 }
 

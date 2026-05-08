@@ -26,7 +26,7 @@ export const CreditCostBadge = ({ actionId, modelId, className }: CreditCostBadg
   const action = ACTION_COSTS[actionId];
   if (!action) return null;
 
-  const resolvedModel = resolveModel(action.routingTier, modelId);
+  const resolvedModel = resolveModel(action.routingTier, modelId, undefined, actionId);
   const cost = estimateCredits(actionId, resolvedModel);
 
   return (

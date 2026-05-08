@@ -1,0 +1,125 @@
+name: Deploy Supabase Edge Functions
+
+# Auto-deploy edge functions on push to main when supabase/functions/** changes.
+# Also exposes a manual trigger (workflow_dispatch) usable from the GitHub
+# mobile app or web UI — useful for ad-hoc redeploys without a code change.
+#
+# Required secret: SUPABASE_ACCESS_TOKEN
+#   Get one at https://supabase.com/dashboard/account/tokens
+#   Add it at https://github.com/Lgarilhe/remix-of-event-template/settings/secrets/actions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Function name (e.g. "score-profile-job"), comma-separated list, or "all". Empty = same logic as auto-deploy.'
+        required: false
+        default: ''
+
+env:
+  SUPABASE_PROJECT_REF: crckfywoyjxkawathdff
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45  # 77 functions × ~30s = ~40min worst case (full _shared change)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need the previous commit to diff which functions changed
+          fetch-depth: 2
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify SUPABASE_ACCESS_TOKEN is set
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::Secret SUPABASE_ACCESS_TOKEN is not set."
+            echo "Generate one at https://supabase.com/dashboard/account/tokens"
+            echo "Add it at https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+
+      - name: Determine which functions to deploy
+        id: funcs
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT="${{ inputs.target }}"
+            if [ -z "$INPUT" ] || [ "$INPUT" = "all" ]; then
+              echo "[manual] target=all → deploying every function"
+              FUNCS=$(ls supabase/functions/ | grep -v '^_' || true)
+            else
+              echo "[manual] target=$INPUT"
+              FUNCS=$(echo "$INPUT" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' || true)
+            fi
+          else
+            # push event — diff against the previous commit
+            BEFORE="${{ github.event.before }}"
+            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" || true)
+
+            if echo "$CHANGED" | grep -q '^supabase/functions/_shared/'; then
+              echo "[auto] _shared/ modified → redeploying ALL edge functions"
+              FUNCS=$(ls supabase/functions/ | grep -v '^_' || true)
+            else
+              FUNCS=$(echo "$CHANGED" | grep '^supabase/functions/[^_]' | awk -F/ '{print $3}' | sort -u || true)
+              echo "[auto] functions modified in this push:"
+              echo "$FUNCS"
+            fi
+          fi
+
+          if [ -z "$FUNCS" ]; then
+            echo "::notice::No functions to deploy"
+          fi
+
+          {
+            echo "list<<EOF"
+            echo "$FUNCS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy functions
+        if: steps.funcs.outputs.list != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set +e  # don't kill the whole loop on a single failure
+          FAILED=()
+          OK=()
+          while IFS= read -r fn; do
+            [ -z "$fn" ] && continue
+            # Reject anything that doesn't look like a directory name
+            if [ ! -d "supabase/functions/$fn" ]; then
+              echo "::warning::Skipping '$fn' — directory not found"
+              continue
+            fi
+            echo "::group::Deploy $fn"
+            if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; then
+              echo "::notice::✓ Deployed $fn"
+              OK+=("$fn")
+            else
+              echo "::error::✗ Failed to deploy $fn"
+              FAILED+=("$fn")
+            fi
+            echo "::endgroup::"
+          done <<< "${{ steps.funcs.outputs.list }}"
+
+          echo ""
+          echo "=== Summary ==="
+          echo "Deployed: ${#OK[@]} (${OK[*]:-none})"
+          echo "Failed:   ${#FAILED[@]} (${FAILED[*]:-none})"
+
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            exit 1
+          fi

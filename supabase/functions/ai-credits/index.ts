@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
 
         const action = ACTION_COSTS[aiAction];
         const routingTier = action?.routingTier ?? "default";
-        const resolvedModel = getModel(routingTier, modelId);
+        const resolvedModel = getModel(routingTier, modelId, undefined, aiAction);
         const estimated = estimateCredits(aiAction, resolvedModel);
 
         const bal = await getBalance();

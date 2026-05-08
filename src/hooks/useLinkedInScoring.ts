@@ -168,6 +168,12 @@ interface ScoringOptions {
   autoHideTreatedRef?: React.MutableRefObject<boolean>;
   customScoringInstructions?: string;
   accountId?: string | null;
+  /**
+   * User-selected model override for scoring (from ModelPicker).
+   * null/undefined → laisse invokeWithCredits résoudre le modèle
+   * (orgDefault → action.autoDefault → tier default).
+   */
+  scoringModel?: string | null;
   candidateStatus?: {
     batchDismiss: (profiles: Array<{
       id: string;
@@ -430,6 +436,7 @@ export function useLinkedInScoring({
   candidateStatus,
   customScoringInstructions,
   accountId,
+  scoringModel,
 }: ScoringOptions) {
   const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(null);
   const [batchReport, setBatchReport] = useState<BatchReportEntry[]>([]);
@@ -472,7 +479,7 @@ export function useLinkedInScoring({
         },
         customScoringInstructions,
         accountId: accountId || undefined,
-      });
+      }, { modelOverride: scoringModel || undefined });
 
       if (error) throw error;
       if (data?.result) {
@@ -526,7 +533,7 @@ export function useLinkedInScoring({
       console.error('Score error:', err);
       toast.error('Erreur lors du scoring');
     }
-  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId]);
+  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel]);
 
   // Batch score selected profiles
   const handleBatchScore = useCallback(async () => {
@@ -650,7 +657,7 @@ export function useLinkedInScoring({
           waveBatches.map(batch =>
             invokeWithCredits('score-profile-job', 'scoring', {
               profiles: batch, job: jobPayload, customScoringInstructions, accountId: accountId || undefined,
-            })
+            }, { modelOverride: scoringModel || undefined })
           )
         );
 
@@ -869,7 +876,7 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions, accountId]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions, accountId, scoringModel]);
 
   const clearBatchReport = useCallback(() => {
     setBatchReport([]);

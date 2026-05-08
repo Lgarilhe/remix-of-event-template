@@ -176,6 +176,30 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     [inlineSuggestions, fallbackSuggestions],
   );
 
+  // Per-mission scoring model preference. null = "auto" (resolve via
+  // orgDefault → action.autoDefault → tier default).
+  // Persisted in localStorage by mission ID so users keep their choice.
+  const scoringModelStorageKey = activeProject?.id
+    ? `konekt_scoring_model_${activeProject.id}`
+    : 'konekt_scoring_model_default';
+  const [scoringModel, setScoringModelState] = useState<string | null>(() => {
+    try { return localStorage.getItem(scoringModelStorageKey); } catch { return null; }
+  });
+  // Re-hydrate when the active mission changes
+  useEffect(() => {
+    try {
+      const next = localStorage.getItem(scoringModelStorageKey);
+      setScoringModelState(next);
+    } catch { /* noop */ }
+  }, [scoringModelStorageKey]);
+  const handleScoringModelChange = useCallback((next: string | null) => {
+    setScoringModelState(next);
+    try {
+      if (next) localStorage.setItem(scoringModelStorageKey, next);
+      else localStorage.removeItem(scoringModelStorageKey);
+    } catch { /* noop */ }
+  }, [scoringModelStorageKey]);
+
   // Internal search source toggle (Apollo vs LinkedIn)
   const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
 
@@ -306,6 +330,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     },
     customScoringInstructions: scoringInstructions.trim() || undefined,
     accountId: selectedAccount,
+    scoringModel,
   });
 
   // Pool view toggle
@@ -960,6 +985,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           batchStats={scoring.batchStats}
           batchDurationMs={scoring.batchDurationMs}
           onClearBatchReport={scoring.clearBatchReport}
+          scoringModel={scoringModel}
+          onScoringModelChange={handleScoringModelChange}
         />
       </div>
 
