@@ -534,6 +534,8 @@ const StepClient = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; upd
     <PedigreePresetSelector
       clientName={d.client?.name}
       selectedPresetId={d.pedigree_preset_id}
+      currentRequirements={d.pedigree_requirements}
+      currentPresetName={d.pedigree_preset_name}
       onChange={(patch) => onUpdate(patch)}
       readOnly={readOnly}
     />
