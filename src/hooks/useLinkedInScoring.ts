@@ -165,6 +165,13 @@ interface ScoringOptions {
   setSortByScore?: (v: boolean) => void;
   setResults?: React.Dispatch<React.SetStateAction<LinkedInProfile[]>>;
   setSelectedProfiles?: React.Dispatch<React.SetStateAction<Set<string>>>;
+  /**
+   * Setter du filtre statut. Si fourni, le hook switche automatiquement vers
+   * le filtre "scored_go" après un batch scoring réussi qui a généré au moins
+   * 1 profil pertinent. Évite d'avoir une liste vide post-scoring quand le
+   * filtre par défaut cache les profils traités.
+   */
+  setStatusFilter?: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
   autoHideTreatedRef?: React.MutableRefObject<boolean>;
   customScoringInstructions?: string;
   accountId?: string | null;
@@ -499,6 +506,7 @@ export function useLinkedInScoring({
   setSortByScore,
   setResults,
   setSelectedProfiles,
+  setStatusFilter,
   autoHideTreatedRef,
   candidateStatus,
   customScoringInstructions,
@@ -904,6 +912,18 @@ export function useLinkedInScoring({
         } else {
           toast.success(`${scoredCount} profils scorés`);
         }
+
+        // Auto-switch vers les pertinents si on en a — évite que l'user voie
+        // une liste vide ("Aucun profil trouvé") quand le filtre par défaut
+        // cache les profils traités. Si pas de Go mais des Maybe, on switch
+        // sur Maybe. Si tout est dismissed → reste sur le filtre actuel
+        // (l'user verra Pipeline ou utilisera le filtre Dismissed).
+        if (setStatusFilter && goodCount > 0) {
+          const hasGo = goodScoreProfiles.some(p => p.recommendation === 'go');
+          const hasMaybe = goodScoreProfiles.some(p => p.recommendation === 'maybe');
+          if (hasGo) setStatusFilter('scored_go');
+          else if (hasMaybe) setStatusFilter('scored_maybe');
+        }
         // Compute aggregate stats if not provided by backend
         if (!aggregatedStats) {
           const mapped = Object.values(newScores);
@@ -963,7 +983,7 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions, accountId, scoringModel]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, setStatusFilter, customScoringInstructions, accountId, scoringModel]);
 
   const clearBatchReport = useCallback(() => {
     setBatchReport([]);
