@@ -1489,27 +1489,27 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
 }
 
 // ─── Score Combiner ──────────────────────────────────────────────────────────
-// LLM-First: The LLM now evaluates tech fit + soft skills + must-have,
-// so it gets 40% weight. The algo handles quantifiable dimensions (40%).
-// Semantic similarity provides a bonus signal (20%).
+// LLM-First : c'est le LLM qui évalue le fit technique, soft skills,
+// pedigree et must-have — il a accès à TOUTES les infos. L'algo ne mesure
+// que les dimensions déterministes (XP, location, réceptivité, tenure,
+// contrat, salaire) qui ne nécessitent pas le LLM.
+//
+// Pondération : LLM 60% / algo 40%. Avant : 40% / 40% / 20% sémantique
+// → un profil techniquement faible (LLM tech 30) mais avec bons signaux
+// algo (XP/location/open-to-work à 90) finissait à 58 → POSSIBLE_MATCH
+// alors qu'il fallait l'écarter.
+//
+// La couche sémantique (pgvector) n'est PAS utilisée ici — l'embedding
+// candidat est généré APRÈS le scoring (fire-and-forget côté front), donc
+// nul au 1er passage. Le LLM voit déjà tout le contexte et fait le
+// matching sémantique en natif → le layer pgvector apportait <2% de signal
+// utile pour 1 RPC supplémentaire. Réintégré quand il sera pré-calculé.
 
-function computeFinalScore(weightedScore: number, semanticScore: number | null, llmScore: number | null): number {
-  // New weights: algo 40%, LLM 40%, semantic 20%
+function computeFinalScore(weightedScore: number, _semanticScore: number | null, llmScore: number | null): number {
   if (llmScore !== null) {
-    let total = weightedScore * 0.4 + llmScore * 0.4;
-    let totalWeight = 0.8;
-    if (semanticScore !== null) {
-      total += semanticScore * 0.2;
-      totalWeight += 0.2;
-    }
-    return Math.round(total / totalWeight);
+    return Math.round(llmScore * 0.6 + weightedScore * 0.4);
   }
-
-  // Fallback without LLM: algo 80%, semantic 20%
-  if (semanticScore !== null) {
-    return Math.round(weightedScore * 0.8 + semanticScore * 0.2);
-  }
-
+  // Fallback sans LLM : algo seul (sémantique pas fiable au 1er scoring)
   return weightedScore;
 }
 
@@ -1937,21 +1937,27 @@ Deno.serve(async (req) => {
       needsLLM: boolean;
     }
 
-    const preScored: PreScoredProfile[] = [];
+    // Phase 1 — pre-compute en 3 étapes parallélisées :
+    //   A. Cache + hard filter (parallèle pour tous)
+    //   B. Enrichment Unipile (concurrency=5, seulement profils qui passent A)
+    //   C. Weighted + semantic (parallèle, seulement profils qui passent A)
+    //
+    // Avant cette refonte, c'était strictement séquentiel : sur 30 profils
+    // avec 50% nécessitant un enrichment (~3s chacun), ça représentait ~45s
+    // de pure attente — souvent cause #1 de timeout (limite Supabase 60s).
+    const ENRICHMENT_CONCURRENCY = 5;
 
-    for (const p of profilesToScore) {
+    // Étape A : cache check + hard filter en parallèle pour tous
+    const stageA = await Promise.all(profilesToScore.map(async (p): Promise<PreScoredProfile> => {
       const startTime = Date.now();
       const candidateId = p.id;
 
-      // Layer 0: Cache check
       const cached = await getCachedScore(supabase, candidateId, job.id);
       if (cached) {
         console.log(`[cache] HIT for ${p.name} → score=${cached.finalScore}`);
-        preScored.push({ profile: p, startTime, cached, needsLLM: false });
-        continue;
+        return { profile: p, startTime, cached, needsLLM: false };
       }
 
-      // Layer 1: Hard filters
       const hardFilterResult = await applyHardFilters(p, job);
       if (!hardFilterResult.passed) {
         const koResult: ScoringResult = {
@@ -1977,23 +1983,37 @@ Deno.serve(async (req) => {
           tokensUsed: null,
         };
         await setCachedScore(supabase, candidateId, job.id, koResult);
-        preScored.push({ profile: p, startTime, hardFilterResult: { passed: false, result: koResult }, needsLLM: false });
-        continue;
+        return { profile: p, startTime, hardFilterResult: { passed: false, result: koResult }, needsLLM: false };
       }
 
-      // Enrichment
-      if (enrichmentCtx) {
-        await maybeEnrichProfile(p, enrichmentCtx);
+      return { profile: p, startTime, needsLLM: true };
+    }));
+
+    const passing = stageA.filter(ps => ps.needsLLM);
+
+    // Étape B : enrichment, par vagues de ENRICHMENT_CONCURRENCY parallèles
+    if (enrichmentCtx && passing.length > 0) {
+      for (let i = 0; i < passing.length; i += ENRICHMENT_CONCURRENCY) {
+        const wave = passing.slice(i, i + ENRICHMENT_CONCURRENCY);
+        const enriched = await Promise.all(wave.map(ps =>
+          maybeEnrichProfile(ps.profile, enrichmentCtx!).catch((err) => {
+            console.error(`[enrichment] error for ${ps.profile.name}:`, err);
+            return false;
+          })
+        ));
+        // maybeEnrichProfile ne touche pas au compteur → c'est au caller
+        // de l'incrémenter pour chaque appel ayant réellement enrichi.
+        for (const wasEnriched of enriched) if (wasEnriched) enrichmentCtx.dailyCount++;
       }
-
-      // Layer 2: Weighted criteria
-      const weighted = computeWeightedScore(p, job);
-
-      // Layer 3: Semantic similarity
-      const semanticScore = await getSemanticScore(supabase, candidateId, job.id);
-
-      preScored.push({ profile: p, startTime, weighted, semanticScore, needsLLM: true });
     }
+
+    // Étape C : weighted + semantic en parallèle
+    await Promise.all(passing.map(async (ps) => {
+      ps.weighted = computeWeightedScore(ps.profile, job);
+      ps.semanticScore = await getSemanticScore(supabase, ps.profile.id, job.id);
+    }));
+
+    const preScored: PreScoredProfile[] = stageA;
 
     // Phase 2: Batch LLM call for profiles that need scoring
     const llmNeeded = preScored.filter(ps => ps.needsLLM && ps.weighted);
