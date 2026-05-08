@@ -468,6 +468,15 @@ export function useLinkedInSearch({
       if (jd.team_size) (job as any).teamSize = jd.team_size;
       if (jd.reports_to) (job as any).reportsTo = jd.reports_to;
       if (jd.manages) (job as any).manages = jd.manages;
+      // Pedigree requirements (preset client) — forward au scoring pour que le
+      // LLM honore "top école FR / scale-up Series B+" avec priorité sur les
+      // règles d'équité par défaut.
+      if (jdAny.pedigree_requirements) {
+        (job as any).pedigreeRequirements = jdAny.pedigree_requirements;
+      }
+      if (jdAny.pedigree_preset_name) {
+        (job as any).pedigreePresetName = jdAny.pedigree_preset_name;
+      }
       return job;
     };
 

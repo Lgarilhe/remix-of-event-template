@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import { JobDetails, CONTRACT_TYPE_LABELS, URGENCY_LABELS, REMOTE_LABELS, SIZE_LABELS, SALARY_TYPE_LABELS } from '@/types/jobDetails';
+import { PedigreePresetSelector } from './PedigreePresetSelector';
 
 // ─── Shared field components ───────────────────────────────
 
@@ -321,7 +322,7 @@ const FullscreenStepDialog: React.FC<{
               transition={{ duration: 0.25 }}
             >
               {stepIndex === 0 && <StepPoste d={d} updateField={updateField} readOnly={readOnly} />}
-              {stepIndex === 1 && <StepClient d={d} updateField={updateField} readOnly={readOnly} />}
+              {stepIndex === 1 && <StepClient d={d} updateField={updateField} onUpdate={onUpdate} readOnly={readOnly} />}
               {stepIndex === 2 && <StepProfil d={d} updateField={updateField} onUpdate={onUpdate} readOnly={readOnly} />}
               {stepIndex === 3 && <StepCompetences d={d} onUpdate={onUpdate} readOnly={readOnly} />}
               {stepIndex === 4 && <StepEvaluation d={d} onUpdate={onUpdate} readOnly={readOnly} />}
@@ -520,7 +521,7 @@ const StepPoste = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (
 
 // ─── Step 2: Le client ─────────────────────────────────────
 
-const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; readOnly: boolean }) => (
+const StepClient = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; updateField: (p: string, v: any) => void; onUpdate: (p: Partial<JobDetails>) => void; readOnly: boolean }) => (
   <div className="space-y-3">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Nom du client *" value={d.client?.name} onChange={(v) => updateField('client.name', v)} placeholder="Ex: Numspot" readOnly={readOnly} />
@@ -529,6 +530,14 @@ const StepClient = ({ d, updateField, readOnly }: { d: JobDetails; updateField: 
       <Field label="Site web" value={d.client?.website} onChange={(v) => updateField('client.website', v)} type="url" placeholder="https://..." readOnly={readOnly} />
     </div>
     <Field label="Notes culture" value={d.client?.culture_notes} onChange={(v) => updateField('client.culture_notes', v)} type="textarea" placeholder="Stack technique, valeurs, ambiance, particularités..." readOnly={readOnly} />
+
+    <PedigreePresetSelector
+      clientName={d.client?.name}
+      selectedPresetId={d.pedigree_preset_id}
+      onChange={(patch) => onUpdate(patch)}
+      readOnly={readOnly}
+    />
+
     <div className="pt-5 border-t-2 border-border">
       <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-4">Hiring Manager</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
