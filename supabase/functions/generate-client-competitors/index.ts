@@ -104,10 +104,24 @@ serve(async (req: Request) => {
 
     let parsed: { competitors?: Competitor[] } = {};
     try {
-      parsed = JSON.parse(result.content);
+      // Strip markdown fences si présents (```json ... ```), Claude les ajoute parfois
+      // malgré la consigne "no markdown" du system prompt.
+      let cleaned = result.content.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+      // Si y a encore du bruit avant/après, on extrait juste {…}
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      }
+      parsed = JSON.parse(cleaned);
     } catch (err) {
-      console.error('[generate-client-competitors] JSON parse error:', err, result.content.slice(0, 300));
-      return new Response(JSON.stringify({ error: 'Réponse IA non parsable' }), {
+      console.error('[generate-client-competitors] JSON parse error:', err);
+      console.error('[generate-client-competitors] Raw content (first 500 chars):', result.content.slice(0, 500));
+      return new Response(JSON.stringify({
+        error: 'Réponse IA non parsable',
+        debug_preview: result.content.slice(0, 200),
+      }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
