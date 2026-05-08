@@ -59,7 +59,7 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
   treatedCount: number;
   dismissedCount: number;
   
@@ -99,7 +99,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
   onSetSortByScore: (v: boolean) => void;
   scoredSortBy: ScoredSortBy;
   onSetScoredSortBy: (v: ScoredSortBy) => void;
@@ -342,7 +342,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
   // Count by status for filter badges — based on renderable profiles only
   const statusCounts = React.useMemo(() => {
-    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
+    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_investigate: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
     const renderableIds = new Set(mergedResults.map((r) => r.id));
 
     // Count only candidates we can actually render in the current view universe
@@ -355,6 +355,11 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         const rec = jobScores[candidateId]?.recommendation || s.recommendation;
         if (rec === 'go') counts.scored_go++;
         else if (rec === 'maybe') counts.scored_maybe++;
+        // Sprint UI-2 : compteur "À investiguer" = profils flagués par le LLM
+        // (fitScore ≥ 60 mais confidenceScore < 70). Indépendant du go/maybe
+        // — un profil peut être Go ET investigation_needed (ex: profil thin
+        // mais signaux contextuels positifs).
+        if (jobScores[candidateId]?.investigationNeeded === true) counts.scored_investigate++;
       }
       else if (s.status === 'messaged' || s.status === 'replied') {
         counts.messaged++;
@@ -364,6 +369,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           const rec = jobScores[candidateId]?.recommendation || s.recommendation;
           if (rec === 'go') counts.scored_go++;
           else if (rec === 'maybe') counts.scored_maybe++;
+          if (jobScores[candidateId]?.investigationNeeded === true) counts.scored_investigate++;
         }
       }
       else if (s.status === 'dismissed') counts.dismissed++;
@@ -645,13 +651,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       )}
 
       {/* Scored sub-filters (inline, only when scored active) */}
-      {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe') && statusCounts.scored > 0 && (
+      {(statusFilter === 'scored' || statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_investigate') && statusCounts.scored > 0 && (
         <div className="flex items-center justify-between px-2 sm:px-3 py-1 border-b border-border/50 bg-muted/20 shrink-0 gap-2 overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-px bg-muted/30 p-px border border-border shrink-0">
             {([
               { value: 'scored' as const, label: 'Tous', count: statusCounts.scored },
               { value: 'scored_go' as const, label: '✅ Go', count: statusCounts.scored_go },
               { value: 'scored_maybe' as const, label: '🤔 Maybe', count: statusCounts.scored_maybe },
+              ...(statusCounts.scored_investigate > 0 ? [
+                { value: 'scored_investigate' as const, label: '🔍 À investiguer', count: statusCounts.scored_investigate },
+              ] : []),
             ]).map(({ value, label, count }) => (
               <button
                 key={value}

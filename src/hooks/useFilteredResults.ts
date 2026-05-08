@@ -15,7 +15,7 @@ interface FilteredResultsOptions {
   selectedJob: Job | null;
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
   candidateStatus: {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
@@ -194,6 +194,15 @@ export function useFilteredResults({
             if (!isScored) return false;
             const rec = jobScores[p.id]?.recommendation || statuses?.get(p.id)?.recommendation;
             return rec === 'maybe';
+          }
+          case 'scored_investigate': {
+            // Sprint UI-2 : profils que le LLM a flagués investigationNeeded
+            // (fitScore ≥ 60 mais confidenceScore < 70). Profil prometteur
+            // mais signal faible — à confirmer en call court.
+            const isScored = status?.status === 'scored' || ((status?.status === 'messaged' || status?.status === 'replied') && !!(jobScores[p.id] || (statuses?.get(p.id)?.score != null)));
+            if (!isScored) return false;
+            const score = jobScores[p.id];
+            return score?.investigationNeeded === true;
           }
           case 'scored_not_contacted':
             return status?.status === 'scored';
