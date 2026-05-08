@@ -7,6 +7,7 @@ import { NumberTicker } from '@/components/magicui/number-ticker';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import { JobDetails, CONTRACT_TYPE_LABELS, URGENCY_LABELS, REMOTE_LABELS, SIZE_LABELS, SALARY_TYPE_LABELS } from '@/types/jobDetails';
 import { PedigreePresetSelector } from './PedigreePresetSelector';
+import { ClientCompetitorsBlock } from './ClientCompetitorsBlock';
 
 // ─── Shared field components ───────────────────────────────
 
@@ -537,6 +538,16 @@ const StepClient = ({ d, updateField, onUpdate, readOnly }: { d: JobDetails; upd
       currentRequirements={d.pedigree_requirements}
       currentPresetName={d.pedigree_preset_name}
       onChange={(patch) => onUpdate(patch)}
+      readOnly={readOnly}
+    />
+
+    <ClientCompetitorsBlock
+      clientName={d.client?.name}
+      clientSector={d.client?.sector}
+      clientCountry={null}
+      clientDescription={d.client?.culture_notes || d.mission_description}
+      restrictToCompetitors={!!d.restrict_search_to_competitors}
+      onChangeRestrict={(v) => onUpdate({ restrict_search_to_competitors: v })}
       readOnly={readOnly}
     />
 

@@ -108,6 +108,14 @@ export interface JobDetails {
   pedigree_preset_id?: string | null;
   pedigree_preset_name?: string | null;
 
+  // ── Concurrents du client (signal positif scoring + mode chirurgical Unipile) ──
+  /**
+   * Si true, la search Unipile est restreinte aux profils ayant bossé chez les
+   * concurrents (cf table client_competitors org-scoped, lookup par
+   * client.name_normalized). Sinon, les concurrents servent juste au scoring.
+   */
+  restrict_search_to_competitors?: boolean;
+
   // ── Configuration outreach (influence la rédaction des messages IA) ──
   outreach_config?: {
     /** Pour qui on recrute : 'internal' = notre boîte, 'client' = client externe */

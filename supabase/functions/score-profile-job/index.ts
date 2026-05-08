@@ -178,6 +178,24 @@ interface JobData {
     custom_instructions?: string;
   };
   pedigreePresetName?: string;
+  /**
+   * Concurrents directs du client (org_competitors per client_name).
+   * Bonus scoring fort si le profil a bossé chez l'un d'eux.
+   */
+  clientCompetitors?: Array<{
+    name: string;
+    relationKind?: 'direct' | 'adjacent' | 'inspirational';
+    country?: string | null;
+    domain?: string | null;
+    linkedinCompanyId?: string | null;
+  }>;
+  /**
+   * Mode chirurgical : si true + résolution OK, la search Unipile a déjà
+   * été restreinte aux profils issus des concurrents. Le LLM doit alors
+   * considérer la provenance "concurrent" comme un MATCH explicite (très
+   * positif) plutôt qu'un signal additionnel parmi d'autres.
+   */
+  restrictSearchToCompetitors?: boolean;
 }
 
 interface DimensionScore {
@@ -1794,6 +1812,31 @@ function buildJobContext(job: JobData, customScoringInstructions?: string): stri
     ? `\n⏱️ Urgence : ${job.urgency.toUpperCase()} — favoriser les profils likely-to-switch`
     : "";
 
+  // ─── Concurrents du client (signal positif fort dans le scoring) ────────
+  // Si l'org a configuré une liste de concurrents pour ce client, les profils
+  // qui en viennent sont des cibles "poach" naturelles. On distingue 3 niveaux :
+  // - direct : concurrent frontal (même produit, même marché)
+  // - adjacent : secteur / produit adjacent
+  // - inspirational : boîte plus grosse / pionnière (signal modéré)
+  const competitorsBlock = (() => {
+    const list = job.clientCompetitors;
+    if (!list || list.length === 0) return "";
+    const direct = list.filter(c => !c.relationKind || c.relationKind === 'direct').map(c => c.name);
+    const adjacent = list.filter(c => c.relationKind === 'adjacent').map(c => c.name);
+    const inspirational = list.filter(c => c.relationKind === 'inspirational').map(c => c.name);
+    const lines: string[] = [];
+    lines.push("\n=== CONCURRENTS DU CLIENT (poach signals) ===");
+    if (job.restrictSearchToCompetitors) {
+      lines.push("⚠️ MODE CHIRURGICAL : la search a été restreinte aux profils issus de ces concurrents. Considère la provenance \"concurrent\" comme un MATCH explicite (bonus très fort, +15 à +25 pts sur pedigree). Si le candidat n'a AUCUN passage chez eux, c'est un signal d'alerte (peut-être faux positif Unipile).");
+    } else {
+      lines.push("Bonus scoring fort si le candidat a bossé chez l'un de ces concurrents (+10 à +20 pts pedigree selon centralité). Mentionne-le explicitement dans `strengths` ou `notableCompanies`.");
+    }
+    if (direct.length) lines.push(`Direct : ${direct.slice(0, 12).join(', ')}.`);
+    if (adjacent.length) lines.push(`Adjacent : ${adjacent.slice(0, 8).join(', ')}.`);
+    if (inspirational.length) lines.push(`Inspirational : ${inspirational.slice(0, 5).join(', ')}.`);
+    return lines.join("\n");
+  })();
+
   // ─── Pedigree requirements (preset client) ───────────────────────────
   // Quand un preset client est appliqué, ses critères ÉCRASENT les règles
   // d'équité par défaut du SCORING_SYSTEM_PROMPT (ex: "ne pas pénaliser
@@ -1872,7 +1915,7 @@ ${job.location ? "Localisation poste: " + job.location : ""}${teamContextBlock}$
 ${job.salaryMin || job.salaryMax ? `Salaire: ${job.salaryMin ? Math.round(job.salaryMin/1000) + "k" : "?"}${job.salaryMax ? "-" + Math.round(job.salaryMax/1000) + "k" : ""}€ brut annuel` : ""}
 ${job.tjmMin || job.tjmMax ? `TJM: ${job.tjmMin || "?"}${job.tjmMax ? "-" + job.tjmMax : ""}€/jour` : ""}
 ${job.transversalCriteria?.context ? "Contexte client : " + job.transversalCriteria.context.substring(0, 300) : ""}
-${job.transversalCriteria?.must ? "Critères transversaux obligatoires : " + job.transversalCriteria.must : ""}${targetCompaniesBlock}${weightsBlock}${criteriaBlock}${calibrationBlock}${pedigreeBlock}
+${job.transversalCriteria?.must ? "Critères transversaux obligatoires : " + job.transversalCriteria.must : ""}${targetCompaniesBlock}${weightsBlock}${criteriaBlock}${calibrationBlock}${pedigreeBlock}${competitorsBlock}
 ${job.bodyContent ? "\nCritères additionnels (texte libre) :\n" + job.bodyContent.substring(0, 1500) : ""}
 ${job.originalBriefText ? "\n=== BRIEF ORIGINAL DU RECRUTEUR (lis intégralement, peut contenir des nuances importantes) ===\n" + job.originalBriefText.substring(0, 4000) : ""}
 ${customScoringInstructions ? "\nConsignes supplémentaires : " + customScoringInstructions.slice(0, 400) : ""}`

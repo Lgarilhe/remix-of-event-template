@@ -744,6 +744,8 @@ export function useLinkedInScoring({
           manages: (selectedJob as any).manages,
           pedigreeRequirements: (selectedJob as any).pedigreeRequirements,
           pedigreePresetName: (selectedJob as any).pedigreePresetName,
+          clientCompetitors: (selectedJob as any).clientCompetitors,
+          restrictSearchToCompetitors: (selectedJob as any).restrictSearchToCompetitors,
         },
         customScoringInstructions,
         accountId: accountId || undefined,
@@ -911,6 +913,8 @@ export function useLinkedInScoring({
         manages: (selectedJob as any).manages,
         pedigreeRequirements: (selectedJob as any).pedigreeRequirements,
         pedigreePresetName: (selectedJob as any).pedigreePresetName,
+        clientCompetitors: (selectedJob as any).clientCompetitors,
+        restrictSearchToCompetitors: (selectedJob as any).restrictSearchToCompetitors,
       };
 
       const allResults: JobMatchResult[] = [];
