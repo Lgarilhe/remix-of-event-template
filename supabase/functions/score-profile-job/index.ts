@@ -1811,8 +1811,8 @@ Deno.serve(async (req) => {
     };
 
     // Resolve AI model from frontend override (request-scoped)
-    let aiParams: { aiAction: string; modelId: string; description: string | null } = {
-      aiAction: "scoring", modelId: "claude-sonnet-4-6", description: null,
+    let aiParams: { aiAction: string; modelId: string; description: string | null; wasAutoRouted: boolean } = {
+      aiAction: "scoring", modelId: "claude-sonnet-4-6", description: null, wasAutoRouted: false,
     };
     try {
       const { extractAIParams } = await import("../_shared/settle-credits.ts");
@@ -1842,6 +1842,28 @@ Deno.serve(async (req) => {
     const CLAUDE_MODEL = (anthropicModelId && anthropicModelId.startsWith("claude-"))
       ? anthropicModelId
       : CLAUDE_MODEL_DEFAULT;
+
+    // ─── Tiered routing ────────────────────────────────────────────────────────
+    // Quand le modèle vient de l'autoDefault (= user a fait confiance au routing
+    // automatique, qui résout vers Haiku 4.5 pour le scoring), on active une
+    // escalation : on appelle Haiku en première passe, puis on ré-évalue les
+    // profils borderline avec Sonnet 4.6.
+    //
+    // Si l'user a explicitement choisi un modèle (Sonnet ou Opus via le picker
+    // ou en default org), on respecte son choix → pas d'escalation.
+    //
+    // Modèle d'escalation : on monte d'un cran dans la qualité par rapport au
+    // modèle de 1ère passe (Haiku → Sonnet, Sonnet → Opus). Pour Opus, pas
+    // d'escalation possible (déjà premium).
+    const TIER_ESCALATION_MAP: Record<string, string> = {
+      "claude-haiku-4-5-20251001": "claude-sonnet-4-6",
+      "claude-sonnet-4-6": "claude-opus-4-6",
+    };
+    const tieredEnabled = aiParams.wasAutoRouted && !!TIER_ESCALATION_MAP[CLAUDE_MODEL];
+    const ESCALATION_MODEL = TIER_ESCALATION_MAP[CLAUDE_MODEL] || CLAUDE_MODEL;
+    if (tieredEnabled) {
+      console.log(`[tiered] Routing actif : 1ère passe ${CLAUDE_MODEL}, escalation borderline → ${ESCALATION_MODEL}`);
+    }
 
     // Input validation
     if (!job || !job.id || !job.title) {
@@ -1920,8 +1942,6 @@ Deno.serve(async (req) => {
     // Phase 3: Combine scores and return
 
     const results: ScoringResult[] = [];
-    let totalTokensInput = 0;
-    let totalTokensOutput = 0;
     let hardFilteredCount = 0;
     let llmSkippedCount = 0;
     let llmCalledCount = 0;
@@ -2030,6 +2050,15 @@ Deno.serve(async (req) => {
 
     let llmResultMap = new Map<string, LLMResult>();
 
+    // Per-tier token tracking — used for accurate billing in tiered routing.
+    // 1ère passe (CLAUDE_MODEL, typiquement Haiku) et passe d'escalation
+    // (ESCALATION_MODEL, typiquement Sonnet) sont facturées séparément avec
+    // leur multiplicateur de prix respectif.
+    let firstPassTokensInput = 0;
+    let firstPassTokensOutput = 0;
+    let escalatedTokensInput = 0;
+    let escalatedTokensOutput = 0;
+    const escalatedIds = new Set<string>();
 
     if (batchInputs.length > 0) {
       // Process in sub-batches of BATCH_SIZE for the LLM
@@ -2038,7 +2067,11 @@ Deno.serve(async (req) => {
         const subBatch = batchInputs.slice(i, i + LLM_BATCH_SIZE);
         try {
           const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, CLAUDE_MODEL);
-          for (const [k, v] of subMap) llmResultMap.set(k, v);
+          for (const [k, v] of subMap) {
+            llmResultMap.set(k, v);
+            firstPassTokensInput += v.tokensUsed.input;
+            firstPassTokensOutput += v.tokensUsed.output;
+          }
         } catch (err: any) {
           if (err.message === "BATCH_PARSE_FAILED") {
             console.warn(`[scoring] Batch LLM parse failed, falling back to individual scoring`);
@@ -2060,22 +2093,80 @@ Deno.serve(async (req) => {
             console.log(`[scoring] Fallback individual LLM for ${input.profile.name}`);
             const result = await callLLM(input.profile, job, input.preComputedData, customScoringInstructions, CLAUDE_MODEL);
             llmResultMap.set(input.profile.id, result);
+            firstPassTokensInput += result.tokensUsed.input;
+            firstPassTokensOutput += result.tokensUsed.output;
           } catch (err) {
             console.error(`[scoring] Individual LLM fallback failed for ${input.profile.name}:`, err);
           }
         }
       }
+
+      // ─── Phase 2.5 : Tiered escalation ─────────────────────────────────
+      // Identifie les profils borderline (score 50-75 OU must-have uncertain)
+      // et les ré-évalue avec un modèle plus puissant. Active uniquement quand
+      // l'user a fait confiance au routing automatique (cf. tieredEnabled).
+      if (tieredEnabled && llmResultMap.size > 0) {
+        const toEscalate: BatchLLMInput[] = [];
+        for (const input of batchInputs) {
+          const r = llmResultMap.get(input.profile.id);
+          if (!r) continue;
+          // Critères d'escalation :
+          // 1. Score borderline 50-75 → zone d'hésitation, le modèle plus
+          //    nuancé peut trancher mieux (faux positif vs faux négatif).
+          // 2. mustHaveUncertain → le 1er modèle n'a pas pu trancher sur
+          //    le must-have, c'est exactement le cas où Sonnet/Opus brille
+          //    (raisonnement multi-signal).
+          const isBorderline = r.overallScore >= 50 && r.overallScore <= 75;
+          const isUncertain = r.mustHaveUncertain === true;
+          if (isBorderline || isUncertain) toEscalate.push(input);
+        }
+
+        if (toEscalate.length > 0) {
+          console.log(`[tiered] Escalating ${toEscalate.length}/${batchInputs.length} profiles to ${ESCALATION_MODEL}`);
+          const ESC_BATCH_SIZE = 10;
+          for (let i = 0; i < toEscalate.length; i += ESC_BATCH_SIZE) {
+            const subBatch = toEscalate.slice(i, i + ESC_BATCH_SIZE);
+            try {
+              const subMap = await callLLMBatch(subBatch, job, customScoringInstructions, ESCALATION_MODEL);
+              for (const [k, v] of subMap) {
+                // Conserve la SOMME des tokens (1ère passe + escalation) dans
+                // le scoring_result du candidat (vérité métier sur le coût total
+                // de l'évaluation). Le settle facture les 2 passes séparément
+                // avec leur modelId respectif.
+                const firstPassResult = llmResultMap.get(k);
+                const combinedTokens = firstPassResult ? {
+                  input: firstPassResult.tokensUsed.input + v.tokensUsed.input,
+                  output: firstPassResult.tokensUsed.output + v.tokensUsed.output,
+                } : v.tokensUsed;
+                llmResultMap.set(k, { ...v, tokensUsed: combinedTokens });
+                escalatedIds.add(k);
+                escalatedTokensInput += v.tokensUsed.input;
+                escalatedTokensOutput += v.tokensUsed.output;
+              }
+            } catch (err) {
+              console.error(`[tiered] Escalation batch failed (keeping 1st pass results):`, err);
+              // En cas d'échec d'escalation, on garde les résultats 1ère passe.
+              // Ne pas throw — l'user a quand même un résultat utilisable.
+            }
+            if (i + ESC_BATCH_SIZE < toEscalate.length) {
+              await sleep(DELAY_BETWEEN_BATCHES_MS);
+            }
+          }
+          console.log(`[tiered] Escalation done : ${escalatedIds.size}/${toEscalate.length} profiles re-scored`);
+        }
+      }
     }
 
     // Phase 3: Combine and build final results (always include profile_id for safe matching)
+    // Note: les tokens facturables sont DEJA accumulés en phase 2 dans
+    // firstPassTokensInput/Output et escalatedTokensInput/Output. On ne
+    // re-compte PAS depuis llmResult.tokensUsed ici (sinon double comptage).
+    // Les cached results ne consomment AUCUN token cette fois (bug fix :
+    // avant on re-facturait les cache hits, ce qui faisait payer 2 fois).
     for (const ps of preScored) {
-      // Cached results
+      // Cached results — pas de tokens facturables (déjà settled à l'origine)
       if (ps.cached) {
         results.push({ ...ps.cached, profile_id: ps.profile.id });
-        if (ps.cached.tokensUsed) {
-          totalTokensInput += ps.cached.tokensUsed.input;
-          totalTokensOutput += ps.cached.tokensUsed.output;
-        }
         continue;
       }
 
@@ -2094,10 +2185,6 @@ Deno.serve(async (req) => {
 
       if (llmResult) {
         llmCalledCount++;
-        if (llmResult.tokensUsed) {
-          totalTokensInput += llmResult.tokensUsed.input;
-          totalTokensOutput += llmResult.tokensUsed.output;
-        }
 
         // Must-have KO check
         if (job.mustHave && job.mustHave.trim().length > 0 && !llmResult.mustHavePassed) {
@@ -2232,35 +2319,64 @@ Deno.serve(async (req) => {
     const avgScore =
       results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.finalScore, 0) / results.length) : 0;
 
+    const totalTokens = firstPassTokensInput + firstPassTokensOutput + escalatedTokensInput + escalatedTokensOutput;
     const stats = {
       total: results.length,
       hardFiltered: hardFilteredCount,
       llmSkipped: llmSkippedCount,
       llmCalled: llmCalledCount,
+      // Tiered routing — combien de profils ont été ré-évalués par le modèle
+      // d'escalation (Sonnet par défaut quand le 1er pass était Haiku) :
+      escalated: escalatedIds.size,
+      escalationModel: escalatedIds.size > 0 ? (TIER_ESCALATION_MAP[CLAUDE_MODEL] ?? null) : null,
       avgScore,
-      totalTokens: totalTokensInput + totalTokensOutput,
+      totalTokens,
     };
 
     const responseData = profiles ? { results, stats } : { result: results[0] };
 
-    // Settle credits based on actual tokens consumed (fire-and-forget)
-    if (totalTokensInput + totalTokensOutput > 0) {
+    // Settle credits — 2 calls distincts si tiered routing actif :
+    // - 1ère passe facturée au modèle CLAUDE_MODEL (typiquement Haiku)
+    // - escalation facturée au modèle ESCALATION_MODEL (typiquement Sonnet)
+    // Ainsi chaque token est facturé au prix du modèle qui l'a réellement consommé.
+    if (totalTokens > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
         if (orgId && userId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          const settleResult = await settleCredits(supabase as any, {
-            organizationId: orgId,
-            userId,
-            aiAction: aiParams.aiAction,
-            modelId: aiParams.modelId,
-            tokensInput: totalTokensInput,
-            tokensOutput: totalTokensOutput,
-            description: aiParams.description,
-          });
-          if (!settleResult?.success) {
-            console.error(`[score-profile-job] ⚠️ CREDIT SETTLEMENT FAILED: ${totalTokensInput}in+${totalTokensOutput}out tokens NOT deducted for org ${orgId}`);
+
+          // Settle de la 1ère passe (modèle = aiParams.modelId)
+          if (firstPassTokensInput + firstPassTokensOutput > 0) {
+            const r1 = await settleCredits(supabase as any, {
+              organizationId: orgId,
+              userId,
+              aiAction: aiParams.aiAction,
+              modelId: aiParams.modelId,
+              tokensInput: firstPassTokensInput,
+              tokensOutput: firstPassTokensOutput,
+              description: aiParams.description,
+            });
+            if (!r1?.success) {
+              console.error(`[score-profile-job] ⚠️ 1st pass settle FAILED: ${firstPassTokensInput}in+${firstPassTokensOutput}out tokens NOT deducted (model=${aiParams.modelId})`);
+            }
+          }
+
+          // Settle de l'escalation (modèle = ESCALATION_MODEL, Sonnet par défaut)
+          if (escalatedTokensInput + escalatedTokensOutput > 0) {
+            const escalationModelInternal = TIER_ESCALATION_MAP[CLAUDE_MODEL] ?? aiParams.modelId;
+            const r2 = await settleCredits(supabase as any, {
+              organizationId: orgId,
+              userId,
+              aiAction: aiParams.aiAction,
+              modelId: escalationModelInternal,
+              tokensInput: escalatedTokensInput,
+              tokensOutput: escalatedTokensOutput,
+              description: (aiParams.description ?? "scoring") + " (escalation borderline)",
+            });
+            if (!r2?.success) {
+              console.error(`[score-profile-job] ⚠️ Escalation settle FAILED: ${escalatedTokensInput}in+${escalatedTokensOutput}out tokens NOT deducted (model=${escalationModelInternal})`);
+            }
           }
         }
       } catch (e) { console.warn("[score-profile-job] settle skipped:", e); }

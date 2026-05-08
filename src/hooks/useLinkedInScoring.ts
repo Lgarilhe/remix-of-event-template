@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
@@ -165,6 +165,13 @@ interface ScoringOptions {
   setSortByScore?: (v: boolean) => void;
   setResults?: React.Dispatch<React.SetStateAction<LinkedInProfile[]>>;
   setSelectedProfiles?: React.Dispatch<React.SetStateAction<Set<string>>>;
+  /**
+   * Setter du filtre statut. Si fourni, le hook switche automatiquement vers
+   * le filtre "scored_go" après un batch scoring réussi qui a généré au moins
+   * 1 profil pertinent. Évite d'avoir une liste vide post-scoring quand le
+   * filtre par défaut cache les profils traités.
+   */
+  setStatusFilter?: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
   autoHideTreatedRef?: React.MutableRefObject<boolean>;
   customScoringInstructions?: string;
   accountId?: string | null;
@@ -421,6 +428,73 @@ function serializeProfileForStorage(profile: LinkedInProfile): any {
   };
 }
 
+// ─── Batch report persistence ──────────────────────────────────────────────
+//
+// Le rapport de scoring (`batchReport` + `batchStats` + `batchDurationMs`) est
+// stocké dans le state React in-memory du hook. Sur mobile, le browser peut
+// purger l'onglet pendant un scoring qui dure 20-30s (verrouillage écran,
+// switch d'app, pression mémoire) — au réveil, le state est perdu et la modale
+// "Scoring terminé" ne peut plus se rendre alors que les scores sont bien
+// persistés en DB.
+//
+// Fix : on persiste le rapport en localStorage par mission avec un TTL court
+// (5 min). Si l'user revient sur la mission dans la fenêtre, la modale
+// reapparaît automatiquement avec le badge ⚡ et le breakdown Go/Maybe/Skip.
+// Au-delà de 5 min, le rapport est considéré périmé et n'est plus auto-affiché
+// (l'user doit relancer un scoring pour avoir un nouveau rapport).
+
+const BATCH_REPORT_TTL_MS = 5 * 60 * 1000;
+
+function batchReportStorageKey(jobId: string | null | undefined): string | null {
+  return jobId ? `konekt_batch_report_${jobId}` : null;
+}
+
+interface PersistedBatchReport {
+  report: BatchReportEntry[];
+  stats: BatchScoringStats | null;
+  durationMs: number | undefined;
+  savedAt: number;
+}
+
+function readPersistedBatchReport(jobId: string | null | undefined): PersistedBatchReport | null {
+  const key = batchReportStorageKey(jobId);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedBatchReport;
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt > BATCH_REPORT_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedBatchReport(
+  jobId: string | null | undefined,
+  data: { report: BatchReportEntry[]; stats: BatchScoringStats | null; durationMs: number | undefined }
+): void {
+  const key = batchReportStorageKey(jobId);
+  if (!key) return;
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...data, savedAt: Date.now() } satisfies PersistedBatchReport)
+    );
+  } catch {
+    // Quota exceeded ou autre — on ne bloque pas le scoring
+  }
+}
+
+function clearPersistedBatchReport(jobId: string | null | undefined): void {
+  const key = batchReportStorageKey(jobId);
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch { /* noop */ }
+}
+
 export function useLinkedInScoring({
   selectedJob,
   selectedProfiles,
@@ -432,15 +506,26 @@ export function useLinkedInScoring({
   setSortByScore,
   setResults,
   setSelectedProfiles,
+  setStatusFilter,
   autoHideTreatedRef,
   candidateStatus,
   customScoringInstructions,
   accountId,
   scoringModel,
 }: ScoringOptions) {
-  const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(null);
-  const [batchReport, setBatchReport] = useState<BatchReportEntry[]>([]);
-  const [batchDurationMs, setBatchDurationMs] = useState<number | undefined>(undefined);
+  // Hydrate from localStorage on mount — survives mobile remounts during scoring
+  const initialPersisted = readPersistedBatchReport(selectedJob?.id);
+  const [batchStats, setBatchStats] = useState<BatchScoringStats | null>(initialPersisted?.stats ?? null);
+  const [batchReport, setBatchReport] = useState<BatchReportEntry[]>(initialPersisted?.report ?? []);
+  const [batchDurationMs, setBatchDurationMs] = useState<number | undefined>(initialPersisted?.durationMs);
+
+  // Re-hydrate when the active mission changes (selectedJob.id change)
+  useEffect(() => {
+    const persisted = readPersistedBatchReport(selectedJob?.id);
+    setBatchReport(persisted?.report ?? []);
+    setBatchStats(persisted?.stats ?? null);
+    setBatchDurationMs(persisted?.durationMs);
+  }, [selectedJob?.id]);
 
   // Score a single profile
   const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
@@ -707,6 +792,8 @@ export function useLinkedInScoring({
               hardFiltered: (aggregatedStats?.hardFiltered || 0) + (stats.hardFiltered || 0),
               llmSkipped: (aggregatedStats?.llmSkipped || 0) + (stats.llmSkipped || 0),
               llmCalled: (aggregatedStats?.llmCalled || 0) + (stats.llmCalled || 0),
+              escalated: (aggregatedStats?.escalated || 0) + (stats.escalated || 0),
+              escalationModel: stats.escalationModel ?? aggregatedStats?.escalationModel ?? null,
               avgScore: stats.avgScore || 0,
               totalTokens: (aggregatedStats?.totalTokens || 0) + (stats.totalTokens || 0),
             };
@@ -825,6 +912,18 @@ export function useLinkedInScoring({
         } else {
           toast.success(`${scoredCount} profils scorés`);
         }
+
+        // Auto-switch vers les pertinents si on en a — évite que l'user voie
+        // une liste vide ("Aucun profil trouvé") quand le filtre par défaut
+        // cache les profils traités. Si pas de Go mais des Maybe, on switch
+        // sur Maybe. Si tout est dismissed → reste sur le filtre actuel
+        // (l'user verra Pipeline ou utilisera le filtre Dismissed).
+        if (setStatusFilter && goodCount > 0) {
+          const hasGo = goodScoreProfiles.some(p => p.recommendation === 'go');
+          const hasMaybe = goodScoreProfiles.some(p => p.recommendation === 'maybe');
+          if (hasGo) setStatusFilter('scored_go');
+          else if (hasMaybe) setStatusFilter('scored_maybe');
+        }
         // Compute aggregate stats if not provided by backend
         if (!aggregatedStats) {
           const mapped = Object.values(newScores);
@@ -869,6 +968,14 @@ export function useLinkedInScoring({
           } as BatchReportEntry;
         }).filter(Boolean) as BatchReportEntry[];
         setBatchReport(reportEntries);
+
+        // Persist le rapport en localStorage AVANT d'éventuels remounts mobile.
+        // Ainsi si le browser purge l'onglet, le rapport revient à l'hydratation.
+        writePersistedBatchReport(selectedJob?.id, {
+          report: reportEntries,
+          stats: aggregatedStats,
+          durationMs: Date.now() - batchStartTime,
+        });
       }
     } catch (err) {
       console.error('Batch score error:', err);
@@ -876,13 +983,16 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, customScoringInstructions, accountId, scoringModel]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, setStatusFilter, customScoringInstructions, accountId, scoringModel]);
 
   const clearBatchReport = useCallback(() => {
     setBatchReport([]);
     setBatchStats(null);
     setBatchDurationMs(undefined);
-  }, []);
+    // Clear également le localStorage pour que la modale ne réapparaisse pas
+    // si l'user navigue entre missions et revient sur celle-ci.
+    clearPersistedBatchReport(selectedJob?.id);
+  }, [selectedJob?.id]);
 
   return {
     scoreProfile,

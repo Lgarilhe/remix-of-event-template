@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Ban, ExternalLink, X, ChevronRight, Sparkles, TrendingUp, Clock, Brain, BarChart3, Check, HelpCircle } from 'lucide-react';
+import { Ban, ExternalLink, X, ChevronRight, Sparkles, TrendingUp, Clock, Brain, BarChart3, Check, HelpCircle, Zap } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -147,28 +147,44 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
           {/* ── Stats cards ── */}
           {stats && (
             <motion.div
-              className="grid grid-cols-3 gap-2.5 mb-4"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.3 }}
+              className="mb-4 space-y-2"
             >
-              <StatCard
-                icon={<Brain className="w-3.5 h-3.5" />}
-                label="Scorés IA"
-                value={stats.llmCalled}
-              />
-              <StatCard
-                icon={<BarChart3 className="w-3.5 h-3.5" />}
-                label="Score moyen"
-                value={`${stats.avgScore}`}
-                suffix="/100"
-              />
-              <StatCard
-                icon={<TrendingUp className="w-3.5 h-3.5" />}
-                label="Taux Go"
-                value={`${goPercent}%`}
-                highlight={goPercent > 30}
-              />
+              <div className="grid grid-cols-3 gap-2.5">
+                <StatCard
+                  icon={<Brain className="w-3.5 h-3.5" />}
+                  label="Scorés IA"
+                  value={stats.llmCalled}
+                />
+                <StatCard
+                  icon={<BarChart3 className="w-3.5 h-3.5" />}
+                  label="Score moyen"
+                  value={`${stats.avgScore}`}
+                  suffix="/100"
+                />
+                <StatCard
+                  icon={<TrendingUp className="w-3.5 h-3.5" />}
+                  label="Taux Go"
+                  value={`${goPercent}%`}
+                  highlight={goPercent > 30}
+                />
+              </div>
+              {/* Tiered routing — ligne discrète quand certains profils ont
+                  été ré-évalués par une IA plus puissante (qualité +) */}
+              {(stats.escalated ?? 0) > 0 && (
+                <div
+                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground pl-1"
+                  title="Profils borderline ré-évalués par une IA plus puissante pour plus de précision"
+                >
+                  <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span>
+                    <span className="font-semibold text-foreground">{stats.escalated}</span>
+                    {' profil'}{(stats.escalated ?? 0) > 1 ? 's' : ''}{' ré-évalué'}{(stats.escalated ?? 0) > 1 ? 's' : ''}{' par une IA plus précise'}
+                  </span>
+                </div>
+              )}
             </motion.div>
           )}
 

@@ -70,6 +70,10 @@ export interface BatchScoringStats {
   hardFiltered: number;
   llmSkipped: number;
   llmCalled: number;
+  /** Nombre de profils ré-évalués par le modèle d'escalation (tiered routing) */
+  escalated?: number;
+  /** Modèle d'escalation utilisé (ex: "claude-sonnet-4-6"). Présent si escalated > 0. */
+  escalationModel?: string | null;
   avgScore: number;
   totalTokens: number;
 }

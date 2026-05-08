@@ -36,6 +36,19 @@ export interface AIParams {
   aiAction: string;
   /** Human-readable description for transaction log */
   description: string | null;
+  /**
+   * True si le modèle a été résolu depuis l'autoDefault de l'action (ou
+   * le ROUTING_DEFAULTS du tier) — c'est-à-dire l'user n'a PAS choisi
+   * explicitement de modèle (ni via le ModelPicker, ni via le default org).
+   *
+   * Utilisé par les edge functions pour décider d'activer un tiered routing
+   * (ex: scoring qui escalade Haiku → Sonnet sur les profils borderline)
+   * uniquement quand l'user fait confiance au routing automatique.
+   *
+   * Si false : l'user a choisi explicitement (Sonnet ou Opus) → on respecte
+   * son choix sans tiered routing surprise.
+   */
+  wasAutoRouted: boolean;
 }
 
 /**
@@ -54,11 +67,17 @@ export function extractAIParams(
   const userModel = typeof body._ai_model === "string" ? body._ai_model : undefined;
   const modelId = getModel(routingTier, userModel, orgModelDefault, aiAction);
 
+  // wasAutoRouted = true si on n'a NI userModel valide NI orgModelDefault valide.
+  // (cf. getModel : on tombe alors sur action.autoDefault ou ROUTING_DEFAULTS)
+  const userOverrideValid = !!(userModel && userModel.length > 0);
+  const orgDefaultValid = !!(orgModelDefault && orgModelDefault.length > 0 && routingTier !== "fast");
+  const wasAutoRouted = !userOverrideValid && !orgDefaultValid;
+
   const description = typeof body._ai_description === "string"
     ? body._ai_description.slice(0, 200)
     : null;
 
-  return { modelId, aiAction, description };
+  return { modelId, aiAction, description, wasAutoRouted };
 }
 
 // ─── Settle credits after an AI call ────────────────────────────────────────

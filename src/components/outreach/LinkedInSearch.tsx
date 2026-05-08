@@ -322,6 +322,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setSortByScore: search.setSortByScore,
     setResults: search.setResults,
     setSelectedProfiles: search.setSelectedProfiles,
+    setStatusFilter: search.setStatusFilter,
     autoHideTreatedRef: search.autoHideTreatedRef,
     candidateStatus: {
       batchDismiss: search.candidateStatus.batchDismiss,
