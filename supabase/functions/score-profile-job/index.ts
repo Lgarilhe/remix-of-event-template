@@ -1562,9 +1562,20 @@ function computeWeightedScore(profile: ProfileData, job: JobData): WeightedResul
     const xp = profile.yearsOfExperience;
     const xpMin = job.xpMin || 0;
     const xpMax = job.xpMax || xpMin + 5;
-    if (xp >= xpMin && xp <= xpMax) experienceMatchKind = "compatible";
-    else if (xp < xpMin) experienceMatchKind = "trop_junior";
-    else experienceMatchKind = "trop_senior";
+    // Tolérance ±1 an : un recruteur considère qu'un profil à xpMin-1 est
+    // "compatible" (les fourchettes XP sont approximatives, pas des cut-offs
+    // stricts). Avant ce fix, on disait "trop_junior" pour 4 ans vs xpMin=5,
+    // alors que le seniorityScore lui-même donnait 85/100 (= compatible) →
+    // le label contredisait le score, et le LLM voyait "go" tandis que la
+    // card affichait "trop junior" → incohérence visible côté user.
+    const XP_TOLERANCE = 1;
+    if (xp >= xpMin - XP_TOLERANCE && xp <= xpMax + XP_TOLERANCE) {
+      experienceMatchKind = "compatible";
+    } else if (xp < xpMin - XP_TOLERANCE) {
+      experienceMatchKind = "trop_junior";
+    } else {
+      experienceMatchKind = "trop_senior";
+    }
   }
 
   let locationMatchKind: WeightedResult["locationMatchKind"] = "incertain";
@@ -3254,6 +3265,28 @@ Deno.serve(async (req) => {
         (llmResult as any)?.mustHaveUncertain,
       );
 
+      // Cohérence XP : si trop_junior/trop_senior franc (déjà après tolérance
+      // ±1 an dans computeWeightedScore), le LLM ne peut pas être Go. Sinon
+      // on a une incohérence visible côté user ("À contacter" + "Trop junior"
+      // sur la même card). Le LLM est parfois optimiste sur le potentiel,
+      // mais les recruteurs préfèrent un Maybe explicite à un Go trompeur.
+      if (weighted.experienceMatchKind === 'trop_junior' || weighted.experienceMatchKind === 'trop_senior') {
+        const xp = profile.yearsOfExperience ?? 0;
+        const xpMin = job.xpMin || 0;
+        const xpMax = job.xpMax || xpMin + 5;
+        const gap = weighted.experienceMatchKind === 'trop_junior'
+          ? Math.max(0, xpMin - xp)
+          : Math.max(0, xp - xpMax);
+        // Cap progressif selon l'écart :
+        // - 2-3 ans de gap → cap à 65 (force Maybe au lieu de Go)
+        // - 4+ ans de gap → cap à 50 (force Skip ou très limite Maybe)
+        if (gap >= 4) {
+          finalScore = Math.min(finalScore, 50);
+        } else if (gap >= 2) {
+          finalScore = Math.min(finalScore, 65);
+        }
+      }
+
       const recommendation = getRecommendation(finalScore);
 
       // Annote concerns si on a capped à cause d'un must-have failed
@@ -3271,7 +3304,16 @@ Deno.serve(async (req) => {
         name: ps.profile.name,
         score: finalScore,
         recommendation,
-        summary: llmResult?.summary || `Score: ${finalScore}/100`,
+        // Si le LLM n'a pas retourné de summary (cache hit ancien, erreur API,
+        // etc.), on génère un summary minimal mais informatif basé sur le
+        // verdict + l'analyse algo (vs juste afficher "Score: 66/100" qui est
+        // redondant avec le ring affiché à côté).
+        summary: llmResult?.summary
+          || (finalScore >= 65
+              ? `Profil pertinent (${finalScore}/100). Analyse IA non disponible — détails à valider.`
+              : finalScore >= 50
+              ? `Match partiel (${finalScore}/100). À étudier en détail avant de trancher.`
+              : `Match faible (${finalScore}/100). Probablement à écarter sauf signal contraire.`),
         strengths: llmResult?.strengths || [],
         concerns: llmResult?.concerns || [],
         missingSkills: llmResult?.missingCriticalSkills || weighted.missingSkills,
