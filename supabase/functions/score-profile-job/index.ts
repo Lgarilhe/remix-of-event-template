@@ -2275,15 +2275,30 @@ async function maybeEnrichProfile(
 ): Promise<boolean> {
   if (ctx.dailyCount >= ctx.dailyLimit) return false;
 
-  // Check if enrichment is needed: missing summary OR missing descriptions in top 3 experiences
+  // Check if enrichment is needed. On déclenche si N'IMPORTE LEQUEL des
+  // signaux suivants manque (élargi Sprint B pour couvrir les fields étendus) :
+  // - descriptions de workExp (signal de fond historique)
+  // - summary / about
+  // - recommandations (signal humain validé, jamais dans la search)
+  // - certifications/langues (souvent manquantes dans search, présentes en
+  //   get_profile section)
+  // → On évite ainsi de scorer un profil sans avoir tenté de récupérer ses
+  // signaux secondaires (qui font la différence pour l'inférence multi-dim).
   const top3 = (profile.workExperience || []).slice(0, 3);
   const hasDescriptions = top3.some((exp) => exp.description && exp.description.length > 30);
   const hasSummary = !!profile.summary && profile.summary.length > 20;
-  if (hasDescriptions && hasSummary) return false;
+  const hasRecos = !!(profile.recommendations && profile.recommendations.length > 0);
+  // Si les 3 signaux principaux sont là ET on a déjà des recos OU des certifs,
+  // on considère le profil "déjà bien enrichi" → pas la peine de re-call Unipile.
+  const hasSecondarySignals = hasRecos
+    || (profile.certifications && profile.certifications.length > 0)
+    || (profile.projects && profile.projects.length > 0);
+  if (hasDescriptions && hasSummary && hasSecondarySignals) return false;
 
   const reasons: string[] = [];
   if (!hasDescriptions) reasons.push('no descriptions');
   if (!hasSummary) reasons.push('no summary/about');
+  if (!hasSecondarySignals) reasons.push('no recos/certs/projects');
   console.info(`[enrichment] Triggering for ${profile.name}: ${reasons.join(', ')}`);
 
   // Need a profile identifier
@@ -2305,9 +2320,21 @@ async function maybeEnrichProfile(
       resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
     }
 
-    const sectionsParams = ["experience", "about", "skills"]
-      .map(s => `linkedin_sections=${encodeURIComponent(s)}`)
-      .join("&");
+    // Sections demandées à Unipile — élargies (Option A) pour récupérer
+    // tous les signaux exploités par le scoring best-in-class :
+    // - experience/about/skills/education : déjà demandés (workExp + summary)
+    // - recommendations : signal humain validé (très précieux pour profils thin)
+    // - projects/certifications/languages/volunteer_experience : sections
+    //   secondaires souvent décisives sur les profils tech/internationaux.
+    //
+    // Coût : 1 seul appel Unipile (pas 2). Le quota natif LinkedIn (~50
+    // get_profile/jour pour compte normal) reste le bottleneck mais on
+    // récupère 6 fois plus de signal pour le même appel.
+    const sectionsParams = [
+      "experience", "about", "skills", "education",
+      "recommendations", "projects", "certifications",
+      "languages", "volunteer_experience",
+    ].map(s => `linkedin_sections=${encodeURIComponent(s)}`).join("&");
     const response = await fetchWithTimeout(
       `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
       {
@@ -2401,7 +2428,69 @@ async function maybeEnrichProfile(
       profile.skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
     }
 
-    console.info(`[enrichment] DONE ${profile.name}: exp=${enrichedExp.length}, summary=${!!profile.summary}, skills=${profile.skills?.length || 0}`);
+    // ─── Skills avec endorsements (Sprint B — signal de validation pair) ─
+    if (Array.isArray(data.skills) && data.skills.length > 0) {
+      profile.skillsWithEndorsements = (data.skills as any[]).slice(0, 15).map((s: any) => ({
+        name: typeof s === "string" ? s : s.name,
+        endorsements: typeof s === "object" ? (s.endorsement_count || s.endorsements) : undefined,
+      })).filter((s: { name?: string }) => s.name);
+    }
+
+    // ─── Recommandations LinkedIn reçues (signal humain validé) ─────────
+    // Format Unipile : { received: [{ text, caption, actor: { first_name, last_name, headline, ... } }] }
+    const recosReceived = data.recommendations?.received
+      || data.recommendations  // selon version API, peut être à plat
+      || [];
+    if (Array.isArray(recosReceived) && recosReceived.length > 0) {
+      profile.recommendations = recosReceived.slice(0, 4).map((r: any) => ({
+        text: (r.text || r.caption || "").slice(0, 250),
+        author: r.actor ? `${r.actor.first_name || ""} ${r.actor.last_name || ""}`.trim() : undefined,
+        authorHeadline: r.actor?.headline,
+      })).filter((r: { text: string }) => r.text && r.text.length > 20);
+      console.info(`[enrichment] +${profile.recommendations.length} recommandations pour ${profile.name}`);
+    }
+
+    // ─── Projects (souvent stack non-déclarée explicitement) ────────────
+    if (Array.isArray(data.projects) && data.projects.length > 0) {
+      profile.projects = data.projects.slice(0, 5).map((p: any) => ({
+        name: p.name || "",
+        description: p.description?.slice(0, 120),
+        skills: Array.isArray(p.skills)
+          ? p.skills.slice(0, 5).map((s: any) => typeof s === "string" ? s : s.name).filter(Boolean)
+          : undefined,
+      })).filter((p: { name?: string }) => p.name);
+      console.info(`[enrichment] +${profile.projects.length} projects pour ${profile.name}`);
+    }
+
+    // ─── Certifications (preuve formelle pour must-have) ────────────────
+    if (Array.isArray(data.certifications) && data.certifications.length > 0) {
+      profile.certifications = data.certifications.slice(0, 8).map((c: any) => ({
+        name: c.name || "",
+        organization: c.organization || c.authority || c.issuer,
+      })).filter((c: { name?: string }) => c.name);
+      console.info(`[enrichment] +${profile.certifications.length} certifications pour ${profile.name}`);
+    }
+
+    // ─── Volunteering (soft skills, leadership, engagement) ─────────────
+    const volSrc = data.volunteer_experience || data.volunteering_experience || data.volunteering;
+    if (Array.isArray(volSrc) && volSrc.length > 0) {
+      profile.volunteering = volSrc.slice(0, 3).map((v: any) => ({
+        role: v.role || v.position,
+        company: v.company || v.organization,
+        description: v.description?.slice(0, 100),
+      })).filter((v: { role?: string; company?: string }) => v.role || v.company);
+    }
+
+    // ─── Languages (critique sur poste international) ───────────────────
+    if (Array.isArray(data.languages) && data.languages.length > 0) {
+      profile.languages = data.languages.map((l: any) => ({
+        name: l.name || l.language || "",
+        proficiency: l.proficiency || l.level,
+      })).filter((l: { name: string }) => l.name);
+      console.info(`[enrichment] +${profile.languages.length} langues pour ${profile.name}`);
+    }
+
+    console.info(`[enrichment] DONE ${profile.name}: exp=${enrichedExp.length}, summary=${!!profile.summary}, skills=${profile.skills?.length || 0}, recos=${profile.recommendations?.length || 0}, projects=${profile.projects?.length || 0}, certs=${profile.certifications?.length || 0}, langs=${profile.languages?.length || 0}`);
     return true;
   } catch (err) {
     console.error(`[enrichment] ERROR for ${profile.name}:`, err);
