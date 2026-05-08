@@ -171,7 +171,7 @@ interface ScoringOptions {
    * 1 profil pertinent. Évite d'avoir une liste vide post-scoring quand le
    * filtre par défaut cache les profils traités.
    */
-  setStatusFilter?: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
+  setStatusFilter?: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
   autoHideTreatedRef?: React.MutableRefObject<boolean>;
   customScoringInstructions?: string;
   accountId?: string | null;

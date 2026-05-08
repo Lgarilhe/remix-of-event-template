@@ -2260,10 +2260,154 @@ interface EnrichmentContext {
   baseUrl: string;
   dailyCount: number;
   dailyLimit: number;
+  // Sprint Backend-2 : cache cross-mission. Si fournis, maybeEnrichProfile
+  // fait un lookup avant l'appel Unipile (read-through), et persiste les
+  // données récupérées (write-through) pour les missions futures.
+  supabase?: SupabaseClient;
+  organizationId?: string | null;
+  userId?: string | null;
 }
 
 const ENRICHMENT_MIN_DELAY_MS = 2000;
 const ENRICHMENT_MAX_DELAY_MS = 4000;
+
+/**
+ * Normalise une URL LinkedIn pour servir de clé de cache (lowercase, sans
+ * trailing slash, sans query params).
+ */
+function canonicalizeLinkedinUrl(url: string | undefined | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return `${u.protocol}//${u.hostname.toLowerCase()}${u.pathname.replace(/\/+$/, '').toLowerCase()}`;
+  } catch {
+    return url.replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+/**
+ * Sprint Backend-2 — Read cache : check si on a déjà enrichi ce candidat
+ * récemment dans l'org. Si oui, on hydrate le profile sans appeler Unipile.
+ */
+async function readEnrichmentCache(
+  ctx: EnrichmentContext,
+  profile: ProfileData,
+): Promise<{ enriched: boolean; cached?: { ageDays: number; sections: string[] } }> {
+  if (!ctx.supabase || !ctx.organizationId) return { enriched: false };
+  const linkedinUrl = canonicalizeLinkedinUrl(profile.profileUrl);
+  const providerId = profile.providerId;
+  if (!linkedinUrl && !providerId) return { enriched: false };
+
+  try {
+    let query = ctx.supabase
+      .from('candidate_enrichment_cache')
+      .select('enriched_data, sections_filled, last_enriched_at')
+      .eq('organization_id', ctx.organizationId)
+      .gt('expires_at', new Date().toISOString())
+      .limit(1);
+    // Lookup par linkedin_url si dispo, sinon par provider_id
+    if (linkedinUrl) {
+      query = query.eq('linkedin_url', linkedinUrl);
+    } else if (providerId) {
+      query = query.eq('provider_id', providerId);
+    }
+    const { data, error } = await query.maybeSingle();
+    if (error || !data) return { enriched: false };
+
+    // Hydrate les champs depuis le cache
+    const cached = data.enriched_data as Partial<ProfileData>;
+    if (cached.summary && !profile.summary) profile.summary = cached.summary;
+    if (cached.workExperience?.length && !(profile.workExperience || []).some(w => w.description && w.description.length > 30)) {
+      profile.workExperience = cached.workExperience;
+    }
+    if (cached.skills?.length && (!profile.skills || profile.skills.length === 0)) {
+      profile.skills = cached.skills;
+    }
+    if (cached.skillsWithEndorsements?.length) profile.skillsWithEndorsements = cached.skillsWithEndorsements;
+    if (cached.recommendations?.length) profile.recommendations = cached.recommendations;
+    if (cached.recentPosts?.length) profile.recentPosts = cached.recentPosts;
+    if (cached.projects?.length) profile.projects = cached.projects;
+    if (cached.certifications?.length) profile.certifications = cached.certifications;
+    if (cached.volunteering?.length) profile.volunteering = cached.volunteering;
+    if (cached.languages?.length) profile.languages = cached.languages;
+    if (cached.education?.length && (!profile.education || profile.education.length === 0)) {
+      profile.education = cached.education;
+    }
+
+    const ageDays = (Date.now() - new Date(data.last_enriched_at as string).getTime()) / (1000 * 60 * 60 * 24);
+    console.info(`[enrichment-cache] HIT for ${profile.name} (age ${ageDays.toFixed(1)}d, sections=${(data.sections_filled || []).join(',')})`);
+    return { enriched: true, cached: { ageDays, sections: data.sections_filled || [] } };
+  } catch (err) {
+    console.warn(`[enrichment-cache] read error for ${profile.name}:`, err);
+    return { enriched: false };
+  }
+}
+
+/**
+ * Sprint Backend-2 — Write cache : persiste les données enrichies pour
+ * réutilisation cross-mission dans la même org.
+ */
+async function writeEnrichmentCache(
+  ctx: EnrichmentContext,
+  profile: ProfileData,
+): Promise<void> {
+  if (!ctx.supabase || !ctx.organizationId) return;
+  const linkedinUrl = canonicalizeLinkedinUrl(profile.profileUrl);
+  const providerId = profile.providerId;
+  if (!linkedinUrl && !providerId) return;
+
+  // Identifier les sections effectivement remplies (utile pour debug + futur
+  // logique de re-fetch partiel)
+  const sectionsFilled: string[] = [];
+  if (profile.workExperience?.some(w => w.description && w.description.length > 30)) sectionsFilled.push('experience');
+  if (profile.summary) sectionsFilled.push('about');
+  if (profile.skills?.length) sectionsFilled.push('skills');
+  if (profile.education?.length) sectionsFilled.push('education');
+  if (profile.recommendations?.length) sectionsFilled.push('recommendations');
+  if (profile.projects?.length) sectionsFilled.push('projects');
+  if (profile.certifications?.length) sectionsFilled.push('certifications');
+  if (profile.languages?.length) sectionsFilled.push('languages');
+  if (profile.volunteering?.length) sectionsFilled.push('volunteer_experience');
+  if (profile.recentPosts?.length) sectionsFilled.push('recent_posts');
+
+  // Données à persister (clones des fields enrichis sur le profile)
+  const enrichedData = {
+    summary: profile.summary,
+    workExperience: profile.workExperience,
+    skills: profile.skills,
+    skillsWithEndorsements: profile.skillsWithEndorsements,
+    education: profile.education,
+    recommendations: profile.recommendations,
+    recentPosts: profile.recentPosts,
+    projects: profile.projects,
+    certifications: profile.certifications,
+    volunteering: profile.volunteering,
+    languages: profile.languages,
+  };
+
+  try {
+    const now = new Date().toISOString();
+    const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    // Upsert : on utilise linkedin_url comme clé prioritaire (plus stable que
+    // provider_id qui peut changer si LinkedIn re-génère les ids).
+    const onConflict = linkedinUrl ? 'organization_id,linkedin_url' : 'organization_id,provider_id';
+    await ctx.supabase
+      .from('candidate_enrichment_cache')
+      .upsert({
+        organization_id: ctx.organizationId,
+        linkedin_url: linkedinUrl,
+        provider_id: providerId,
+        enriched_data: enrichedData,
+        sections_filled: sectionsFilled,
+        last_enriched_at: now,
+        expires_at: expires,
+        enriched_by: ctx.userId,
+      }, { onConflict });
+    console.info(`[enrichment-cache] WRITE for ${profile.name} (${sectionsFilled.length} sections)`);
+  } catch (err) {
+    console.warn(`[enrichment-cache] write error for ${profile.name}:`, err);
+  }
+}
 
 /**
  * Enrich a profile via Unipile get_profile if it lacks descriptions.
@@ -2294,6 +2438,29 @@ async function maybeEnrichProfile(
     || (profile.certifications && profile.certifications.length > 0)
     || (profile.projects && profile.projects.length > 0);
   if (hasDescriptions && hasSummary && hasSecondarySignals) return false;
+
+  // Sprint Backend-2 : tentative read-through cache cross-mission AVANT l'appel
+  // Unipile. Si le candidat a été enrichi récemment dans l'org (TTL 14 jours),
+  // on hydrate depuis le cache → pas d'appel API, pas de quota consommé.
+  const cacheResult = await readEnrichmentCache(ctx, profile);
+  if (cacheResult.enriched) {
+    // On vérifie si après hydratation cache, le profil est suffisamment enrichi.
+    const top3After = (profile.workExperience || []).slice(0, 3);
+    const hasDescAfter = top3After.some((exp) => exp.description && exp.description.length > 30);
+    const hasSumAfter = !!profile.summary && profile.summary.length > 20;
+    const hasSecAfter = !!(profile.recommendations?.length || profile.certifications?.length || profile.projects?.length);
+    if (hasDescAfter && hasSumAfter && hasSecAfter) {
+      // Cache hit complet → pas besoin d'appel Unipile, on retourne true
+      // (l'enrichment est considéré "fait" mais sans consommer de quota natif
+      // LinkedIn). Le caller incrémente dailyCount → on s'en fout, c'est pour
+      // le quota Konekt (qui peut compter les hits cache séparément si besoin).
+      console.info(`[enrichment-cache] Skipped Unipile call for ${profile.name} (full cache hit)`);
+      return true;
+    }
+    // Cache hit partiel → on continue avec l'appel Unipile pour récupérer
+    // ce qui manque, puis on update le cache à la fin.
+    console.info(`[enrichment-cache] Partial cache hit for ${profile.name}, fetching missing sections from Unipile`);
+  }
 
   const reasons: string[] = [];
   if (!hasDescriptions) reasons.push('no descriptions');
@@ -2335,19 +2502,71 @@ async function maybeEnrichProfile(
       "recommendations", "projects", "certifications",
       "languages", "volunteer_experience",
     ].map(s => `linkedin_sections=${encodeURIComponent(s)}`).join("&");
-    const response = await fetchWithTimeout(
-      `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
-      {
-        headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" },
-      },
-    );
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      console.warn(`[enrichment] HTTP ${response.status} for ${profile.name}: ${errBody.slice(0, 200)}`);
+    // ─── Sprint Backend-1 : 2 appels Unipile en parallèle ───────────────
+    // GET /users/{id}          → profil détaillé (toutes les sections)
+    // GET /users/{id}/posts    → 5 derniers posts récents
+    //
+    // Coût : 2 appels Unipile par enrichment (vs 1 avant). Le quota natif
+    // LinkedIn (~50/jour pour compte normal) consomme donc 2× plus vite.
+    // À surveiller pour les comptes light. Avec Recruiter/SalesNav, le quota
+    // est plus permissif.
+    //
+    // Promise.all : si l'un échoue, on continue avec ce qu'on a (fallback
+    // gracieux — meilleur que rien).
+    const [profileResp, postsResp] = await Promise.all([
+      fetchWithTimeout(
+        `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
+        { headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" } },
+      ).catch((err) => {
+        console.warn(`[enrichment] profile fetch error for ${profile.name}:`, err);
+        return null;
+      }),
+      fetchWithTimeout(
+        `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}/posts?account_id=${ctx.accountId}&limit=5`,
+        { headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" } },
+      ).catch((err) => {
+        console.warn(`[enrichment] posts fetch error for ${profile.name}:`, err);
+        return null;
+      }),
+    ]);
+
+    if (!profileResp || !profileResp.ok) {
+      const status = profileResp?.status ?? 'no response';
+      const errBody = profileResp ? await profileResp.text().catch(() => '') : '';
+      console.warn(`[enrichment] HTTP ${status} (profile) for ${profile.name}: ${errBody.slice(0, 200)}`);
+      // Si /posts a réussi malgré l'échec /profile, on tente quand même de
+      // l'utiliser (les posts seuls peuvent enrichir les profils thin).
+      // Mais sans data principale, on retourne false.
       return false;
     }
 
+    // Parse posts en background — non bloquant (best effort)
+    if (postsResp && postsResp.ok) {
+      try {
+        const postsData = await postsResp.json();
+        // Format Unipile : { items: [{ text, title, date, reaction_counter, ... }] }
+        // Selon version peut être à plat
+        const items = Array.isArray(postsData?.items) ? postsData.items
+          : Array.isArray(postsData) ? postsData
+          : [];
+        if (items.length > 0) {
+          profile.recentPosts = items.slice(0, 5).map((p: any) => ({
+            text: (p.text || p.content || '').slice(0, 180),
+            title: (p.title || '').slice(0, 100) || undefined,
+            date: p.date || p.published_at || p.created_at,
+            reactions: p.reaction_counter ?? p.reactions ?? p.reaction_count,
+          })).filter((p: { text?: string; title?: string }) => (p.text && p.text.length > 10) || p.title);
+          console.info(`[enrichment] +${profile.recentPosts.length} posts récents pour ${profile.name}`);
+        }
+      } catch (err) {
+        console.warn(`[enrichment] posts parse error for ${profile.name}:`, err);
+      }
+    } else if (postsResp) {
+      console.warn(`[enrichment] HTTP ${postsResp.status} (posts) for ${profile.name}`);
+    }
+
+    const response = profileResp;
     const data = await response.json();
     const dataKeys = Object.keys(data).join(', ');
     const enrichedExp = (data.work_experience || data.positions || data.experiences || []).slice(0, 5);
@@ -2490,7 +2709,13 @@ async function maybeEnrichProfile(
       console.info(`[enrichment] +${profile.languages.length} langues pour ${profile.name}`);
     }
 
-    console.info(`[enrichment] DONE ${profile.name}: exp=${enrichedExp.length}, summary=${!!profile.summary}, skills=${profile.skills?.length || 0}, recos=${profile.recommendations?.length || 0}, projects=${profile.projects?.length || 0}, certs=${profile.certifications?.length || 0}, langs=${profile.languages?.length || 0}`);
+    console.info(`[enrichment] DONE ${profile.name}: exp=${enrichedExp.length}, summary=${!!profile.summary}, skills=${profile.skills?.length || 0}, recos=${profile.recommendations?.length || 0}, projects=${profile.projects?.length || 0}, certs=${profile.certifications?.length || 0}, langs=${profile.languages?.length || 0}, posts=${profile.recentPosts?.length || 0}`);
+
+    // Sprint Backend-2 : write-through cache. Persiste les données fraîches
+    // pour que les futurs scorings du même candidat (même mission ou autre)
+    // n'aient pas à re-call Unipile.
+    await writeEnrichmentCache(ctx, profile);
+
     return true;
   } catch (err) {
     console.error(`[enrichment] ERROR for ${profile.name}:`, err);
@@ -2624,10 +2849,11 @@ Deno.serve(async (req) => {
     const ENRICHMENT_DAILY_LIMIT = 500;
     // Resolve Unipile credentials from org_integrations with env fallback
     let resolvedUnipile: { apiKey: string; dsn: string } | null = null;
+    let resolvedOrgId: string | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
-      resolvedUnipile = await resolveUnipileCredentials(orgId, supabase as any);
+      resolvedOrgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
+      resolvedUnipile = await resolveUnipileCredentials(resolvedOrgId, supabase as any);
     } catch (e) {
       console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
       const envKey = Deno.env.get("UNIPILE_API_KEY");
@@ -2654,8 +2880,14 @@ Deno.serve(async (req) => {
         baseUrl: `${resolvedUnipile.dsn}/api/v1`,
         dailyCount,
         dailyLimit: ENRICHMENT_DAILY_LIMIT,
+        // Sprint Backend-2 : passe le client Supabase + orgId pour activer
+        // le cache cross-mission (read-through avant Unipile, write-through
+        // après).
+        supabase: supabase as any,
+        organizationId: resolvedOrgId,
+        userId,
       };
-      console.log(`[enrichment] Context initialized: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT} used today`);
+      console.log(`[enrichment] Context initialized: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT} used today, cache=${resolvedOrgId ? 'enabled' : 'disabled (no org)'}`);
     }
 
     // ─── Scoring (batch LLM approach) ──────────────────────────────────────

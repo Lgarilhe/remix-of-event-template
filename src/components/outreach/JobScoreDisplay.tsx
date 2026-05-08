@@ -121,21 +121,30 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
 };
 
 // ── Score Ring ──
-const ScoreRing: React.FC<{ score: number; size?: number }> = ({ score, size = 64 }) => {
+const ScoreRing: React.FC<{ score: number; size?: number; label?: string; tone?: 'primary' | 'success' | 'amber' | 'muted' }> = ({ score, size = 64, label, tone = 'primary' }) => {
   const strokeWidth = 5;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
+  // Couleur selon le tone (utilisé pour différencier fit / confidence / engagement)
+  const strokeColor =
+    tone === 'success' ? 'hsl(var(--success))' :
+    tone === 'amber' ? 'hsl(38 92% 50%)' :  // amber-500
+    tone === 'muted' ? 'hsl(var(--muted-foreground))' :
+    'hsl(var(--primary))';
   return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} />
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--primary))" strokeWidth={strokeWidth}
-          strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="butt" className="transition-all duration-700 ease-out" />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-lg font-bold text-foreground tabular-nums">{score}</span>
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth={strokeWidth} />
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={strokeColor} strokeWidth={strokeWidth}
+            strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="butt" className="transition-all duration-700 ease-out" />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className={size <= 40 ? "text-sm font-bold text-foreground tabular-nums" : "text-lg font-bold text-foreground tabular-nums"}>{score}</span>
+        </div>
       </div>
+      {label && <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>}
     </div>
   );
 };
@@ -252,11 +261,43 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
     ...result.missing_skills.map(s => ({ name: s, matched: false })),
   ];
 
+  // Sprint UI-1 : 3 axes de score affichés séparément quand dispo (LLM-based).
+  // - fit (= match_score) : adéquation candidat/poste
+  // - confidence : sûreté de l'évaluation (LLM ou fallback algo)
+  // - engagement : probabilité de réponse positive à un outreach
+  const llmConfidence = result.llmConfidenceScore ?? null;
+  const algoConfidence = result.confidenceScore ?? null;
+  const confidence = llmConfidence ?? algoConfidence;
+  const engagement = result.engagementScore ?? null;
+  const showThreeRings = confidence != null || engagement != null;
+
   return (
     <div className="space-y-4">
-      {/* Header: ring + summary + pills */}
+      {/* Header: 3 rings + summary + pills */}
       <div className="flex items-start gap-4">
-        <ScoreRing score={result.match_score} size={72} />
+        {showThreeRings ? (
+          <div className="flex items-start gap-3 shrink-0">
+            <ScoreRing score={result.match_score} size={64} label="Fit" tone="primary" />
+            {confidence != null && (
+              <ScoreRing
+                score={confidence}
+                size={48}
+                label="Confiance"
+                tone={confidence >= 70 ? 'success' : confidence >= 50 ? 'amber' : 'muted'}
+              />
+            )}
+            {engagement != null && (
+              <ScoreRing
+                score={engagement}
+                size={48}
+                label="Engagement"
+                tone={engagement >= 70 ? 'success' : engagement >= 50 ? 'amber' : 'muted'}
+              />
+            )}
+          </div>
+        ) : (
+          <ScoreRing score={result.match_score} size={72} />
+        )}
         <div className="flex-1 min-w-0 space-y-2">
           {jobTitle && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold">
@@ -267,7 +308,27 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
           <p className="text-sm text-foreground/90 leading-relaxed">{result.summary}</p>
           <div className="flex flex-wrap items-center gap-1.5">
             <RecommendationPill rec={result.recommendation} />
-            {confidenceBadge}
+            {result.investigationNeeded && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border border-amber-500/40 bg-amber-500/10 text-amber-600 cursor-help rounded-lg">
+                    <Search className="w-3 h-3" />
+                    À investiguer
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <p className="text-xs font-medium">Profil prometteur mais signal faible</p>
+                  {result.investigationFocus && result.investigationFocus.length > 0 ? (
+                    <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside space-y-0.5">
+                      {result.investigationFocus.slice(0, 3).map((q, i) => <li key={i}>{q}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">À confirmer en call court (10-15 min).</p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {!result.investigationNeeded && confidenceBadge}
             <MetaPill icon={Briefcase} label={expLabel.text} ok={expLabel.ok} />
             <MetaPill icon={MapPin} label={result.location_match ? 'Localisation OK' : 'Localisation ?'} ok={result.location_match} />
             <SalaryBadge analysis={result.salary_analysis} />

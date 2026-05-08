@@ -94,7 +94,7 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
 // ── Reducer: View State ─────────────────────────────────
 interface ViewState {
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
   autoHideTreated: boolean;
   showBulkInMailModal: boolean;
   showFilterWizard: boolean;
