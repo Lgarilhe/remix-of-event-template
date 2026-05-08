@@ -322,7 +322,9 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
                   <p className="text-xs font-medium">Profil prometteur mais signal faible</p>
                   {result.investigationFocus && result.investigationFocus.length > 0 ? (
                     <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside space-y-0.5">
-                      {result.investigationFocus.slice(0, 3).map((q, i) => <li key={i}>{q}</li>)}
+                      {result.investigationFocus.slice(0, 3).map((q, i) => (
+                        <li key={i}>{typeof q === 'string' ? q : ''}</li>
+                      ))}
                     </ul>
                   ) : (
                     <p className="text-xs text-muted-foreground mt-1">À confirmer en call court (10-15 min).</p>
@@ -387,7 +389,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
             <div className="w-full flex flex-wrap gap-1 mt-0.5">
               {result.switchSignals.map((signal, i) => (
                 <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
-                  {signal}
+                  {typeof signal === 'string' ? signal : ''}
                 </span>
               ))}
             </div>
@@ -414,8 +416,8 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
                 <div key={i} className={cn("flex items-start gap-2 px-2.5 py-1.5 border rounded-md text-xs", verdictConfig.cls)}>
                   <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <span className="font-semibold">{ce.label}</span>
-                    <span className="text-muted-foreground ml-1.5">— {ce.reason}</span>
+                    <span className="font-semibold">{typeof ce.label === 'string' ? ce.label : ''}</span>
+                    {ce.reason && <span className="text-muted-foreground ml-1.5">— {typeof ce.reason === 'string' ? ce.reason : ''}</span>}
                   </div>
                 </div>
               );
