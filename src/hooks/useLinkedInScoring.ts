@@ -607,6 +607,36 @@ export function useLinkedInScoring({
     setBatchDurationMs(persisted?.durationMs);
   }, [selectedJob?.id]);
 
+  // Auto-restore au focus du tab : si l'user revient sur Konekt après avoir
+  // switch d'app pendant un scoring (cas mobile fréquent où le browser purge
+  // le state React mais le localStorage survit), on détecte le mismatch
+  // (localStorage rempli, state vide) et on restaure → la modale "Scoring
+  // terminé" réapparaît automatiquement au retour de l'user.
+  useEffect(() => {
+    const restoreOnFocus = () => {
+      // Skip si la modale est déjà ouverte (state non vide)
+      if (batchReport.length > 0) return;
+      const persisted = readPersistedBatchReport(selectedJob?.id);
+      if (persisted?.report?.length && persisted.report.length > 0) {
+        console.info('[scoring] Auto-restore batch report from localStorage on focus', {
+          jobId: selectedJob?.id,
+          entries: persisted.report.length,
+          ageMs: Date.now() - persisted.savedAt,
+        });
+        setBatchReport(persisted.report);
+        setBatchStats(persisted.stats);
+        setBatchDurationMs(persisted.durationMs);
+      }
+    };
+    // Déclenche au focus (retour sur tab) ET à la visibility change (Chrome mobile)
+    window.addEventListener('focus', restoreOnFocus);
+    document.addEventListener('visibilitychange', restoreOnFocus);
+    return () => {
+      window.removeEventListener('focus', restoreOnFocus);
+      document.removeEventListener('visibilitychange', restoreOnFocus);
+    };
+  }, [selectedJob?.id, batchReport.length]);
+
   // Score a single profile
   const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
     if (!selectedJob) {
