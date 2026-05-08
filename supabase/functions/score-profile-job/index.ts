@@ -1766,7 +1766,7 @@ function buildProfileSection(profile: ProfileData, preComputedData: BatchLLMInpu
   // Work experience — 6 dernières, description 200 chars (idem qu'avant)
   const workExpText = (profile.workExperience || []).length > 0
     ? (profile.workExperience || []).slice(0, 6).map((w, i) =>
-      `  ${i + 1}. ${w.role} @ ${w.company}${w.duration ? " (" + w.duration + ")" : ""}${w.description ? "\n     " + w.description.substring(0, 200) : ""}${w.skills?.length ? "\n     Skills: " + w.skills.join(", ") : ""}`
+      `  ${i + 1}. ${w.role} @ ${w.company}${w.duration ? " (" + w.duration + ")" : ""}${w.description ? "\n     " + w.description.substring(0, 500) : ""}${w.skills?.length ? "\n     Skills: " + w.skills.join(", ") : ""}`
     ).join("\n") : "  Aucune expérience listée";
 
   const educationText = (profile.education || []).map((e, i) => `  ${i + 1}. ${e}`).join("\n") || "Non renseignée";
@@ -1854,7 +1854,7 @@ ${profile.yearsOfExperience !== undefined ? "XP: " + profile.yearsOfExperience +
 Algo: ${preComputedData.weightedScore}/100 | Sémantique: ${preComputedData.semanticScore !== null ? preComputedData.semanticScore + "/100" : "N/A"}
 Skills matchés: ${preComputedData.matchedSkills.join(", ") || "Aucun"} | Manquants: ${preComputedData.missingSkills.join(", ") || "Aucun"}
 Skills déclarés: ${skillsLine}
-${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 300) : ""}
+${profile.summary ? "À propos: " + (profile.summary || "").substring(0, 700) : ""}
 Formation: ${educationText}
 Expériences:
 ${workExpText}${recosBlock}${postsBlock}${projectsBlock}${certsBlock}${langsBlock}${volBlock}${interestsBlock}${networkBlock}${activityBlock}`
@@ -2689,7 +2689,10 @@ async function maybeEnrichProfile(
     }
 
     if (!profile.summary && (data.about || data.summary)) {
-      profile.summary = (data.about || data.summary).slice(0, 300);
+      // 700 chars (cohérent avec la limite envoyée au LLM dans buildProfileSection).
+      // Permet de capturer les bios LinkedIn longues type "I help startups
+      // build reliable data infrastructure..." qui font souvent 400-600 chars.
+      profile.summary = (data.about || data.summary).slice(0, 700);
       console.info(`[enrichment] Added summary for ${profile.name}: ${profile.summary!.slice(0, 80)}...`);
     }
     if ((!profile.skills || profile.skills.length === 0) && data.skills) {
