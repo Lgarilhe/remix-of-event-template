@@ -1325,23 +1325,13 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
     
     try {
-      const { data: existing } = await supabase
+      // Atomic upsert : la contrainte DB UNIQUE(sequence_id, profile_id)
+      // dédoublonne au niveau base. ignoreDuplicates renvoie tableau vide si
+      // l'enrollment existait déjà (peu importe son status) → on affiche
+      // simplement le toast "déjà inscrit" sans pré-check stale.
+      const { data: inserted, error } = await supabase
         .from('sequence_enrollments')
-        .select('id')
-        .eq('sequence_id', sequence.id)
-        .eq('profile_id', profileId)
-        .eq('status', 'active')
-        .single();
-      
-      if (existing) {
-        toast.info('Déjà inscrit dans cette séquence');
-        setShowSequenceSelect(false);
-        return;
-      }
-      
-      const { error } = await supabase
-        .from('sequence_enrollments')
-        .insert({
+        .upsert({
           sequence_id: sequence.id,
           account_id: selectedAccount,
           profile_id: profileId,
@@ -1353,9 +1343,18 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           status: 'active',
           current_step_order: 0,
-        });
-      
+        }, {
+          onConflict: 'sequence_id,profile_id',
+          ignoreDuplicates: true,
+        })
+        .select('id');
+
       if (error) throw error;
+      if (!inserted || inserted.length === 0) {
+        toast.info('Déjà inscrit dans cette séquence');
+        setShowSequenceSelect(false);
+        return;
+      }
       
       toast.success(`✨ Inscrit dans "${sequence.name}"`, {
         description: `${getChatDisplayName(selectedChat)} va recevoir les étapes de la séquence.`,

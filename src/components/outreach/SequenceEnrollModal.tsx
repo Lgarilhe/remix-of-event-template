@@ -141,29 +141,32 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         return;
       }
 
-      // 1. Batch check existing enrollments for all profiles in one query
+      // 1. Pré-check pour info UX uniquement : combien sont déjà inscrits ?
+      // ⚠️ Le filtre par `status` est volontairement large car la contrainte
+      // DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle (cancelled,
+      // paused… comptent aussi). Le résultat exact viendra de l'upsert ci-dessous.
       const profileIds = enrollSet.map(p => p.id);
       const { data: existingEnrollments } = await supabase
         .from('sequence_enrollments')
         .select('profile_id')
         .eq('sequence_id', sequence.id)
-        .in('profile_id', profileIds)
-        .in('status', ['active', 'completed', 'replied']);
+        .in('profile_id', profileIds);
 
       const existingIds = new Set((existingEnrollments || []).map(e => e.profile_id));
-      const newProfiles = enrollSet.filter(p => !existingIds.has(p.id));
-      enrollmentResults.skipped = enrollSet.length - newProfiles.length;
-
-      if (newProfiles.length === 0) {
+      if (existingIds.size === enrollSet.length) {
+        // Tous déjà inscrits → exit avant tout INSERT
+        enrollmentResults.skipped = enrollSet.length;
         setResults(enrollmentResults);
-        if (enrollmentResults.skipped > 0) {
-          toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
-        }
+        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
         return;
       }
 
-      // 2. Batch insert all new enrollments
-      const enrollmentRows = newProfiles.map(profile => {
+      // 2. Batch UPSERT atomique. La contrainte UNIQUE(sequence_id, profile_id)
+      // élimine la race condition entre le pré-check et l'INSERT : si un autre
+      // onglet/user a inscrit le même candidat entre temps, la ligne est
+      // silencieusement dropée (ignoreDuplicates) et seules les VRAIES nouvelles
+      // inscriptions reviennent dans `insertedEnrollments`.
+      const enrollmentRows = enrollSet.map(profile => {
         const networkDist = profile.network_distance;
         const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
           ? 'FIRST_DEGREE'
@@ -199,18 +202,31 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
       const { data: insertedEnrollments, error: enrollError } = await supabase
         .from('sequence_enrollments')
-        .insert(enrollmentRows)
+        .upsert(enrollmentRows, {
+          onConflict: 'sequence_id,profile_id',
+          ignoreDuplicates: true,
+        })
         .select('id, profile_id');
 
       if (enrollError) throw enrollError;
-      if (!insertedEnrollments?.length) throw new Error('Enrollments non créés');
-
-      enrollmentResults.success = insertedEnrollments.length;
+      // Pas de throw si tableau vide — tous les candidats étaient déjà inscrits
+      // entre le pré-check et l'upsert (race fenêtrée + DB a tout dropé).
+      const insertedRows = insertedEnrollments || [];
+      enrollmentResults.success = insertedRows.length;
+      enrollmentResults.skipped = enrollSet.length - insertedRows.length;
+      if (insertedRows.length < enrollSet.length - existingIds.size) {
+        console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingIds.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
+      }
+      if (insertedRows.length === 0) {
+        setResults(enrollmentResults);
+        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        return;
+      }
 
       // 3. Batch insert step executions for all new enrollments
-      if (firstStep && insertedEnrollments.length > 0) {
+      if (firstStep && insertedRows.length > 0) {
         const now = new Date();
-        const execRows = insertedEnrollments.map(enrollment => {
+        const execRows = insertedRows.map(enrollment => {
           const scheduledAt = calculateScheduledTime(
             now,
             firstStep.delay_days || 0,
@@ -241,12 +257,12 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       }
 
       // 4. Batch upsert job_candidate_status if a job is linked
-      if (job?.id && insertedEnrollments.length > 0) {
+      if (job?.id && insertedRows.length > 0) {
         const normalizedJobIdForStatus = job.id.startsWith('project:')
           ? job.id.slice('project:'.length)
           : job.id;
-        const enrolledProfileIds = new Set(insertedEnrollments.map(e => e.profile_id));
-        const statusRows = newProfiles
+        const enrolledProfileIds = new Set(insertedRows.map(e => e.profile_id));
+        const statusRows = enrollSet
           .filter(p => enrolledProfileIds.has(p.id))
           .map(profile => ({
             job_id: normalizedJobIdForStatus,

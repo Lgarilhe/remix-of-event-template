@@ -360,6 +360,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
       for (const profile of activeProfiles) {
         try {
+          // Pré-check pour info uniquement. La race fenêtre entre SELECT et
+          // INSERT est gérée plus bas via UPSERT + ignoreDuplicates (la
+          // contrainte DB UNIQUE(sequence_id, profile_id) est la vraie source
+          // de vérité).
           const { data: existing } = await supabase
             .from('sequence_enrollments')
             .select('id, status')
@@ -397,7 +401,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
           const { data: enrollment, error: enrollError } = await supabase
             .from('sequence_enrollments')
-            .insert({
+            .upsert({
               sequence_id: sequence.id,
               account_id: accountId,
               profile_id: profile.id,
@@ -413,12 +417,20 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               status: 'active',
               network_distance: normalizedDistance,
               ...(Object.keys(trackingData).length > 0 ? { tracking_data: trackingData } : {}),
+            }, {
+              onConflict: 'sequence_id,profile_id',
+              ignoreDuplicates: true,
             })
             .select()
-            .single();
+            .maybeSingle();
 
           if (enrollError) throw enrollError;
-          if (!enrollment) throw new Error('Enrollment non créé');
+          if (!enrollment) {
+            // Conflit DB (race entre pré-check et upsert) → enrollment existait
+            // déjà, on incrémente skipped et on continue.
+            results.skipped++;
+            continue;
+          }
 
           if (firstStep) {
             const stepId = firstStep.id;
