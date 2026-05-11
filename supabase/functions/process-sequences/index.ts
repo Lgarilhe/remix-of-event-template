@@ -682,6 +682,44 @@ async function handleProcess(supabase: any, force = false) {
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
         }
 
+        // ⭐ Safety net : substitute any remaining {{template_variables}}.
+        // The LinkedIn/InMail/WhatsApp send paths (executeStepAction) do NOT
+        // resolve variables themselves — only sequence-send-email does. So if
+        // use_ai_personalization is off or generatePersonalizedMessage returned
+        // null, the raw step.message_template (with {{first_name}} etc.) would
+        // otherwise reach the wire verbatim. Also catches lazy AI completions
+        // that left a placeholder in place.
+        try {
+          let senderName = 'Recruteur';
+          const senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
+          if (senderUserId) {
+            const { data: senderProfile } = await supabase
+              .from('profiles')
+              .select('display_name, first_name, last_name')
+              .eq('user_id', senderUserId)
+              .maybeSingle();
+            const display = senderProfile?.display_name
+              || [senderProfile?.first_name, senderProfile?.last_name].filter(Boolean).join(' ')
+              || '';
+            if (display) senderName = display.trim().split(/\s+/)[0] || display;
+          }
+          const templateVars = buildSequenceTemplateVars(enrollment, senderName);
+          finalMessage = resolveTemplateVars(finalMessage, templateVars);
+          finalSubject = resolveTemplateVars(finalSubject, templateVars);
+          // If anything still looks like an unresolved placeholder, log it so
+          // we can find and fix the template. We still send — empty is better
+          // than crashing the enrollment.
+          const leftover = (finalMessage + ' ' + finalSubject).match(/\{\{[^}]+\}\}/g);
+          if (leftover && leftover.length > 0) {
+            console.warn(`[process] ⚠️ Unresolved placeholders in step ${step.id} for enrollment ${enrollment.id}: ${leftover.join(', ')}`);
+            // Strip remaining placeholders so the candidate never sees raw {{...}}.
+            finalMessage = finalMessage.replace(/\{\{[^}]+\}\}/g, '');
+            finalSubject = finalSubject.replace(/\{\{[^}]+\}\}/g, '');
+          }
+        } catch (e) {
+          console.warn('[process] Template var resolution failed (non-blocking):', e);
+        }
+
         // Determine effective action type: step_channel 'email' overrides action_type
         const effectiveActionType = (step.step_channel === 'email' || step.action_type === 'email') ? 'email'
           : (step.step_channel === 'whatsapp' || step.action_type === 'whatsapp_message') ? 'whatsapp_message'
@@ -1145,6 +1183,42 @@ async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ ac
 }
 
 function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message'].includes(actionType); }
+
+// Safety-net template variable resolver. Mirrors the {{var}} replacement used
+// by sequence-send-email. Applied to LinkedIn/InMail/WhatsApp/connection_request
+// messages just before send to catch:
+//   - Steps with use_ai_personalization=false (raw template → literal {{var}})
+//   - generatePersonalizedMessage() returning null (fallback to raw template)
+//   - AI completion that forgot to substitute one of the placeholders
+// Idempotent: a no-op if the input has no {{var}} left.
+function resolveTemplateVars(template: string, vars: Record<string, string | undefined>): string {
+  if (!template) return template;
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    // \\{\\{key\\}\\} matches {{key}} ; replace with value or empty if undefined.
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+  }
+  return result;
+}
+
+function buildSequenceTemplateVars(
+  enrollment: Record<string, unknown>,
+  senderName: string,
+): Record<string, string | undefined> {
+  const profileName = ((enrollment.profile_name as string) || '').trim();
+  const parts = profileName.split(/\s+/).filter(Boolean);
+  const firstName = parts[0] || '';
+  const lastName = parts.slice(1).join(' ');
+  return {
+    first_name: firstName,
+    last_name: lastName,
+    name: profileName,
+    company: (enrollment.company_name as string) || '',
+    job_title: (enrollment.job_title as string) || (enrollment.profile_headline as string) || '',
+    sender_name: senderName,
+    city: '',
+  };
+}
 
 function isLikelyRealFirstName(name: string): boolean {
   if (!name || name.trim().length < 2) return false;
