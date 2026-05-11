@@ -2796,7 +2796,7 @@ async function fetchRecentPostsForSequence(
 
 // ============ GUARDRAILS ============
 
-function detectSequenceViolations(isRPO: boolean, message: string, subject?: string): string[] {
+function detectSequenceViolations(isRPO: boolean, message: string, subject?: string, actionType?: string): string[] {
   const v: string[] = [];
   const text = `${subject || ''}\n${message || ''}`;
   if (/^\s*[-•]\s+/m.test(message)) v.push('tiret / puce en début de ligne');
@@ -2806,8 +2806,16 @@ function detectSequenceViolations(isRPO: boolean, message: string, subject?: str
   if (/\b(\d{2,3}\s*k€?|\d{2,3}\s*000\s*€|salaire|rémunération|package|compensation)\b/i.test(text)) v.push('mention de salaire/rémunération');
   // Signature must NOT be "Recruteur"
   if (/\bRecruteur\b/i.test(message)) v.push('signature "Recruteur" interdite — utiliser le prénom');
-  // CTA: no call/rdv/dispo
-  if (/\b(dispo(nible)?|call|rdv|rendez.vous|échange téléphonique|en discuter de vive voix)\b/i.test(text)) v.push('CTA engageant interdit (call/rdv/dispo)');
+  // CTA "dispo/call/rdv" is forbidden on FIRST contact (invitation note +
+  // initial InMail) where it's too pushy — but allowed on DM (1st degree) and
+  // relances where it's normal practice. Action types we ban it on:
+  //   - connection_request (invite note, 300 chars, no commitment yet)
+  //   - inmail (cold reach, candidate doesn't know us)
+  // Allowed on: message (1st degree DM), smart_message, follow-ups.
+  const banCTA = actionType === 'connection_request' || actionType === 'inmail';
+  if (banCTA && /\b(dispo(nible)?|call|rdv|rendez.vous|échange téléphonique|en discuter de vive voix)\b/i.test(text)) {
+    v.push('CTA engageant interdit sur premier contact (call/rdv/dispo)');
+  }
   // Only block aggressive closing tones
   if (/derni[èe]re\s+tentative/i.test(text)) v.push('"dernière tentative" interdit — ton agressif');
   if (/je\s+ne\s+veux\s+pas\s+(insister|m'incruster|être\s+lourd)/i.test(text)) v.push('"je ne veux pas insister" interdit — culpabilisant');
@@ -3142,7 +3150,7 @@ Tu parles EN TANT QUE recruteur externe indépendant.
     const jobContextBlock = `POSTE À POURVOIR:
 - Titre: ${jobTitle}
 - Client: ${clientName}${jobSector ? ` (${jobSector})` : ''}
-- Accompagnement: ${jobAccompagnement.join(', ') || 'Non spécifié'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
+- Mode: ${isRPO ? 'RPO / interne (tu écris depuis chez le client)' : 'Succès / cabinet (tu écris depuis Konekt en accompagnement)'}${jobAccompagnement.length ? ` — accompagnement: ${jobAccompagnement.join(', ')}` : ''}
 ${jobSkills ? `- Compétences requises: ${jobSkills}` : ''}
 ${jobSeniority ? `- Séniorité: ${jobSeniority}` : ''}${jobXpMin || jobXpMax ? ` | XP: ${jobXpMin || '?'}-${jobXpMax || '?'} ans` : ''}
 ${jobLocation ? `- Localisation: ${jobLocation}` : ''}
@@ -3293,9 +3301,12 @@ Tu fais le PONT entre le candidat et l'environnement du poste.
    "Stack greenfield Go/K8s, pas de legacy" > "Stack: Go, Kubernetes"
    MAX 1-2 éléments différenciants, intégrés naturellement. Pas de liste.
 
-4. CTA = SIMPLE ET NON-ENGAGEANT
-   Exemples: "Ça te parlerait ?", "C'est un sujet pour toi ?", "T'aurais quelqu'un en tête ?"
-   ❌ JAMAIS: proposer un call, un rdv, une dispo
+4. CTA = ADAPTÉ AU TYPE DE MESSAGE
+   ${isInvite || (isInMail && prevInMails.length === 0) ? `PREMIER CONTACT (invitation ou InMail initial) → CTA NON-ENGAGEANT.
+   Exemples OK: "Ça te parlerait ?", "C'est un sujet pour toi ?", "T'aurais quelqu'un en tête ?", "Curieux d'avoir ton avis"
+   ❌ JAMAIS sur premier contact: proposer un call, un rdv, une dispo, un créneau` : `MESSAGE 1er DEGRÉ ou RELANCE → CTA DIRECT autorisé.
+   Exemples OK: "Dispo 15 min cette semaine ?", "Ça te dit qu'on en parle ?", "Tu veux qu'on bloque un créneau ?"
+   Tu peux proposer un call/échange — le candidat te connaît déjà (DM 1er degré) ou tu lui as déjà écrit (relance).`}
 
 5. FORMAT OBLIGATOIRE:
    SALUTATION: "Salut [Prénom]," UNIQUEMENT si un Prénom apparaît dans PROFIL CANDIDAT ci-dessus. Si le bloc indique "(aucun — utilise 'Salut,' sans prénom)", écris UNIQUEMENT "Salut," (avec virgule, sans nom, sans rien d'autre). Ne RECOPIE JAMAIS la mention entre parenthèses dans ton message.
@@ -3436,7 +3447,7 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     let parsed = JSON.parse(jsonMatch[0]);
     
     // Guardrails: detect violations and retry once if needed
-    const violations = detectSequenceViolations(isRPO, parsed.message || '', parsed.subject);
+    const violations = detectSequenceViolations(isRPO, parsed.message || '', parsed.subject, step.action_type as string);
     if (violations.length > 0) {
       console.warn(`[generatePersonalizedMessage] Violations detected, retrying:`, violations);
       const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE ===\nLe draft viole ces règles: ${violations.join(' ; ')}.\n${isRPO ? `En MODE RPO: jamais "ils", "leur", "mon client", "j'accompagne". Toujours "on", "nous", "chez ${clientName}".` : ''}\nJAMAIS mentionner le salaire ou la rémunération.\nAucun tiret nulle part. MAX 400 caractères.\n\nDRAFT: ${JSON.stringify(parsed)}\n\nRéponds en JSON valide: {"subject": "...", "message": "..."}`;
@@ -3487,12 +3498,20 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
 
     // Force-replace "Recruteur" signature with actual sender name
     parsed.message = parsed.message.replace(/\bRecruteur\b/gi, senderName);
-    
-    // Ensure message ends with sender name if not already present
-    const lines = parsed.message.trim().split('\n');
-    const lastLine = lines[lines.length - 1].trim();
-    if (lastLine.toLowerCase() !== senderName.toLowerCase() && !lastLine.toLowerCase().includes(senderName.toLowerCase())) {
-      parsed.message = parsed.message.trim() + '\n\n' + senderName;
+
+    // Ensure message ends with sender name if not already present.
+    // EXCEPT for connection_request notes: they're capped at 300 chars and
+    // smartTruncate prefers cutting at sentence terminators — appending
+    // "\n\n${senderName}" after the last "." would either push the total
+    // over 300 (cut) or be sacrificed by smartTruncate to preserve sentences.
+    // The invite prompt already instructs the AI to keep it short, with the
+    // signature in-line if appropriate. Skip the post-hoc append here.
+    if (!isInvite) {
+      const lines = parsed.message.trim().split('\n');
+      const lastLine = lines[lines.length - 1].trim();
+      if (lastLine.toLowerCase() !== senderName.toLowerCase() && !lastLine.toLowerCase().includes(senderName.toLowerCase())) {
+        parsed.message = parsed.message.trim() + '\n\n' + senderName;
+      }
     }
     
     console.log(`[generatePersonalizedMessage] Type: ${msgType}, Length: ${parsed.message.length} chars, RPO: ${isRPO}, Sender: ${senderName}, Model: ${resolvedModelId}, Tokens: ${totalTokensIn}in+${totalTokensOut}out`);

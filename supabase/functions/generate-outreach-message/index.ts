@@ -913,12 +913,12 @@ ${ragContext ? `\n=== CONTEXTE ENRICHI CANDIDAT (Knowledge Lake) ===\n${ragConte
 POSTE À POURVOIR:
 - Titre: ${job.title}
 - Client: ${job.client?.name || 'Client confidentiel'} (${job.client?.sector || 'Tech'})
-- Type accompagnement: ${accompagnement.join(', ') || 'Non spécifié'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
-- Compétences requises: ${job.skills?.join(', ') || 'Non spécifiées'}
-- Séniorité: ${job.seniority || 'Non spécifié'} | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans
-- Localisation: ${job.location || 'Non spécifié'}
-- Télétravail: ${job.remote || 'Non spécifié'}
-- Type contrat: ${job.contractType || 'Non spécifié'}
+- Type accompagnement: ${accompagnement.join(', ') || 'non précisé'} ${isRPO ? '(MODE RPO)' : '(MODE SUCCÈS)'}
+${job.skills?.length ? `- Compétences requises: ${job.skills.join(', ')}` : ''}
+${job.seniority || job.xpMin || job.xpMax ? `- Séniorité: ${job.seniority || 'non précisée'}${job.xpMin || job.xpMax ? ` | XP: ${job.xpMin || '?'}-${job.xpMax || '?'} ans` : ''}` : ''}
+${job.location ? `- Localisation: ${job.location}` : ''}
+${job.remote ? `- Télétravail: ${job.remote}` : ''}
+${job.contractType ? `- Type contrat: ${job.contractType}` : ''}
 ${salaryInfo.length > 0 && !hideSalary ? `- Rémunération: ${salaryInfo.join(' | ')}` : ''}
 ${hideSalary ? `⛔ RÈGLE CLIENT: Ne JAMAIS mentionner de salaire, TJM, rémunération ou fourchette salariale dans le message pour ${clientName}. C'est un sujet à aborder uniquement en call.` : ''}
 ${criteriaContext.length > 0 ? `- Critères clés: ${criteriaContext.join(' | ')}` : ''}
