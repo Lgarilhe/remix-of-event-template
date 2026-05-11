@@ -79,10 +79,12 @@ const ACTION_TYPE_ICONS: Record<string, React.ReactNode> = {
 const EXEC_STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   sent: { label: 'Envoyé', color: 'text-success', icon: <CheckCheck className="w-3 h-3" /> },
   scheduled: { label: 'Programmé', color: 'text-info', icon: <Clock className="w-3 h-3" /> },
+  sending: { label: "En cours d'envoi", color: 'text-info', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
   failed: { label: 'Échoué', color: 'text-destructive', icon: <XCircle className="w-3 h-3" /> },
   skipped: { label: 'Skippé', color: 'text-muted-foreground', icon: <SkipForward className="w-3 h-3" /> },
   cancelled: { label: 'Annulé', color: 'text-muted-foreground', icon: <XCircle className="w-3 h-3" /> },
   waiting_event: { label: 'En attente', color: 'text-warning', icon: <Clock className="w-3 h-3" /> },
+  quota_blocked: { label: 'Quota atteint', color: 'text-warning', icon: <Pause className="w-3 h-3" /> },
 };
 
 export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle, compact }) => {

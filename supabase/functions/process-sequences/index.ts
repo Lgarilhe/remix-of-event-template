@@ -1320,9 +1320,10 @@ function isAccountDisconnectedError(error: string | undefined): boolean {
  * All times are in the enrollment's timezone (default Europe/Paris).
  */
 function getRateLimitRetryDate(actionType: string, timezone: string): Date {
+  const tz = safeTimezone(timezone);
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
+    timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', hour12: false, weekday: 'short',
   });
@@ -1339,7 +1340,7 @@ function getRateLimitRetryDate(actionType: string, timezone: string): Date {
     const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T09:00:00`;
     // Use a rough approach: get the offset for this timezone
     const probe = new Date(dateStr + 'Z');
-    const localStr = probe.toLocaleString('en-US', { timeZone: timezone });
+    const localStr = probe.toLocaleString('en-US', { timeZone: tz });
     const localDate = new Date(localStr);
     const offsetMs = probe.getTime() - localDate.getTime();
     return new Date(probe.getTime() + offsetMs);
@@ -1366,11 +1367,29 @@ function getRateLimitRetryDate(actionType: string, timezone: string): Date {
   return make9am(target.getFullYear(), target.getMonth() + 1, target.getDate());
 }
 
+// Validate an IANA timezone string. Falls back to Europe/Paris if invalid —
+// previously a corrupted enrollment.user_timezone could crash the time-
+// computation helpers (getRateLimitRetryDate, etc.) which don't all have
+// their own try/catch.
+function safeTimezone(tz: string | undefined | null): string {
+  const candidate = (tz || '').trim();
+  if (!candidate) return 'Europe/Paris';
+  try {
+    // Throws RangeError on invalid IANA zone.
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate });
+    return candidate;
+  } catch {
+    console.warn(`[safeTimezone] Invalid timezone "${candidate}", falling back to Europe/Paris`);
+    return 'Europe/Paris';
+  }
+}
+
 function isWithinBusinessHours(timezone: string): boolean {
   try {
+    const tz = safeTimezone(timezone);
     const now = new Date();
-    const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).format(now), 10);
-    const day = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(now);
+    const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(now), 10);
+    const day = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(now);
     return day !== "Sat" && day !== "Sun" && hour >= 8 && hour < 19;
   } catch { return true; }
 }
@@ -1394,18 +1413,19 @@ function setLocalHour(date: Date, tz: string, desiredLocalHour: number, minutes 
 }
 
 function getNextBusinessHourSlot(timezone: string): Date {
+  const tz = safeTimezone(timezone);
   const target = new Date();
   for (let i = 0; i < 7; i++) {
     try {
-      const day = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(target);
-      const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).format(target), 10);
+      const day = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(target);
+      const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(target), 10);
       if (day === "Sat" || day === "Sun" || hour >= 19) {
         target.setDate(target.getDate() + 1);
-        setLocalHour(target, timezone, 8, Math.floor(Math.random() * 30));
+        setLocalHour(target, tz, 8, Math.floor(Math.random() * 30));
         continue;
       }
       if (hour < 8) {
-        setLocalHour(target, timezone, 8, Math.floor(Math.random() * 30));
+        setLocalHour(target, tz, 8, Math.floor(Math.random() * 30));
       }
       break;
     } catch { target.setTime(target.getTime() + 3600000); break; }
@@ -2026,6 +2046,18 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
   }
 
   if (!nextStep) {
+    // Make completion visible. The most common case is "no more steps in the
+    // flow" (normal end of sequence). But it also fires when the current step
+    // was deleted from the template mid-flight — previously this was silent
+    // and we had no idea WHICH enrollment died because of an edit vs. a real
+    // end-of-flow. forceBranchStepId set but step missing = deleted branch
+    // target ; currentStepId set but step missing = deleted current step.
+    const reason = forceBranchStepId
+      ? `branch target step ${forceBranchStepId} not found (deleted?)`
+      : currentStepId
+        ? `next step after ${currentStepId} (order ${currentStepOrder}) not found (deleted or end of flow)`
+        : `no step found after order ${currentStepOrder} (end of flow)`;
+    console.log(`[scheduleNextStep] Completing enrollment ${enrollment.id}: ${reason}`);
     await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
     return;
   }
