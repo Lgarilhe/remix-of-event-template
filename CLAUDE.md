@@ -1,5 +1,18 @@
 # CLAUDE.md — Rules & Code Map for Konekt
 
+## 🧠 Discipline baseline — 4 principes (à appliquer par défaut)
+
+Avant toute action de code, valider ces 4 principes :
+
+1. **Think Before Coding** — Expliciter les hypothèses, surfacer les ambiguïtés plutôt que de deviner silencieusement. Si la demande est floue, **poser une question** au lieu de partir dans une direction.
+2. **Simplicity First** — Code minimal sans features spéculatives ni abstractions inutiles. Trois lignes similaires valent mieux qu'une abstraction prématurée.
+3. **Surgical Changes** — Modifier UNIQUEMENT ce qui est demandé. Pas de refactor opportunistes, pas de renames "tant qu'on y est", pas de cleanup non demandé. Le scope = ce qui a été demandé, point.
+4. **Goal-Driven Execution** — Transformer la tâche en critères de succès vérifiables avant d'agir. "Comment je sais que c'est fini ?" doit avoir une réponse concrète.
+
+Ces 4 principes l'emportent sur l'envie d'être proactif. Si tension entre "faire bien" et "faire ce qui est demandé" → faire ce qui est demandé.
+
+---
+
 ## Stack & infrastructure (post-migration 2026-04-21)
 - **Frontend** : Vite + React + TS, déployé sur **Vercel** (branche `main` auto-deploy)
   - Prod URL : https://konekt-app-navy.vercel.app
@@ -19,9 +32,11 @@
 5. **Sync with main first** — `git fetch origin main && git rebase origin/main`
 
 ## Before committing
-1. Run `npx tsc --noEmit` — zero errors required
-2. Run `npx vite build` — must succeed
-3. Verify no orphaned imports (grep for removed component/function names)
+Les hooks pre-commit (`.claude/settings.json`) lancent **automatiquement** :
+- `npx tsc --noEmit` — bloque le commit si erreurs TS
+- `npx vite build` — bloque le commit si build prod échoue
+
+Vérif manuelle à faire en plus : **pas d'imports orphelins** (grep pour les noms de composants/fonctions supprimés).
 
 ## Runbook hotfix prod
 1. Fix en local sur une branche.
@@ -409,6 +424,23 @@ accept(token).then(handleSuccess).catch(() => setStatus('error'));
 - **Location deferred resolution**: if no LinkedIn account connected, location stays as keyword until account available
 - **Prospection** is agency-only (Konekt internal) — gated via `featureGates.ts`
 - **/candidates redirects to /pipeline** — one single entry point for candidates
+
+---
+
+## 🛠️ Skills disponibles & quand les utiliser
+
+Les skills locaux du projet (`.claude/skills/`) doivent être invoqués selon le contexte :
+
+| Skill | Quand l'invoquer |
+|-------|------------------|
+| `edge-function.md` | User demande de créer/scaffolder une nouvelle edge function Supabase |
+| `migration.md` | User demande de créer une migration SQL (nouvelle table, ajout colonne, RLS, backfill) |
+| `qa.md` | Avant tout merge vers `main`, OU quand l'user veut tester un flow (4 personas Guillaume/Claire/Théo/Sophie). **Obligatoire** si edge function critique, RLS, ou flow client final touché. |
+| `systematic-debugging.md` | User dit "ça marche pas" / "bug bizarre" / race condition / RLS permission denied / "marche en local mais pas en prod" / état incohérent après tab switch |
+
+Slash commands disponibles :
+- `/deploy` — détecte les edge functions modifiées et donne les commandes deploy
+- `/debug` — **natif Claude Code** : debug l'app Claude Code elle-même (logs, daemon), PAS le code Konekt → pour debugger le code, utiliser le skill `systematic-debugging.md`
 
 ---
 
