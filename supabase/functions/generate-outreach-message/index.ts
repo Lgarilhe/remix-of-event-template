@@ -851,15 +851,18 @@ OBLIGATOIRE pour avoir de la SUBSTANCE :
 === FIN VOIX & TON ===
 
 PROFIL DU CANDIDAT:
-- Prénom: ${(() => {
+${(() => {
       const raw = profile.name?.split(' ')[0] || '';
-      return isLikelyRealFirstName(raw) ? raw : '(non fiable, ne pas utiliser)';
+      // Omit the line entirely if the prénom is unreliable, rather than
+      // injecting "(non fiable, ne pas utiliser)" verbatim (the LLM can echo
+      // it back into the message). The salutation rule covers the no-prénom case.
+      return isLikelyRealFirstName(raw) ? `- Prénom: ${raw}` : '- Prénom: (aucun — utilise "Salut," sans prénom)';
     })()}
-- Titre: ${profile.headline || 'Non spécifié'}
-- Poste actuel: ${profile.currentRole || 'Non spécifié'} chez ${profile.currentCompany || 'Non spécifié'}
-- Localisation: ${profile.location || 'Non spécifié'}
-- Compétences: ${profile.skills?.join(', ') || 'Non spécifiées'}
-- Expériences passées: ${profile.pastPositions?.slice(0, 3).join('; ') || 'Non spécifiées'}
+${profile.headline ? `- Titre: ${profile.headline}` : ''}
+${profile.currentRole || profile.currentCompany ? `- Poste actuel: ${profile.currentRole || ''}${profile.currentRole && profile.currentCompany ? ' chez ' : ''}${profile.currentCompany || ''}`.trimEnd() : ''}
+${profile.location ? `- Localisation: ${profile.location}` : ''}
+${profile.skills?.length ? `- Compétences: ${profile.skills.join(', ')}` : ''}
+${profile.pastPositions?.length ? `- Expériences passées: ${profile.pastPositions.slice(0, 3).join('; ')}` : ''}
 ${profile.yearsOfExperience ? `- Années d'expérience: ~${profile.yearsOfExperience} ans` : ''}
 ${profile.education?.length ? `- Formation: ${profile.education.slice(0, 2).join('; ')}` : ''}
 ${profile.networkDistance ? `- Statut LinkedIn : ${
@@ -1222,7 +1225,16 @@ Réponds UNIQUEMENT en JSON valide:
     // ⭐ Sanity-check anonymisation client : si outreachConfig.anonymize_client est
     // actif, force-replace toute occurrence du clientName par l'alias dans message
     // ET subject. Filet de sécurité au cas où l'IA aurait laissé filtrer le nom.
+    // CRITIQUE : si l'anonymization échoue (import KO, etc.) on NE peut PAS
+    // envoyer le message tel quel — il contiendrait potentiellement le vrai
+    // nom client. On applique un fallback inline (même regex) avant de remonter.
     if (outreachConfig?.anonymize_client && clientNameRaw) {
+      const inlineAnonymize = (text: string): string => {
+        if (!text) return text;
+        const alias = ((outreachConfig as any).anonymized_alias || '').trim() || 'une entreprise tech française';
+        const escaped = clientNameRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return text.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), alias);
+      };
       try {
         const { applyClientAnonymization } = await import('../_shared/outreach-context.ts');
         parsed.message = applyClientAnonymization(parsed.message, outreachConfig as any, clientNameRaw);
@@ -1230,7 +1242,17 @@ Réponds UNIQUEMENT en JSON valide:
           parsed.subject = applyClientAnonymization(parsed.subject, outreachConfig as any, clientNameRaw);
         }
       } catch (e) {
-        console.warn('[generate-outreach-message] anonymization sanity check failed:', e);
+        console.error('[generate-outreach-message] anonymization import failed, applying inline fallback:', e);
+        parsed.message = inlineAnonymize(parsed.message);
+        if (parsed.subject) parsed.subject = inlineAnonymize(parsed.subject);
+      }
+      // Double-check: if the raw client name still appears after either path,
+      // strip it inline as a last resort and log a CRITICAL warning.
+      const rawNamePresent = new RegExp(`\\b${clientNameRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (rawNamePresent.test(parsed.message) || (parsed.subject && rawNamePresent.test(parsed.subject))) {
+        console.error(`[generate-outreach-message] ⚠️ CRITICAL: raw client name "${clientNameRaw}" still present after anonymization, forcing inline strip`);
+        parsed.message = inlineAnonymize(parsed.message);
+        if (parsed.subject) parsed.subject = inlineAnonymize(parsed.subject);
       }
     }
 
