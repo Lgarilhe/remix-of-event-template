@@ -1,15 +1,16 @@
 # CLAUDE.md — Rules & Code Map for Konekt
 
-## 🧠 Discipline baseline — 4 principes (à appliquer par défaut)
+## 🧠 Discipline baseline — 5 principes (à appliquer par défaut)
 
-Avant toute action de code, valider ces 4 principes :
+Avant toute action de code, valider ces 5 principes :
 
 1. **Think Before Coding** — Expliciter les hypothèses, surfacer les ambiguïtés plutôt que de deviner silencieusement. Si la demande est floue, **poser une question** au lieu de partir dans une direction.
 2. **Simplicity First** — Code minimal sans features spéculatives ni abstractions inutiles. Trois lignes similaires valent mieux qu'une abstraction prématurée.
 3. **Surgical Changes** — Modifier UNIQUEMENT ce qui est demandé. Pas de refactor opportunistes, pas de renames "tant qu'on y est", pas de cleanup non demandé. Le scope = ce qui a été demandé, point.
 4. **Goal-Driven Execution** — Transformer la tâche en critères de succès vérifiables avant d'agir. "Comment je sais que c'est fini ?" doit avoir une réponse concrète.
+5. **Mind the Context** — Sur les fichiers > 1000 lignes (process-sequences, score-profile-job, useMessagesInbox, unipile-search, enrich-company), toujours `Read` avec `offset/limit` ciblé sur la zone à modifier — jamais le fichier entier. Pour les recherches cross-codebase (1015 fichiers), déléguer à un sub-agent `Explore` plutôt que grep en série. Si la session dépasse ~40% de contexte ou 2h, proposer `/compact` avant de continuer un nouveau chantier (au-delà la qualité se dégrade — hallucinations, oublis).
 
-Ces 4 principes l'emportent sur l'envie d'être proactif. Si tension entre "faire bien" et "faire ce qui est demandé" → faire ce qui est demandé.
+Ces 5 principes l'emportent sur l'envie d'être proactif. Si tension entre "faire bien" et "faire ce qui est demandé" → faire ce qui est demandé.
 
 ---
 
