@@ -539,15 +539,22 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   let senderId: string | undefined;
   let isSenderSelf: boolean | undefined;
   let senderAttendeeId: string | undefined;
-  
+  let needsAttendeeVerification = false;
+
   if (payload.sender && payload.chat_id) {
     // message_received format (flat)
     console.log('[unipile-webhook] Processing message_received format');
     chatId = payload.chat_id;
     senderId = payload.sender.attendee_provider_id;
     senderAttendeeId = payload.sender.attendee_id;
-    // In message_received, the sender is always the other person (not us)
-    isSenderSelf = false;
+    // NB: do NOT assume the sender is the other person. Unipile fires
+    // message_received for the invitation note WE sent once the chat
+    // materialises after acceptance — sender_attendee_id can collapse to our
+    // own attendee. Force attendees-API verification below; otherwise we mark
+    // candidates as "replied" for our own outbound invite note (bug:
+    // candidates showing in "Répondu" without replying).
+    isSenderSelf = undefined;
+    needsAttendeeVerification = true;
   } else if (data) {
     // new_message format (nested)
     console.log('[unipile-webhook] Processing new_message format');
@@ -578,8 +585,12 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     return;
   }
   
-  // For ambiguous cases (is_sender undefined), resolve via chat attendees API
+  // For ambiguous cases (is_sender undefined), resolve via chat attendees API.
+  // For message_received payloads we fail-closed: if we cannot positively
+  // confirm the sender is NOT our own attendee, skip — better to miss a reply
+  // than to mark a candidate "Répondu" for our own outbound invitation note.
   if (isSenderSelf === undefined && chatId && senderAttendeeId) {
+    let confirmedNotSelf = false;
     try {
       const attRes = await fetchWithTimeout(`${uCreds.dsn}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': uCreds.apiKey } });
       if (attRes.ok) {
@@ -588,9 +599,13 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         const attendeeList = Array.isArray(attendees) ? attendees : [];
         // deno-lint-ignore no-explicit-any
         const ownAttendee = attendeeList.find((a: any) => a.is_self === true || a.is_self === 1 || a.role === 'self');
-        if (ownAttendee && (ownAttendee.id === senderAttendeeId || ownAttendee.provider_id === senderAttendeeId || ownAttendee.attendee_id === senderAttendeeId)) {
-          console.log('[unipile-webhook] Skipping - sender is our own attendee');
-          return;
+        if (ownAttendee) {
+          const ownIds = [ownAttendee.id, ownAttendee.provider_id, ownAttendee.attendee_id].filter(Boolean);
+          if (ownIds.includes(senderAttendeeId)) {
+            console.log('[unipile-webhook] Skipping - sender is our own attendee');
+            return;
+          }
+          confirmedNotSelf = true;
         }
       } else {
         await attRes.text(); // consume body
@@ -598,6 +613,14 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     } catch (e) {
       console.warn('[unipile-webhook] Failed to verify sender via attendees:', e);
     }
+    if (needsAttendeeVerification && !confirmedNotSelf) {
+      console.log('[unipile-webhook] Skipping - cannot confirm sender is not self (fail-closed for message_received)');
+      return;
+    }
+  } else if (needsAttendeeVerification) {
+    // message_received without chat_id or sender.attendee_id → cannot verify
+    console.log('[unipile-webhook] Skipping - message_received missing fields needed to verify sender');
+    return;
   }
   
   if (!senderId) {
