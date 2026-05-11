@@ -1201,6 +1201,40 @@ function resolveTemplateVars(template: string, vars: Record<string, string | und
   return result;
 }
 
+// Smart truncation that respects sentence/word boundaries instead of
+// hard-cutting mid-word. Used for the LinkedIn invitation note (300 char
+// limit) so we never send a sentence that ends mid-phrase like "Ça te par".
+//   1. ≤ maxLen → return as-is
+//   2. Cut at the latest sentence terminator (".", "?", "!", "…") before maxLen
+//   3. Otherwise cut at the latest word boundary before maxLen-1, append "…"
+//   4. Last resort: hard cut maxLen-1 + "…"
+function smartTruncate(text: string, maxLen: number): string {
+  const t = (text || '').trim();
+  if (t.length <= maxLen) return t;
+  const limit = maxLen; // we'll add at most "…" (1 code unit)
+  // 2. Last sentence terminator before limit
+  let bestEnd = -1;
+  for (const sep of ['. ', '? ', '! ', '… ', '.\n', '?\n', '!\n', '…\n']) {
+    const idx = t.lastIndexOf(sep, limit - 1);
+    if (idx > bestEnd) bestEnd = idx + 1; // include the punctuation char
+  }
+  // Also check terminators right before limit without trailing space (e.g. end of string trimmed)
+  for (const ch of ['.', '?', '!', '…']) {
+    const idx = t.lastIndexOf(ch, limit - 1);
+    if (idx > bestEnd && idx >= Math.floor(maxLen / 2)) bestEnd = idx;
+  }
+  if (bestEnd > Math.floor(maxLen / 3)) {
+    return t.slice(0, bestEnd + 1).trim();
+  }
+  // 3. Last word boundary, append "…"
+  const lastSpace = t.lastIndexOf(' ', limit - 2);
+  if (lastSpace > Math.floor(maxLen / 2)) {
+    return t.slice(0, lastSpace).trim() + '…';
+  }
+  // 4. Last resort
+  return t.slice(0, maxLen - 1).trim() + '…';
+}
+
 function buildSequenceTemplateVars(
   enrollment: Record<string, unknown>,
   senderName: string,
@@ -2420,7 +2454,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           }
         }
         const invitePayload: Record<string, string> = { account_id: accountId, provider_id: providerId };
-        if (msg && msg.trim()) invitePayload.message = msg.trim().slice(0, 300); // LinkedIn invite note max ~300 chars
+        // LinkedIn invite note max ~300 chars. Use smartTruncate to cut at a
+        // sentence boundary so we never send "Ça te par…" mid-word.
+        if (msg && msg.trim()) invitePayload.message = smartTruncate(msg, 300);
         const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Invite ${r.status}: ${e}` }; }
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
@@ -3154,11 +3190,15 @@ UTILISATION DE L'HISTORIQUE:
     const prompt = `Tu es un recruteur tech senior. Tu écris des messages LinkedIn ULTRA personnalisés et percutants.
 
 PROFIL CANDIDAT:
-- Prénom: ${(() => {
+${(() => {
       const raw = profile?.first_name || profile?.name?.split(' ')[0] || '';
-      return isLikelyRealFirstName(raw) ? raw : '(non fiable, ne pas utiliser)';
+      // Omit the line entirely if the prénom is unreliable, rather than
+      // injecting "(non fiable, ne pas utiliser)" which could leak verbatim
+      // into the AI's output. The salutation rule below tells the LLM what
+      // to do when no prénom appears in this block.
+      return isLikelyRealFirstName(raw) ? `- Prénom: ${raw}` : '- Prénom: (aucun — utilise "Salut," sans prénom)';
     })()}
-- Titre: ${profile?.headline || 'N/A'}
+${profile?.headline ? `- Titre: ${profile.headline}` : ''}
 ${profile?.current_company_name ? `- Poste actuel: ${profile.headline?.split(' at ')[0] || profile.headline?.split(' chez ')[0] || ''} chez ${profile.current_company_name}` : ''}
 ${profileSkills ? `- Compétences: ${profileSkills}` : ''}
 ${profileYearsXP ? `- Années d'expérience: ~${profileYearsXP} ans` : ''}
@@ -3226,7 +3266,7 @@ Tu fais le PONT entre le candidat et l'environnement du poste.
    ❌ JAMAIS: proposer un call, un rdv, une dispo
 
 5. FORMAT OBLIGATOIRE:
-   SALUTATION: "Salut [Prénom]," UNIQUEMENT si le prénom est fiable. Si marqué "(non fiable, ne pas utiliser)", utilise "Salut," SANS prénom.
+   SALUTATION: "Salut [Prénom]," UNIQUEMENT si un Prénom apparaît dans PROFIL CANDIDAT ci-dessus. Si le bloc indique "(aucun — utilise 'Salut,' sans prénom)", écris UNIQUEMENT "Salut," (avec virgule, sans nom, sans rien d'autre). Ne RECOPIE JAMAIS la mention entre parenthèses dans ton message.
    PHRASE 1 = PERSONNALISATION PURE. Une observation spécifique, PAS un résumé de carrière.
    PHRASE 2-3 = Ce que le candidat y gagne
    PHRASE 4 = CTA non-engageant
@@ -3382,8 +3422,17 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
 
     // ⭐ Sanity-check anonymisation client : si outreach_config.anonymize_client est
     // actif, on force-replace toute occurrence du clientName par l'alias dans le
-    // message ET le subject. Filet de sécurité au cas où l'IA aurait laissé filtrer.
+    // message ET le subject. CRITIQUE : si l'anonymization échoue (import KO),
+    // on NE peut PAS envoyer le message — il contiendrait le vrai nom client.
+    // Fallback inline (même regex que applyClientAnonymization) garantit qu'on
+    // n'envoie jamais le nom raw.
     if (outreachConfig?.anonymize_client && clientName) {
+      const inlineAnonymize = (text: string): string => {
+        if (!text) return text;
+        const alias = ((outreachConfig as any).anonymized_alias || '').trim() || 'une entreprise tech française';
+        const escaped = clientName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return text.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), alias);
+      };
       try {
         const { applyClientAnonymization } = await import('../_shared/outreach-context.ts');
         parsed.message = applyClientAnonymization(parsed.message, outreachConfig, clientName);
@@ -3391,7 +3440,16 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
           parsed.subject = applyClientAnonymization(parsed.subject, outreachConfig, clientName);
         }
       } catch (e) {
-        console.warn('[generatePersonalizedMessage] anonymization sanity check failed:', e);
+        console.error('[generatePersonalizedMessage] anonymization import failed, applying inline fallback:', e);
+        parsed.message = inlineAnonymize(parsed.message);
+        if (parsed.subject) parsed.subject = inlineAnonymize(parsed.subject);
+      }
+      // Last-resort check : if raw name still appears, force-strip inline.
+      const rawNamePresent = new RegExp(`\\b${clientName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (rawNamePresent.test(parsed.message) || (parsed.subject && rawNamePresent.test(parsed.subject))) {
+        console.error(`[generatePersonalizedMessage] ⚠️ CRITICAL: raw client name "${clientName}" still present after anonymization, forcing inline strip`);
+        parsed.message = inlineAnonymize(parsed.message);
+        if (parsed.subject) parsed.subject = inlineAnonymize(parsed.subject);
       }
     }
 
