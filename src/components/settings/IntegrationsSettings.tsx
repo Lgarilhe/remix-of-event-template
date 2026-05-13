@@ -86,8 +86,8 @@ const INTEGRATIONS: IntegrationConfig[] = [
   },
   {
     id: 'unipile',
-    name: 'LinkedIn',
-    description: 'Connectez votre compte LinkedIn pour la recherche de profils, l\'envoi de messages et InMails.',
+    name: 'Comptes LinkedIn de l\'agence',
+    description: 'Gérez tous les comptes LinkedIn connectés par les membres : statut, proxys par compte, dissociation admin. Pour connecter votre propre compte, allez dans Mon compte.',
     logoSrc: linkedinLogo,
     connectedKey: 'unipile_connected',
     hostedAuth: true,

@@ -74,6 +74,21 @@ const Settings = () => {
     enabled: members.length > 0,
   });
 
+  // Connectors tab is hidden when no connector is registered (registry empty)
+  // — avoids surfacing a feature that has no content to show. Re-appears
+  // automatically once admins add rows to public.connector_registry.
+  const { data: hasConnectors = false } = useQuery({
+    queryKey: ['connector-registry-any'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('connector_registry')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true);
+      return (count ?? 0) > 0;
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
   const getDisplayName = (userId: string) => {
     const profile = memberProfiles.find(p => p.user_id === userId);
     return profile?.display_name || userId.slice(0, 8) + '...';
@@ -105,7 +120,7 @@ const Settings = () => {
     if (tab === 'account') return 'account';
     if (tab === 'templates') return 'templates';
     if (tab === 'ai-context') return 'ai-context';
-    if (tab === 'connectors' && !isCollaborator) return 'connectors';
+    if (tab === 'connectors' && !isCollaborator && hasConnectors) return 'connectors';
     if (tab === 'team' && !isCollaborator) return 'team';
     if (tab === 'presets' && !isCollaborator) return 'presets';
     if (tab === 'agency' && isAgency) return 'agency';
@@ -141,7 +156,7 @@ const Settings = () => {
       items: [
         { value: 'account', label: 'Mon compte', icon: UserCircle },
         ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
-        ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
+        ...(!isCollaborator && hasConnectors ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
         ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
       ],
     },
