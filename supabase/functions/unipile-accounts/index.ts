@@ -404,7 +404,17 @@ Deno.serve(async (req) => {
         // (POST /api/v1/accounts/{id}) qui PRÉSERVE l'account_id au lieu
         // de créer un nouveau compte. C'est le comportement attendu quand
         // le statut est CREDENTIALS (cookie expiré) — fix majeur UX.
-        const { access_token, user_agent, reconnect_account_id } = params;
+        //
+        // Paramètres conformité LinkedIn (warning #260513-007211) :
+        // - `premium_token` (cookie `li_a`) : réutilise une session Recruiter/SalesNav
+        //   existante au lieu d'en démarrer une nouvelle. Sans ça, LinkedIn voit
+        //   "deux sessions actives" sur la licence et flag "License Sharing".
+        // - `country` (ISO 3166-1 alpha-2) : Unipile auto-assigne un proxy
+        //   résidentiel de ce pays → toutes les actions sortent depuis cette
+        //   géo (cohérent avec l'IP du navigateur de l'utilisateur).
+        // - `user_agent` : DOIT correspondre au vrai navigateur de l'utilisateur.
+        //   On n'utilise plus de UA générique fake (cause de disconnections).
+        const { access_token, premium_token, user_agent, country, reconnect_account_id } = params;
 
         if (!access_token) {
           return new Response(
@@ -418,13 +428,50 @@ Deno.serve(async (req) => {
           ? `${baseUrl}/accounts/${encodeURIComponent(reconnect_account_id)}`
           : `${baseUrl}/accounts`;
 
-        console.log('[connect_cookie]', isReconnect ? 'RECONNECT' : 'CREATE', 'length:', access_token.length, 'endpoint:', endpoint);
+        // Validate user_agent: must look like a real browser UA. Reject obvious garbage
+        // (emails, short strings). Empty is tolerated but logged.
+        const uaTrimmed = typeof user_agent === 'string' ? user_agent.trim() : '';
+        const uaLooksValid =
+          uaTrimmed.length >= 20 &&
+          !uaTrimmed.includes('@') &&
+          (uaTrimmed.toLowerCase().startsWith('mozilla/') ||
+            uaTrimmed.toLowerCase().startsWith('opera/') ||
+            uaTrimmed.toLowerCase().includes('applewebkit') ||
+            uaTrimmed.toLowerCase().includes('chrome/'));
+        if (uaTrimmed && !uaLooksValid) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Le User-Agent fourni n'est pas valide. Utilisez le bouton « Utiliser mon navigateur actuel »." }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        if (!uaTrimmed) {
+          console.warn('[connect_cookie] No user_agent provided — Unipile may use its own default. Recommend forcing real UA.');
+        }
+
+        // Validate country: must be ISO 3166-1 alpha-2 if provided
+        const countryTrimmed = typeof country === 'string' ? country.trim().toUpperCase() : '';
+        if (countryTrimmed && countryTrimmed.length !== 2) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Code pays invalide (format ISO 3166-1 alpha-2 attendu, ex: FR, US, DE)' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        console.log('[connect_cookie]', isReconnect ? 'RECONNECT' : 'CREATE',
+          'li_at len:', access_token.length,
+          'premium_token:', premium_token ? 'YES' : 'NO',
+          'country:', countryTrimmed || 'none',
+          'endpoint:', endpoint);
 
         const unipilePayload: Record<string, unknown> = {
           provider: 'LINKEDIN',
           access_token,
-          user_agent: user_agent || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         };
+        if (uaTrimmed) unipilePayload.user_agent = uaTrimmed;
+        if (typeof premium_token === 'string' && premium_token.trim().length > 0) {
+          unipilePayload.premium_token = premium_token.trim();
+        }
+        if (countryTrimmed) unipilePayload.country = countryTrimmed;
 
         const response = await fetchWithTimeout(endpoint, {
           method: 'POST',

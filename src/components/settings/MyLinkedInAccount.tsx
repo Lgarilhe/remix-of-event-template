@@ -35,7 +35,9 @@ export const MyLinkedInAccount = () => {
   const [linking, setLinking] = useState(false);
   const [reconnectOpen, setReconnectOpen] = useState(false);
   const [liAtCookie, setLiAtCookie] = useState('');
+  const [liACookie, setLiACookie] = useState('');
   const [userAgent, setUserAgent] = useState('');
+  const [country, setCountry] = useState('FR');
   const [reconnecting, setReconnecting] = useState(false);
   const { accounts, loading: loadingAccounts, reload: reloadAccounts } = useLinkedInAccounts();
   const { mappings, linkAccount, unlinkAccount, getMappingForUser, getMappingForAccount } = useMemberLinkedInAccounts();
@@ -218,7 +220,14 @@ export const MyLinkedInAccount = () => {
       }>('unipile-accounts', {
         action: 'connect_cookie',
         access_token: liAtCookie.trim(),
-        user_agent: userAgent.trim() || undefined,
+        // Cookie li_a (Recruiter/Sales Nav premium session). Réutilise la session
+        // existante au lieu d'en créer une nouvelle côté serveur — évite que
+        // LinkedIn ne flagge "License Sharing" (warning #260513-007211).
+        premium_token: liACookie.trim() || undefined,
+        user_agent: userAgent.trim(),
+        // Code pays ISO 3166-1 alpha-2 → Unipile auto-assigne un proxy résidentiel.
+        // Cohérence géographique entre IP serveur et IP navigateur de l'utilisateur.
+        country: country.trim().toUpperCase() || undefined,
         reconnect_account_id: existingAccountId || undefined,
       });
 
@@ -265,6 +274,7 @@ export const MyLinkedInAccount = () => {
 
       // Reset form
       setLiAtCookie('');
+      setLiACookie('');
       setUserAgent('');
       setReconnectOpen(false);
       toast.success('Compte LinkedIn reconnecté ✓');
@@ -374,8 +384,12 @@ export const MyLinkedInAccount = () => {
               <ReconnectForm
                 liAtCookie={liAtCookie}
                 setLiAtCookie={setLiAtCookie}
+                liACookie={liACookie}
+                setLiACookie={setLiACookie}
                 userAgent={userAgent}
                 setUserAgent={setUserAgent}
+                country={country}
+                setCountry={setCountry}
                 reconnecting={reconnecting}
                 onSubmit={handleReconnectWithCookie}
                 onCancel={() => setReconnectOpen(false)}
@@ -466,11 +480,15 @@ export const MyLinkedInAccount = () => {
                     <ReconnectForm
                       liAtCookie={liAtCookie}
                       setLiAtCookie={setLiAtCookie}
+                      liACookie={liACookie}
+                      setLiACookie={setLiACookie}
                       userAgent={userAgent}
                       setUserAgent={setUserAgent}
+                      country={country}
+                      setCountry={setCountry}
                       reconnecting={reconnecting}
                       onSubmit={handleReconnectWithCookie}
-                      onCancel={() => { setLiAtCookie(''); setUserAgent(''); }}
+                      onCancel={() => { setLiAtCookie(''); setLiACookie(''); setUserAgent(''); }}
                       hideCancel
                     />
                   </div>
@@ -546,13 +564,18 @@ function looksLikeLiAt(value: string): { ok: boolean; reason?: string } {
  * Réutilisé entre "compte en erreur" et "pas de mapping".
  */
 function ReconnectForm({
-  liAtCookie, setLiAtCookie, userAgent, setUserAgent,
+  liAtCookie, setLiAtCookie, liACookie, setLiACookie,
+  userAgent, setUserAgent, country, setCountry,
   reconnecting, onSubmit, onCancel, hideCancel, accountStatus,
 }: {
   liAtCookie: string;
   setLiAtCookie: (v: string) => void;
+  liACookie: string;
+  setLiACookie: (v: string) => void;
   userAgent: string;
   setUserAgent: (v: string) => void;
+  country: string;
+  setCountry: (v: string) => void;
   reconnecting: boolean;
   onSubmit: () => void;
   onCancel: () => void;
@@ -560,7 +583,13 @@ function ReconnectForm({
   accountStatus?: string | null;
 }) {
   const liAtValidation = looksLikeLiAt(liAtCookie);
-  const uaValid = looksLikeUserAgent(userAgent);
+  // User-Agent obligatoire : sans le vrai UA de l'utilisateur, Unipile risque
+  // d'utiliser un UA serveur générique → LinkedIn détecte "device différent"
+  // et flag "License Sharing" (warning #260513-007211).
+  const uaValid = looksLikeUserAgent(userAgent) && userAgent.trim().length >= 20;
+  // li_a est optionnel mais recommandé pour les comptes Recruiter / Sales Nav.
+  const liAValidation = liACookie.trim().length === 0 || looksLikeLiAt(liACookie);
+  const countryValid = /^[A-Z]{2}$/.test(country.trim().toUpperCase());
 
   const handleUseMyUA = () => {
     if (typeof navigator !== 'undefined' && navigator.userAgent) {
@@ -694,9 +723,35 @@ function ReconnectForm({
         </p>
       </div>
 
+      {/* Cookie li_a (optionnel mais recommandé Recruiter/Sales Nav) */}
+      <div className="space-y-1.5">
+        <Label htmlFor="li-a" className="text-xs font-medium flex items-center gap-1.5">
+          Cookie li_a (Recruiter / Sales Navigator, optionnel)
+        </Label>
+        <Input
+          id="li-a"
+          type="password"
+          value={liACookie}
+          onChange={(e) => setLiACookie(e.target.value)}
+          placeholder="Coller la valeur du cookie li_a (uniquement si Recruiter / Sales Nav)"
+          className={cn(
+            'text-xs font-mono',
+            liACookie && !liAValidation && 'border-destructive focus-visible:ring-destructive',
+          )}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={liACookie.length > 0 && !liAValidation}
+        />
+        <p className="text-3xs text-muted-foreground leading-relaxed">
+          Recommandé pour les comptes <strong>Recruiter</strong> ou <strong>Sales Navigator</strong>. Sans ce cookie, une nouvelle session Recruiter est démarrée côté serveur — LinkedIn peut alors la détecter comme un partage de licence.
+          Récupérez-le comme li_at (DevTools → Cookies → linkedin.com → <code className="text-3xs bg-muted px-1">li_a</code>).
+        </p>
+      </div>
+
+      {/* User-Agent obligatoire */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor="ua" className="text-xs font-medium">User-Agent (optionnel)</Label>
+          <Label htmlFor="ua" className="text-xs font-medium">User-Agent <span className="text-destructive">*</span></Label>
           <button
             type="button"
             onClick={handleUseMyUA}
@@ -721,11 +776,33 @@ function ReconnectForm({
         {userAgent && !uaValid && (
           <p className="text-3xs text-destructive flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" aria-hidden="true" />
-            Ceci ne ressemble pas à un User-Agent. Un UA commence par "Mozilla/" — ce n'est pas votre email ni votre nom. Laissez vide en cas de doute.
+            Ceci ne ressemble pas à un User-Agent. Un UA commence par "Mozilla/" — utilisez le bouton ci-dessus.
           </p>
         )}
         <p className="text-3xs text-muted-foreground">
-          Chaîne technique de votre navigateur (pas un email ni un nom). Si vide, un UA Chrome par défaut sera utilisé.
+          Obligatoire — chaîne technique de votre navigateur. Cliquez sur « Utiliser mon navigateur actuel » pour la remplir automatiquement.
+        </p>
+      </div>
+
+      {/* Pays du proxy */}
+      <div className="space-y-1.5">
+        <Label htmlFor="country" className="text-xs font-medium">Pays du proxy <span className="text-destructive">*</span></Label>
+        <Input
+          id="country"
+          value={country}
+          onChange={(e) => setCountry(e.target.value.toUpperCase().slice(0, 2))}
+          placeholder="FR"
+          maxLength={2}
+          className={cn(
+            'text-xs font-mono uppercase w-20',
+            country && !countryValid && 'border-destructive focus-visible:ring-destructive',
+          )}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={country.length > 0 && !countryValid}
+        />
+        <p className="text-3xs text-muted-foreground leading-relaxed">
+          Code pays ISO (2 lettres, ex: <code className="text-3xs bg-muted px-1">FR</code>, <code className="text-3xs bg-muted px-1">US</code>, <code className="text-3xs bg-muted px-1">DE</code>). Les actions sortiront depuis une IP résidentielle de ce pays — cohérent avec votre navigateur, évite la détection « multi-localisation » par LinkedIn.
         </p>
       </div>
 
@@ -733,7 +810,7 @@ function ReconnectForm({
         <Button
           type="submit"
           size="sm"
-          disabled={reconnecting || !liAtCookie.trim() || !liAtValidation.ok || !uaValid}
+          disabled={reconnecting || !liAtCookie.trim() || !liAtValidation.ok || !uaValid || !countryValid || !liAValidation}
           className="gap-1.5"
         >
           {reconnecting ? (

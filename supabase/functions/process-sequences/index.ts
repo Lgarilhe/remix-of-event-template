@@ -294,10 +294,16 @@ async function handleProcess(supabase: any, force = false) {
 
     // Smart batching: fetch more candidates, then split by action visibility
     // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
-    // Visible actions (message, inmail, connection_request) = keep conservative but maximized
+    // Visible actions (message, inmail, connection_request) = keep conservative but maximized.
+    //
+    // 2026-05-13 (warning LinkedIn #260513-007211) : réduit MAX_VISIBLE_PER_CYCLE
+    // de 5 à 3 pour rester dans le timeout Supabase 60s avec un jitter PAR action
+    // (et plus PAR batch). Cron passe en parallèle à */5 min — débit final
+    // 3 visibles × 12 cycles/h × 8h ouvrées ≈ 288/jour max, dans les limites
+    // Unipile (80-100 invitations + ~100 InMails recommandés).
     const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection', 'wait_connection']);
     const MAX_INVISIBLE_PER_CYCLE = 15;
-    const MAX_VISIBLE_PER_CYCLE = 5;
+    const MAX_VISIBLE_PER_CYCLE = 3;
     const FETCH_LIMIT = 25; // Overfetch to compensate for dedup, skips, quota blocks
 
     const { data: executions, error: fetchError } = await supabase
@@ -339,21 +345,18 @@ async function handleProcess(supabase: any, force = false) {
 
     console.log(`[process] Smart batch: ${invisibleCount} invisible + ${visibleCount} visible actions (from ${dedupedExecutions.length} candidates)`);
 
-    // Random jitter (15-45s) only before visible actions to appear more human
-    if (visibleCount > 0) {
-      const jitterMs = 15000 + Math.floor(Math.random() * 30000); // 15-45s
-      if (jitterMs > 0) {
-        console.log(`[process] Jitter: waiting ${Math.round(jitterMs / 1000)}s before visible actions`);
-        await new Promise(r => setTimeout(r, jitterMs));
-      }
-    }
+    // 2026-05-13 : on a retiré le wait global de 15-45s avant le batch.
+    // Il créait une signature « burst » (N messages quasi-simultanés après une
+    // pause unique), facile à détecter par LinkedIn. À la place, le jitter
+    // 5-15s par action visible (lignes ~740) est maintenant la seule pause,
+    // appliqué juste avant chaque appel LinkedIn → pattern plus irrégulier.
 
     let visibleActionsExecuted = 0;
     for (const exec of batchedExecutions) {
       const enrollment = exec.enrollment;
       const step = exec.step;
       try {
-        
+
         if (!enrollment || enrollment.status !== 'active') {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: 'Enrollment inactive' }).eq('id', exec.id);
           results.skipped++;
