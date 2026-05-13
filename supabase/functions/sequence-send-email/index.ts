@@ -8,6 +8,7 @@
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
+import { interpolatePlaceholders, buildSequenceContext } from "../_shared/template-interpolation.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -29,14 +30,6 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 // compte Unipile via organization_integrations).
 
 // ============ HELPERS ============
-
-function resolveVariables(template: string, vars: Record<string, string | undefined>): string {
-  let result = template;
-  for (const [key, value] of Object.entries(vars)) {
-    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
-  }
-  return result;
-}
 
 function generateTrackingId(): string {
   return crypto.randomUUID().replace(/-/g, '');
@@ -382,33 +375,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Resolve variables in templates
-    const candidateName = (enrollment.profile_name || '') as string;
-    const nameParts = candidateName.split(' ');
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
+    // org_id hoisted — needed both by AI snippet generator (line ~410) and
+    // resolveUnipileCredentials (line ~490). Was previously block-scoped inside
+    // the AI block, causing ReferenceError on the Unipile send path.
+    const orgId = (sequence?.organization_id || enrollment.organization_id || null) as string | null;
 
-    // Try to get calendly link from project
-    let calendlyLink = '';
-    if (enrollment.job_id) {
-      const { data: project } = await supabase.from('sourcing_projects')
-        .select('job_details')
-        .eq('id', enrollment.job_id)
-        .single();
-      if (project?.job_details?.calendly_link) {
-        calendlyLink = project.job_details.calendly_link;
-      }
-    }
-
-    const templateVars: Record<string, string | undefined> = {
-      first_name: firstName,
-      last_name: lastName,
-      company: enrollment.company_name as string || '',
-      job_title: enrollment.job_title as string || enrollment.profile_headline as string || '',
-      city: '',
-      sender_name: senderName,
-      calendly_link: calendlyLink,
-    };
+    // 4. Resolve variables in templates via unified interpolation
+    // (30+ vars FR + EN aliases + custom user variables + pipe filters)
+    const senderUserId = (step.sender_id as string) || (sequence?.created_by as string) || null;
+    const templateCtx = await buildSequenceContext(supabase, {
+      enrollment,
+      senderUserId,
+      organizationName: undefined, // resolved inside via orgId lookup
+    });
 
     // Use pre-personalized message from process-sequences if available (rich AI pipeline)
     // Otherwise fall back to template variable resolution + basic AI snippet
@@ -418,17 +397,16 @@ Deno.serve(async (req) => {
     if (pre_personalized_message) {
       // process-sequences already ran the full AI personalization pipeline
       messageBody = pre_personalized_message;
-      subject = pre_personalized_subject || resolveVariables(step.subject_template || '', templateVars);
+      subject = pre_personalized_subject || interpolatePlaceholders(step.subject_template || '', templateCtx);
       console.log('[sequence-send-email] Using pre-personalized message from process-sequences');
     } else {
-      messageBody = resolveVariables(step.message_template || '', templateVars);
-      subject = resolveVariables(step.subject_template || '', templateVars);
+      messageBody = interpolatePlaceholders(step.message_template || '', templateCtx);
+      subject = interpolatePlaceholders(step.subject_template || '', templateCtx);
     }
 
     // 5. AI Personalization (only if NOT pre-personalized)
     let aiSnippet: string | null = null;
     if (!pre_personalized_message && step.use_ai_personalization) {
-      const orgId = sequence?.organization_id || enrollment.organization_id || null;
       aiSnippet = await generateAiSnippet(supabase as any, enrollment, step, orgId);
 
       if (aiSnippet) {
