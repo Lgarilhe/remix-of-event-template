@@ -131,7 +131,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
 
   return (
-    <div className="space-y-2.5 sm:space-y-4 lg:sticky lg:top-24 min-w-0 overflow-hidden">
+    <div className="space-y-2 sm:space-y-2.5 lg:sticky lg:top-24 min-w-0 overflow-hidden">
       {/* Reconnection alert */}
       {needsReconnection && (
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
@@ -162,9 +162,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
       {/* Account selector — only visible in LinkedIn mode */}
       {searchSource !== 'database' && (
-      <div className="bg-background border border-border p-2.5 sm:p-3 space-y-2">
+      <div className="bg-background border border-border p-2 sm:p-2.5 space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compte</label>
+          <label className="text-3xs font-bold text-muted-foreground uppercase tracking-wider">Compte</label>
           <QuotaDisplay
             searchResultsFetched={quota.quotas.searchResultsFetched}
             profileVisits={quota.quotas.profileVisits}
@@ -298,17 +298,21 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </div>
       )}
 
-      {/* Mission context: show selected job info */}
+      {/* Mission context: poste actif compact (1 ligne) */}
       {activeProject && selectedJob && (
-        <div className="bg-background border border-border p-2.5 sm:p-3 space-y-0.5">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">🎯</span>
-            <span className="text-xs font-bold text-foreground uppercase tracking-wider">Poste actif</span>
+        <div className="bg-background border border-border p-2 sm:p-2.5 flex items-center gap-2 min-w-0">
+          <span className="text-sm shrink-0" aria-hidden="true">🎯</span>
+          <div className="flex flex-col gap-0 min-w-0 flex-1">
+            <span className="text-3xs font-bold text-muted-foreground uppercase tracking-wider leading-tight">
+              Poste actif
+            </span>
+            <p className="text-sm font-medium text-foreground truncate leading-tight">
+              {selectedJob.title}
+              {(selectedJob as any).client?.name && (
+                <span className="text-muted-foreground font-normal"> · {(selectedJob as any).client.name}</span>
+              )}
+            </p>
           </div>
-          <p className="text-sm font-medium text-foreground truncate pl-6">{selectedJob.title}</p>
-          {(selectedJob as any).client?.name && (
-            <p className="text-xs text-muted-foreground truncate pl-6">@ {(selectedJob as any).client.name}</p>
-          )}
         </div>
       )}
 
@@ -423,16 +427,16 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 
         {/* Custom scoring instructions (visible when job selected) */}
         {selectedJob && onScoringInstructionsChange && (
-          <div className="bg-background border border-border p-2.5 sm:p-3">
-            <label className="text-3xs sm:text-xs font-bold text-muted-foreground mb-1 sm:mb-1.5 block uppercase tracking-wider">
-              Consignes scoring IA <span className="font-normal text-muted-foreground/60">(optionnel)</span>
+          <div className="bg-background border border-border p-2 sm:p-2.5">
+            <label className="text-3xs font-bold text-muted-foreground mb-1 block uppercase tracking-wider">
+              Consignes scoring IA <span className="font-normal text-muted-foreground/60 normal-case tracking-normal">(optionnel)</span>
             </label>
             <textarea
               value={scoringInstructions}
               onChange={(e) => onScoringInstructionsChange(e.target.value)}
-              placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer le critère localisation, bonus si exp. scale-up..."
+              placeholder="Ex: Privilégier les profils avec exp. cloud souverain, ignorer la localisation, bonus si exp. scale-up…"
               rows={2}
-              className="w-full px-3 py-2 text-sm border border-border bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:border-border resize-none"
+              className="w-full px-2.5 py-1.5 text-sm border border-border bg-background rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:border-foreground/30 resize-none"
             />
           </div>
         )}
@@ -448,22 +452,29 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         />
       )}
 
-      {/* Keywords preview + edit dialog */}
-      <div className="bg-background border border-border p-2.5 sm:p-4">
-        <label className="text-xs sm:text-sm font-medium text-foreground mb-1.5 sm:mb-2 block uppercase tracking-wide">
-          Mots-clés
-        </label>
+      {/* Keywords preview + edit dialog — compact (label inline + bouton) */}
+      <div className="bg-background border border-border p-2.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+            Mots-clés
+          </label>
+          {filters.keywords && (
+            <span className="text-3xs text-muted-foreground/60 tabular-nums">
+              {filters.keywords.length} car.
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => { setKeywordsDraft(filters.keywords); setKeywordsDialogOpen(true); }}
-          className="w-full min-w-0 text-left flex items-start gap-2 px-3 py-2 border border-input bg-background hover:bg-accent/50 transition-colors min-h-[40px] group"
+          className="w-full min-w-0 text-left flex items-start gap-2 px-2.5 py-1.5 border border-input bg-background hover:bg-accent/50 transition-colors min-h-[34px] group rounded-md"
         >
           {filters.keywords ? (
             <span className="text-sm whitespace-normal break-words leading-snug flex-1 min-w-0">{filters.keywords}</span>
           ) : (
-            <span className="text-sm text-muted-foreground flex-1">Ex: Product Manager, React...</span>
+            <span className="text-sm text-muted-foreground flex-1">Ex: Product Manager, React…</span>
           )}
-          <Pencil className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Pencil className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
         </button>
       </div>
 

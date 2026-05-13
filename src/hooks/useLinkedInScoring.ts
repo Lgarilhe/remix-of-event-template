@@ -834,11 +834,14 @@ export function useLinkedInScoring({
     }
 
     // ── PRÉ-CHECK 2 : taille du batch raisonnable
-    // Au-delà de 30 profils, le batch prend 1-3 minutes (10 profils/call,
+    // Au-delà de 25 profils, le batch prend 1-3 minutes (10 profils/call,
     // 3 calls en parallèle, ~20s/call). On confirme avec l'user via AlertDialog.
-    const SAFE_BATCH_SIZE = 30;
+    // Note : ce path n'envoie RIEN à Unipile/LinkedIn — uniquement à Claude (LLM).
+    // Les données profil sont déjà en mémoire (issues de la recherche LinkedIn
+    // initiale). La limite sert juste à protéger l'user d'un long wait + coût crédits.
+    const SAFE_BATCH_SIZE = 25;
     if (selectedProfiles.size > SAFE_BATCH_SIZE) {
-      const eta = Math.ceil(selectedProfiles.size / 30) * 60; // ~1min par tranche de 30
+      const eta = Math.ceil(selectedProfiles.size / 25) * 60; // ~1min par tranche de 25
       const etaLabel = eta < 60 ? `${eta} secondes` : `${Math.ceil(eta / 60)} minutes`;
       const ok = await confirmAlert({
         title: `Scorer ${selectedProfiles.size} profils en une fois ?`,
