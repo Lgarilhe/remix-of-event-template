@@ -1,8 +1,41 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
-import type { PedigreeRequirements } from '@/types/pedigreePreset';
+import type { PedigreeRequirements, SeniorityLevel } from '@/types/pedigreePreset';
 import type { ClientCompetitor } from '@/types/clientCompetitor';
+
+/**
+ * Mapping min_seniority (SeniorityLevel) → level keys LinkedIn ('1'..'10').
+ * Interprétation "min" : on inclut le niveau cible ET tous les niveaux au-dessus.
+ * Niveaux Unipile : 1=Intern, 2=Junior, 3=Mid, 4=Senior/Staff/Lead/Principal,
+ * 5=Manager, 6=Director, 7=VP, 8=CEO/Founder.
+ *
+ * Utilisé sur Recruiter + Database (la pipeline existante transforme en
+ * Boolean OR keyword injecté dans role).
+ */
+const MIN_SENIORITY_TO_LEVELS: Record<SeniorityLevel, string[]> = {
+  junior:    ['2', '3', '4', '5', '6', '7', '8'],
+  mid:       ['3', '4', '5', '6', '7', '8'],
+  senior:    ['4', '5', '6', '7', '8'],
+  lead:      ['4', '5', '6', '7', '8'],
+  staff:     ['4', '5', '6', '7', '8'],
+  principal: ['4', '5', '6', '7', '8'],
+};
+
+/**
+ * Mapping min_seniority (SeniorityLevel) → enum Sales Navigator natif.
+ * Sales Nav supporte un filtre `seniority: { include: [...] }` avec ces values
+ * (vérifié dans la spec OpenAPI Unipile / unipile-search normaliseSeniority).
+ * Interprétation "min" : on inclut le niveau cible ET tous les niveaux au-dessus.
+ */
+const MIN_SENIORITY_TO_SN_INCLUDE: Record<SeniorityLevel, string[]> = {
+  junior:    ['entry_level', 'senior', 'experienced_manager', 'director', 'vice_president', 'cxo', 'owner/partner'],
+  mid:       ['senior', 'experienced_manager', 'director', 'vice_president', 'cxo', 'owner/partner'],
+  senior:    ['senior', 'experienced_manager', 'director', 'vice_president', 'cxo', 'owner/partner'],
+  lead:      ['senior', 'experienced_manager', 'director', 'vice_president', 'cxo', 'owner/partner'],
+  staff:     ['senior', 'experienced_manager', 'director', 'vice_president', 'cxo', 'owner/partner'],
+  principal: ['senior', 'experienced_manager', 'director', 'vice_president', 'cxo', 'owner/partner'],
+};
 
 interface SchoolDirEntry {
   id: string;
@@ -29,6 +62,25 @@ export interface PedigreeAugmentation {
   schoolIds: Array<{ id: string; name: string; source: 'preset_required' }>;
   /** IDs LinkedIn d'entreprises à injecter dans filters.company */
   companyIds: Array<{ id: string; name: string; source: 'preset_specific' | 'preset_provenance' | 'competitor' }>;
+  /**
+   * Mots-clés d'entreprises à EXCLURE de la recherche (companies_avoid résolu).
+   * À injecter dans filters.company_keywords avec priority='DOESNT_HAVE'.
+   * Câblé uniquement sur Recruiter + Database (Classic/Sales Nav ne supportent
+   * pas company_keywords — fallback scoring-only sur ces licences).
+   */
+  excludeCompanyKeywords: string[];
+  /**
+   * Niveaux de séniorité LinkedIn ('1'..'10') correspondant au min_seniority.
+   * À merger dans filters.seniority (Recruiter + Database injectent via Boolean
+   * OR keyword dans role).
+   */
+  seniorityLevels: string[];
+  /**
+   * Enum Sales Navigator natif pour le filtre `seniority.include` quand
+   * la licence active est Sales Nav. Pré-expandé depuis min_seniority
+   * (ex: 'senior' → ['senior','experienced_manager','director',...]).
+   */
+  salesNavSeniorityInclude: string[];
   /** Noms non-résolus (annuaire pas encore résolu, à curer) */
   unresolvedSchoolNames: string[];
   unresolvedCompanyNames: string[];
@@ -38,6 +90,8 @@ export interface PedigreeAugmentation {
     companies: number;
     fromPreset: number;
     fromCompetitors: number;
+    excludedCompanies: number;
+    seniorityLevels: number;
   };
 }
 
@@ -88,6 +142,10 @@ export function usePedigreeAugmentation(
     if (!pedigreeRequirements && competitors.length === 0) return null;
 
     const norm = (s: string) => s.toLowerCase().trim();
+    const excludeCompanyKeywords: string[] = [];
+    const seniorityLevels: string[] = [];
+    const salesNavSeniorityInclude: string[] = [];
+    const seenExcludeKeyword = new Set<string>();
 
     // Helper : matche un nom contre canonical+aliases du directory
     const findSchool = (name: string): SchoolDirEntry | null => {
@@ -161,6 +219,32 @@ export function usePedigreeAugmentation(
       }
     }
 
+    // ─── Pedigree preset : companies_avoid (catégorie) → exclude keywords ─
+    // On résout chaque catégorie en noms d'entreprises canoniques du directory
+    // et on les injecte comme keywords DOESNT_HAVE côté Unipile. N'agit que sur
+    // Recruiter + Database (company_keywords non supporté Classic/Sales Nav).
+    if (pedigreeRequirements?.companies_avoid?.length) {
+      for (const cat of pedigreeRequirements.companies_avoid) {
+        for (const entry of companyDir) {
+          if (entry.category !== cat) continue;
+          const kw = entry.canonical_name.trim();
+          if (!kw) continue;
+          const key = norm(kw);
+          if (seenExcludeKeyword.has(key)) continue;
+          seenExcludeKeyword.add(key);
+          excludeCompanyKeywords.push(kw);
+        }
+      }
+    }
+
+    // ─── Pedigree preset : min_seniority → seniority levels ──────────────
+    if (pedigreeRequirements?.min_seniority) {
+      const levels = MIN_SENIORITY_TO_LEVELS[pedigreeRequirements.min_seniority];
+      if (levels?.length) seniorityLevels.push(...levels);
+      const snInclude = MIN_SENIORITY_TO_SN_INCLUDE[pedigreeRequirements.min_seniority];
+      if (snInclude?.length) salesNavSeniorityInclude.push(...snInclude);
+    }
+
     // ─── Concurrents (linkedin_company_id résolu via cron) ──────────────
     for (const c of competitors) {
       if (!c.enabled) continue;
@@ -175,13 +259,24 @@ export function usePedigreeAugmentation(
       }
     }
 
-    if (schoolIds.length === 0 && companyIds.length === 0 && unresolvedSchoolNames.length === 0 && unresolvedCompanyNames.length === 0) {
+    if (
+      schoolIds.length === 0
+      && companyIds.length === 0
+      && excludeCompanyKeywords.length === 0
+      && seniorityLevels.length === 0
+      && salesNavSeniorityInclude.length === 0
+      && unresolvedSchoolNames.length === 0
+      && unresolvedCompanyNames.length === 0
+    ) {
       return null;
     }
 
     return {
       schoolIds,
       companyIds,
+      excludeCompanyKeywords,
+      seniorityLevels,
+      salesNavSeniorityInclude,
       unresolvedSchoolNames,
       unresolvedCompanyNames,
       counts: {
@@ -189,6 +284,8 @@ export function usePedigreeAugmentation(
         companies: companyIds.length,
         fromPreset,
         fromCompetitors,
+        excludedCompanies: excludeCompanyKeywords.length,
+        seniorityLevels: seniorityLevels.length,
       },
     };
   }, [enabled, pedigreeRequirements, competitors, schoolDir, companyDir]);

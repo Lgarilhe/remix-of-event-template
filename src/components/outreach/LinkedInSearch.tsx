@@ -287,6 +287,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         schoolIds: pedigreeAug.schoolIds,
         companyIds: competitorCompanyIds,
         restrictCompaniesToAugmented: true,
+        excludeCompanyKeywords: pedigreeAug.excludeCompanyKeywords,
+        seniorityLevels: pedigreeAug.seniorityLevels,
+        salesNavSeniorityInclude: pedigreeAug.salesNavSeniorityInclude,
       };
     }
     // Mode standard : merge tout (preset + concurrents)
@@ -294,6 +297,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       schoolIds: pedigreeAug.schoolIds,
       companyIds: pedigreeAug.companyIds,
       restrictCompaniesToAugmented: false,
+      excludeCompanyKeywords: pedigreeAug.excludeCompanyKeywords,
+      seniorityLevels: pedigreeAug.seniorityLevels,
+      salesNavSeniorityInclude: pedigreeAug.salesNavSeniorityInclude,
     };
   }, [pedigreeAug, restrictMode]);
 
@@ -953,7 +959,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       />
 
       {/* Bandeau pedigree : info des IDs auto-injectés dans la recherche */}
-      {pedigreeAug && (pedigreeAug.counts.schools + pedigreeAug.counts.companies > 0 || (pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0) && (
+      {pedigreeAug && (
+        pedigreeAug.counts.schools
+          + pedigreeAug.counts.companies
+          + pedigreeAug.counts.excludedCompanies
+          + pedigreeAug.counts.seniorityLevels
+          > 0
+        || (pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0
+      ) && (
         <div className="mx-2 sm:mx-0 mb-2 flex flex-wrap items-center gap-2 px-3 py-2 border border-foreground/15 bg-foreground/[0.03] rounded-md text-xs">
           <span className="font-bold uppercase tracking-wider text-3xs">
             {restrictMode ? 'Mode chirurgical' : 'Filtres pedigree'}
@@ -973,7 +986,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               · dont {pedigreeAug.counts.fromCompetitors} concurrent{pedigreeAug.counts.fromCompetitors > 1 ? 's' : ''}
             </span>
           )}
-          <span className="text-muted-foreground">injecté{pedigreeAug.counts.schools + pedigreeAug.counts.companies > 1 ? 's' : ''} dans la recherche Unipile</span>
+          {pedigreeAug.counts.excludedCompanies > 0 && (
+            <span className="text-muted-foreground">
+              · {pedigreeAug.counts.excludedCompanies} exclue{pedigreeAug.counts.excludedCompanies > 1 ? 's' : ''}
+            </span>
+          )}
+          {pedigreeAug.counts.seniorityLevels > 0 && (
+            <span className="text-muted-foreground">
+              · séniorité min
+            </span>
+          )}
+          <span className="text-muted-foreground">injecté{pedigreeAug.counts.schools + pedigreeAug.counts.companies > 1 ? 's' : ''} dans la recherche LinkedIn</span>
           {(pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length) > 0 && (
             <span className="text-amber-700 dark:text-amber-400 ml-auto">
               {pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length} non encore résolu{pedigreeAug.unresolvedSchoolNames.length + pedigreeAug.unresolvedCompanyNames.length > 1 ? 's' : ''} (cron mensuel)

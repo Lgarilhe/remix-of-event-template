@@ -128,6 +128,20 @@ export interface SearchAugmentation {
   /** Mode "restrict" : si true, les companyIds REMPLACENT filters.company
    *  (mode chirurgical / poach — recherche restreinte aux concurrents). */
   restrictCompaniesToAugmented?: boolean;
+  /** Mots-clés à exclure côté company_keywords (priority DOESNT_HAVE).
+   *  - Recruiter : injecté dans `filters.company_keywords` avec DOESNT_HAVE
+   *  - Sales Nav : routé vers `baseParams.company.exclude` (par nom texte,
+   *    supporté par l'API native Sales Nav)
+   *  - Classic : pas d'exclusion supportée par l'API → drop (scoring-only) */
+  excludeCompanyKeywords?: string[];
+  /** Niveaux de séniorité LinkedIn ('1'..'10') à merger dans filters.seniority.
+   *  Recruiter + Database les transforment en Boolean OR keyword injecté dans
+   *  role. Sur Sales Nav, on utilise plutôt salesNavSeniorityInclude. */
+  seniorityLevels?: string[];
+  /** Enum natif Sales Navigator pour `seniority.include` (ex: senior,
+   *  experienced_manager, director, vice_president, cxo). Utilisé uniquement
+   *  quand filters.api === 'sales_navigator'. */
+  salesNavSeniorityInclude?: string[];
 }
 
 export function buildSearchParams(
@@ -136,9 +150,16 @@ export function buildSearchParams(
   augmentation?: SearchAugmentation,
 ): Record<string, unknown> {
   // Clone défensif : l'augmentation pedigree mute filters.school / filters.company
-  // ci-dessous, on évite de modifier l'objet du caller.
+  // / filters.company_keywords / filters.seniority ci-dessous, on évite de
+  // modifier l'objet du caller.
   const filters: LinkedInFiltersState = augmentation
-    ? { ...filtersInput, school: [...filtersInput.school], company: [...filtersInput.company] }
+    ? {
+      ...filtersInput,
+      school: [...filtersInput.school],
+      company: [...filtersInput.company],
+      company_keywords: [...filtersInput.company_keywords],
+      seniority: [...filtersInput.seniority],
+    }
     : filtersInput;
 
   const baseParams: Record<string, unknown> = {
@@ -271,6 +292,40 @@ export function buildSearchParams(
     }
   }
 
+  // ─── Augmentation : companies_avoid → exclude natif sur Sales Navigator ─
+  // L'API Sales Nav supporte `company.exclude[]` avec noms texte (pattern .+).
+  // Pour Recruiter + Database, l'exclusion passe par filters.company_keywords
+  // DOESNT_HAVE (bloc plus bas). Classic n'a pas de support natif → scoring-only.
+  if (filters.api === 'sales_navigator' && augmentation?.excludeCompanyKeywords?.length) {
+    const currentCompany = (baseParams.company as { include?: string[]; exclude?: string[] } | undefined) || {};
+    baseParams.company = {
+      ...(currentCompany.include?.length ? { include: currentCompany.include } : {}),
+      exclude: [
+        ...(currentCompany.exclude || []),
+        ...augmentation.excludeCompanyKeywords,
+      ],
+    };
+  }
+
+  // ─── Augmentation : companies_avoid → company_keywords DOESNT_HAVE ─────
+  // Le preset companies_avoid résout des catégories en noms d'entreprises
+  // canoniques. On les injecte ici comme keywords à exclure. Le bloc
+  // company_keywords ci-dessous gate déjà sur Recruiter + Database (les seules
+  // licences qui supportent company_keywords avec priority).
+  if (augmentation?.excludeCompanyKeywords?.length) {
+    const existing = new Set(filters.company_keywords.map(c => `${c.keywords.toLowerCase()}|${c.priority}`));
+    for (const kw of augmentation.excludeCompanyKeywords) {
+      const sig = `${kw.toLowerCase()}|DOESNT_HAVE`;
+      if (existing.has(sig)) continue;
+      existing.add(sig);
+      filters.company_keywords.push({
+        keywords: kw,
+        priority: 'DOESNT_HAVE',
+        scope: 'CURRENT_OR_PAST',
+      });
+    }
+  }
+
   // Company keywords (Recruiter + Database)
   if ((filters.api === 'recruiter' || filters.api === 'database') && filters.company_keywords.length) {
     baseParams.company_keywords = filters.company_keywords.map(c => ({
@@ -355,6 +410,20 @@ export function buildSearchParams(
     scope: r.scope as 'CURRENT' | 'PAST' | 'CURRENT_OR_PAST',
   }));
 
+  // ─── Augmentation : min_seniority → merge dans filters.seniority ───────
+  // Recruiter/Database vont transformer en Boolean OR keyword dans role
+  // (block ci-dessous). Sales Nav / Classic : laissé à l'edge function
+  // unipile-search qui a sa propre logique seniority par licence.
+  if (augmentation?.seniorityLevels?.length) {
+    const existing = new Set(filters.seniority);
+    for (const lvl of augmentation.seniorityLevels) {
+      if (!existing.has(lvl)) {
+        filters.seniority.push(lvl);
+        existing.add(lvl);
+      }
+    }
+  }
+
   if ((filters.api === 'recruiter' || filters.api === 'database') && filters.seniority.length) {
     const titlesByLevel: Record<string, string[]> = {
       '1': ['Intern', 'Internship', 'Stagiaire', 'Apprentice', 'Trainee', 'Graduate'],
@@ -387,6 +456,15 @@ export function buildSearchParams(
 
   if (allRoles.length) {
     baseParams.role = allRoles;
+  }
+
+  // ─── Augmentation : min_seniority → seniority natif sur Sales Navigator ─
+  // Sales Nav supporte `seniority: { include: [enum] }`. L'edge function
+  // unipile-search prend un array de strings, normalise par licence et wrappe
+  // automatiquement en {include} pour SN/Recruiter (voir normaliseSeniority +
+  // bloc seniority de l'edge function). On envoie donc l'enum SN brut.
+  if (filters.api === 'sales_navigator' && augmentation?.salesNavSeniorityInclude?.length) {
+    baseParams.seniority = augmentation.salesNavSeniorityInclude;
   }
 
   if (filters.network_distance.length) baseParams.network_distance = filters.network_distance;
