@@ -867,24 +867,19 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               />
             )}
 
-            {/* Transition CTA: Go candidates ready for outreach */}
+            {/* Transition CTA: Go candidates ready for outreach.
+                Compact single row : icon + count inline + Séquence button. */}
             {(() => {
               const goProfiles = Object.values(jobScores).filter(s => s.recommendation === 'go');
               const goCount = goProfiles.length;
               if (goCount > 0 && activeProject && !scoringInProgress) {
                 return (
-                  <div className="border border-success/30 bg-success/5 p-4 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-4 h-4 text-success" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground">
-                        {goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} Go
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Inscrivez-les dans une séquence d'outreach pour les contacter automatiquement.
-                      </p>
-                    </div>
+                  <div className="border border-success/30 bg-success/5 rounded-md px-3 py-1.5 flex items-center gap-2 mb-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                    <p className="text-xs text-foreground flex-1 min-w-0 truncate">
+                      <span className="font-semibold">{goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} Go</span>
+                      <span className="text-muted-foreground"> — prêts pour une séquence d'outreach.</span>
+                    </p>
                     <SequenceEnrollButton
                       // 🐛 BUG FIX (Opus audit) : jobScores est indexé par `profile.id`
                       // (voir useLinkedInScoring.ts:478 `setJobScores(prev => ({ ...prev, [profile.id]: mapped }))`),
@@ -902,18 +897,18 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               return null;
             })()}
 
-            {/* Contextual hint: after first search */}
+            {/* Contextual hint: after first search (compact 1-line) */}
             <AnimatePresence>
               {hasSearched && !hintSearchDismissed && !hasScoredProfiles && displayResults.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
+                  className="border border-accent/30 bg-accent/5 rounded-md px-3 py-1 flex items-center gap-2 mb-2"
                 >
-                  <span className="text-sm shrink-0">🎯</span>
-                  <p className="text-xs text-foreground/80 leading-relaxed flex-1">
-                    Sélectionnez les profils intéressants et cliquez <strong className="text-foreground">Score</strong> pour que l'IA les évalue selon votre brief.
+                  <span className="text-xs shrink-0">🎯</span>
+                  <p className="text-[11.5px] text-foreground/80 flex-1 min-w-0 truncate">
+                    Sélectionnez les profils intéressants puis <strong className="text-foreground">Score</strong> pour les évaluer.
                   </p>
                   <button
                     onClick={() => dismissHint('hint:after-first-search', setHintSearchDismissed)}
@@ -923,18 +918,18 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               )}
             </AnimatePresence>
 
-            {/* Contextual hint: after first scoring batch */}
+            {/* Contextual hint: after first scoring batch (compact 1-line) */}
             <AnimatePresence>
               {hasScoredProfiles && !hintScoringDismissed && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="border border-accent/30 bg-accent/5 p-3 flex items-start gap-2.5"
+                  className="border border-accent/30 bg-accent/5 rounded-md px-3 py-1 flex items-center gap-2 mb-2"
                 >
-                  <span className="text-sm shrink-0">🟢</span>
-                  <p className="text-xs text-foreground/80 leading-relaxed flex-1">
-                    Les profils sont scorés ! Les <strong className="text-accent">Go</strong> sont les meilleurs matchs. Envoyez-leur un message ou ajoutez-les au pipeline.
+                  <span className="text-xs shrink-0">🟢</span>
+                  <p className="text-[11.5px] text-foreground/80 flex-1 min-w-0 truncate">
+                    Profils scorés. Les <strong className="text-accent">Go</strong> sont les meilleurs matchs — messagez-les ou ajoutez au pipeline.
                   </p>
                   <button
                     onClick={() => dismissHint('hint:after-first-scoring', setHintScoringDismissed)}
