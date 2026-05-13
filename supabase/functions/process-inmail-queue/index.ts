@@ -245,7 +245,11 @@ Deno.serve(async (req: Request) => {
       const user = await validateUser();
       const now = new Date();
       
-      // Get items that are scheduled and ready to send — scoped to the authenticated user
+      // Get items that are scheduled and ready to send — scoped to the authenticated user.
+      // Conformité LinkedIn (warning #260513-007211) : on limite à 3 InMails/cycle
+      // pour rester cohérent avec MAX_VISIBLE_PER_CYCLE de process-sequences et
+      // éviter les "bursts" détectables (50 InMails en 5min = pattern bot).
+      const MAX_INMAILS_PER_CYCLE = 3;
       const { data: pendingItems, error: fetchError } = await supabase
         .from("inmail_queue")
         .select("*")
@@ -253,7 +257,7 @@ Deno.serve(async (req: Request) => {
         .in("status", ["scheduled", "pending"])
         .lte("scheduled_at", now.toISOString())
         .order("scheduled_at", { ascending: true })
-        .limit(5); // Process max 5 at a time
+        .limit(MAX_INMAILS_PER_CYCLE);
 
       if (fetchError) throw fetchError;
 
@@ -275,9 +279,88 @@ Deno.serve(async (req: Request) => {
             .from("inmail_queue")
             .update({ scheduled_at: nextScheduled.toISOString() })
             .eq("id", item.id);
-          
+
           results.push({ id: item.id, success: false, error: "Outside business hours, rescheduled" });
           continue;
+        }
+
+        // Conformité LinkedIn (warning #260513-007211) : vérifier le statut
+        // du compte LinkedIn AVANT d'envoyer. Si le compte est CREDENTIALS /
+        // ERROR / STOPPED, on ne peut pas envoyer — on reschedule à +1h plutôt
+        // que de tenter et accumuler des erreurs côté Unipile (pattern bot).
+        try {
+          const { data: acctRow } = await supabase
+            .from('member_linkedin_accounts')
+            .select('account_status')
+            .eq('linkedin_account_id', item.account_id)
+            .maybeSingle();
+          const status = acctRow?.account_status;
+          if (status && status !== 'OK') {
+            console.warn(`[process-inmail-queue] account ${item.account_id} status=${status} — rescheduling +1h`);
+            await supabase
+              .from('inmail_queue')
+              .update({
+                status: 'scheduled',
+                scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                error_message: `Compte LinkedIn non disponible (statut: ${status})`,
+              })
+              .eq('id', item.id);
+            results.push({ id: item.id, success: false, error: `account status: ${status}` });
+            continue;
+          }
+        } catch (statusErr) {
+          // Si on ne peut pas lire le statut, on log mais on continue
+          // (fallback : Unipile rejettera de toute façon si le compte est down)
+          console.warn(`[process-inmail-queue] could not read account_status for ${item.account_id}:`, statusErr);
+        }
+
+        // Conformité LinkedIn : pour les InMails (degree 2+) on vérifie le
+        // solde Recruiter/Premium AVANT d'envoyer. Si solde = 0 ou check fail,
+        // on reschedule à +4h (fail-CLOSED) — éviter d'envoyer des InMails en
+        // aveugle qui retourneront 400 et créent un pattern d'erreurs détectable.
+        const isFirstDegreeMsg = item.network_distance === 1;
+        if (!isFirstDegreeMsg) {
+          try {
+            const balRes = await fetchWithTimeout(
+              `https://${unipileDsn}/api/v1/linkedin/inmail_balance?account_id=${encodeURIComponent(item.account_id)}`,
+              { headers: { "X-API-KEY": unipileApiKey! } }
+            );
+            if (!balRes.ok) {
+              throw new Error(`balance check HTTP ${balRes.status}`);
+            }
+            const bal = await balRes.json();
+            const credits =
+              (typeof bal.recruiter === "number" ? bal.recruiter : 0) +
+              (typeof bal.premium === "number" ? bal.premium : 0) +
+              (typeof bal.sales_navigator === "number" ? bal.sales_navigator : 0);
+            if (credits <= 0) {
+              console.warn(`[process-inmail-queue] InMail balance = 0 for account ${item.account_id} — pausing item +4h`);
+              await supabase
+                .from("inmail_queue")
+                .update({
+                  status: "scheduled",
+                  scheduled_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+                  error_message: "Crédits InMail épuisés (re-essai dans 4h)",
+                })
+                .eq("id", item.id);
+              results.push({ id: item.id, success: false, error: "InMail balance = 0" });
+              continue;
+            }
+          } catch (balErr) {
+            // fail-CLOSED : si le check fail, on reschedule à +30min plutôt
+            // que d'envoyer en aveugle (pourrait être un compte déconnecté)
+            console.error(`[process-inmail-queue] InMail balance check failed (fail-closed):`, balErr);
+            await supabase
+              .from("inmail_queue")
+              .update({
+                status: "scheduled",
+                scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+                error_message: balErr instanceof Error ? balErr.message : "balance check failed",
+              })
+              .eq("id", item.id);
+            results.push({ id: item.id, success: false, error: "balance check failed" });
+            continue;
+          }
         }
 
         // Mark as sending
@@ -289,7 +372,7 @@ Deno.serve(async (req: Request) => {
         try {
           // Determine message type based on network distance
           // 1st degree = direct message, 2nd/3rd degree = InMail
-          const isFirstDegree = item.network_distance === 1;
+          const isFirstDegree = isFirstDegreeMsg;
           
           // Validate profile ID format
           // Unipile expects provider_id in URN format for Recruiter: AE... or ACo... etc.
@@ -367,8 +450,10 @@ Deno.serve(async (req: Request) => {
 
           results.push({ id: item.id, success: true });
 
-          // Add human-like delay between sends (2-5 seconds)
-          const microDelay = Math.floor(Math.random() * 3000) + 2000;
+          // Conformité LinkedIn : jitter 5-15s entre 2 envois dans le même
+          // cycle (aligné sur process-sequences). Évite un pattern régulier
+          // détectable (2s = trop court, ressemble à un bot).
+          const microDelay = 5000 + Math.floor(Math.random() * 10000);
           await new Promise(resolve => setTimeout(resolve, microDelay));
 
         } catch (sendError) {

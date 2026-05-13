@@ -159,8 +159,15 @@ Deno.serve(async (req) => {
     }
 
     const payload: WebhookPayload = await req.json();
-    console.log('[unipile-webhook] RAW PAYLOAD:', JSON.stringify(payload).slice(0, 1000));
-    console.log('[unipile-webhook] Received event:', payload.event, 'for account:', payload.account_id);
+    // Conformité LinkedIn (warning #260513-007211) : ne JAMAIS logger le payload
+    // brut — il peut contenir du contenu de messages, PII destinataires, et
+    // potentiellement des identifiants de session. On loggue uniquement les
+    // métadonnées structurelles de l'event.
+    console.log('[unipile-webhook] event:', payload.event,
+      'account:', payload.account_id,
+      'chat:', (payload as any).chat_id ?? null,
+      'msg:', (payload as any).message_id ?? null,
+      'profile:', (payload as any).user_provider_id ?? null);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
@@ -313,8 +320,16 @@ Deno.serve(async (req) => {
       case 'account_disconnected':
       case 'account_error': {
         const reason = payload.event === 'account_disconnected' ? 'disconnected' : 'error';
-        const details = JSON.stringify(payload.data || {}).slice(0, 500);
-        console.warn(`[unipile-webhook] Account ${reason}:`, payload.account_id, details);
+        // Conformité LinkedIn : extraire UNIQUEMENT le message d'erreur lisible
+        // (pas tout le payload.data qui peut contenir des cookies/tokens).
+        const rawData = (payload.data as Record<string, unknown> | undefined) || {};
+        const reasonText = (
+          (typeof rawData.reason === 'string' && rawData.reason)
+          || (typeof rawData.message === 'string' && rawData.message)
+          || (typeof rawData.error === 'string' && rawData.error)
+          || reason
+        ).toString().slice(0, 500);
+        console.warn(`[unipile-webhook] Account ${reason}:`, payload.account_id, 'reason:', reasonText);
 
         // Update status in member_linkedin_accounts
         try {
@@ -323,7 +338,7 @@ Deno.serve(async (req) => {
             .update({
               account_status: reason === 'disconnected' ? 'CREDENTIALS' : 'ERROR',
               last_checked_at: new Date().toISOString(),
-              failure_reason: details,
+              failure_reason: reasonText,
             })
             .eq('linkedin_account_id', payload.account_id);
         } catch (e) {
@@ -345,7 +360,7 @@ Deno.serve(async (req) => {
               title: 'Compte LinkedIn déconnecté',
               message: `Votre compte LinkedIn "${u.linkedin_account_name || 'LinkedIn'}" a été déconnecté. Reconnectez-le dans Paramètres > Mon compte.`,
               read: false,
-              metadata: { account_id: payload.account_id, reason, details },
+              metadata: { account_id: payload.account_id, reason, reason_text: reasonText },
             }));
 
             await supabase.from('notifications').insert(notifications).catch((e: unknown) =>
@@ -391,7 +406,8 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   const publicIdentifier = payload.user_public_identifier || '';
   
   if (!profileId) {
-    console.log('[unipile-webhook] new_relation: No profile ID in payload', JSON.stringify(payload).slice(0, 500));
+    // Conformité LinkedIn : ne pas logger le payload brut (PII possibles)
+    console.log('[unipile-webhook] new_relation: No profile ID (event:', payload.event, 'account:', payload.account_id, ')');
     return;
   }
 

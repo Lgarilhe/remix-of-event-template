@@ -539,15 +539,64 @@ Deno.serve(async (req) => {
       }
 
       case 'connect_credentials': {
-        // Connect LinkedIn account with username/password
-        const { username, password } = params;
-        
+        // Connect LinkedIn account with username/password.
+        //
+        // Conformité LinkedIn (warning #260513-007211) : on accepte aussi
+        // `premium_token` (li_a), `country` (ISO 3166-1 alpha-2) et
+        // `user_agent` pour les mêmes raisons que `connect_cookie` :
+        //   - premium_token : prolonge la session Recruiter existante au lieu
+        //     d'en créer une 2e (qui serait flaggée "license sharing")
+        //   - country : Unipile auto-assigne un proxy résidentiel de ce pays
+        //   - user_agent : doit être le vrai UA du navigateur user
+        const { username, password, premium_token, user_agent, country } = params;
+
         if (!username || !password) {
           return new Response(
             JSON.stringify({ success: false, error: 'Email et mot de passe requis' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+
+        // Strict UA validation (same as connect_cookie)
+        const uaTrimmed = typeof user_agent === 'string' ? user_agent.trim() : '';
+        const uaLooksValid =
+          uaTrimmed.length >= 20 &&
+          !uaTrimmed.includes('@') &&
+          (uaTrimmed.toLowerCase().startsWith('mozilla/') ||
+            uaTrimmed.toLowerCase().startsWith('opera/') ||
+            uaTrimmed.toLowerCase().includes('applewebkit') ||
+            uaTrimmed.toLowerCase().includes('chrome/'));
+        if (uaTrimmed && !uaLooksValid) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Le User-Agent fourni n'est pas valide. Utilisez le bouton « Utiliser mon navigateur actuel »." }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Validate country
+        const countryTrimmed = typeof country === 'string' ? country.trim().toUpperCase() : '';
+        if (countryTrimmed && countryTrimmed.length !== 2) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Code pays invalide (format ISO 3166-1 alpha-2 attendu, ex: FR, US, DE)' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const credsPayload: Record<string, unknown> = {
+          provider: 'LINKEDIN',
+          username,
+          password,
+        };
+        if (uaTrimmed) credsPayload.user_agent = uaTrimmed;
+        if (typeof premium_token === 'string' && premium_token.trim().length > 0) {
+          credsPayload.premium_token = premium_token.trim();
+        }
+        if (countryTrimmed) credsPayload.country = countryTrimmed;
+
+        console.log('[connect_credentials] payload keys:', Object.keys(credsPayload),
+          'premium_token:', credsPayload.premium_token ? 'YES' : 'NO',
+          'country:', countryTrimmed || 'none',
+          'ua:', uaTrimmed ? 'YES' : 'NO');
 
         const response = await fetchWithTimeout(`${baseUrl}/accounts`, {
           method: 'POST',
@@ -556,11 +605,7 @@ Deno.serve(async (req) => {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          body: JSON.stringify({
-            provider: 'LINKEDIN',
-            username,
-            password,
-          }),
+          body: JSON.stringify(credsPayload),
         });
 
         const data = await response.json();
