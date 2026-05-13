@@ -333,9 +333,15 @@ Deno.serve(async (req) => {
 
         // WhatsApp uses QR code auth — disable credential-based options
         const isWhatsApp = resolvedProviders.includes('WHATSAPP');
-        const defaultDisabled = ['proxy', 'autoproxy', 'sync_limit', 'language'];
+        // 2026-05-13 : on N'inclut PLUS 'proxy' et 'autoproxy' dans disabled_options
+        // pour le hosted flow LinkedIn — l'utilisateur doit pouvoir activer un
+        // proxy résidentiel géolocalisé (auto-proxy Unipile). Sinon LinkedIn voit
+        // les actions sortir depuis IPs Supabase Edge ≠ IP du navigateur user, ce
+        // qui déclenche le flag « License Sharing » (warning #260513-007211).
+        // Pour WhatsApp on garde la config simple (QR code only).
+        const defaultDisabled = ['sync_limit', 'language'];
         const disabledOptions = isWhatsApp
-          ? [...defaultDisabled, 'credentials_auth', 'cookie_auth']
+          ? [...defaultDisabled, 'proxy', 'autoproxy', 'credentials_auth', 'cookie_auth']
           : defaultDisabled;
 
         // 🐛 BUG FIX (doc Unipile) : l'ancien code mettait `name = org_name` ce qui
