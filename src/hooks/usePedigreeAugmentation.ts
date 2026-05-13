@@ -53,6 +53,7 @@ interface CompanyDirEntry {
   aliases: string[] | null;
   linkedin_company_id: string | null;
   category: string | null;
+  funding_stage: string | null;
   tier: number | null;
   resolution_status: string;
 }
@@ -61,7 +62,7 @@ export interface PedigreeAugmentation {
   /** IDs LinkedIn d'écoles à injecter dans filters.school */
   schoolIds: Array<{ id: string; name: string; source: 'preset_required' }>;
   /** IDs LinkedIn d'entreprises à injecter dans filters.company */
-  companyIds: Array<{ id: string; name: string; source: 'preset_specific' | 'preset_provenance' | 'competitor' }>;
+  companyIds: Array<{ id: string; name: string; source: 'preset_specific' | 'preset_provenance' | 'preset_funding_stage' | 'competitor' }>;
   /**
    * Mots-clés d'entreprises à EXCLURE de la recherche (companies_avoid résolu).
    * À injecter dans filters.company_keywords avec priority='DOESNT_HAVE'.
@@ -126,7 +127,7 @@ export function usePedigreeAugmentation(
           .select('id, canonical_name, aliases, linkedin_school_id, category, tier, resolution_status'),
         supabase
           .from('pedigree_company_directory' as never)
-          .select('id, canonical_name, aliases, linkedin_company_id, category, tier, resolution_status'),
+          .select('id, canonical_name, aliases, linkedin_company_id, category, funding_stage, tier, resolution_status'),
       ]);
       if (cancelled) return;
       const sData = (schoolsRes as unknown as { data: SchoolDirEntry[] | null }).data;
@@ -216,6 +217,24 @@ export function usePedigreeAugmentation(
           companyIds.push({ id: entry.linkedin_company_id, name: entry.canonical_name, source: 'preset_provenance' });
           fromPreset++;
         }
+      }
+    }
+
+    // ─── Pedigree preset : funding_stages_required (stade financement) ───
+    // Ex: ['series_b', 'series_c'] → toutes les boîtes dont funding_stage ∈ liste.
+    // L'annuaire est rafraîchi mensuellement par refresh-pedigree-by-funding-stage
+    // (cron Apollo). Couvre à la fois les entries manuelles (Doctolib='public',
+    // Stripe='series_i') et auto-ingérées (source='cron_apollo').
+    if (pedigreeRequirements?.funding_stages_required?.length) {
+      const stagesSet = new Set(pedigreeRequirements.funding_stages_required as string[]);
+      for (const entry of companyDir) {
+        if (!entry.funding_stage) continue;
+        if (!stagesSet.has(entry.funding_stage)) continue;
+        if (!entry.linkedin_company_id) continue;
+        if (seenCompany.has(entry.linkedin_company_id)) continue;
+        seenCompany.add(entry.linkedin_company_id);
+        companyIds.push({ id: entry.linkedin_company_id, name: entry.canonical_name, source: 'preset_funding_stage' });
+        fromPreset++;
       }
     }
 

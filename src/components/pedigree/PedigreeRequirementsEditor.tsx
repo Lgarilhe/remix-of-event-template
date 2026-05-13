@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, GraduationCap, Shield } from 'lucide-react';
+import { Briefcase, GraduationCap, Shield, TrendingUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,7 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   COMPANY_PROVENANCE_LABELS, COMPANY_AVOID_LABELS, DIPLOMA_ORIGIN_LABELS, SENIORITY_LABELS,
-  type CompanyProvenance, type CompanyAvoidCategory, type PedigreeRequirements,
+  FUNDING_STAGE_LABELS,
+  type CompanyProvenance, type CompanyAvoidCategory, type FundingStage, type PedigreeRequirements,
 } from '@/types/pedigreePreset';
 import { cn } from '@/lib/utils';
 
@@ -94,6 +95,22 @@ export const PedigreeRequirementsEditor: React.FC<Props> = ({ value, onChange })
         </div>
       </div>
 
+      {/* Section : Stade de financement */}
+      <SectionHeader icon={TrendingUp} title="Stade de financement" />
+      <div className="space-y-3 pl-1">
+        <div>
+          <Label>Stades requis (au moins une expérience dans une boîte au stade)</Label>
+          <MultiSelectPills
+            options={Object.entries(FUNDING_STAGE_LABELS).map(([k, v]) => ({ value: k, label: v.label, description: v.description }))}
+            value={value.funding_stages_required || []}
+            onChange={(v) => update({ funding_stages_required: v as FundingStage[] })}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Brackets par montant de la dernière levée. Annuaire mis à jour mensuellement.
+          </p>
+        </div>
+      </div>
+
       {/* Section : Séniorité & strict */}
       <SectionHeader icon={Shield} title="Séniorité & mode strict" />
       <div className="space-y-3 pl-1">
@@ -158,6 +175,7 @@ export function cleanRequirements(req: PedigreeRequirements): PedigreeRequiremen
     ...(req.companies_required_provenance?.length ? { companies_required_provenance: req.companies_required_provenance } : {}),
     ...(req.companies_specific_required?.length ? { companies_specific_required: req.companies_specific_required } : {}),
     ...(req.companies_avoid?.length ? { companies_avoid: req.companies_avoid } : {}),
+    ...(req.funding_stages_required?.length ? { funding_stages_required: req.funding_stages_required } : {}),
     ...(req.min_seniority ? { min_seniority: req.min_seniority } : {}),
     ...(req.strict_mode ? { strict_mode: true } : {}),
     ...(req.custom_instructions?.trim() ? { custom_instructions: req.custom_instructions.trim().slice(0, 400) } : {}),

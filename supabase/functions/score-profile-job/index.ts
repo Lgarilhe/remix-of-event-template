@@ -173,6 +173,7 @@ interface JobData {
     companies_required_provenance?: string[];
     companies_specific_required?: string[];
     companies_avoid?: string[];
+    funding_stages_required?: Array<'seed' | 'series_a' | 'series_b' | 'series_c' | 'series_d_plus'>;
     min_seniority?: string;
     strict_mode?: boolean;
     custom_instructions?: string;
@@ -1887,6 +1888,16 @@ function buildJobContext(job: JobData, customScoringInstructions?: string): stri
         small_consulting: 'Petits cabinets de conseil non-spécialisés — signal négatif modéré',
       };
       lines.push(`\n• ⛔ Provenance à éviter : ${pr.companies_avoid.map(c => avoidMap[c] || c).join(' · ')}.`);
+    }
+    if (pr.funding_stages_required?.length) {
+      const stageMap: Record<string, string> = {
+        seed: 'Seed (< 5M $)',
+        series_a: 'Series A (5M – 25M $)',
+        series_b: 'Series B (25M – 75M $)',
+        series_c: 'Series C (75M – 200M $)',
+        series_d_plus: 'Series D+ (200M $+, pré-IPO)',
+      };
+      lines.push(`\n• Stade(s) de financement requis (≥1 expérience significative dans une boîte à ce stade au moment de l'expérience) : ${pr.funding_stages_required.map(s => stageMap[s] || s).join(' OU ')}.`);
     }
     if (pr.min_seniority) {
       lines.push(`\n• Séniorité minimale exigée : ${pr.min_seniority}.`);

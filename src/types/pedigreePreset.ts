@@ -28,6 +28,19 @@ export type DiplomaOrigin = 'france' | 'eu' | 'any';
 export type SeniorityLevel = 'junior' | 'mid' | 'senior' | 'lead' | 'staff' | 'principal';
 
 /**
+ * Stade de financement (montant proxy via Apollo).
+ * Source : annuaire global pedigree_company_directory mis à jour mensuellement
+ * par l'edge function refresh-pedigree-by-funding-stage. Catégorisation par
+ * montant de la dernière levée (cf brackets dans l'edge function).
+ */
+export type FundingStage =
+  | 'seed'           // 0-5M
+  | 'series_a'       // 5M-25M
+  | 'series_b'       // 25M-75M
+  | 'series_c'       // 75M-200M
+  | 'series_d_plus'; // 200M+
+
+/**
  * Structure du preset stockée en DB (jsonb). Tous les champs sont optionnels —
  * un preset peut ne configurer que certains critères.
  */
@@ -66,6 +79,15 @@ export interface PedigreeRequirements {
    * Catégories d'entreprises à éviter (signal négatif fort dans le scoring).
    */
   companies_avoid?: CompanyAvoidCategory[];
+
+  /**
+   * Stade(s) de financement requis pour les entreprises de l'expérience du
+   * candidat. Au moins une expérience significative dans une boîte à un de ces
+   * stades. Résolu via l'annuaire (mis à jour mensuellement via Apollo).
+   * Ex: ['series_b', 'series_c', 'series_d_plus'] = "candidat passé par une
+   * scale-up Series B+".
+   */
+  funding_stages_required?: FundingStage[];
 
   /**
    * Séniorité minimale requise (en plus de l'XP en années).
@@ -133,4 +155,12 @@ export const SENIORITY_LABELS: Record<SeniorityLevel, string> = {
   lead: 'Lead',
   staff: 'Staff',
   principal: 'Principal',
+};
+
+export const FUNDING_STAGE_LABELS: Record<FundingStage, { label: string; description: string }> = {
+  seed:          { label: 'Seed',       description: 'Levée < 5M $ (early-stage, équipe restreinte)' },
+  series_a:      { label: 'Series A',   description: '5M – 25M $ (product-market fit, scaling team)' },
+  series_b:      { label: 'Series B',   description: '25M – 75M $ (scale-up confirmée)' },
+  series_c:      { label: 'Series C',   description: '75M – 200M $ (expansion internationale)' },
+  series_d_plus: { label: 'Series D+',  description: '200M $+ (pré-IPO, late-stage)' },
 };
