@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil,
-  UserCircle, CreditCard, Sparkles, UserCog, MessageSquare, Bookmark, Briefcase, Store, Wand2,
+  Building2, Users, Plug, Check, Loader2, Pencil,
+  UserCircle, CreditCard, Sparkles, MessageSquare, Bookmark, Briefcase, Store, Wand2,
+  UserPlus,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,20 +37,6 @@ import { AiContextSettings } from '@/components/settings/AiContextSettings';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 
-
-const roleIcons = {
-  owner: Crown,
-  admin: Shield,
-  member: User,
-  collaborator: UserCog,
-};
-
-const roleLabels = {
-  owner: 'Propriétaire',
-  admin: 'Admin',
-  member: 'Membre',
-  collaborator: 'Collaborateur',
-};
 
 const Settings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -393,92 +380,41 @@ const Settings = () => {
             )}
 
             {activeTab === 'team' && (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-                      <Users className="w-4 h-4" />
-                      Équipe
-                      <Badge variant="secondary" className="ml-auto text-xs">{members.length} membre{members.length > 1 ? 's' : ''}</Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoading ? (
-                      <div className="flex justify-center py-8">
-                        <BrutalLoader compact />
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {members.map((member) => {
-                          const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] || User;
-                          return (
-                            <div key={member.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center">
-                                  <RoleIcon className="w-4 h-4 text-muted-foreground" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium text-foreground">{getDisplayName(member.user_id)}</p>
-                                  <p className="text-xs text-muted-foreground">{roleLabels[member.role as keyof typeof roleLabels]}</p>
-                                </div>
-                              </div>
+              <div className="space-y-6">
+                <TeamManagement
+                  members={members}
+                  getDisplayName={getDisplayName}
+                  isAdmin={isAdmin}
+                  isOwner={isOwner}
+                  isLoading={isLoading}
+                  onUpdateRole={updateRole}
+                  onRemove={removeMember}
+                />
 
-                              {isOwner && member.role !== 'owner' && (
-                                <div className="flex items-center gap-2">
-                                  <Select
-                                    value={member.role}
-                                    onValueChange={(value) => updateRole({ memberId: member.id, role: value })}
-                                  >
-                                    <SelectTrigger className="w-28 h-8 text-xs">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="admin">Admin</SelectItem>
-                                      <SelectItem value="member">Membre</SelectItem>
-                                      <SelectItem value="collaborator">Collaborateur</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-destructive hover:text-destructive"
-                                    onClick={() => removeMember(member.id)}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <PendingInvitations
-                      invitations={pendingInvitations}
-                      onCancel={cancelInvitation}
-                      onResend={async (email, role) => { await resendInvitation({ email, role }); }}
-                      canManage={isAdmin}
-                      isResending={isResendingInvitation}
-                    />
-
-                    {isAdmin && !isCollaborator && (
+                {isAdmin && !isCollaborator && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+                        <UserPlus className="w-4 h-4" />
+                        Invitations
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <PendingInvitations
+                        invitations={pendingInvitations}
+                        onCancel={cancelInvitation}
+                        onResend={async (email, role) => { await resendInvitation({ email, role }); }}
+                        canManage={isAdmin}
+                        isResending={isResendingInvitation}
+                      />
                       <InviteMemberForm
                         onInvite={async (email, role) => { await inviteMember({ email, role }); }}
                         isLoading={isInviting}
                       />
-                    )}
-                  </CardContent>
-                </Card>
-
-                {isAdmin && (
-                  <TeamManagement
-                    members={members}
-                    getDisplayName={getDisplayName}
-                    isAdmin={isAdmin}
-                  />
+                    </CardContent>
+                  </Card>
                 )}
-              </>
+              </div>
             )}
 
             {activeTab === 'billing' && isAdmin && (
