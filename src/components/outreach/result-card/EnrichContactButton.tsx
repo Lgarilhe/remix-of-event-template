@@ -303,7 +303,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`gap-1.5 font-medium ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} ${className}`}
+        className={`gap-1.5 font-medium bg-card border-foreground/15 shadow-sm hover:bg-muted hover:border-foreground/30 hover:shadow transition-all ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} ${className}`}
         title={`Récupérer email & téléphone de ${fullName}`}
       >
         <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />

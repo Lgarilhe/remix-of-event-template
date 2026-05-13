@@ -193,7 +193,11 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-background border border-border transition-all max-w-full cursor-pointer group shadow-sm hover:shadow-sm hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
+      className={`relative bg-background border transition-all max-w-full cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+        isSelected
+          ? 'border-primary/70 shadow-md ring-1 ring-primary/30 bg-primary/[0.025]'
+          : 'border-border shadow-sm hover:shadow-md hover:border-foreground/40'
+      }`}
       style={{ wordBreak: 'break-word' }}
       role="button"
       tabIndex={0}
@@ -259,7 +263,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
           pour gagner ~8px hauteur globale par card */}
       <div className={`p-2 sm:p-3 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
         <div className="relative flex items-start gap-2 sm:gap-3 min-w-0 w-full">
-          {/* Checkbox - top-right on mobile, left column on desktop */}
+          {/* Checkbox - top-right on mobile, left column on desktop.
+              Renforcée : h-5 w-5 + border-2 + bg-background pour ressortir
+              du fond de la card et donner un vrai relief de zone cliquable. */}
           {selectedJob && onToggleSelect && (
             <>
               {/* Desktop: left column */}
@@ -267,8 +273,8 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 {jobScore?.recommendation === 'skip' ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className="w-4 h-4 rounded border border-destructive/30 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
-                        <X className="w-3 h-3 text-destructive/40" />
+                      <div className="w-5 h-5 rounded border-2 border-destructive/40 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
+                        <X className="w-3 h-3 text-destructive/50" />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="max-w-xs">
@@ -279,21 +285,21 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
-                    className="border-primary/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    className="w-5 h-5 border-2 border-muted-foreground/50 bg-background hover:border-foreground hover:bg-muted/40 data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow-sm transition-colors"
                   />
                 )}
               </div>
               {/* Mobile: absolute top-right */}
-              <div className="sm:hidden absolute top-0 right-0 z-10" data-no-detail>
+              <div className="sm:hidden absolute top-1 right-1 z-10" data-no-detail>
                 {jobScore?.recommendation === 'skip' ? (
-                  <div className="w-5 h-5 rounded border border-destructive/30 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
-                    <X className="w-3 h-3 text-destructive/40" />
+                  <div className="w-6 h-6 rounded border-2 border-destructive/40 bg-destructive/5 flex items-center justify-center cursor-not-allowed">
+                    <X className="w-3.5 h-3.5 text-destructive/50" />
                   </div>
                 ) : (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
-                    className="border-primary/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary w-5 h-5"
+                    className="w-6 h-6 border-2 border-muted-foreground/50 bg-background hover:border-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow-sm"
                   />
                 )}
               </div>
