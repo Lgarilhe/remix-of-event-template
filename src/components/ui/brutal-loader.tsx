@@ -30,31 +30,34 @@ const MESSAGE_SETS: Record<string, string[]> = {
   sequences: SEQUENCE_MESSAGES,
 };
 
-/** Brutal square spinner — 3 nested squares rotating at different speeds */
-function BrutalSpinner({ size = 40 }: { size?: number }) {
+/**
+ * Brutal square spinner — refonte 2026-05-13.
+ *
+ * Avant : 3 carrés imbriqués rotatifs avec inner filled `skalr-gradient-bg`
+ * (magenta/rose). Ne matchait plus le design Konekt monochrome actuel.
+ *
+ * Après : track statique + arc rotatif + inner carré qui pulse, tout en
+ * foreground (monochrome). Brutaliste mais épuré, aligné avec le reste de
+ * l'UI 2026 (SCORE CTA réservé aux moments AI explicites).
+ */
+function BrutalSpinner({ size = 44 }: { size?: number }) {
   const s = size;
-  const mid = s * 0.6;
-  const inner = s * 0.28;
+  const inner = s * 0.32;
   return (
     <div className="relative" style={{ width: s, height: s }}>
-      {/* Outer — slow CCW */}
+      {/* Track statique — donne le repère carré */}
+      <div className="absolute inset-0 border border-foreground/15" />
+      {/* Arc rotatif — moitié de la bordure visible, animation continue */}
       <div
-        className="absolute inset-0 border border-border animate-[spin_4s_linear_infinite_reverse]"
+        className="absolute inset-0 border-2 border-transparent border-t-foreground border-r-foreground animate-[spin_1s_linear_infinite]"
       />
-      {/* Mid — medium CW with accent */}
+      {/* Inner carré qui pulse — point focal */}
       <div
-        className="absolute border-2 border-primary/50 animate-[spin_2.5s_linear_infinite]"
-        style={{
-          width: mid, height: mid,
-          top: (s - mid) / 2, left: (s - mid) / 2,
-        }}
-      />
-      {/* Inner — fast CCW, filled accent */}
-      <div
-        className="absolute skalr-gradient-bg animate-[spin_1.5s_linear_infinite_reverse]"
+        className="absolute bg-foreground animate-pulse"
         style={{
           width: inner, height: inner,
           top: (s - inner) / 2, left: (s - inner) / 2,
+          animationDuration: '1.6s',
         }}
       />
     </div>
