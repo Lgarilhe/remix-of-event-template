@@ -60,6 +60,21 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
       transition={{ duration: 0.35 }}
       className="w-full max-w-sm mx-auto space-y-3 py-1"
     >
+      {/* Motion décoratif — anime l'écran d'attente quand pas encore de
+          résultats. Muted + loop + playsInline + aria-hidden pour ne pas
+          gêner les lecteurs d'écran. */}
+      <div className="flex items-center justify-center">
+        <video
+          src="/sourcing-empty-motion.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+          className="w-40 h-40 sm:w-48 sm:h-48 object-cover rounded-2xl"
+        />
+      </div>
+
       <div className="text-center space-y-1">
         <p className="text-sm font-semibold text-foreground">
           {canSearch ? 'Prêt à lancer la recherche' : 'Configurez la recherche'}
