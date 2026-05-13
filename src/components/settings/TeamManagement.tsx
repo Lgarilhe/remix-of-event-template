@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
-  Mail, MessageSquare, Search, Eye, Gauge, Link2, Unlink, UserCog, Users,
+  Gauge, Link2, Unlink, UserCog, Users,
   Trash2, Activity, Crown, Shield, User as UserIcon,
 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
@@ -34,11 +34,20 @@ interface TeamManagementProps {
   onRemove: (memberId: string) => void;
 }
 
+// Seul quota EFFECTIVEMENT câblé côté backend (process-sequences /
+// checkQuotaForAction). Les anciens max_inmails_per_day, max_messages_per_day,
+// max_searches_per_day, max_profile_visits_per_day étaient en DB mais jamais
+// lus — retirés de l'UI pour ne pas mentir à l'admin. `max_actions_per_day`
+// cumule InMail + message + smart_message + connection_request envoyés
+// aujourd'hui pour le compte LinkedIn de l'user.
 const QUOTA_FIELDS = [
-  { key: 'max_inmails_per_day' as const, label: 'InMails', icon: Mail, max: 200 },
-  { key: 'max_messages_per_day' as const, label: 'Messages', icon: MessageSquare, max: 500 },
-  { key: 'max_searches_per_day' as const, label: 'Recherches', icon: Search, max: 500 },
-  { key: 'max_profile_visits_per_day' as const, label: 'Visites profils', icon: Eye, max: 1000 },
+  {
+    key: 'max_actions_per_day' as const,
+    label: 'Actions visibles / jour',
+    icon: Gauge,
+    max: 200,
+    hint: 'InMails + messages + invitations envoyés depuis le compte LinkedIn de ce membre',
+  },
 ];
 
 const roleIcons: Record<string, typeof Crown> = {
@@ -77,7 +86,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const { data: jobs = [] } = useNotionJobs();
   const userIds = members.map(m => m.user_id);
   const { data: statsMap = {} } = useMemberStats(organizationId, userIds);
-  const [editingQuotas, setEditingQuotas] = useState<Record<string, typeof DEFAULT_QUOTAS>>({});
+  const [editingQuotas, setEditingQuotas] = useState<Record<string, Partial<typeof DEFAULT_QUOTAS>>>({});
 
   const getMemberAssignments = (userId: string) =>
     assignments.filter(a => a.user_id === userId);
@@ -110,10 +119,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     setEditingQuotas(prev => ({
       ...prev,
       [userId]: {
-        max_inmails_per_day: existing?.max_inmails_per_day ?? DEFAULT_QUOTAS.max_inmails_per_day,
-        max_messages_per_day: existing?.max_messages_per_day ?? DEFAULT_QUOTAS.max_messages_per_day,
-        max_searches_per_day: existing?.max_searches_per_day ?? DEFAULT_QUOTAS.max_searches_per_day,
-        max_profile_visits_per_day: existing?.max_profile_visits_per_day ?? DEFAULT_QUOTAS.max_profile_visits_per_day,
+        max_actions_per_day: existing?.max_actions_per_day ?? DEFAULT_QUOTAS.max_actions_per_day,
       },
     }));
   };
@@ -167,7 +173,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
               return (
                 <div key={member.id}>
-                  {/* Member collapsed row */}
+                  {/* Collapsed row */}
                   <div
                     className={cn(
                       'flex items-center justify-between gap-3 px-4 py-3 transition-colors',
@@ -196,7 +202,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
                           {linkedInMapping ? (
                             <span className="inline-flex items-center gap-1">
                               <img src={linkedinLogo} alt="" className="w-3 h-3 object-contain" />
@@ -205,15 +211,14 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           ) : (
                             <span className="italic text-muted-foreground/50">Pas de LinkedIn</span>
                           )}
-                          <span className="text-muted-foreground/30">·</span>
-                          <span title="Séquences actives">
-                            <Activity className="w-3 h-3 inline mr-0.5" />
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0 gap-1 font-normal">
+                            <Activity className="w-2.5 h-2.5" />
                             {stats.active_sequences} séq
-                          </span>
-                          <span className="text-muted-foreground/30">·</span>
-                          <span title="Candidats assignés (30j)">
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0 gap-1 font-normal">
+                            <Briefcase className="w-2.5 h-2.5" />
                             {stats.candidates_30d} cand/30j
-                          </span>
+                          </Badge>
                         </div>
                       </div>
                     </button>
@@ -245,14 +250,15 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           </Button>
                         </>
                       )}
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
                         onClick={() => setExpandedMember(isExpanded ? null : member.user_id)}
-                        className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground"
                         aria-label={isExpanded ? 'Réduire' : 'Détails'}
                       >
                         <ChevronDown className={cn('w-4 h-4 transition-transform', isExpanded && 'rotate-180')} />
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
@@ -261,55 +267,61 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     <div className="bg-muted/30 border-t border-border">
                       {/* Stats détaillées */}
                       <div className="px-4 py-4 grid grid-cols-2 gap-3">
-                        <div className="border border-border bg-background p-3">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
-                            <Activity className="w-3 h-3" />
-                            Séquences actives
-                          </div>
-                          <p className="text-2xl font-bold tabular-nums mt-1">{stats.active_sequences}</p>
-                        </div>
-                        <div className="border border-border bg-background p-3">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
-                            <Briefcase className="w-3 h-3" />
-                            Candidats (30j)
-                          </div>
-                          <p className="text-2xl font-bold tabular-nums mt-1">{stats.candidates_30d}</p>
-                        </div>
+                        <Card>
+                          <CardContent className="p-3">
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
+                              <Activity className="w-3 h-3" />
+                              Séquences actives
+                            </div>
+                            <p className="text-2xl font-bold tabular-nums mt-1">{stats.active_sequences}</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="p-3">
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
+                              <Briefcase className="w-3 h-3" />
+                              Candidats (30j)
+                            </div>
+                            <p className="text-2xl font-bold tabular-nums mt-1">{stats.candidates_30d}</p>
+                          </CardContent>
+                        </Card>
                       </div>
 
                       <div className="border-t border-border" />
 
-                      {/* LinkedIn Account Linking */}
-                      <div className="px-4 py-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <img src={linkedinLogo} alt="" className="w-4 h-4 object-contain" />
-                          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Compte LinkedIn</span>
-                        </div>
-
+                      {/* LinkedIn Account */}
+                      <SectionRow
+                        icon={<img src={linkedinLogo} alt="" className="w-4 h-4 object-contain" />}
+                        label="Compte LinkedIn"
+                      >
                         {linkedInMapping ? (
-                          <div className="flex items-center justify-between p-2.5 bg-background border border-border">
-                            <div className="flex items-center gap-2">
-                              <img src={linkedinLogo} alt="" className="w-6 h-6 object-contain" />
-                              <div>
-                                <p className="text-xs font-medium">{linkedInMapping.linkedin_account_name}</p>
-                                <p className="text-xs text-muted-foreground">ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…</p>
+                          <div className="flex items-center justify-between p-2.5 bg-background border border-border rounded">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <img src={linkedinLogo} alt="" className="w-6 h-6 object-contain shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium truncate">{linkedInMapping.linkedin_account_name}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  ID: {linkedInMapping.linkedin_account_id.slice(0, 12)}…
+                                </p>
                               </div>
                             </div>
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={() => setUnlinkConfirm({
                                 mappingId: linkedInMapping.id,
                                 name: linkedInMapping.linkedin_account_name || 'ce compte',
                               })}
-                              className="h-7 px-2 flex items-center gap-1 text-xs uppercase tracking-wide text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive transition-colors"
                             >
                               <Unlink className="w-3 h-3" />
                               Dissocier
-                            </button>
+                            </Button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
                             <Select value={selectedLinkedInId} onValueChange={setSelectedLinkedInId}>
-                              <SelectTrigger className="h-8 text-xs flex-1 rounded-lg border-border">
+                              <SelectTrigger className="h-8 text-xs flex-1">
                                 <SelectValue placeholder="Associer un compte LinkedIn…" />
                               </SelectTrigger>
                               <SelectContent>
@@ -326,48 +338,52 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                 ))}
                               </SelectContent>
                             </Select>
-                            <button
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1"
                               onClick={() => handleLinkLinkedIn(member)}
                               disabled={!selectedLinkedInId || isLinking}
-                              className={cn(
-                                'h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-border transition-colors',
-                                selectedLinkedInId
-                                  ? 'bg-accent text-foreground hover:opacity-90'
-                                  : 'bg-muted text-muted-foreground cursor-not-allowed',
-                              )}
                             >
                               {isLinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
                               Lier
-                            </button>
+                            </Button>
                           </div>
                         )}
-                      </div>
+                      </SectionRow>
 
                       <div className="border-t border-border" />
 
                       {/* Job Assignments */}
-                      <div className="px-4 py-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-                          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Postes assignés</span>
-                        </div>
-
+                      <SectionRow
+                        icon={<Briefcase className="w-3.5 h-3.5 text-muted-foreground" />}
+                        label="Postes assignés"
+                      >
                         {memberJobs.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mb-3">
                             {memberJobs.map(a => (
-                              <span key={a.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-foreground text-background text-xs font-medium">
+                              <Badge
+                                key={a.id}
+                                variant="default"
+                                className="gap-1 font-medium"
+                              >
                                 {a.job_title || a.job_id}
-                                <button onClick={() => unassign(a.id)} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={() => unassign(a.id)}
+                                  className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+                                  aria-label="Retirer"
+                                >
                                   <X className="w-3 h-3" />
                                 </button>
-                              </span>
+                              </Badge>
                             ))}
                           </div>
                         )}
 
                         <div className="flex items-center gap-2">
                           <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                            <SelectTrigger className="h-8 text-xs flex-1 rounded-lg border-border">
+                            <SelectTrigger className="h-8 text-xs flex-1">
                               <SelectValue placeholder="Sélectionner un poste…" />
                             </SelectTrigger>
                             <SelectContent>
@@ -380,43 +396,38 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                 ))}
                             </SelectContent>
                           </Select>
-                          <button
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1"
                             onClick={() => handleAssignJob(member)}
                             disabled={!selectedJobId || isAssigning}
-                            className={cn(
-                              'h-8 px-3 flex items-center gap-1 text-xs font-medium uppercase tracking-wide border border-border transition-colors',
-                              selectedJobId
-                                ? 'bg-accent text-foreground hover:opacity-90'
-                                : 'bg-muted text-muted-foreground cursor-not-allowed',
-                            )}
                           >
                             {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
                             Assigner
-                          </button>
+                          </Button>
                         </div>
-                      </div>
+                      </SectionRow>
 
                       <div className="border-t border-border" />
 
                       {/* Quotas */}
-                      <div className="px-4 py-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <Sliders className="w-3.5 h-3.5 text-muted-foreground" />
-                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quotas journaliers</span>
-                          </div>
-                          {!isEditingQ && (
-                            <button
-                              onClick={() => startEditingQuotas(member.user_id)}
-                              className="text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground border-b border-dotted border-muted-foreground hover:border-border transition-colors"
-                            >
-                              Modifier
-                            </button>
-                          )}
-                        </div>
-
+                      <SectionRow
+                        icon={<Sliders className="w-3.5 h-3.5 text-muted-foreground" />}
+                        label="Quota journalier"
+                        trailing={!isEditingQ && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => startEditingQuotas(member.user_id)}
+                          >
+                            Modifier
+                          </Button>
+                        )}
+                      >
                         <div className="space-y-3">
-                          {QUOTA_FIELDS.map(({ key, label, icon: Icon, max }) => {
+                          {QUOTA_FIELDS.map(({ key, label, icon: Icon, max, hint }) => {
                             const value = isEditingQ
                               ? (editingQuotas[member.user_id]?.[key] ?? 0)
                               : (memberQuota?.[key] ?? DEFAULT_QUOTAS[key]);
@@ -434,7 +445,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                       type="number"
                                       min={0}
                                       max={max}
-                                      className="h-6 w-16 text-xs text-right rounded-lg border-border px-1.5"
+                                      className="h-6 w-16 text-xs text-right px-1.5"
                                       value={value}
                                       onChange={e => setEditingQuotas(prev => ({
                                         ...prev,
@@ -448,15 +459,16 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                     <span className="text-xs font-bold tabular-nums">{value}</span>
                                   )}
                                 </div>
-                                <div className="h-1 bg-border w-full">
+                                <div className="h-1 bg-border w-full rounded">
                                   <div
                                     className={cn(
-                                      'h-full transition-all duration-300',
+                                      'h-full transition-all duration-300 rounded',
                                       pct >= 80 ? 'bg-accent' : 'bg-foreground/40',
                                     )}
                                     style={{ width: `${pct}%` }}
                                   />
                                 </div>
+                                <p className="text-[10px] text-muted-foreground/80 mt-1">{hint}</p>
                               </div>
                             );
                           })}
@@ -464,34 +476,36 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                         {isEditingQ && (
                           <div className="flex gap-2 mt-4 pt-3 border-t border-border">
-                            <button
+                            <Button
+                              size="sm"
+                              className="gap-1.5"
                               onClick={() => handleSaveQuotas(member.user_id)}
                               disabled={isSaving}
-                              className="h-8 px-4 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide bg-foreground text-background hover:opacity-90 transition-opacity"
                             >
                               {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                               Sauvegarder
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               onClick={() => setEditingQuotas(prev => {
                                 const next = { ...prev };
                                 delete next[member.user_id];
                                 return next;
                               })}
-                              className="h-8 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground border border-border hover:border-border transition-colors"
                             >
                               Annuler
-                            </button>
+                            </Button>
                           </div>
                         )}
-                      </div>
+                      </SectionRow>
                     </div>
                   )}
 
                   {/* Non-admin expanded note */}
                   {isExpanded && !isAdmin && (
                     <div className="bg-muted/30 border-t border-border px-4 py-4 text-xs text-muted-foreground italic">
-                      Les détails de gestion (LinkedIn, postes, quotas) sont visibles uniquement par les administrateurs.
+                      Les détails de gestion (LinkedIn, postes, quota) sont visibles uniquement par les administrateurs.
                     </div>
                   )}
                 </div>
@@ -566,3 +580,26 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     </Card>
   );
 };
+
+// ─── Petit composant utilitaire pour homogénéiser les sections du panel ──
+interface SectionRowProps {
+  icon: React.ReactNode;
+  label: string;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const SectionRow: React.FC<SectionRowProps> = ({ icon, label, trailing, children }) => (
+  <div className="px-4 py-4">
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      {trailing}
+    </div>
+    {children}
+  </div>
+);
