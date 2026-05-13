@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { SlidersHorizontal, X, Search, Database } from 'lucide-react';
+import { SlidersHorizontal, X, Search, Database, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LinkedInFiltersState } from '../types';
 import type { Job } from '@/types/jobs';
@@ -14,6 +14,7 @@ interface AppliedFiltersBarProps {
   onSearch: () => void;
   loading: boolean;
   hasSearched: boolean;
+  onOpenSearchAgent?: () => void;
 }
 
 interface FilterChip {
@@ -77,12 +78,13 @@ export const AppliedFiltersBar: React.FC<AppliedFiltersBarProps> = ({
   onSearch,
   loading,
   hasSearched,
+  onOpenSearchAgent,
 }) => {
   const activeCount = useMemo(() => countActiveFilters(filters), [filters]);
   const chips = useMemo(() => extractChips(filters), [filters]);
 
   return (
-    <div className="flex flex-col gap-2 mb-4">
+    <div className="flex flex-col gap-1.5 mb-2">
       {/* Main bar */}
       <div className="flex items-center gap-2">
         {/* Source : 100 % LinkedIn (Unipile) — toggle Base retiré 2026-04-27.
@@ -114,12 +116,27 @@ export const AppliedFiltersBar: React.FC<AppliedFiltersBarProps> = ({
           </div>
         )}
 
+        {/* AI Coach — small icon button (replaces the full-width "Demander conseil"
+            row that used to live in MissionSourcing). Same intent (open contextual
+            agent with brief pre-filled), less chrome above results. */}
+        {onOpenSearchAgent && (
+          <button
+            onClick={onOpenSearchAgent}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Demander conseil à l'assistant pour affiner la recherche"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Conseil</span>
+          </button>
+        )}
+
         {/* Search button */}
         <button
           onClick={onSearch}
           disabled={loading}
           className={cn(
-            "ml-auto flex items-center gap-2 px-5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors",
+            "flex items-center gap-2 px-5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors",
+            !onOpenSearchAgent && "ml-auto",
             "bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
           )}
         >

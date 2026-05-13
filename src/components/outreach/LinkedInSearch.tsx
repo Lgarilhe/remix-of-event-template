@@ -35,6 +35,8 @@ interface LinkedInSearchProps {
   onProjectChange?: (project: SourcingProject | null) => void;
   /** Search source: 'linkedin' (default) or 'database' (Base Konekt) */
   searchSource?: 'linkedin' | 'database';
+  /** Opens the contextual sourcing agent with brief pre-filled. */
+  onOpenSearchAgent?: () => void;
 }
 
 type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
@@ -155,6 +157,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   activeProject,
   onProjectChange,
   searchSource: initialSearchSource = 'linkedin',
+  onOpenSearchAgent,
 }) => {
   const queryClient = useQueryClient();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -946,6 +949,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         onSearch={() => handleSearch(false)}
         loading={search.loading}
         hasSearched={search.hasSearched}
+        onOpenSearchAgent={onOpenSearchAgent}
       />
 
       {/* Bandeau pedigree : info des IDs auto-injectés dans la recherche */}

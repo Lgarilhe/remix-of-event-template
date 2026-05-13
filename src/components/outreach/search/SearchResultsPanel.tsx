@@ -404,35 +404,39 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   return (
     <div className="bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
-      {/* HEADER: count clarifié + actions globales */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border shrink-0 min-w-0">
-        {hasSearched && (
-          <div className="flex items-baseline gap-1.5 text-[12.5px] whitespace-nowrap">
-            <span className="font-display font-bold text-foreground tabular-nums">{displayResults.length}</span>
-            <span className="text-muted-foreground">candidat{displayResults.length > 1 ? 's' : ''} affiché{displayResults.length > 1 ? 's' : ''}</span>
-            {total !== null && total > displayResults.length && (
-              <span className="text-muted-foreground/60">· {total.toLocaleString()} total</span>
-            )}
-          </div>
-        )}
+      {/* HEADER: count clarifié + Pool toggle. Affiché uniquement quand il
+          y a quelque chose à montrer (count après search, ou pool toggle).
+          Avant : toujours rendu — 45px de chrome vide avant les résultats. */}
+      {(hasSearched || (poolCount > 0 && onSetShowPoolView)) && (
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0 min-w-0">
+          {hasSearched && (
+            <div className="flex items-baseline gap-1.5 text-[12.5px] whitespace-nowrap">
+              <span className="font-display font-bold text-foreground tabular-nums">{displayResults.length}</span>
+              <span className="text-muted-foreground">candidat{displayResults.length > 1 ? 's' : ''} affiché{displayResults.length > 1 ? 's' : ''}</span>
+              {total !== null && total > displayResults.length && (
+                <span className="text-muted-foreground/60">· {total.toLocaleString()} total</span>
+              )}
+            </div>
+          )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
+          {/* Spacer */}
+          <div className="flex-1" />
 
-        {/* Pool toggle */}
-        {poolCount > 0 && onSetShowPoolView && (
-          <Button
-            variant={showPoolView ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => onSetShowPoolView(!showPoolView)}
-            className="h-7 px-2.5 text-[11.5px] gap-1.5 rounded-full shrink-0"
-            title={showPoolView ? 'Voir les nouveaux résultats' : 'Voir les profils déjà connus'}
-          >
-            <Database className="w-3 h-3" />
-            {showPoolView ? 'Vue : Pool' : 'Vue : Résultats'}
-          </Button>
-        )}
-      </div>
+          {/* Pool toggle */}
+          {poolCount > 0 && onSetShowPoolView && (
+            <Button
+              variant={showPoolView ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => onSetShowPoolView(!showPoolView)}
+              className="h-7 px-2.5 text-[11.5px] gap-1.5 rounded-full shrink-0"
+              title={showPoolView ? 'Voir les nouveaux résultats' : 'Voir les profils déjà connus'}
+            >
+              <Database className="w-3 h-3" />
+              {showPoolView ? 'Vue : Pool' : 'Vue : Résultats'}
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* TOOLBAR: Status filters + actions — single compact row */}
       {selectedJob && hasSearched && displayResults.length > 0 && (
@@ -785,82 +789,69 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         ) : (
           <div className="p-2 sm:p-4 space-y-2 min-w-0">
-            {/* Batch workflow banner */}
+            {/* Batch workflow banner — compact single row + thin progress
+                bar. Réduit de ~130px (titre 4xl + sous-titre + boutons) à
+                ~40px pour faire remonter les résultats. */}
             {hasSearched && total !== null && total > 0 && (
-              <div className="border border-border bg-accent/15 mb-3 overflow-hidden">
-                <div className="h-0.5 bg-accent" />
-                <div className="p-3 sm:p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    {/* Left: bold typographic count */}
-                    <div className="flex items-baseline gap-2 min-w-0">
-                      <NumberTicker
-                        value={total}
-                        className="text-3xl sm:text-4xl font-black text-foreground tabular-nums tracking-tighter leading-none"
-                      />
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          profils trouvés
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground/70">
-                            {displayResults.length} affichés sur {total}
-                          </span>
-                          {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-500">
-                              <CheckCircle2 className="w-3 h-3" />
-                              traité
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: refine actions */}
-                    <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onRefineSearch('expand')}
-                        disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                      >
-                        {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
-                        Élargir
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onRefineSearch('narrow')}
-                        disabled={refineLoading}
-                        className="h-8 px-2.5 gap-1 text-xs font-bold uppercase tracking-wider border-border text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                      >
-                        {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
-                        Affiner
-                      </Button>
-                    </div>
+              <div className="border border-border bg-accent/15 mb-2 overflow-hidden rounded-md">
+                <div className="px-3 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {/* Count */}
+                  <div className="flex items-baseline gap-1.5 min-w-0">
+                    <NumberTicker
+                      value={total}
+                      className="text-base sm:text-lg font-black text-foreground tabular-nums tracking-tight leading-none"
+                    />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      profils
+                    </span>
+                    <span className="text-[11px] text-muted-foreground/70">
+                      · {displayResults.length} affichés
+                    </span>
+                    {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-500">
+                        <CheckCircle2 className="w-3 h-3" />
+                        traité
+                      </span>
+                    )}
                   </div>
 
-                  {/* Subtle segmented progress — only when more to load */}
-                  {total > results.length && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <div className="flex-1 flex gap-px h-1">
-                        {Array.from({ length: Math.min(20, Math.ceil(total / Math.max(results.length, 1))) }).map((_, i) => (
-                          <div
-                            key={i}
-                            className={`flex-1 transition-colors duration-300 ${
-                              i < Math.ceil((results.length / total) * Math.min(20, Math.ceil(total / Math.max(results.length, 1))))
-                                ? 'bg-foreground'
-                                : 'bg-foreground/10'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-xs text-muted-foreground/60 tabular-nums whitespace-nowrap">
-                        {Math.round((results.length / total) * 100)}%
-                      </span>
-                    </div>
-                  )}
+                  {/* Spacer */}
+                  <div className="flex-1" />
+
+                  {/* Refine actions */}
+                  <div className="hidden sm:flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRefineSearch('expand')}
+                      disabled={refineLoading}
+                      className="h-6 px-2 gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
+                      Élargir
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRefineSearch('narrow')}
+                      disabled={refineLoading}
+                      className="h-6 px-2 gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
+                      Affiner
+                    </Button>
+                  </div>
                 </div>
+
+                {/* Thin progress — only when more to load */}
+                {total > results.length && (
+                  <div className="h-0.5 bg-foreground/5 relative">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-foreground/40 transition-all duration-300"
+                      style={{ width: `${Math.round((results.length / total) * 100)}%` }}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

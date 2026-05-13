@@ -7,7 +7,7 @@ import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { countBriefFields } from '@/lib/missionUtils';
 import { useAgent } from '@/contexts/AgentContext';
-import { ArrowLeft, MessageSquare } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type { JobDetails } from '@/types/jobDetails';
 
 interface MissionSourcingProps {
@@ -93,67 +93,43 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
   }
 
   return (
-    <div className="border border-border bg-background overflow-hidden">
+    <div>
       {/* Brief rempli mais pas encore de filtres → renvoie au brief où vit
           le bouton canonique "Analyser avec l'IA" (avec review modal).
           Avant : on avait un bouton ici qui dupliquait l'appel sans review.
           Supprimé pour éviter les divergences et garantir qu'il n'y a qu'1
           seul point de génération avec validation user. */}
       {showBriefToFiltersPrompt && (
-        <div className="border-b border-border bg-accent/10 p-3 sm:p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold uppercase tracking-wider text-foreground mb-0.5">
-                Brief rempli ({briefCompletion.filled}/{briefCompletion.total} champs)
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Lancez l'analyse IA depuis le brief pour générer les filtres de recherche
-                (avec validation des suggestions avant sauvegarde).
-              </p>
-            </div>
-            <button
-              onClick={goToBrief}
-              className="shrink-0 flex items-center gap-2 h-9 px-4 sm:px-5 text-xs font-bold uppercase tracking-wider border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Aller au brief
-            </button>
+        <div className="border border-border bg-accent/10 px-3 py-2 mb-2 rounded-lg flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-foreground">
+              <span className="font-semibold">Brief rempli ({briefCompletion.filled}/{briefCompletion.total} champs).</span>{' '}
+              <span className="text-muted-foreground">Générez les filtres depuis le brief pour valider chaque suggestion.</span>
+            </p>
           </div>
+          <button
+            onClick={goToBrief}
+            className="shrink-0 flex items-center gap-1.5 h-7 px-3 text-xs font-bold uppercase tracking-wider rounded-md border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Aller au brief
+          </button>
         </div>
       )}
 
-      {/* AI Coach button — chat conversationnel (≠ "Analyser avec l'IA"
-          du brief qui génère des filtres). Ce bouton ouvre un drawer où
-          l'user discute avec l'IA pour affiner sa stratégie : élargir
-          les critères, suggérer des synonymes, débloquer une recherche
-          qui ne ramène rien, etc. */}
-      <div className="border-b border-border px-3 sm:px-4 py-2.5 flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          Besoin d'aide pour affiner la recherche ? Discute avec l'assistant.
-        </p>
-        <button
-          onClick={handleOpenSearchAgent}
-          className="shrink-0 flex items-center gap-2 h-8 px-3 text-xs font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors rounded-md"
-          title="Ouvrir l'assistant pour échanger sur ta stratégie de sourcing"
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Demander conseil</span>
-          <span className="sm:hidden">Conseil</span>
-        </button>
-      </div>
-
-      {/* Search — suggestions are shown inline in SearchFiltersPanel */}
-      <div className="p-2.5 sm:p-4">
-        <OutreachSearchProvider>
-          <LinkedInSearch
-            accounts={accounts}
-            selectedAccount={selectedAccount}
-            onAccountChange={setSelectedAccount}
-            activeProject={project}
-            searchSource="linkedin"
-          />
-        </OutreachSearchProvider>
-      </div>
+      {/* Search — suggestions are shown inline in SearchFiltersPanel.
+          AI Coach button ("Conseil") is now embedded in AppliedFiltersBar
+          to keep chrome compact and results visible higher on the page. */}
+      <OutreachSearchProvider>
+        <LinkedInSearch
+          accounts={accounts}
+          selectedAccount={selectedAccount}
+          onAccountChange={setSelectedAccount}
+          activeProject={project}
+          searchSource="linkedin"
+          onOpenSearchAgent={handleOpenSearchAgent}
+        />
+      </OutreachSearchProvider>
     </div>
   );
 };
