@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LinkedInProfile } from './types';
 import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
@@ -64,18 +64,41 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const [scoreFlash, setScoreFlash] = useState<'go' | 'maybe' | 'skip' | null>(null);
   const prevScoreRef = useRef<number | undefined>(jobScore?.match_score);
 
-  // Score flash effect when a score first appears
+  // Score flash effect when a score first appears + reset isScoring quand le
+  // score arrive. Avant : setIsScoring n'était jamais appelé → l'user ne voyait
+  // aucun feedback de chargement entre le clic sur SCORE et l'arrivée du résultat
+  // (typiquement 2-5s d'attente LLM).
   useEffect(() => {
     const currentRec = jobScore?.recommendation;
     const currentScore = jobScore?.match_score;
     if (currentRec && currentScore !== undefined && prevScoreRef.current === undefined) {
       setScoreFlash(currentRec as 'go' | 'maybe' | 'skip');
+      setIsScoring(false);
       const timer = setTimeout(() => setScoreFlash(null), 1000);
       prevScoreRef.current = currentScore;
       return () => clearTimeout(timer);
     }
     prevScoreRef.current = currentScore;
   }, [jobScore?.match_score, jobScore?.recommendation]);
+
+  // Wrapper sur le clic SCORE : active immédiatement le loading state local
+  // pour donner feedback visuel à l'user. Le useEffect ci-dessus le remet à
+  // false dès que le jobScore arrive (ou batch scoring termine).
+  const handleScoreClick = useCallback(() => {
+    if (!onScoreProfile || isScoring) return;
+    setIsScoring(true);
+    try {
+      const result = onScoreProfile() as unknown;
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        (result as Promise<unknown>).catch(() => setIsScoring(false)).finally(() => {
+          // Safety net : si le hook reject sans setJobScores, on relâche le loader.
+          // Le cas normal (succès) est géré par le useEffect au-dessus.
+        });
+      }
+    } catch {
+      setIsScoring(false);
+    }
+  }, [onScoreProfile, isScoring]);
 
   const profileData = useProfileData(profile);
   const switchResult = useMemo(() => computeLikelyToSwitch(profile), [profile]);
@@ -374,7 +397,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   accountId={accountId}
                   activeProject={activeProject}
                   isScoring={isScoring}
-                  onScoreProfile={onScoreProfile}
+                  onScoreProfile={onScoreProfile ? handleScoreClick : undefined}
                   onOpenMessage={() => onOpenDetail?.()}
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
@@ -499,7 +522,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 accountId={accountId}
                 activeProject={activeProject}
                 isScoring={isScoring}
-                onScoreProfile={onScoreProfile}
+                onScoreProfile={onScoreProfile ? handleScoreClick : undefined}
                 onOpenMessage={() => onOpenDetail?.()}
                 onArchive={onArchive}
                 onSequenceEnroll={onSequenceEnroll}
