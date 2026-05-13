@@ -50,7 +50,7 @@ export const PedigreePresetsSettings: React.FC = () => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
           <Bookmark className="w-4 h-4" />
-          ICP par client
+          ICP par société
           <Button
             size="sm"
             onClick={() => setCreating(true)}
@@ -63,10 +63,10 @@ export const PedigreePresetsSettings: React.FC = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Configurez l'ICP (Ideal Candidate Profile) de chaque client — ce qui définit un bon
-          candidat pour eux (écoles, entreprises, séniorité, stade de financement). L'ICP
-          s'applique automatiquement à toutes les missions du client et le scoring IA l'honore
-          avec priorité sur les règles d'équité par défaut.
+          Configurez l'ICP (Ideal Candidate Profile) de chaque société — ce qui définit un bon
+          candidat pour elle (écoles, entreprises, séniorité, stade de financement). L'ICP
+          s'applique automatiquement à toutes les missions de la société et le scoring IA
+          l'honore avec priorité sur les règles d'équité par défaut.
         </p>
 
         {/* RGPD note */}
@@ -90,7 +90,7 @@ export const PedigreePresetsSettings: React.FC = () => {
             <SettingsIcon className="w-8 h-8 text-muted-foreground mx-auto" />
             <p className="text-sm text-muted-foreground">
               Aucun ICP configuré. Créez-en un pour automatiser les critères de sélection sur vos
-              missions client.
+              missions par société.
             </p>
           </div>
         ) : (
@@ -264,8 +264,8 @@ const PresetFormDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier l'ICP" : 'Nouvel ICP'}</DialogTitle>
           <DialogDescription>
-            Configurez les critères qui définissent un bon candidat pour ce client. Appliqués
-            automatiquement au scoring de toutes ses missions.
+            Configurez les critères qui définissent un bon candidat pour cette société.
+            Appliqués automatiquement au scoring de toutes ses missions.
           </DialogDescription>
         </DialogHeader>
 
@@ -285,14 +285,14 @@ const PresetFormDialog: React.FC<{
               <Label htmlFor="preset-description">Description (note interne)</Label>
               <Textarea
                 id="preset-description"
-                placeholder="Pour quoi sert cet ICP, contexte client..."
+                placeholder="Pour quoi sert cet ICP, contexte société..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
               />
             </div>
             <div>
-              <Label htmlFor="preset-client">Nom du client (auto-application)</Label>
+              <Label htmlFor="preset-client">Nom de la société (auto-application)</Label>
               <Input
                 id="preset-client"
                 placeholder="ex: BlaBlaCar"
@@ -301,15 +301,15 @@ const PresetFormDialog: React.FC<{
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Si renseigné + "par défaut" coché ci-dessous, cet ICP sera automatiquement appliqué
-                aux nouvelles missions créées pour ce client.
+                aux nouvelles missions créées pour cette société.
               </p>
             </div>
             {clientName.trim() && (
               <div className="flex items-center justify-between p-3 border border-border rounded-md">
                 <div>
-                  <Label htmlFor="preset-default" className="cursor-pointer">Appliquer par défaut pour ce client</Label>
+                  <Label htmlFor="preset-default" className="cursor-pointer">Appliquer par défaut pour cette société</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Un seul ICP peut être par défaut par client.
+                    Un seul ICP peut être par défaut par société.
                   </p>
                 </div>
                 <Switch id="preset-default" checked={isDefault} onCheckedChange={setIsDefault} />

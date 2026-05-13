@@ -129,7 +129,7 @@ const Settings = () => {
       label: 'Workspace',
       items: [
         { value: 'general', label: 'Général', icon: Building2 },
-        ...(!isCollaborator ? [{ value: 'presets', label: 'ICP clients', icon: Bookmark }] : []),
+        ...(!isCollaborator ? [{ value: 'presets', label: 'ICP sociétés', icon: Bookmark }] : []),
         { value: 'templates', label: 'Templates', icon: MessageSquare },
       ],
     },

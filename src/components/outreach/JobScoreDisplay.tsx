@@ -558,7 +558,7 @@ const PedigreeAssessmentBlock: React.FC<{ assessment: NonNullable<JobMatchResult
     <div className="space-y-2">
       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
         <Shield className="w-3.5 h-3.5" />
-        ICP client {assessment.presetName ? `— ${assessment.presetName}` : ''}
+        ICP société {assessment.presetName ? `— ${assessment.presetName}` : ''}
         {assessment.strictMode && <span className="text-3xs font-medium text-amber-600 dark:text-amber-400">(strict)</span>}
       </p>
       <div className={cn('flex items-start gap-2 px-2.5 py-2 border rounded-md text-xs', verdictConfig.cls)}>

@@ -154,10 +154,10 @@ export const PedigreePresetSelector: React.FC<Props> = ({
             <Sparkles className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wider">
-                ICP client
+                ICP société
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Critères clients (top école, scale-up, …) appliqués au scoring IA.
+                Critères de la société (top école, scale-up, …) appliqués au scoring IA.
               </p>
             </div>
           </div>
