@@ -63,10 +63,10 @@ export const PedigreePresetsSettings: React.FC = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Configurez l'ICP (Ideal Client Profile) de chaque client — ce qui définit un bon candidat
-          pour eux (écoles, entreprises, séniorité, stade de financement). L'ICP s'applique
-          automatiquement à toutes les missions du client et le scoring IA l'honore avec priorité
-          sur les règles d'équité par défaut.
+          Configurez l'ICP (Ideal Candidate Profile) de chaque client — ce qui définit un bon
+          candidat pour eux (écoles, entreprises, séniorité, stade de financement). L'ICP
+          s'applique automatiquement à toutes les missions du client et le scoring IA l'honore
+          avec priorité sur les règles d'équité par défaut.
         </p>
 
         {/* RGPD note */}
