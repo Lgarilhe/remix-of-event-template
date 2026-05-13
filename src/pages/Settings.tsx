@@ -6,14 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil, UserCircle, CreditCard, Sparkles } from 'lucide-react';
-import { UserCog } from 'lucide-react';
-import iconBuilding3d from '@/assets/icon-building-3d.webp';
-import iconProfile3d from '@/assets/icon-profile-3d.webp';
-import iconTeam3d from '@/assets/icon-team-3d.webp';
-import iconBilling3d from '@/assets/icon-billing-3d.webp';
-import iconCredits3d from '@/assets/icon-credits-3d.webp';
-import iconIntegrations3d from '@/assets/icon-integrations-3d.webp';
+import {
+  Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil,
+  UserCircle, CreditCard, Sparkles, UserCog, MessageSquare, Bookmark, Briefcase, Store,
+} from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -127,18 +123,18 @@ const Settings = () => {
   );
 
   const tabs = [
-    { value: 'general', label: 'Général', icon3d: iconBuilding3d },
-    { value: 'account', label: 'Mon compte', icon3d: iconProfile3d },
-    { value: 'templates', label: 'Templates', icon3d: iconProfile3d },
-    ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon3d: iconTeam3d }] : []),
-    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon3d: iconBilling3d }] : []),
-    { value: 'credits', label: 'Crédits IA', icon3d: iconCredits3d },
-    ...(!isCollaborator ? [{ value: 'presets', label: 'Presets clients', icon3d: iconBuilding3d }] : []),
-    ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon3d: iconIntegrations3d }] : []),
-    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon3d: iconIntegrations3d }] : []),
-    ...(isAgency ? [{ value: 'agency', label: 'Agence', icon3d: iconTeam3d }] : []),
-    { value: 'marketplace', label: 'Marketplace', icon3d: iconIntegrations3d },
-  ];
+    { value: 'general', label: 'Général', icon: Building2 },
+    { value: 'account', label: 'Mon compte', icon: UserCircle },
+    { value: 'templates', label: 'Templates', icon: MessageSquare },
+    ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
+    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon: CreditCard }] : []),
+    { value: 'credits', label: 'Crédits IA', icon: Sparkles },
+    ...(!isCollaborator ? [{ value: 'presets', label: 'Presets clients', icon: Bookmark }] : []),
+    ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
+    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
+    ...(isAgency ? [{ value: 'agency', label: 'Agence', icon: Briefcase }] : []),
+    { value: 'marketplace', label: 'Marketplace', icon: Store },
+  ] as const;
 
   return (
     <div className="min-h-screen bg-background">
@@ -152,62 +148,72 @@ const Settings = () => {
           {/* Header */}
           <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>
 
-          {/* Tabs avec a11y proper (role tablist + keyboard nav left/right) */}
-          <div
-            role="tablist"
-            aria-label="Sections des paramètres"
-            className="flex gap-0 border-b-2 border-border overflow-x-auto no-scrollbar mb-6"
-            onKeyDown={(e) => {
-              if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
-              e.preventDefault();
-              const currentIdx = tabs.findIndex(t => t.value === activeTab);
-              let nextIdx = currentIdx;
-              if (e.key === 'ArrowLeft') nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
-              else if (e.key === 'ArrowRight') nextIdx = (currentIdx + 1) % tabs.length;
-              else if (e.key === 'Home') nextIdx = 0;
-              else if (e.key === 'End') nextIdx = tabs.length - 1;
-              setActiveTab(tabs[nextIdx].value);
-              // Move focus to the new active tab
-              const target = e.currentTarget.querySelector<HTMLButtonElement>(`[data-tab-value="${tabs[nextIdx].value}"]`);
-              target?.focus();
-            }}
-          >
-            {tabs.map(tab => {
-              const isActive = activeTab === tab.value;
-              return (
-                <button
-                  key={tab.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={`settings-panel-${tab.value}`}
-                  id={`settings-tab-${tab.value}`}
-                  data-tab-value={tab.value}
-                  tabIndex={isActive ? 0 : -1}
-                  onClick={() => setActiveTab(tab.value)}
-                  className={cn(
-                    "relative px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap flex items-center gap-2 border-r border-border last:border-r-0 overflow-hidden group transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                    isActive
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <img src={tab.icon3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain relative z-10" />
-                  <span className="relative z-10 text-[10px] sm:text-xs">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Layout : sidebar verticale (lg+) + contenu, ou tabs horizontales
+              scrollables (mobile/tablet). Refonte 2026-05-13 — les anciens
+              tabs en row avec icônes 3D webp étaient peu visibles et datés. */}
+          <div className="flex flex-col lg:flex-row lg:gap-8">
+            <nav
+              role="tablist"
+              aria-label="Sections des paramètres"
+              className={cn(
+                'flex lg:flex-col gap-0.5 mb-4 lg:mb-0 shrink-0',
+                'overflow-x-auto lg:overflow-visible no-scrollbar',
+                'lg:w-56 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)]',
+                'border-b border-border lg:border-b-0 lg:border-r lg:pr-3',
+                'pb-2 lg:pb-0'
+              )}
+              onKeyDown={(e) => {
+                const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+                if (!navKeys.includes(e.key)) return;
+                e.preventDefault();
+                const currentIdx = tabs.findIndex(t => t.value === activeTab);
+                let nextIdx = currentIdx;
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+                else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextIdx = (currentIdx + 1) % tabs.length;
+                else if (e.key === 'Home') nextIdx = 0;
+                else if (e.key === 'End') nextIdx = tabs.length - 1;
+                setActiveTab(tabs[nextIdx].value);
+                const target = e.currentTarget.querySelector<HTMLButtonElement>(`[data-tab-value="${tabs[nextIdx].value}"]`);
+                target?.focus();
+              }}
+            >
+              {tabs.map(tab => {
+                const isActive = activeTab === tab.value;
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`settings-panel-${tab.value}`}
+                    id={`settings-tab-${tab.value}`}
+                    data-tab-value={tab.value}
+                    tabIndex={isActive ? 0 : -1}
+                    onClick={() => setActiveTab(tab.value)}
+                    className={cn(
+                      'group flex items-center gap-2.5 px-3 h-9 rounded-md text-sm font-medium whitespace-nowrap transition-all shrink-0',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      isActive
+                        ? 'bg-foreground text-background shadow-sm'
+                        : 'text-foreground/70 hover:text-foreground hover:bg-muted'
+                    )}
+                  >
+                    <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-background' : 'text-muted-foreground group-hover:text-foreground')} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
 
-          {/* Tab content */}
-          <div
-            role="tabpanel"
-            id={`settings-panel-${activeTab}`}
-            aria-labelledby={`settings-tab-${activeTab}`}
-            tabIndex={0}
-            className="max-w-3xl space-y-6 focus:outline-none"
-          >
+            {/* Tab content */}
+            <div
+              role="tabpanel"
+              id={`settings-panel-${activeTab}`}
+              aria-labelledby={`settings-tab-${activeTab}`}
+              tabIndex={0}
+              className="flex-1 min-w-0 max-w-3xl space-y-6 focus:outline-none"
+            >
             {activeTab === 'general' && (
               <Card>
                 <CardHeader>
@@ -415,6 +421,7 @@ const Settings = () => {
             {activeTab === 'marketplace' && (
               <MarketplaceActivation />
             )}
+            </div>
           </div>
         </div>
       </div>
