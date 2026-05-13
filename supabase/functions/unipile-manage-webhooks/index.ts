@@ -39,11 +39,44 @@ const REVERSE_SOURCE_MAP: Record<WebhookSource, string> = {
   email_tracking: 'email_tracking',
 };
 
+// Events à subscribe par source. Bug 2026-05-13 : sans `events`, Unipile crée
+// le webhook mais ne push AUCUN event (events:[]). Conséquence : on n'a jamais
+// reçu un event `credentials` (account_status) → DB jamais updated quand le
+// compte LinkedIn se déconnecte → UI affiche CREDENTIALS sans qu'on le sache.
+const EVENTS_PER_SOURCE: Record<WebhookSource, string[]> = {
+  messaging: ['message_received', 'message_reaction', 'message_read'],
+  users: ['new_relation'],
+  account_status: [
+    'creation_success', 'creation_fail', 'deleted', 'reconnected',
+    'sync_success', 'stopped', 'ok', 'connecting', 'error',
+    'credentials', 'permissions',
+  ],
+  email: ['mail_received'],
+  email_tracking: ['mail_opened'],
+};
+
 interface WebhookConfig {
   id?: string;
   request_url: string;
   source: WebhookSource;
+  events?: string[];
   headers?: Array<{ key: string; value: string }>;
+}
+
+interface UnipileWebhook {
+  id: string;
+  request_url: string;
+  source: string;
+  events?: string[];
+  headers?: Array<{ key: string; value: string }>;
+}
+
+/** Détecte si un webhook pointant déjà vers notre URL est cassé (pas de secret OU pas d'events). */
+function isWebhookBroken(w: UnipileWebhook): boolean {
+  const hasSecret = (w.headers || []).some(h => (h?.key || '').toLowerCase() === 'unipile-auth' && !!h?.value);
+  const wantedEvents = EVENTS_PER_SOURCE[w.source as WebhookSource];
+  const hasAllEvents = !wantedEvents || (w.events || []).length >= wantedEvents.length;
+  return !hasSecret || !hasAllEvents;
 }
 
 /**
@@ -152,7 +185,8 @@ Deno.serve(async (req) => {
           const config: WebhookConfig = {
             request_url: webhookUrl,
             source: apiSource,
-            headers: WEBHOOK_SECRET 
+            events: EVENTS_PER_SOURCE[apiSource],
+            headers: WEBHOOK_SECRET
               ? [{ key: 'Unipile-Auth', value: WEBHOOK_SECRET }]
               : undefined,
           };
@@ -231,22 +265,28 @@ Deno.serve(async (req) => {
         const listResp = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, { headers: { 'X-API-KEY': apiKey } });
         if (!listResp.ok) throw new Error(`List webhooks failed: ${listResp.status}`);
         const listJson = await listResp.json();
-        const allWebhooks: Array<{ id: string; request_url: string; source: string; events?: string[] }> = listJson?.items || listJson?.webhooks?.items || [];
+        const allWebhooks: UnipileWebhook[] = listJson?.items || listJson?.webhooks?.items || [];
 
         const targetUrlLower = targetUrl.toLowerCase();
+        // Webhooks to delete : (1) non-target URLs (other env) sauf leadmagnet,
+        // (2) target URL mais cassés (pas de secret OU events vides).
         const toDelete = allWebhooks.filter(w => {
           const url = (w.request_url || '').toLowerCase();
-          if (url === targetUrlLower) return false; // already on target → keep
-          if (url.includes(keepUrlPattern)) return false; // explicitly kept (e.g. leadmagnet-worker)
-          return true;
+          if (url.includes(keepUrlPattern)) return false; // explicitly kept
+          if (url === targetUrlLower) {
+            // Sur target : delete uniquement si cassé (à recréer proprement)
+            return isWebhookBroken(w);
+          }
+          return true; // sur autre URL non whitelistée
         });
 
-        const existingTargetSources = allWebhooks
-          .filter(w => (w.request_url || '').toLowerCase() === targetUrlLower)
+        // Sources déjà bien configurées sur target (avec secret + events) : skip
+        const healthyTargetSources = allWebhooks
+          .filter(w => (w.request_url || '').toLowerCase() === targetUrlLower && !isWebhookBroken(w))
           .map(w => w.source);
 
         const allInternalSources: WebhookSource[] = ['messaging', 'users', 'account_status', 'email', 'email_tracking'];
-        const toCreate = allInternalSources.filter(src => !existingTargetSources.includes(src));
+        const toCreate = allInternalSources.filter(src => !healthyTargetSources.includes(src));
 
         if (dryRun) {
           return new Response(JSON.stringify({
@@ -255,9 +295,14 @@ Deno.serve(async (req) => {
             target_url: targetUrl,
             keep_pattern: keepUrlPattern,
             total_webhooks: allWebhooks.length,
-            to_delete: toDelete.map(w => ({ id: w.id, url: w.request_url, source: w.source, events: w.events })),
+            to_delete: toDelete.map(w => ({
+              id: w.id, url: w.request_url, source: w.source, events: w.events,
+              reason: (w.request_url || '').toLowerCase() === targetUrlLower
+                ? 'broken (missing secret or events)'
+                : 'other env',
+            })),
             to_create: toCreate,
-            existing_on_target: existingTargetSources,
+            healthy_on_target: healthyTargetSources,
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
@@ -284,6 +329,7 @@ Deno.serve(async (req) => {
           const config: WebhookConfig = {
             request_url: targetUrl,
             source: src,
+            events: EVENTS_PER_SOURCE[src],
             headers: WEBHOOK_SECRET ? [{ key: 'Unipile-Auth', value: WEBHOOK_SECRET }] : undefined,
           };
           try {
