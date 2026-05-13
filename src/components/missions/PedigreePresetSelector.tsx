@@ -154,7 +154,7 @@ export const PedigreePresetSelector: React.FC<Props> = ({
             <Sparkles className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wider">
-                Pedigree client
+                ICP client
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Critères clients (top école, scale-up, …) appliqués au scoring IA.
@@ -175,10 +175,10 @@ export const PedigreePresetSelector: React.FC<Props> = ({
             disabled={readOnly}
           >
             <SelectTrigger className="w-full sm:w-[300px] h-9 text-sm">
-              <SelectValue placeholder={loading ? 'Chargement…' : 'Aucun preset'} />
+              <SelectValue placeholder={loading ? 'Chargement…' : 'Aucun ICP'} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">Aucun preset</SelectItem>
+              <SelectItem value="__none__">Aucun ICP</SelectItem>
               {isCustom && (
                 <SelectItem value="__custom__" disabled>
                   {currentPresetName || 'Critères ad-hoc (cette mission)'}
@@ -236,9 +236,9 @@ export const PedigreePresetSelector: React.FC<Props> = ({
 
         {!selected && !isCustom && presets.length === 0 && !loading && (
           <p className="text-xs text-muted-foreground mt-3">
-            Aucun preset n'est configuré.{' '}
+            Aucun ICP n'est configuré.{' '}
             <a href="/settings?tab=presets" className="underline font-medium">
-              Créer un preset →
+              Créer un ICP →
             </a>
           </p>
         )}
@@ -251,12 +251,12 @@ export const PedigreePresetSelector: React.FC<Props> = ({
             <DialogTitle>
               {editorMode === 'override'
                 ? `Personnaliser "${selected?.name}" pour cette mission`
-                : 'Critères pedigree pour cette mission'}
+                : 'Critères ICP pour cette mission'}
             </DialogTitle>
             <DialogDescription>
               {editorMode === 'override'
-                ? 'Les modifications ne s\'appliquent qu\'à cette mission. Le preset master reste intact.'
-                : 'Configurez des critères pedigree ad-hoc pour cette mission, sans créer de preset réutilisable.'}
+                ? "Les modifications ne s'appliquent qu'à cette mission. L'ICP de référence reste intact."
+                : "Configurez des critères ad-hoc pour cette mission, sans créer d'ICP réutilisable."}
             </DialogDescription>
           </DialogHeader>
 

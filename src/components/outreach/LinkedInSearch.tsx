@@ -969,7 +969,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       ) && (
         <div className="mx-2 sm:mx-0 mb-2 flex flex-wrap items-center gap-2 px-3 py-2 border border-foreground/15 bg-foreground/[0.03] rounded-md text-xs">
           <span className="font-bold uppercase tracking-wider text-3xs">
-            {restrictMode ? 'Mode chirurgical' : 'Filtres pedigree'}
+            {restrictMode ? 'Mode chirurgical' : 'Filtres ICP'}
           </span>
           {pedigreeAug.counts.schools > 0 && (
             <span className="text-muted-foreground">

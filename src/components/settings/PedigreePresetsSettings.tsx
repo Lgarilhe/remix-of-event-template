@@ -50,22 +50,23 @@ export const PedigreePresetsSettings: React.FC = () => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
           <Bookmark className="w-4 h-4" />
-          Presets pedigree client
+          ICP par client
           <Button
             size="sm"
             onClick={() => setCreating(true)}
             className="ml-auto h-7 gap-1.5 text-xs"
           >
             <Plus className="w-3.5 h-3.5" />
-            Nouveau preset
+            Nouvel ICP
           </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Configurez une fois les critères de sélection d'un client (top école française, scale-up
-          Series B+, etc.) et appliquez-les automatiquement à toutes ses missions. Le scoring IA
-          honorera ces critères avec priorité sur les règles d'équité par défaut.
+          Configurez l'ICP (Ideal Client Profile) de chaque client — ce qui définit un bon candidat
+          pour eux (écoles, entreprises, séniorité, stade de financement). L'ICP s'applique
+          automatiquement à toutes les missions du client et le scoring IA l'honore avec priorité
+          sur les règles d'équité par défaut.
         </p>
 
         {/* RGPD note */}
@@ -79,7 +80,7 @@ export const PedigreePresetsSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Liste des presets */}
+        {/* Liste des ICP */}
         {loading ? (
           <div className="flex justify-center py-8">
             <BrutalLoader compact />
@@ -88,7 +89,7 @@ export const PedigreePresetsSettings: React.FC = () => {
           <div className="border border-dashed border-border rounded-lg p-8 text-center space-y-2">
             <SettingsIcon className="w-8 h-8 text-muted-foreground mx-auto" />
             <p className="text-sm text-muted-foreground">
-              Aucun preset configuré. Créez-en un pour automatiser les critères de sélection sur vos
+              Aucun ICP configuré. Créez-en un pour automatiser les critères de sélection sur vos
               missions client.
             </p>
           </div>
@@ -168,10 +169,10 @@ const PresetCard: React.FC<{
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Supprimer ce preset ?</AlertDialogTitle>
+                <AlertDialogTitle>Supprimer cet ICP ?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Le preset "{preset.name}" sera retiré. Les missions qui l'utilisent garderont
-                  les critères en snapshot dans leur brief, mais ne seront plus liées au preset.
+                  L'ICP "{preset.name}" sera retiré. Les missions qui l'utilisent garderont
+                  les critères en snapshot dans leur brief, mais ne seront plus liées à l'ICP.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -261,9 +262,10 @@ const PresetFormDialog: React.FC<{
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Modifier le preset' : 'Nouveau preset'}</DialogTitle>
+          <DialogTitle>{editing ? "Modifier l'ICP" : 'Nouvel ICP'}</DialogTitle>
           <DialogDescription>
-            Configurez les critères de sélection client appliqués automatiquement au scoring.
+            Configurez les critères qui définissent un bon candidat pour ce client. Appliqués
+            automatiquement au scoring de toutes ses missions.
           </DialogDescription>
         </DialogHeader>
 
@@ -271,7 +273,7 @@ const PresetFormDialog: React.FC<{
           {/* Identité */}
           <div className="space-y-3">
             <div>
-              <Label htmlFor="preset-name">Nom du preset *</Label>
+              <Label htmlFor="preset-name">Nom de l'ICP *</Label>
               <Input
                 id="preset-name"
                 placeholder="ex: BlaBlaCar — Top tech FR"
@@ -283,7 +285,7 @@ const PresetFormDialog: React.FC<{
               <Label htmlFor="preset-description">Description (note interne)</Label>
               <Textarea
                 id="preset-description"
-                placeholder="Pour quoi sert ce preset, contexte client..."
+                placeholder="Pour quoi sert cet ICP, contexte client..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
@@ -298,7 +300,7 @@ const PresetFormDialog: React.FC<{
                 onChange={(e) => setClientName(e.target.value)}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Si renseigné + "par défaut" coché ci-dessous, ce preset sera automatiquement appliqué
+                Si renseigné + "par défaut" coché ci-dessous, cet ICP sera automatiquement appliqué
                 aux nouvelles missions créées pour ce client.
               </p>
             </div>
@@ -307,7 +309,7 @@ const PresetFormDialog: React.FC<{
                 <div>
                   <Label htmlFor="preset-default" className="cursor-pointer">Appliquer par défaut pour ce client</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Une seule preset peut être par défaut par client.
+                    Un seul ICP peut être par défaut par client.
                   </p>
                 </div>
                 <Switch id="preset-default" checked={isDefault} onCheckedChange={setIsDefault} />

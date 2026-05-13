@@ -69,7 +69,7 @@ export function usePedigreePresets() {
       if (error) throw error;
       const created = data as ClientPedigreePreset;
       setPresets(prev => [created, ...prev]);
-      toast.success('Preset créé');
+      toast.success('ICP créé');
       return created;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
@@ -98,7 +98,7 @@ export function usePedigreePresets() {
         .eq('organization_id', organizationId) as unknown as Promise<{ error: { message: string } | null }>);
       if (error) throw error;
       setPresets(prev => prev.map(p => p.id === id ? { ...p, ...patch, updated_at: new Date().toISOString() } as ClientPedigreePreset : p));
-      toast.success('Preset mis à jour');
+      toast.success('ICP mis à jour');
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
@@ -118,7 +118,7 @@ export function usePedigreePresets() {
         .eq('organization_id', organizationId) as unknown as Promise<{ error: { message: string } | null }>);
       if (error) throw error;
       setPresets(prev => prev.filter(p => p.id !== id));
-      toast.success('Preset supprimé');
+      toast.success('ICP supprimé');
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
