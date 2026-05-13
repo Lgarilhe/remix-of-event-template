@@ -24,7 +24,6 @@ import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
 import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
-import { LinkedInQuotaSettings } from '@/components/settings/LinkedInQuotaSettings';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { EmailSignatures } from '@/components/settings/EmailSignatures';
@@ -292,7 +291,6 @@ const Settings = () => {
               <div className="space-y-6">
                 <MyLinkedInAccount />
                 <ExtensionTokens />
-                <LinkedInQuotaSettings />
                 <MyEmailAccount />
                 <EmailSignatures />
                 <MyWhatsAppAccount />
