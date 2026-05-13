@@ -51,7 +51,6 @@ import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionInsights } from '@/components/missions/MissionInsights';
 
 import { PhaseStepper, PhaseId } from './PhaseStepper';
-import { Pill } from './Pill';
 import { MissionOverviewV2 } from './MissionOverviewV2';
 import { MissionBriefV2 } from './MissionBriefV2';
 import { MissionProcessV2 } from './MissionProcessV2';
@@ -214,16 +213,13 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
         </div>
       </div>
 
-      {/* ── PhaseStepper ── */}
+      {/* ── PhaseStepper ── (pill "Sourcing actif" retirée — duplique l'info
+          déjà donnée par le highlight de la phase 2 dans le stepper, et
+          créait du bruit visuel à côté du statut global "Terminé"/"Actif"). */}
       <PhaseStepper
         active={activePhase}
         onSelect={handlePhaseChange}
         isPhaseLocked={isPhaseLocked}
-        rightSlot={
-          activePhase === 2 && (
-            <Pill variant="info" pulse>Sourcing actif</Pill>
-          )
-        }
       />
 
       {/* ── Sub-tabs de la phase courante ── */}
