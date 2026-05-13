@@ -482,18 +482,24 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
-        {/* Clean header */}
-        <div className="px-6 py-4 border-b bg-background shrink-0">
-          <DialogHeader className="space-y-1">
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <div className="w-8 h-8 rounded-lg bg-linkedin flex items-center justify-center">
+        {/* Clean header — icône en colonne, titre + sous-titre alignés ensemble.
+            Avant : le sous-titre était flush-left sous l'icône, créant un décalage
+            visuel avec le titre qui commence après l'icône. */}
+        <div className="px-6 py-4 border-b border-border bg-background shrink-0">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-linkedin flex items-center justify-center shrink-0">
                 <Mail className="w-4 h-4 text-white" />
               </div>
-              InMails personnalisés
-            </DialogTitle>
-            <DialogDescription className="text-sm">
-              Génération IA de messages pour {recipients.length} candidat{recipients.length > 1 ? 's' : ''}
-            </DialogDescription>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <DialogTitle className="text-lg leading-tight">
+                  InMails personnalisés
+                </DialogTitle>
+                <DialogDescription className="text-sm leading-tight">
+                  Génération IA de messages pour {recipients.length} candidat{recipients.length > 1 ? 's' : ''}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
         </div>
 
@@ -879,17 +885,19 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           </TabsContent>
         </Tabs>
 
-        {/* Footer - clean */}
-        <div className="px-6 py-4 border-t bg-muted flex justify-end gap-2 shrink-0">
-          <Button variant="ghost" onClick={onClose} className="text-muted-foreground">
+        {/* Footer — aligné avec le body : même bg-background, juste un
+            border-t pour séparer. Avant : bg-muted créait une bande grise
+            visuellement détachée du reste de la modal. */}
+        <div className="px-6 py-3 border-t border-border bg-background flex justify-end gap-2 shrink-0">
+          <Button variant="outline" onClick={onClose}>
             Fermer
           </Button>
-          
+
           {activeTab === 'compose' && hasGeneratedMessages && (
-            <Button 
-              onClick={handleQueueAll} 
+            <Button
+              onClick={handleQueueAll}
               disabled={isQueueing || readyCount === 0}
-              className="bg-linkedin hover:bg-linkedin-hover"
+              className="bg-linkedin hover:bg-linkedin-hover text-white"
             >
               {isQueueing ? (
                 <>
