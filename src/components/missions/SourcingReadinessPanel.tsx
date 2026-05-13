@@ -58,11 +58,11 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="w-full max-w-sm mx-auto space-y-3 py-1"
+      className="w-full max-w-lg mx-auto space-y-5 py-4"
     >
-      {/* Motion décoratif — anime l'écran d'attente quand pas encore de
-          résultats. Muted + loop + playsInline + aria-hidden pour ne pas
-          gêner les lecteurs d'écran. */}
+      {/* Motion décoratif — hero visuel à la Qonto. Domine l'écran d'attente
+          pour transformer le vide en moment de marque. Muted + loop +
+          playsInline + aria-hidden pour ne pas gêner les lecteurs d'écran. */}
       <div className="flex items-center justify-center">
         <video
           src="/sourcing-empty-motion.mp4"
@@ -71,15 +71,15 @@ export const SourcingReadinessPanel: React.FC<SourcingReadinessPanelProps> = ({
           muted
           playsInline
           aria-hidden="true"
-          className="w-40 h-40 sm:w-48 sm:h-48 object-cover rounded-2xl"
+          className="w-72 h-72 sm:w-96 sm:h-96 object-cover rounded-3xl"
         />
       </div>
 
-      <div className="text-center space-y-1">
-        <p className="text-sm font-semibold text-foreground">
+      <div className="text-center space-y-1.5">
+        <p className="text-lg font-semibold text-foreground tracking-tight">
           {canSearch ? 'Prêt à lancer la recherche' : 'Configurez la recherche'}
         </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {canSearch
             ? 'Filtres prêts. Lancez la recherche quand vous voulez.'
             : 'Générez les filtres depuis le brief, ou configurez-les manuellement à gauche.'}
