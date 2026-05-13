@@ -141,10 +141,10 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
           variant={isAdded ? "ghost" : "outline"}
           size="sm"
           title={isAdded ? `Déjà shortlisté pour "${activeProject.name}"` : `Shortlister pour "${activeProject.name}"`}
-          className={`h-7 gap-1.5 text-xs rounded-lg border px-2.5 font-medium shrink-0 transition-all ${
+          className={`h-7 gap-1.5 text-xs rounded-lg border-2 px-2.5 font-medium shrink-0 transition-all ${
             isAdded
-              ? 'text-success border-success/40 bg-success/5'
-              : 'bg-card border-foreground/15 shadow-sm text-foreground hover:bg-muted hover:border-foreground/30 hover:shadow'
+              ? 'text-success border-success/40 bg-success/10'
+              : 'bg-muted border-foreground/30 shadow-sm text-foreground hover:bg-accent hover:border-foreground/50 hover:shadow-md'
           }`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}

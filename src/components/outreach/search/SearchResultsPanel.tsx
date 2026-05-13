@@ -639,17 +639,16 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </button>
           )}
 
-          {/* Select all — renforcée (border-2 + bg-background + shadow)
-              pour ressortir comme un vrai contrôle cliquable et pas un trait
-              perdu dans le toolbar. */}
+          {/* Select all — renforcée (border-2 foreground + bg fixe + shadow)
+              pour ressortir comme un vrai contrôle cliquable. */}
           <div className="flex items-center gap-1.5 pl-2 border-l border-border shrink-0">
             <Checkbox
               checked={allSelectableSelected && selectableProfiles.length > 0}
               onCheckedChange={onToggleSelectAll}
               id="select-all"
-              className="h-4 w-4 border-2 border-muted-foreground/50 bg-background hover:border-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow-sm"
+              className="h-4 w-4 border-2 border-foreground/50 bg-background hover:border-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow"
             />
-            <label htmlFor="select-all" className="text-[11.5px] text-foreground/80 hover:text-foreground cursor-pointer select-none font-medium">
+            <label htmlFor="select-all" className="text-[11.5px] text-foreground hover:text-foreground cursor-pointer select-none font-medium">
               Tout sélectionner
             </label>
           </div>

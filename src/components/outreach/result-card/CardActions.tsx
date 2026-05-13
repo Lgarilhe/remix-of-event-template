@@ -109,14 +109,14 @@ export const CardActions: React.FC<CardActionsProps> = ({
       )}
 
       {/* Message rapide — si scoré et pas en séquence directe.
-          Relief : bg-card + shadow-sm + border-foreground/15 pour ressortir
-          du fond de la card et signaler une zone cliquable distincte. */}
+          Relief : bg-muted (vraie teinte grise) + border foreground/30
+          + shadow pour ressortir du fond blanc de la card. */}
       {selectedJob && !showScore && !compact && (
         <Button
           variant="outline"
           size="sm"
           onClick={onOpenMessage}
-          className="h-8 px-2.5 text-xs gap-1.5 bg-card border-foreground/15 shadow-sm hover:bg-muted hover:border-foreground/30 hover:shadow"
+          className="h-8 px-2.5 text-xs gap-1.5 bg-muted border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all font-medium"
           title="Composer un message d'approche"
         >
           <PenLine className={iconSize} aria-hidden="true" />
@@ -155,7 +155,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           <Button
             variant="ghost"
             size="icon"
-            className={`${compact ? 'h-7 w-7' : 'h-8 w-8'} bg-card border border-foreground/15 shadow-sm hover:bg-muted hover:border-foreground/30 transition-all`}
+            className={`${compact ? 'h-7 w-7' : 'h-8 w-8'} bg-muted border border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all`}
             aria-label={`Plus d'actions pour ${fullName}`}
           >
             <MoreHorizontal className={iconSize} aria-hidden="true" />

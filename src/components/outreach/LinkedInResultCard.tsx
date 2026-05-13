@@ -193,10 +193,10 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`relative bg-background border transition-all max-w-full cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+      className={`relative bg-card border-2 transition-all max-w-full cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
         isSelected
-          ? 'border-primary/70 shadow-md ring-1 ring-primary/30 bg-primary/[0.025]'
-          : 'border-border shadow-sm hover:shadow-md hover:border-foreground/40'
+          ? 'border-primary shadow-lg ring-2 ring-primary/25 bg-primary/[0.04]'
+          : 'border-border shadow hover:shadow-md hover:border-foreground/50'
       }`}
       style={{ wordBreak: 'break-word' }}
       role="button"
@@ -285,7 +285,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
-                    className="w-5 h-5 border-2 border-muted-foreground/50 bg-background hover:border-foreground hover:bg-muted/40 data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow-sm transition-colors"
+                    className="w-5 h-5 border-2 border-foreground/50 bg-background hover:border-foreground hover:bg-muted shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-colors"
                   />
                 )}
               </div>
@@ -299,7 +299,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
-                    className="w-6 h-6 border-2 border-muted-foreground/50 bg-background hover:border-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow-sm"
+                    className="w-6 h-6 border-2 border-foreground/50 bg-background hover:border-foreground shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                   />
                 )}
               </div>
