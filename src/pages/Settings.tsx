@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
 import { Button } from '@/components/ui/button';
@@ -122,19 +123,43 @@ const Settings = () => {
     [searchParams, setSearchParams],
   );
 
-  const tabs = [
-    { value: 'general', label: 'Général', icon: Building2 },
-    { value: 'account', label: 'Mon compte', icon: UserCircle },
-    { value: 'templates', label: 'Templates', icon: MessageSquare },
-    ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
-    ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon: CreditCard }] : []),
-    { value: 'credits', label: 'Crédits IA', icon: Sparkles },
-    ...(!isCollaborator ? [{ value: 'presets', label: 'Presets clients', icon: Bookmark }] : []),
-    ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
-    ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
-    ...(isAgency ? [{ value: 'agency', label: 'Agence', icon: Briefcase }] : []),
-    { value: 'marketplace', label: 'Marketplace', icon: Store },
-  ] as const;
+  // Tabs groupés par section pour aérer la navigation (pattern Linear/Vercel)
+  const tabGroups = [
+    {
+      label: 'Workspace',
+      items: [
+        { value: 'general', label: 'Général', icon: Building2 },
+        ...(!isCollaborator ? [{ value: 'presets', label: 'Presets clients', icon: Bookmark }] : []),
+        { value: 'templates', label: 'Templates', icon: MessageSquare },
+      ],
+    },
+    {
+      label: 'Compte & accès',
+      items: [
+        { value: 'account', label: 'Mon compte', icon: UserCircle },
+        ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
+        ...(!isCollaborator ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
+        ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
+      ],
+    },
+    {
+      label: 'Facturation',
+      items: [
+        ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon: CreditCard }] : []),
+        { value: 'credits', label: 'Crédits IA', icon: Sparkles },
+      ],
+    },
+    {
+      label: 'Plus',
+      items: [
+        ...(isAgency ? [{ value: 'agency', label: 'Agence', icon: Briefcase }] : []),
+        { value: 'marketplace', label: 'Marketplace', icon: Store },
+      ],
+    },
+  ].filter(g => g.items.length > 0);
+
+  // Flat list pour navigation clavier
+  const tabs = tabGroups.flatMap(g => g.items);
 
   return (
     <div className="min-h-screen bg-background">
@@ -148,19 +173,19 @@ const Settings = () => {
           {/* Header */}
           <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>
 
-          {/* Layout : sidebar verticale (lg+) + contenu, ou tabs horizontales
-              scrollables (mobile/tablet). Refonte 2026-05-13 — les anciens
-              tabs en row avec icônes 3D webp étaient peu visibles et datés. */}
-          <div className="flex flex-col lg:flex-row lg:gap-8">
+          {/* Layout : sidebar groupée (lg+) avec indicateur animé framer-motion
+              qui glisse entre les onglets (layoutId="settings-active-pill"),
+              ou tabs horizontales scrollables (mobile/tablet). Pattern Linear/
+              Vercel/Cal.com — clean, premium, accessible. */}
+          <div className="flex flex-col lg:flex-row lg:gap-10">
             <nav
               role="tablist"
               aria-label="Sections des paramètres"
               className={cn(
-                'flex lg:flex-col gap-0.5 mb-4 lg:mb-0 shrink-0',
-                'overflow-x-auto lg:overflow-visible no-scrollbar',
-                'lg:w-56 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)]',
-                'border-b border-border lg:border-b-0 lg:border-r lg:pr-3',
-                'pb-2 lg:pb-0'
+                'lg:w-60 lg:shrink-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto',
+                'mb-4 lg:mb-0 pb-2 lg:pb-1',
+                'border-b border-border lg:border-b-0',
+                'overflow-x-auto lg:overflow-x-visible no-scrollbar',
               )}
               onKeyDown={(e) => {
                 const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
@@ -177,33 +202,93 @@ const Settings = () => {
                 target?.focus();
               }}
             >
-              {tabs.map(tab => {
-                const isActive = activeTab === tab.value;
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    aria-controls={`settings-panel-${tab.value}`}
-                    id={`settings-tab-${tab.value}`}
-                    data-tab-value={tab.value}
-                    tabIndex={isActive ? 0 : -1}
-                    onClick={() => setActiveTab(tab.value)}
-                    className={cn(
-                      'group flex items-center gap-2.5 px-3 h-9 rounded-md text-sm font-medium whitespace-nowrap transition-all shrink-0',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      isActive
-                        ? 'bg-foreground text-background shadow-sm'
-                        : 'text-foreground/70 hover:text-foreground hover:bg-muted'
+              {/* Mobile : tous les onglets en row, pas de groupes (manque de
+                  place pour des labels de section + tabs). Desktop : sections. */}
+              <div className="flex lg:hidden gap-1 px-1">
+                {tabs.map(tab => {
+                  const isActive = activeTab === tab.value;
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      aria-controls={`settings-panel-${tab.value}`}
+                      id={`settings-tab-${tab.value}-mobile`}
+                      data-tab-value={tab.value}
+                      tabIndex={isActive ? 0 : -1}
+                      onClick={() => setActiveTab(tab.value)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0',
+                        isActive
+                          ? 'bg-foreground text-background'
+                          : 'text-foreground/70 hover:bg-muted'
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Desktop : sections groupées avec indicateur animé glissant */}
+              <div className="hidden lg:flex lg:flex-col gap-6">
+                {tabGroups.map((group, gi) => (
+                  <div key={group.label} className="flex flex-col gap-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground/70 px-3 mb-1.5">
+                      {group.label}
+                    </p>
+                    {group.items.map(tab => {
+                      const isActive = activeTab === tab.value;
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.value}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          aria-controls={`settings-panel-${tab.value}`}
+                          id={`settings-tab-${tab.value}`}
+                          data-tab-value={tab.value}
+                          tabIndex={isActive ? 0 : -1}
+                          onClick={() => setActiveTab(tab.value)}
+                          className={cn(
+                            'group relative flex items-center gap-2.5 px-3 h-9 rounded-lg text-sm font-medium transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            isActive
+                              ? 'text-background'
+                              : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
+                          )}
+                        >
+                          {/* Indicateur animé qui glisse entre les onglets */}
+                          {isActive && (
+                            <motion.span
+                              layoutId="settings-active-pill"
+                              className="absolute inset-0 bg-foreground rounded-lg shadow-sm"
+                              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                            />
+                          )}
+                          <Icon
+                            className={cn(
+                              'relative w-4 h-4 shrink-0 transition-colors',
+                              isActive
+                                ? 'text-background'
+                                : 'text-muted-foreground group-hover:text-foreground',
+                            )}
+                          />
+                          <span className="relative">{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                    {/* Séparateur entre groupes (sauf le dernier) */}
+                    {gi < tabGroups.length - 1 && (
+                      <div className="mt-3 -mx-1 border-t border-border/60" aria-hidden="true" />
                     )}
-                  >
-                    <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-background' : 'text-muted-foreground group-hover:text-foreground')} />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
+                  </div>
+                ))}
+              </div>
             </nav>
 
             {/* Tab content */}
