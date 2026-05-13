@@ -8,11 +8,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  ExternalLink, Mail, Target, PenLine, Loader2, Archive, MoreHorizontal, Linkedin,
+  ExternalLink, Mail, Sparkles, PenLine, Loader2, Archive, MoreHorizontal, Linkedin,
 } from 'lucide-react';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
-import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import { EnrichContactButton } from './EnrichContactButton';
 
 interface CardActionsProps {
@@ -77,23 +76,51 @@ export const CardActions: React.FC<CardActionsProps> = ({
 
   return (
     <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
-      {/* ═══ PRIMARY CTA — contextuel ═══ */}
+      {/* ═══ PRIMARY CTA — Score IA (gradient violet/indigo inspiré 21st.dev) ═══
+          Bouton CTA dédié à l'action AI scoring. Gradient indigo→violet→fuchsia
+          + shadow halo coloré + shine sweep au hover + sparkle pulse. Reste
+          compact (h-7/h-8) pour s'intégrer dans le rang d'actions. */}
       {showScore && (
-        <ShimmerButton
+        <button
           onClick={onScoreProfile}
           disabled={isScoring}
-          className={compact ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-xs gap-1.5'}
           title={`Scorer pour ${selectedJob?.title}`}
+          className={`group relative inline-flex items-center justify-center gap-1.5 overflow-hidden rounded-md font-bold uppercase tracking-wider text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-[0_4px_14px_0_rgba(124,58,237,0.4)] ${
+            compact ? 'h-7 px-2.5 text-[11px]' : 'h-8 px-3.5 text-xs'
+          }`}
+          style={{
+            backgroundImage: 'linear-gradient(110deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%)',
+            boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.4)',
+          }}
+          onMouseEnter={(e) => {
+            if (isScoring) return;
+            e.currentTarget.style.boxShadow = '0 6px 22px 0 rgba(124, 58, 237, 0.6)';
+            e.currentTarget.style.transform = 'translateY(-1px) scale(1.02)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = '0 4px 14px 0 rgba(124, 58, 237, 0.4)';
+            e.currentTarget.style.transform = '';
+          }}
         >
+          {/* Shine sweep au hover */}
+          <span
+            aria-hidden
+            className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
+          />
+          {/* Subtle inner highlight (top edge) */}
+          <span
+            aria-hidden
+            className="absolute inset-x-0 top-0 h-px bg-white/30"
+          />
           {isScoring ? (
-            <Loader2 className={`${iconSize} animate-spin`} aria-hidden="true" />
+            <Loader2 className={`relative ${iconSize} animate-spin`} aria-hidden="true" />
           ) : (
             <>
-              <Target className={iconSize} aria-hidden="true" />
-              <span className="font-bold">SCORE</span>
+              <Sparkles className={`relative ${iconSize} group-hover:animate-pulse`} aria-hidden="true" />
+              <span className="relative">SCORE</span>
             </>
           )}
-        </ShimmerButton>
+        </button>
       )}
 
       {showSequenceCTA && (
