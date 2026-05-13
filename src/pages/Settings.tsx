@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Building2, Users, Crown, Shield, User, Trash2, Plug, Check, Loader2, Pencil,
-  UserCircle, CreditCard, Sparkles, UserCog, MessageSquare, Bookmark, Briefcase, Store,
+  UserCircle, CreditCard, Sparkles, UserCog, MessageSquare, Bookmark, Briefcase, Store, Wand2,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,6 +32,7 @@ import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
 import { AgencySettings } from '@/components/settings/AgencySettings';
 import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
 import { PedigreePresetsSettings } from '@/components/settings/PedigreePresetsSettings';
+import { AiContextSettings } from '@/components/settings/AiContextSettings';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 
@@ -103,6 +104,7 @@ const Settings = () => {
     if (tab === 'integrations' && isAdmin) return 'integrations';
     if (tab === 'account') return 'account';
     if (tab === 'templates') return 'templates';
+    if (tab === 'ai-context') return 'ai-context';
     if (tab === 'connectors' && !isCollaborator) return 'connectors';
     if (tab === 'team' && !isCollaborator) return 'team';
     if (tab === 'presets' && !isCollaborator) return 'presets';
@@ -131,6 +133,7 @@ const Settings = () => {
         { value: 'general', label: 'Général', icon: Building2 },
         ...(!isCollaborator ? [{ value: 'presets', label: 'ICP sociétés', icon: Bookmark }] : []),
         { value: 'templates', label: 'Templates', icon: MessageSquare },
+        { value: 'ai-context', label: 'Contexte IA', icon: Wand2 },
       ],
     },
     {
@@ -473,6 +476,10 @@ const Settings = () => {
 
             {activeTab === 'templates' && (
               <MessageTemplatesSettings />
+            )}
+
+            {activeTab === 'ai-context' && (
+              <AiContextSettings />
             )}
 
             {activeTab === 'connectors' && (
