@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-interpolation.ts";
+import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
 const corsHeaders = {
@@ -3440,6 +3441,9 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     let totalTokensIn = 0;
     let totalTokensOut = 0;
 
+    // Load AI context (Settings → Contexte IA) once, reused across both callAI invocations
+    const seqAiContext = await loadAiContextForEnrollment(supabase, enrollment, step as { sender_id?: string | null });
+
     const callAI = async (userPrompt: string) => {
       try {
         const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
@@ -3449,6 +3453,7 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
           max_tokens: 500,
           system: [
             { type: 'text', text: ANTI_AI_STYLE_PROMPT, cache_control: { type: 'ephemeral' } },
+            ...(seqAiContext ? [{ type: 'text', text: seqAiContext, cache_control: { type: 'ephemeral' } }] : []),
             { type: 'text', text: 'Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks.' },
           ],
           messages: [{ role: 'user', content: userPrompt }],

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 
 const corsHeaders = {
@@ -44,6 +45,14 @@ Deno.serve(async (req) => {
       alerts_log,
     } = await req.json();
 
+    // Load AI context (Settings → Contexte IA) — resolves user's active org
+    let reportOrgId: string | null = null;
+    if (userId) {
+      const { data: prof } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      reportOrgId = (prof?.active_organization_id as string) || null;
+    }
+    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId: reportOrgId });
+
     const result = await callClaudeCompat({
       messages: [
         {
@@ -85,6 +94,7 @@ Retourne UNIQUEMENT ce JSON :
       max_tokens: 3000,
       timeoutMs: 60000,
       antiAiStyle: "full",
+      aiContext,
     });
 
     const text = result.content || "{}";

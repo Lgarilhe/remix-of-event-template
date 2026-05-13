@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -45,6 +46,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Load AI context (Settings → Contexte IA) — resolves user's active org
+    let liveCoachOrgId: string | null = null;
+    if (userId) {
+      const { data: prof } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      liveCoachOrgId = (prof?.active_organization_id as string) || null;
+    }
+    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId: liveCoachOrgId });
+
     // === INTRO GENERATION MODE ===
     if (body.action === 'generate_intro') {
       const { candidate_name, candidate_headline, candidate_profile_summary, job_title, job_context, criteria } = body;
@@ -67,6 +76,7 @@ Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase compl
           messages: [{ role: "user", content: introPrompt }],
           max_tokens: 150,
           timeoutMs: 15000,
+          aiContext,
         });
         const intro = result.content.trim() || null;
         return new Response(JSON.stringify({ intro }), {
@@ -199,6 +209,7 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
         tool_choice: { type: "function", function: { name: "coach_analysis" } },
         max_tokens: 1024,
         timeoutMs: 20000,
+        aiContext,
       });
     } catch (e) {
       console.error("[live-coach] Claude error:", e);

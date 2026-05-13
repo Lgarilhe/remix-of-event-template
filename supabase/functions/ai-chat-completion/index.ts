@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
+import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,12 +42,26 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Load AI context (Settings → Contexte IA) — user + org
+    // Resolve user's active org from profiles for the agency-level layer.
+    let orgId: string | null = null;
+    if (userId) {
+      const { data: prof } = await svc
+        .from('profiles')
+        .select('active_organization_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      orgId = (prof?.active_organization_id as string) || null;
+    }
+    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
+
     const result = await callClaudeCompat({
       messages,
       temperature: 0.7,
       max_tokens: 2000,
       timeoutMs: 45000,
       maxRetries: 1,
+      aiContext,
     });
 
     return new Response(

@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
+import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 // Timeout wrapper for fetch calls
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -419,7 +420,10 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
     }
-    
+
+    // Load AI context (Settings → Contexte IA)
+    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
+
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!ANTHROPIC_API_KEY) {
@@ -620,6 +624,7 @@ Réponds UNIQUEMENT en JSON valide:
         max_tokens: 400,
         system: [
           { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
+          ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
           { type: "text", text: "Tu es un assistant recruteur tech. Tu génères des réponses courtes, naturelles et professionnelles pour des conversations LinkedIn. Tu utilises les données du poste (salaire, critères, remote) pour répondre précisément aux questions des candidats. Tu réponds TOUJOURS en JSON valide, sans markdown." },
         ],
         messages: [

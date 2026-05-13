@@ -72,6 +72,14 @@ export interface ClaudeCompatOptions {
    *                        scoring numérique, JSON tools, etc.
    */
   antiAiStyle?: "full" | "compact" | "none";
+  /**
+   * Bloc de contexte IA user/org pré-formaté (cf _shared/ai-context.ts).
+   * Injecté APRÈS les règles anti-IA Konekt mais AVANT le system prompt
+   * spécifique de la fonction. Passe une chaîne vide pour skip — c'est
+   * exactement ce que retourne loadAndBuildAiContext() quand aucun contexte
+   * n'est configuré.
+   */
+  aiContext?: string;
 }
 
 export interface ClaudeCompatResult {
@@ -122,6 +130,13 @@ export async function callClaudeCompat(opts: ClaudeCompatOptions): Promise<Claud
     } else {
       chatMessages.push({ role: m.role, content: m.content });
     }
+  }
+
+  // Injection du contexte IA user/org (Settings → Contexte IA) APRÈS le
+  // system de la fonction mais AVANT les règles anti-IA (qui resteront en
+  // priorité absolue via le unshift suivant).
+  if (opts.aiContext && opts.aiContext.trim().length > 0) {
+    systemParts.unshift(opts.aiContext);
   }
 
   // Injection des règles anti-IA Konekt selon le flag.

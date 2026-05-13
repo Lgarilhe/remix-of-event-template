@@ -9,6 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
 import { interpolatePlaceholders, buildSequenceContext } from "../_shared/template-interpolation.ts";
+import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -146,11 +147,19 @@ async function generateAiSnippet(
       anthropicModel = gam(modelId);
     } catch { /* use defaults */ }
 
+    // Load AI context (Settings → Contexte IA) — user + org
+    const emailAiContext = await loadAiContextForEnrollment(supabase, enrollment, step as { sender_id?: string | null });
+
     const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
     const result = await callWithRetry(ANTHROPIC_API_KEY!, {
       model: anthropicModel,
       max_tokens: 150,
-      system: systemPrompt,
+      system: emailAiContext
+        ? [
+            { type: 'text', text: systemPrompt },
+            { type: 'text', text: emailAiContext, cache_control: { type: 'ephemeral' } },
+          ]
+        : systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
 

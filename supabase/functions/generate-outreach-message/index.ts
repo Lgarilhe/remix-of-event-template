@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
+import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -537,6 +538,9 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn('[generate-outreach-message] Could not fetch org_id:', e);
     }
+
+    // Load AI context (Settings → Contexte IA) for prompt injection
+    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
 
     // Resolve Unipile credentials from org_integrations with env fallback
     let resolvedUnipile: { dsn: string; apiKey: string } | null = null;
@@ -1114,6 +1118,7 @@ Réponds UNIQUEMENT en JSON valide:
             max_tokens: 2048,
             system: [
               { type: "text", text: ANTI_AI_STYLE_PROMPT, cache_control: { type: "ephemeral" } },
+              ...(aiContext ? [{ type: "text", text: aiContext, cache_control: { type: "ephemeral" } }] : []),
               { type: "text", text: "Tu es un recruteur tech senior. Tu écris des messages LinkedIn courts, directs, humains. Tu réponds TOUJOURS en JSON valide, sans markdown ni code blocks." },
             ],
             messages: [{ role: "user", content: userPrompt }],

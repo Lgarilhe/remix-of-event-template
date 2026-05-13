@@ -13,6 +13,7 @@
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
+import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
@@ -341,6 +342,12 @@ Génère maintenant la réponse JSON.`;
       : 'translate_text';
     const _aiParams = extractAIParams(body, aiAction);
 
+    // Load AI context (Settings → Contexte IA)
+    const aiContext = await loadAndBuildAiContext(adminClient, {
+      userId,
+      orgId: (body.organization_id as string) || null,
+    });
+
     const result = await callClaudeCompat({
       max_tokens: action === 'summarize' ? 1024 : action === 'cta_reply' ? 1200 : 1500,
       temperature: action === 'cta_reply' ? 0.55 : 0.4, // un peu plus de créa pour les CTA
@@ -349,6 +356,7 @@ Génère maintenant la réponse JSON.`;
         { role: "user", content: userPrompt }
       ],
       timeoutMs: 30000,
+      aiContext,
     });
 
     // Settle credits (best-effort)
