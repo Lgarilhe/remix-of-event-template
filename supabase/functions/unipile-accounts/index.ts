@@ -886,8 +886,11 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Success: update DB with config + clear error
-        await adminClient
+        // Success: update DB with config + clear error.
+        // 2026-05-13 (audit warning #260513-007211) : on ajoute select+count
+        // pour détecter les 0-rows-updated qui passaient en silence avant
+        // (Supabase JS ne lève pas d'erreur si l'UPDATE ne match aucune row).
+        const { data: updateData, error: updateError } = await adminClient
           .from('member_linkedin_accounts')
           .update({
             ...dbUpdates,
@@ -895,13 +898,37 @@ Deno.serve(async (req) => {
             proxy_last_error: null,
           })
           .eq('linkedin_account_id', account_id)
-          .eq('organization_id', organizationId);
+          .eq('organization_id', organizationId)
+          .select('id, linkedin_account_id, organization_id, proxy_mode, proxy_country');
+
+        console.log(`[update_proxy] DB update rows=${updateData?.length ?? 0} account_id=${account_id} org=${organizationId}`,
+          updateError ? `error=${updateError.message}` : `data=${JSON.stringify(updateData)}`);
+
+        if (updateError) {
+          console.error('[update_proxy] DB update failed:', updateError);
+          return new Response(
+            JSON.stringify({ success: false, error: `DB update failed: ${updateError.message}` }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (!updateData || updateData.length === 0) {
+          console.warn(`[update_proxy] No rows updated — linkedin_account_id=${account_id}, organization_id=${organizationId}`);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: `Aucun mapping trouvé pour ce compte dans votre organisation. Le proxy Unipile a bien été mis à jour, mais l'état n'a pas pu être persisté dans Konekt. account_id=${account_id} org=${organizationId}`,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         return new Response(
-          JSON.stringify({ 
-            success: true, 
+          JSON.stringify({
+            success: true,
             account_id: patchData.account_id || account_id,
             proxy_mode,
+            rows_updated: updateData.length,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
