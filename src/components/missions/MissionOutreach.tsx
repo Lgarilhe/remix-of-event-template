@@ -7,7 +7,6 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { SequencesList } from '@/components/outreach/SequencesList';
 import { InvitationsPanel } from '@/components/outreach/InvitationsPanel';
-import { OutreachEmptyState } from './OutreachEmptyState';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -39,9 +38,6 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
     [searchParams, setSearchParams],
   );
 
-  // showEmptyState commence en false pour éviter le flash empty → loaded.
-  // Sera mis à true seulement si le fetch confirme 0 séquences.
-  const [showEmptyState, setShowEmptyState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Enrollment stats
@@ -62,11 +58,10 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
       if (seqError) throw seqError;
 
       if (!sequences?.length) {
-        if (isMounted) setShowEmptyState(true);
+        // SequencesList gère son propre empty state ("Créer ma première
+        // séquence") — pas besoin d'écran intermédiaire à 3 cards.
         return;
       }
-
-      if (isMounted) setShowEmptyState(false);
 
       const seqIds = sequences.map((s: any) => s.id);
       const { data: enrollments, error: enrError } = await supabase
@@ -139,28 +134,6 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
     );
   }
 
-  if (showEmptyState && enrollmentStats.total === 0) {
-    return (
-      <div className="border border-border bg-background">
-        <OutreachEmptyState
-          goCount={goCount}
-          onLinkedInMessage={() => {
-            setShowEmptyState(false);
-            setOutreachTab('sequences');
-          }}
-          onInMail={() => {
-            setShowEmptyState(false);
-            setOutreachTab('sequences');
-          }}
-          onSequence={() => {
-            setShowEmptyState(false);
-            setOutreachTab('sequences');
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="border border-border bg-background">
       {/* Go candidates CTA — prominent when candidates exist but not enrolled */}
@@ -178,7 +151,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
             </p>
           </div>
           <button
-            onClick={() => { setShowEmptyState(false); setOutreachTab('sequences'); }}
+            onClick={() => setOutreachTab('sequences')}
             className="shrink-0 flex items-center gap-2 h-9 px-4 text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 transition-colors rounded-lg"
           >
             Créer une séquence
