@@ -11,6 +11,11 @@ export interface MemberQuota {
   max_messages_per_day: number;
   max_searches_per_day: number;
   max_profile_visits_per_day: number;
+  // ── Conformité LinkedIn (warning #260513-007211) — cf. migration 20260513220000
+  business_hours_start: number;       // 0-23, default 8
+  business_hours_end: number;         // 1-24, default 19
+  max_actions_per_day: number;        // Cap global actions visibles/jour, default 80
+  timezone: string;                   // IANA, default 'Europe/Paris'
   created_at: string;
   updated_at: string;
 }
@@ -20,6 +25,10 @@ export const DEFAULT_QUOTAS = {
   max_messages_per_day: 100,
   max_searches_per_day: 100,
   max_profile_visits_per_day: 200,
+  business_hours_start: 8,
+  business_hours_end: 19,
+  max_actions_per_day: 80,
+  timezone: 'Europe/Paris',
 };
 
 export function useMemberQuotas() {

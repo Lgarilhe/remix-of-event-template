@@ -435,9 +435,20 @@ async function handleProcess(supabase: any, force = false) {
         const enrollmentOrgId = enrollment.organization_id || enrollment.sequence?.organization_id;
         const uCreds = await resolveUnipileCreds(enrollmentOrgId, supabase);
 
-        const quotaCheck = await checkQuotaForAction(supabase, step.action_type, enrollment.account_id, uCreds.apiKey, uCreds.dsn);
+        // Load per-user quotas (business hours + daily cap) — overrides hardcoded defaults
+        const senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
+        const userQuotas = await getUserQuotas(supabase, senderUserId);
+
+        const quotaCheck = await checkQuotaForAction(
+          supabase,
+          step.action_type,
+          enrollment.account_id,
+          uCreds.apiKey,
+          uCreds.dsn,
+          userQuotas.max_actions_per_day,
+        );
         if (!quotaCheck.allowed) {
-          await supabase.from('sequence_step_executions').update({ 
+          await supabase.from('sequence_step_executions').update({
             status: 'quota_blocked', skip_reason: quotaCheck.reason,
             scheduled_at: new Date(Date.now() + 86400000).toISOString(),
           }).eq('id', exec.id);
@@ -445,9 +456,9 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
-        const userTimezone = enrollment.user_timezone || 'Europe/Paris';
-        if (!force && !isWithinBusinessHours(userTimezone)) {
-          const nextSlot = getNextBusinessHourSlot(userTimezone);
+        const userTimezone = enrollment.user_timezone || userQuotas.timezone || 'Europe/Paris';
+        if (!force && !isWithinBusinessHours(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end)) {
+          const nextSlot = getNextBusinessHourSlot(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end);
           await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
           results.skipped++;
           continue;
@@ -1387,14 +1398,61 @@ function safeTimezone(tz: string | undefined | null): string {
   }
 }
 
-function isWithinBusinessHours(timezone: string): boolean {
+function isWithinBusinessHours(timezone: string, startHour = 8, endHour = 19): boolean {
   try {
     const tz = safeTimezone(timezone);
     const now = new Date();
     const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(now), 10);
     const day = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(now);
-    return day !== "Sat" && day !== "Sun" && hour >= 8 && hour < 19;
+    return day !== "Sat" && day !== "Sun" && hour >= startHour && hour < endHour;
   } catch { return true; }
+}
+
+// ─── Per-user quotas cache (loaded lazily during process cycle) ──────────────
+// member_quotas (cf. migration 20260513220000) permet à chaque user de set ses
+// propres plages horaires + cap journalier. Ces valeurs surclassent les defaults
+// hardcodés ci-dessus. Le cache évite N+1 lookups quand on traite N enrollments
+// du même sender.
+interface UserQuotaConfig {
+  business_hours_start: number;
+  business_hours_end: number;
+  max_actions_per_day: number;
+  timezone: string;
+}
+const userQuotasCache = new Map<string, UserQuotaConfig | null>();
+const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
+  business_hours_start: 8,
+  business_hours_end: 19,
+  max_actions_per_day: 80,
+  timezone: 'Europe/Paris',
+};
+// deno-lint-ignore no-explicit-any
+async function getUserQuotas(supabase: any, userId: string | null | undefined): Promise<UserQuotaConfig> {
+  if (!userId) return DEFAULT_USER_QUOTAS;
+  if (userQuotasCache.has(userId)) {
+    return userQuotasCache.get(userId) ?? DEFAULT_USER_QUOTAS;
+  }
+  try {
+    const { data } = await supabase
+      .from('member_quotas')
+      .select('business_hours_start, business_hours_end, max_actions_per_day, timezone')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const merged: UserQuotaConfig = data
+      ? {
+          business_hours_start: data.business_hours_start ?? DEFAULT_USER_QUOTAS.business_hours_start,
+          business_hours_end: data.business_hours_end ?? DEFAULT_USER_QUOTAS.business_hours_end,
+          max_actions_per_day: data.max_actions_per_day ?? DEFAULT_USER_QUOTAS.max_actions_per_day,
+          timezone: data.timezone ?? DEFAULT_USER_QUOTAS.timezone,
+        }
+      : DEFAULT_USER_QUOTAS;
+    userQuotasCache.set(userId, merged);
+    return merged;
+  } catch (e) {
+    console.warn(`[getUserQuotas] failed for user ${userId}, using defaults:`, e);
+    userQuotasCache.set(userId, null);
+    return DEFAULT_USER_QUOTAS;
+  }
 }
 
 // Helper: get the UTC offset (in hours) for a given timezone at a given instant
@@ -1415,20 +1473,20 @@ function setLocalHour(date: Date, tz: string, desiredLocalHour: number, minutes 
   date.setUTCHours(desiredLocalHour - offset, minutes, 0, 0);
 }
 
-function getNextBusinessHourSlot(timezone: string): Date {
+function getNextBusinessHourSlot(timezone: string, startHour = 8, endHour = 19): Date {
   const tz = safeTimezone(timezone);
   const target = new Date();
   for (let i = 0; i < 7; i++) {
     try {
       const day = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(target);
       const hour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(target), 10);
-      if (day === "Sat" || day === "Sun" || hour >= 19) {
+      if (day === "Sat" || day === "Sun" || hour >= endHour) {
         target.setDate(target.getDate() + 1);
-        setLocalHour(target, tz, 8, Math.floor(Math.random() * 30));
+        setLocalHour(target, tz, startHour, Math.floor(Math.random() * 30));
         continue;
       }
-      if (hour < 8) {
-        setLocalHour(target, tz, 8, Math.floor(Math.random() * 30));
+      if (hour < startHour) {
+        setLocalHour(target, tz, startHour, Math.floor(Math.random() * 30));
       }
       break;
     } catch { target.setTime(target.getTime() + 3600000); break; }
@@ -1709,10 +1767,30 @@ async function checkHasProspectReplied(accountId: string, profileId: string, api
 }
 
 // deno-lint-ignore no-explicit-any
-async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string): Promise<{ allowed: boolean; reason?: string }> {
+async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string, maxActionsPerDay?: number): Promise<{ allowed: boolean; reason?: string }> {
   const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
+    // ─── Cap global cumulé d'actions visibles par jour ─────────────────────
+    // Configurable par user via member_quotas.max_actions_per_day. Conformité
+    // LinkedIn warning #260513-007211 : si l'user partage son compte LinkedIn
+    // avec un autre outil, ce cap doit refléter le volume cumulé acceptable.
+    const VISIBLE_ACTIONS = new Set(['message', 'smart_message', 'inmail', 'connection_request']);
+    if (VISIBLE_ACTIONS.has(actionType) && typeof maxActionsPerDay === 'number' && maxActionsPerDay > 0) {
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      const { data: todayActions } = await supabase
+        .from('sequence_step_executions')
+        .select('id, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(account_id)')
+        .eq('status', 'sent')
+        .eq('enrollment.account_id', accountId)
+        .in('step.action_type', Array.from(VISIBLE_ACTIONS))
+        .gte('executed_at', dayStart.toISOString());
+      const todayCount = todayActions?.length || 0;
+      if (todayCount >= maxActionsPerDay) {
+        return { allowed: false, reason: `Cap journalier atteint (${todayCount}/${maxActionsPerDay} actions visibles)` };
+      }
+    }
+
     if (actionType === 'inmail' || actionType === 'smart_message') {
       const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
       // Fail-CLOSED : si Unipile balance check échoue, on bloque l'envoi.

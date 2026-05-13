@@ -28,8 +28,11 @@ interface InMailQueueItem {
   network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
 }
 
-// Check if current time is within business hours (8h-19h) for the given timezone
-function isWithinBusinessHours(timezone: string): boolean {
+// Check if current time is within business hours for the given timezone.
+// Conformité LinkedIn (warning #260513-007211) : les plages horaires sont
+// configurables par user via member_quotas (cf. migration 20260513220000).
+// Defaults : 8h-19h (compatible avec l'ancien comportement).
+function isWithinBusinessHours(timezone: string, startHour = 8, endHour = 19): boolean {
   try {
     const now = new Date();
     const formatter = new Intl.DateTimeFormat("en-US", {
@@ -38,15 +41,14 @@ function isWithinBusinessHours(timezone: string): boolean {
       hour12: false,
     });
     const hour = parseInt(formatter.format(now), 10);
-    
-    // Business hours: 8h to 19h
-    return hour >= 8 && hour < 19;
+
+    return hour >= startHour && hour < endHour;
   } catch (e) {
     console.error("Error checking business hours:", e);
     // Default to Paris timezone if invalid
     const now = new Date();
     const parisHour = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getHours();
-    return parisHour >= 8 && parisHour < 19;
+    return parisHour >= startHour && parisHour < endHour;
   }
 }
 
@@ -60,11 +62,11 @@ function getRandomDelay(): number {
 }
 
 // Calculate next scheduled time with human-like variation
-function calculateNextScheduledTime(timezone: string): Date {
+function calculateNextScheduledTime(timezone: string, startHour = 8, endHour = 19): Date {
   const now = new Date();
   const delay = getRandomDelay();
   let nextTime = new Date(now.getTime() + delay);
-  
+
   // Check if next time is still within business hours
   try {
     const formatter = new Intl.DateTimeFormat("en-US", {
@@ -73,26 +75,50 @@ function calculateNextScheduledTime(timezone: string): Date {
       hour12: false,
     });
     const nextHour = parseInt(formatter.format(nextTime), 10);
-    
-    // If outside business hours, schedule for next day at 8h + random offset
-    if (nextHour >= 19 || nextHour < 8) {
-      // Get tomorrow at 8h in the user's timezone
+
+    // If outside business hours, schedule for next day at startHour + random offset
+    if (nextHour >= endHour || nextHour < startHour) {
+      // Get tomorrow at startHour in the user's timezone
       const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + (nextHour >= 19 ? 1 : 0));
-      
-      // Add random offset between 0-30 minutes after 8h
+      tomorrow.setDate(tomorrow.getDate() + (nextHour >= endHour ? 1 : 0));
+
+      // Add random offset between 0-30 minutes after startHour
       const randomOffset = Math.floor(Math.random() * 30 * 60 * 1000);
-      
-      // Convert to target timezone's 8 AM
+
+      // Convert to target timezone's startHour
       const targetDate = new Date(tomorrow.toLocaleString("en-US", { timeZone: timezone }));
-      targetDate.setHours(8, 0, 0, 0);
+      targetDate.setHours(startHour, 0, 0, 0);
       nextTime = new Date(targetDate.getTime() + randomOffset);
     }
   } catch (e) {
     console.error("Error calculating next scheduled time:", e);
   }
-  
+
   return nextTime;
+}
+
+// Load per-user quotas from member_quotas. Used to enforce business hours
+// and timezone configured by the user (cf. migration 20260513220000).
+// deno-lint-ignore no-explicit-any
+async function loadUserQuotas(supabase: any, userId: string): Promise<{ startHour: number; endHour: number; timezone: string }> {
+  const defaults = { startHour: 8, endHour: 19, timezone: 'Europe/Paris' };
+  if (!userId) return defaults;
+  try {
+    const { data } = await supabase
+      .from('member_quotas')
+      .select('business_hours_start, business_hours_end, timezone')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!data) return defaults;
+    return {
+      startHour: data.business_hours_start ?? defaults.startHour,
+      endHour: data.business_hours_end ?? defaults.endHour,
+      timezone: data.timezone ?? defaults.timezone,
+    };
+  } catch (e) {
+    console.warn(`[loadUserQuotas] failed for user ${userId}, using defaults:`, e);
+    return defaults;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -170,15 +196,19 @@ Deno.serve(async (req: Request) => {
 
       const user = await validateUser();
 
-      const timezone = user_timezone || "Europe/Paris";
+      // Load user's configured business hours + timezone (default 8h-19h Paris)
+      const userQuotas = await loadUserQuotas(supabase, user.id);
+      const timezone = user_timezone || userQuotas.timezone;
+      const startHour = userQuotas.startHour;
+      const endHour = userQuotas.endHour;
       const now = new Date();
-      
+
       // Schedule items with staggered times
       const queuedItems = items.map((item: any, index: number) => {
         // Calculate scheduled time: first item soon, others staggered
         let scheduledAt: Date;
-        
-        if (index === 0 && isWithinBusinessHours(timezone)) {
+
+        if (index === 0 && isWithinBusinessHours(timezone, startHour, endHour)) {
           // First item: send in 1-2 minutes if within business hours
           scheduledAt = new Date(now.getTime() + Math.floor(Math.random() * 60000) + 60000);
         } else {
@@ -197,14 +227,14 @@ Deno.serve(async (req: Request) => {
           hour12: false,
         });
         const scheduledHour = parseInt(formatter.format(scheduledAt), 10);
-        
-        if (scheduledHour >= 19 || scheduledHour < 8) {
+
+        if (scheduledHour >= endHour || scheduledHour < startHour) {
           // Reschedule to next business day
           const nextDay = new Date(scheduledAt);
-          if (scheduledHour >= 19) {
+          if (scheduledHour >= endHour) {
             nextDay.setDate(nextDay.getDate() + 1);
           }
-          nextDay.setHours(8 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0, 0);
+          nextDay.setHours(startHour + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0, 0);
           scheduledAt = nextDay;
         }
 
@@ -243,6 +273,10 @@ Deno.serve(async (req: Request) => {
     // Action: process - Process pending items (called by cron or manually)
     if (action === "process") {
       const user = await validateUser();
+      // Load user's configured business hours (cf. member_quotas, default 8h-19h)
+      const userQuotas = await loadUserQuotas(supabase, user.id);
+      const startHour = userQuotas.startHour;
+      const endHour = userQuotas.endHour;
       const now = new Date();
       
       // Get items that are scheduled and ready to send — scoped to the authenticated user.
@@ -271,10 +305,11 @@ Deno.serve(async (req: Request) => {
       const results: { id: string; success: boolean; error?: string }[] = [];
 
       for (const item of pendingItems as InMailQueueItem[]) {
-        // Check if we're within business hours for this user's timezone
-        if (!isWithinBusinessHours(item.user_timezone)) {
+        // Check if we're within business hours (per-user configurable via member_quotas)
+        const itemTz = item.user_timezone || userQuotas.timezone;
+        if (!isWithinBusinessHours(itemTz, startHour, endHour)) {
           // Reschedule for next business hours
-          const nextScheduled = calculateNextScheduledTime(item.user_timezone);
+          const nextScheduled = calculateNextScheduledTime(itemTz, startHour, endHour);
           await supabase
             .from("inmail_queue")
             .update({ scheduled_at: nextScheduled.toISOString() })

@@ -18,6 +18,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { LinkedInSafetySettings } from './LinkedInSafetySettings';
 
 /**
  * MyLinkedInAccount — Settings > Mon compte LinkedIn.
@@ -293,7 +294,8 @@ export const MyLinkedInAccount = () => {
   };
 
   return (
-    <Card>
+    <div className="space-y-4">
+      <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <img src={linkedinLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
@@ -499,6 +501,10 @@ export const MyLinkedInAccount = () => {
         )}
       </CardContent>
     </Card>
+
+    {/* Plages horaires & cap journalier — conformité LinkedIn warning #260513-007211 */}
+    <LinkedInSafetySettings />
+  </div>
   );
 };
 
