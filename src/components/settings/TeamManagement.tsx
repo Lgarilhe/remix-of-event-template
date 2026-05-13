@@ -17,7 +17,7 @@ import linkedinLogo from '@/assets/linkedin-logo.webp';
 import { useJobAssignments } from '@/hooks/useJobAssignments';
 import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useMemberStats } from '@/hooks/useMemberStats';
 import { useOrganization, OrganizationMember } from '@/hooks/useOrganization';
@@ -83,7 +83,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const { upsertQuota, isSaving, getQuotaForUser } = useMemberQuotas();
   const { linkAccount, unlinkAccount, isLinking, getMappingForUser, getMappingForAccount } = useMemberLinkedInAccounts();
   const { accounts: linkedInAccounts } = useLinkedInAccounts();
-  const { data: jobs = [] } = useNotionJobs();
+  // Liste des missions internes (sourcing_projects) — remplace Notion comme
+  // source primaire des "postes" depuis la migration de Lovable vers Supabase.
+  const { projects } = useSourcingProjects();
+  const jobs = React.useMemo(
+    () => projects.map(p => ({ id: p.id, title: p.name })),
+    [projects],
+  );
   const userIds = members.map(m => m.user_id);
   const { data: statsMap = {} } = useMemberStats(organizationId, userIds);
   const [editingQuotas, setEditingQuotas] = useState<Record<string, Partial<typeof DEFAULT_QUOTAS>>>({});
@@ -354,10 +360,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
                       <div className="border-t border-border" />
 
-                      {/* Job Assignments */}
+                      {/* Mission Assignments */}
                       <SectionRow
                         icon={<Briefcase className="w-3.5 h-3.5 text-muted-foreground" />}
-                        label="Postes assignés"
+                        label="Missions assignées"
                       >
                         {memberJobs.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mb-3">
@@ -381,32 +387,38 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           </div>
                         )}
 
-                        <div className="flex items-center gap-2">
-                          <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                            <SelectTrigger className="h-8 text-xs flex-1">
-                              <SelectValue placeholder="Sélectionner un poste…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {jobs
-                                .filter(j => !memberJobs.some(a => a.job_id === j.id))
-                                .map(j => (
-                                  <SelectItem key={j.id} value={j.id} className="text-xs">
-                                    {j.title}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 gap-1"
-                            onClick={() => handleAssignJob(member)}
-                            disabled={!selectedJobId || isAssigning}
-                          >
-                            {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                            Assigner
-                          </Button>
-                        </div>
+                        {jobs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic px-2 py-1.5">
+                            Aucune mission créée. Créez d'abord une mission depuis l'onglet Missions pour pouvoir y assigner ce membre.
+                          </p>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+                              <SelectTrigger className="h-8 text-xs flex-1">
+                                <SelectValue placeholder="Sélectionner une mission…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {jobs
+                                  .filter(j => !memberJobs.some(a => a.job_id === j.id))
+                                  .map(j => (
+                                    <SelectItem key={j.id} value={j.id} className="text-xs">
+                                      {j.title}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1"
+                              onClick={() => handleAssignJob(member)}
+                              disabled={!selectedJobId || isAssigning}
+                            >
+                              {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                              Assigner
+                            </Button>
+                          </div>
+                        )}
                       </SectionRow>
 
                       <div className="border-t border-border" />
@@ -505,7 +517,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   {/* Non-admin expanded note */}
                   {isExpanded && !isAdmin && (
                     <div className="bg-muted/30 border-t border-border px-4 py-4 text-xs text-muted-foreground italic">
-                      Les détails de gestion (LinkedIn, postes, quota) sont visibles uniquement par les administrateurs.
+                      Les détails de gestion (LinkedIn, missions, quota) sont visibles uniquement par les administrateurs.
                     </div>
                   )}
                 </div>
