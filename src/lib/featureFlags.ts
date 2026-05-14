@@ -31,7 +31,7 @@ export type FlagKey = keyof typeof FLAGS;
 
 /** Valeurs par défaut si le flag n'est pas dans localStorage. */
 const DEFAULTS: Record<FlagKey, boolean> = {
-  mission_v2: false,
+  mission_v2: true,
 };
 
 const PREFIX = 'konekt:flag:';
