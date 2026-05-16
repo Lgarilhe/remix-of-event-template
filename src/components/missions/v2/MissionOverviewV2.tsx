@@ -242,7 +242,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
           animationDelay: '60ms',
         }}
       >
-        <div className="flex items-center gap-4 relative z-10 flex-wrap sm:flex-nowrap">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 relative z-10">
           <div className="h-12 w-12 rounded-xl grid place-items-center flex-shrink-0 konekt-skalr-bg konekt-shine">
             <NextIcon className="w-5 h-5 text-white" strokeWidth={2.5} />
           </div>
@@ -263,7 +263,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
             onClick={() => onNavigateToSub(nextStep.targetSub)}
             disabled={!nextStep.available}
             className={cn(
-              'h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 flex-shrink-0',
+              'h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center justify-center gap-1.5 flex-shrink-0 w-full sm:w-auto',
               'konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97]',
               !nextStep.available && 'opacity-50 cursor-not-allowed',
             )}
