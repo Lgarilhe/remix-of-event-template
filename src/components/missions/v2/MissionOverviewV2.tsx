@@ -27,7 +27,7 @@
  *   └──────────────────────────────────────────────────────────────┘
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Sparkles, Search, Zap, ArrowRight, Building2, MapPin, Euro, Clock, FileText, Briefcase } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -159,6 +159,39 @@ function computeNextStep(
   };
 }
 
+// ── Company logo (logo_url > website domain > name guess, fallback icon) ──
+
+function logoDomain(website?: string, name?: string): string | null {
+  if (website) {
+    const m = website.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    const host = m.split('/')[0];
+    if (host.includes('.')) return host;
+  }
+  if (name) {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (slug) return `${slug}.com`;
+  }
+  return null;
+}
+
+function CompanyLogo({ name, logoUrl, website }: { name?: string; logoUrl?: string; website?: string }) {
+  const [failed, setFailed] = useState(false);
+  const domain = logoDomain(website, name);
+  const src = logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null);
+
+  if (failed || !src) return <Building2 className="w-3.5 h-3.5" />;
+  return (
+    <img
+      src={src}
+      alt={name || ''}
+      width={16}
+      height={16}
+      className="w-4 h-4 rounded-sm object-contain shrink-0"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────
 
 export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
@@ -208,7 +241,12 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
           {project.client_name && (
             <>
               <span className="inline-flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5" /> {project.client_name}
+                <CompanyLogo
+                  name={project.client_name}
+                  logoUrl={jd.client?.logo_url}
+                  website={jd.client?.website}
+                />{' '}
+                {project.client_name}
               </span>
               <span className="text-muted-foreground/40">·</span>
             </>
