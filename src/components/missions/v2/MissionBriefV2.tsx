@@ -61,6 +61,9 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatchRef = useRef<Partial<JobDetails>>({});
   const latestRef = useRef<JobDetails>(project.job_details || {});
+  // Incrémenté à chaque frappe. Permet de savoir si l'user a tapé pendant
+  // qu'une sauvegarde était en vol (sinon on effacerait sa saisie).
+  const editSeqRef = useRef(0);
 
   // Sync latestRef quand project.job_details change (DB sync depuis le serveur).
   // On ne le réécrase PAS pendant que l'user tape (sinon on perd les patchs locaux).
@@ -97,14 +100,22 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
   const updateField = useCallback((patch: Partial<JobDetails>) => {
     if (readOnly) return;
     pendingPatchRef.current = deepMerge(pendingPatchRef.current, patch);
+    editSeqRef.current += 1;
     setTick(t => t + 1);
     setSaveStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
+      const sentSeq = editSeqRef.current;
       const merged = deepMerge(latestRef.current, pendingPatchRef.current);
       updateProject({ id: project.id, job_details: merged } as any).then(
         () => {
-          pendingPatchRef.current = {};
+          // Ne vider le pending QUE si aucune frappe n'a eu lieu pendant
+          // la requête en vol — sinon on perdrait le texte tapé entre
+          // l'envoi et la réponse, et le refetch ferait reculer le champ.
+          // Une frappe ultérieure a déjà reprogrammé un save du pending complet.
+          if (editSeqRef.current === sentSeq) {
+            pendingPatchRef.current = {};
+          }
           setSaveStatus('saved');
           if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
           saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2500);
