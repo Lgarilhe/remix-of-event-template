@@ -55,6 +55,9 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
   const pendingPatchRef = useRef<Partial<JobDetails>>({});
   const latestJobDetailsRef = useRef(project.job_details || {});
   latestJobDetailsRef.current = project.job_details || {};
+  // Incrémenté à chaque frappe : détecte si l'user a tapé pendant qu'une
+  // sauvegarde était en vol (sinon on effacerait sa saisie).
+  const editSeqRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -65,15 +68,29 @@ export const MissionBrief = ({ project, readOnly = false }: MissionBriefProps) =
 
   const handleJobDetailsUpdate = useCallback((patch: Partial<JobDetails>) => {
     pendingPatchRef.current = deepMerge(pendingPatchRef.current, patch);
+    editSeqRef.current += 1;
     setSaveStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
+      const sentSeq = editSeqRef.current;
       const merged = deepMerge(latestJobDetailsRef.current, pendingPatchRef.current);
-      updateProject({ id: project.id, job_details: merged } as any);
-      pendingPatchRef.current = {};
-      setSaveStatus('saved');
-      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
-      saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
+      updateProject({ id: project.id, job_details: merged } as any).then(
+        () => {
+          // Ne vider le pending QUE si aucune frappe n'a eu lieu pendant
+          // la requête en vol — sinon le champ recule (clear + refetch).
+          // Une frappe ultérieure a déjà reprogrammé un save du pending complet.
+          if (editSeqRef.current === sentSeq) {
+            pendingPatchRef.current = {};
+          }
+          setSaveStatus('saved');
+          if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+          saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
+        },
+        () => {
+          // Échec : on garde le pending, une frappe ultérieure resauvegardera.
+          setSaveStatus('idle');
+        },
+      );
     }, 800);
   }, [project.id, updateProject]);
 
