@@ -42,7 +42,9 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned: `latest` 404s when the action's latest-release lookup lags
+          # behind a new CLI publish. 2.90.0 is proven against this project.
+          version: 2.90.0
 
       - name: Verify required secrets are set
         env:
