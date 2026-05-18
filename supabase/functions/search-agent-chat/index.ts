@@ -283,94 +283,53 @@ async function executeTool(
   try {
     switch (toolName) {
       case "search_candidates": {
-        // Map Apollo-style params (from tool schema) to database-search format
-        const searchParams: any = { action: "search", organization_id: orgId };
-
-        // person_titles → role (database-search format)
-        if (toolInput.person_titles?.length) {
-          searchParams.role = [{ keywords: toolInput.person_titles.join(' OR ') }];
-        }
-        // person_locations → location
-        if (toolInput.person_locations?.length) {
-          searchParams.location = toolInput.person_locations.map((l: string) => ({ name: l }));
-        }
-        // person_seniorities → seniority
-        if (toolInput.person_seniorities?.length) {
-          searchParams.seniority = toolInput.person_seniorities;
-        }
-        // Pass through Apollo-native params directly
-        if (toolInput.organization_num_employees_ranges) {
-          searchParams.db_company_size_ranges = toolInput.organization_num_employees_ranges;
-        }
-        if (toolInput.q_organization_keyword_tags) {
-          searchParams.db_industry_tags = toolInput.q_organization_keyword_tags;
-        }
-        if (toolInput.currently_using_any_of_technology_uids) {
-          searchParams.currently_using_any_of_technology_uids = toolInput.currently_using_any_of_technology_uids;
-        }
-        if (toolInput.q_keywords) {
-          searchParams.keywords = toolInput.q_keywords;
-        }
-        if (toolInput.q_organization_domains_list) {
-          searchParams.q_organization_domains_list = toolInput.q_organization_domains_list;
-        }
-        if (toolInput.q_organization_job_titles) {
-          searchParams.q_organization_job_titles = toolInput.q_organization_job_titles;
-        }
-        if (toolInput.per_page) {
-          searchParams.limit = toolInput.per_page;
-        }
-
-        console.log(`[search-agent-chat] search_candidates params:`, JSON.stringify(searchParams).slice(0, 500));
-
-        const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
-          method: "POST",
-          headers: { "Authorization": authHeader, "apikey": anonKey, "Content-Type": "application/json" },
-          body: JSON.stringify(searchParams),
-        }, 25000);
-        const data = await res.json();
-        const profiles = data.items || data.results || [];
-        if (profiles.length === 0) return JSON.stringify({ success: true, total: 0, profiles: [] });
-        const formatted = profiles.slice(0, 25).map((p: any) => ({
-          name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
-          title: p.headline || p.title || '',
-          company: p.current_company_name || p.company || '',
-          location: p.location || p.city || '',
-          experience: (p.work_experience || p.experiences || []).slice(0, 3).map((e: any) =>
-            `${e.title || e.role || ''} @ ${e.company_name || e.company || ''}`
-          ),
-          skills: (p.skills || []).slice(0, 10).map((s: any) => typeof s === 'string' ? s : s.name),
-          linkedin_url: p.linkedin_url || p.profile_url || '',
-          id: p.id || p.provider_id || '',
-        }));
-        return JSON.stringify({ success: true, total: data.total || profiles.length, profiles: formatted });
+        // Calibration phase does NOT run a live search. The real LinkedIn
+        // search runs server-side via the plan → run-agent-search pipeline.
+        // Return guidance (no dead database-search call, no fabricated
+        // profiles) so the model finishes calibration and emits a plan.
+        console.log(`[search-agent-chat] search_candidates (calibration — no live search):`, JSON.stringify(toolInput).slice(0, 300));
+        return JSON.stringify({
+          live_search: false,
+          captured_criteria: {
+            person_titles: toolInput.person_titles ?? [],
+            person_locations: toolInput.person_locations ?? [],
+            person_seniorities: toolInput.person_seniorities ?? [],
+            keywords: toolInput.q_keywords ?? null,
+          },
+          instruction:
+            "La recherche de profils ne s'exécute PAS pendant la calibration. Ne fabrique AUCUN profil, n'affiche pas de [PROFILE]. Continue à cadrer le besoin avec l'utilisateur (questions ciblées une par une, critères must/should/nice, localisation, séniorité). Quand la calibration est suffisante, émets un bloc [SEARCH_PLAN]{...}[/SEARCH_PLAN] récapitulant filtres + critères de scoring, puis propose de lancer l'agent via [OPTIONS]. La vraie recherche LinkedIn sera exécutée par l'agent autonome.",
+        });
       }
 
       case "enrich_company": {
-        const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/database-search`, {
+        const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/enrich-company`, {
           method: "POST",
           headers: { "Authorization": authHeader, "apikey": anonKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "search",
-            organization_id: orgId,
-            q_keywords: toolInput.company_name,
-            per_page: 1,
-          }),
-        }, 15000);
-        const data = await res.json();
-        const person = (data.items || data.results || [])[0];
-        const org = person?.organization || person?.company_details || {};
+          body: JSON.stringify({ company_name: toolInput.company_name }),
+        }, 25000);
+        const data = await res.json().catch(() => null);
+        const c = data?.company;
+        if (!res.ok || !data?.success || !c) {
+          return JSON.stringify({
+            note: `Pas d'enrichissement disponible pour "${toolInput.company_name}". Continue sans, n'invente aucune info sur la société.`,
+          });
+        }
+        const loc = c.location || [c.city, c.country].filter(Boolean).join(", ");
         return JSON.stringify({
-          name: org.name || toolInput.company_name,
-          industry: org.industry || 'Unknown',
-          employees: org.estimated_num_employees || null,
-          founded: org.founded_year || null,
-          description: org.short_description || '',
-          technologies: (org.technologies || []).slice(0, 15),
-          funding_stage: org.latest_funding_stage || null,
-          total_funding: org.total_funding || null,
-          city: org.city || '',
-          country: org.country || '',
+          name: c.name || toolInput.company_name,
+          industry: c.industry || 'Unknown',
+          employees: c.size ?? null,
+          founded: c.foundedYear ?? null,
+          description: (c.description || '').slice(0, 600),
+          technologies: Array.isArray(c.techStack) ? c.techStack.slice(0, 15) : [],
+          funding_stage: Array.isArray(c.funding) && c.funding[0]?.stage ? c.funding[0].stage : null,
+          total_funding: Array.isArray(c.funding)
+            ? (c.funding.map((f: any) => f?.amount).filter(Boolean).join(' / ') || null)
+            : null,
+          annual_revenue: c.annualRevenue ?? null,
+          location: loc || '',
+          domain: c.domain || null,
+          website_url: c.websiteUrl || null,
         });
       }
 

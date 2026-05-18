@@ -333,15 +333,23 @@ Deno.serve(async (req) => {
       return ids;
     }
 
-    // === SEARCH STRATEGY: APOLLO (BROAD) + AI SCORING (TIGHT) ===
-    // Apollo is the primary search source (265M+ contacts, native company filters).
-    // database-search accepts LinkedIn-style filters and maps them to Apollo format.
-    // No LinkedIn ID resolution needed — Apollo uses text names.
+    // === SEARCH STRATEGY: LinkedIn (BROAD) + AI SCORING (TIGHT) ===
+    // unipile-search (recruiter API) is the search source. Hard filters are
+    // kept minimal: role + location + seniority. All soft criteria (skills,
+    // company type/size, industry, ESN exclusion, experience) are evaluated
+    // by the AI scoring engine (score-profile-job) AFTER the search.
     //
-    // All soft criteria (skills, company type, industry, ESN exclusion, experience)
-    // are evaluated by the AI scoring engine (score-profile-job) AFTER the search.
+    // Unipile recruiter search needs LinkedIn geo IDs (not names) for
+    // location — resolve them once up front via the get_parameters helper.
+    const locationKeywords: string[] = Array.isArray(filters.location_keywords)
+      ? filters.location_keywords
+      : [];
+    const locationIds = locationKeywords.length > 0
+      ? await resolveIds("LOCATION", locationKeywords)
+      : [];
+    console.log(`[run-agent-search] Resolved ${locationIds.length}/${locationKeywords.length} location IDs`);
 
-    // ── 4. Search via Apollo (sequential with delays) ──
+    // ── 4. Search via LinkedIn (sequential with delays) ──
 
     await postStatus(`🔍 Recherche lancée — je scanne la base de données...${dedupCount > 0 ? `\n📋 ${dedupCount} profils déjà traités seront ignorés.` : ""}`);
 
@@ -368,46 +376,40 @@ Deno.serve(async (req) => {
           limit: 25,
         };
 
-        // === APOLLO AS PRIMARY SOURCE ===
-        // Apollo has 265M+ contacts with native company filters.
-        // database-search accepts LinkedIn-style filters and maps them to Apollo format.
-        // All soft criteria (skills, company type, ESN exclusion) handled by scoring AI.
+        // === UNIPILE RECRUITER AS SOURCE ===
+        // Broad LinkedIn search: role + location + seniority only.
+        // Soft criteria (skills, company type/size, industry, ESN exclusion)
+        // are handled by the scoring AI post-search.
 
-        // Role / job titles
+        // Role / job titles → recruiter `role` (keywords + priority + scope)
         if (filters.role && Array.isArray(filters.role) && filters.role.length > 0) {
-          searchBody.role = filters.role.map((r: any) => ({ keywords: r.keywords }));
+          searchBody.role = filters.role
+            .filter((r: any) => r?.keywords)
+            .map((r: any) => ({ keywords: r.keywords, priority: "MUST_HAVE", scope: "CURRENT" }));
         }
 
-        // Location (use text names for Apollo, not LinkedIn IDs)
-        const locationNames = filters.location_keywords || [];
-        if (locationNames.length > 0) {
-          searchBody.location = locationNames.map((name: string) => ({ name }));
+        // Location → resolved LinkedIn geo IDs (recruiter object format)
+        if (locationIds.length > 0) {
+          searchBody.location = locationIds.map((id: string) => ({
+            id,
+            priority: "MUST_HAVE",
+            scope: "CURRENT_OR_OPEN_TO_RELOCATE",
+          }));
         }
 
-        // Seniority
+        // Seniority (unipile-search normalizes the enum internally)
         if (filters.seniority && Array.isArray(filters.seniority) && filters.seniority.length > 0) {
           searchBody.seniority = filters.seniority;
         }
 
-        // No keywords — role/title filter is the primary discriminator
-        // Skills are evaluated post-search by scoring AI via customScoringInstructions
-        // This avoids over-filtering (Apollo ANDs keywords with person_titles → 0 results)
+        // No keywords / no company-size / no industry hard filter here —
+        // those over-filter; the scoring AI evaluates them post-search.
 
-        // Company size filter (native Apollo)
-        if (filters.company_headcount && Array.isArray(filters.company_headcount) && filters.company_headcount.length > 0) {
-          searchBody.db_company_size_ranges = filters.company_headcount.map((h: any) => `${h.min},${h.max}`);
-        }
-
-        // Industry tags (native Apollo)
-        if (filters.industry_keywords && Array.isArray(filters.industry_keywords) && filters.industry_keywords.length > 0) {
-          searchBody.db_industry_tags = filters.industry_keywords;
-        }
-
-        console.log(`[run-agent-search] Apollo search body:`, JSON.stringify(searchBody).slice(0, 500));
+        console.log(`[run-agent-search] Unipile search body:`, JSON.stringify(searchBody).slice(0, 500));
 
         if (cursor) searchBody.cursor = cursor;
 
-        const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/database-search`, {
+        const searchRes = await fetchWithRetry(`${supabaseUrl}/functions/v1/unipile-search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -423,8 +425,12 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // database-search returns { items }, not { results }
-        const results = searchData.items || searchData.results || [];
+        // unipile-search returns { results }; its profile id is `id`, but
+        // dedup/cache/scoring downstream key off `provider_id` — normalize.
+        const results = (searchData.results || searchData.items || []).map((p: any) => ({
+          ...p,
+          provider_id: p.provider_id || p.id || "",
+        }));
 
         // Deduplicate: skip profiles already treated for this job
         for (const profile of results) {
