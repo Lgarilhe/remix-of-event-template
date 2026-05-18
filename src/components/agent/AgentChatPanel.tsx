@@ -5,7 +5,7 @@ import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
 import { AgentJobSelector } from './AgentJobSelector';
 import { Job } from '@/types/jobs';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useAgent } from '@/contexts/AgentContext';
 import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -42,7 +42,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const { data: jobs } = useNotionJobs();
+  const { projects } = useSourcingProjects();
   const { organizationId } = useOrganization();
 
   // Keep access token fresh
@@ -146,7 +146,21 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     }
   }, [effectiveInitialMessage]);
 
-  const activeJobs = (jobs || []).filter(j => !['Archivé', 'Fermé', 'Perdu'].includes(j.status));
+  // Missions come from sourcing_projects (Notion is legacy/optional). Map to
+  // the minimal Job shape AgentJobSelector reads (id/title/client/location/status).
+  const activeJobs = useMemo(
+    () =>
+      (projects || [])
+        .filter(p => p.status === 'active' || p.status === 'paused')
+        .map(p => ({
+          id: p.id,
+          title: p.name,
+          client: p.client_name ? { name: p.client_name } : null,
+          location: '',
+          status: p.status,
+        })) as unknown as Job[],
+    [projects],
+  );
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
 
   const QUICK_ACTIONS = [
