@@ -13,6 +13,8 @@ import {
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { useNavigate } from 'react-router-dom';
+import { useAgent } from '@/contexts/AgentContext';
 import { FileUpload, FileUploadTrigger, FileUploadContent } from '@/components/prompt-kit/file-upload';
 
 interface SkalrThreadProps {
@@ -133,27 +135,61 @@ const ShimmerThinking = () => (
 );
 
 /** Markdown renderer tuned for chat readability (Claude/ChatGPT-like) */
-const MarkdownText = ({ text }: { text: string }) => (
-  <div
-    className={cn(
-      'text-[14px] leading-[1.7] text-foreground',
-      '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
-      '[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal',
-      '[&_li]:my-1 [&_li]:marker:text-muted-foreground',
-      '[&_strong]:font-semibold [&_strong]:text-foreground',
-      '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-primary/80',
-      '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-[12.5px] [&_code]:font-mono',
-      '[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
-      '[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1.5',
-      '[&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-1.5',
-      '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1',
-      '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2',
-      '[&_hr]:my-3 [&_hr]:border-border/60',
-    )}
-  >
-    <ReactMarkdown>{text}</ReactMarkdown>
-  </div>
-);
+const MarkdownText = ({ text }: { text: string }) => {
+  const navigate = useNavigate();
+  const { closeAgent } = useAgent();
+  return (
+    <div
+      className={cn(
+        'text-[14px] leading-[1.7] text-foreground',
+        '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+        '[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal',
+        '[&_li]:my-1 [&_li]:marker:text-muted-foreground',
+        '[&_strong]:font-semibold [&_strong]:text-foreground',
+        '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a]:cursor-pointer hover:[&_a]:text-primary/80',
+        '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-[12.5px] [&_code]:font-mono',
+        '[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
+        '[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1.5',
+        '[&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-1.5',
+        '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1',
+        '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2',
+        '[&_hr]:my-3 [&_hr]:border-border/60',
+      )}
+    >
+      <ReactMarkdown
+        components={{
+          a: ({ href, children, ...props }) => {
+            const url = String(href ?? '');
+            // Lien interne app (chemin relatif) → navigation SPA + ferme le
+            // panel pour que l'utilisateur voie la page (ex. scorecard candidat).
+            if (url.startsWith('/')) {
+              return (
+                <a
+                  href={url}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    closeAgent();
+                    navigate(url);
+                  }}
+                  {...props}
+                >
+                  {children}
+                </a>
+              );
+            }
+            return (
+              <a href={url} target="_blank" rel="noopener noreferrer" {...props}>
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+};
 
 /** Single assistant message — full-width, no bubble (Claude/ChatGPT style) */
 const AssistantMessage = () => {

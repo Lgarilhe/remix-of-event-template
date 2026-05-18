@@ -718,7 +718,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `ces données, APPELLE les outils et réponds avec les chiffres et faits ` +
         `réels qu'ils renvoient. Ne dis jamais « je ne peux pas accéder » : tu ` +
         `peux, en lecture. N'invente aucun chiffre — si un outil ne renvoie rien, ` +
-        `dis-le franchement. Tu restes en lecture seule (tu ne modifies rien).`;
+        `dis-le franchement. ` +
+        `Quand tu cites un candidat, rends son nom CLIQUABLE : lien markdown ` +
+        `[Nom](profile_path) en réutilisant exactement le champ « profile_path » ` +
+        `renvoyé par l'outil pour ce candidat. Ne fabrique jamais une URL toi-même ; ` +
+        `si profile_path est absent ou null, laisse le nom en texte simple. ` +
+        `Tu restes en lecture seule (tu ne modifies rien).`;
     }
 
     // --- Sourcing mode (ou chat libre classé DATA) : boucle d'outils ---

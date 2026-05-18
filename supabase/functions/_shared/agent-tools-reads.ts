@@ -286,12 +286,12 @@ const getMissionOverview: AgentTool = {
       // souvent synthétique « project:<uuid> » → ne matcherait rien ici.
       ctx.adminClient
         .from('job_candidate_status')
-        .select('candidate_name, pipeline_stage, status, score')
+        .select('candidate_id, candidate_name, pipeline_stage, status, score')
         .eq('project_id', missionId)
         .order('score', { ascending: false, nullsFirst: false })
         .limit(300),
     ]);
-    const list = (rows as Array<{ candidate_name: string | null; pipeline_stage: string | null; status: string; score: number | null }> | null) ?? [];
+    const list = (rows as Array<{ candidate_id: string | null; candidate_name: string | null; pipeline_stage: string | null; status: string; score: number | null }> | null) ?? [];
     const byStage: Record<string, number> = {};
     for (const r of list) {
       const k = r.pipeline_stage || '(non défini)';
@@ -311,6 +311,7 @@ const getMissionOverview: AgentTool = {
         avg_score: avgScore,
         top_candidates: list.slice(0, 8).map((r) => ({
           name: r.candidate_name, stage: r.pipeline_stage, status: r.status, score: r.score,
+          profile_path: r.candidate_id ? `/ats/scorecard/${r.candidate_id}` : null,
         })),
         ...((missionErr || rowsErr)
           ? { data_errors: { mission: missionErr?.message ?? null, candidates: rowsErr?.message ?? null } }
@@ -351,7 +352,7 @@ const getMissionCandidates: AgentTool = {
     const limit = Math.min(Math.max(Number(params.limit) || 25, 1), 50);
     let q = ctx.adminClient
       .from('job_candidate_status')
-      .select('candidate_name, candidate_headline, pipeline_stage, status, score, recommendation')
+      .select('candidate_id, candidate_name, candidate_headline, pipeline_stage, status, score, recommendation')
       // project_id = sourcing_projects.id (cf. useProjectCandidates) — pas job_id.
       .eq('project_id', missionId);
     if (params.stage) q = q.eq('pipeline_stage', String(params.stage));
@@ -360,7 +361,12 @@ const getMissionCandidates: AgentTool = {
       .order('score', { ascending: false, nullsFirst: false })
       .limit(limit);
     if (error) return { success: false, error: error.message };
-    return { success: true, data: { count: (data ?? []).length, candidates: data ?? [] } };
+    const candidates = ((data as Array<{ candidate_id: string | null }> | null) ?? []).map((c) => ({
+      ...c,
+      // Profil in-app : route /ats/scorecard/:candidateId → .eq('candidate_id', …).
+      profile_path: c.candidate_id ? `/ats/scorecard/${c.candidate_id}` : null,
+    }));
+    return { success: true, data: { count: candidates.length, candidates } };
   },
 };
 
