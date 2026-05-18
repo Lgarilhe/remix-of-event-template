@@ -70,7 +70,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
         </div>
         <div className="text-center">
           <p className="text-xs font-bold text-muted-foreground">Aucune conversation</p>
-          <p className="text-xs mt-1 text-muted-foreground/50">Sélectionnez un poste pour commencer</p>
+          <p className="text-xs mt-1 text-muted-foreground/50">Lance une nouvelle conversation pour commencer</p>
         </div>
       </div>
     );

@@ -1,13 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { History, Bot } from 'lucide-react';
+import { History, Bot, ArrowLeft, SquarePen, X } from 'lucide-react';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
-import { AgentJobSelector } from './AgentJobSelector';
 import { Job } from '@/types/jobs';
-import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useAgent } from '@/contexts/AgentContext';
-import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocalRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
@@ -44,7 +41,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const { projects } = useSourcingProjects();
   const { organizationId } = useOrganization();
 
   // Keep access token fresh
@@ -148,108 +144,51 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     }
   }, [effectiveInitialMessage]);
 
-  // Missions come from sourcing_projects (Notion is legacy/optional). Map to
-  // the minimal Job shape AgentJobSelector reads (id/title/client/location/status).
-  const activeJobs = useMemo(
-    () =>
-      (projects || [])
-        .filter(p => p.status === 'active' || p.status === 'paused')
-        .map(p => ({
-          id: p.id,
-          title: p.name,
-          client: p.client_name ? { name: p.client_name } : null,
-          location: '',
-          status: p.status,
-        })) as unknown as Job[],
-    [projects],
-  );
-  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
-
-  const QUICK_ACTIONS = [
-    { emoji: '🔍', label: 'Sourcer des candidats', prompt: 'Je cherche des candidats pour un poste. Aide-moi à définir les critères.' },
-    { emoji: '✍️', label: 'Rédiger un message', prompt: "Aide-moi à rédiger un message d'approche personnalisé." },
-    { emoji: '📊', label: 'Analyser un poste', prompt: 'Analyse les postes ouverts et identifie les priorités.' },
-    { emoji: '🧠', label: 'Que sais-tu sur...', prompt: 'Que sais-tu sur ce candidat/poste ? (tape un nom ou un titre)' },
-    { emoji: '📝', label: 'Résumer un candidat', prompt: "Résume le profil et l'historique d'un candidat." },
-    { emoji: '💡', label: 'Suggérer des actions', prompt: "Quelles actions devrais-je prioriser aujourd'hui ?" },
-  ];
-
-  // ── List view ──
+  // ── History view (Notion/Claude-style: back · new chat · recent list) ──
   if (showList) {
     return (
       <div className="flex flex-col h-full bg-background animate-slide-in-left">
-        <div className="relative overflow-hidden px-5 py-4 border-b-2 border-border">
-          <div className="absolute inset-0 skalr-gradient-bg opacity-5" />
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AnimatedOrb size={32} />
-              <div>
-                <h2 className="text-sm font-display font-black text-foreground">Copilot IA</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Votre assistant recrutement
-                </p>
-              </div>
-            </div>
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="text-xs font-bold text-muted-foreground hover:text-foreground border border-border px-2.5 py-1 hover:border-border transition-all duration-150"
-              >
-                Fermer
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="px-4 py-4 border-b border-border shrink-0">
-          <p className="text-xs font-bold text-muted-foreground mb-3">Actions rapides</p>
-          <div className="grid grid-cols-2 gap-2">
-            {QUICK_ACTIONS.map((qa) => (
-              <button
-                key={qa.label}
-                onClick={() => handleNewConversation()}
-                className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
-              >
-                <span className="text-base">{qa.emoji}</span>
-                <p className="text-xs font-bold text-foreground mt-1.5 leading-tight group-hover:text-primary transition-colors">
-                  {qa.label}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b-2 border-border shrink-0">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
           <button
-            onClick={() => setActiveTab('new')}
-            className={cn(
-              "flex-1 py-3 text-xs font-bold transition-all duration-150 relative",
-              activeTab === 'new' ? "text-foreground" : "text-muted-foreground/50 hover:text-muted-foreground"
-            )}
+            onClick={() => setShowList(false)}
+            title="Retour au chat"
+            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
           >
-            Nouveau
-            {activeTab === 'new' && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
+            <ArrowLeft className="w-4 h-4 text-foreground" />
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={cn(
-              "flex-1 py-3 text-xs font-bold transition-all duration-150 relative",
-              activeTab === 'history' ? "text-foreground" : "text-muted-foreground/50 hover:text-muted-foreground"
-            )}
-          >
-            Historique
-            {activeTab === 'history' && <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {activeTab === 'new' ? (
-            <AgentJobSelector jobs={activeJobs} selectedJob={selectedJob} onSelectJob={setSelectedJob} onLaunch={() => handleNewConversation(selectedJob)} />
-          ) : (
-            <AgentConversationsList onSelect={handleSelectConversation} listConversations={listConversations} />
+          <AnimatedOrb size={24} speed={4} />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold truncate text-foreground">Conversations</h3>
+            <p className="text-[11px] text-muted-foreground">Historique du Copilot</p>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="Fermer"
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           )}
+        </div>
+
+        {/* New conversation */}
+        <div className="px-4 pt-4 pb-2 shrink-0">
+          <button
+            onClick={() => handleNewConversation()}
+            className="flex w-full items-center gap-2.5 rounded-2xl border border-border bg-card/40 px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-accent active:scale-[0.99]"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <SquarePen className="h-4 w-4" />
+            </span>
+            <span className="text-[13px] font-semibold text-foreground">Nouvelle conversation</span>
+          </button>
+        </div>
+
+        {/* Recent conversations */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <AgentConversationsList onSelect={handleSelectConversation} listConversations={listConversations} />
         </div>
       </div>
     );
