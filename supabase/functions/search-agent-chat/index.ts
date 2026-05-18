@@ -585,8 +585,22 @@ Aide l'utilisateur a:
 
 Propose des exemples concrets de messages.`;
 
-    // Build the active system prompt
-    const isSourcingMode = !context_mode || context_mode === 'sourcing';
+    const freeSystemPrompt = `Tu es le Copilot IA de Konekt, assistant recrutement pour des recruteurs tech.
+
+STYLE: conversationnel, concis (2-4 phrases sauf si on te demande un livrable detaille), comme un collegue senior. Pas de listes mecaniques, pas de jargon creux, pas de flatterie.
+
+TU PEUX: aider a cadrer une recherche (titres, criteres, booleens), rediger ou ameliorer un message d'approche, analyser un poste ou un profil, suggerer les prochaines actions, repondre aux questions metier recrutement.
+
+TU NE PEUX PAS encore depuis cette conversation libre: lancer une vraie recherche de candidats en base, ni agir directement sur le pipeline. Pour sourcer reellement, invite l'utilisateur a ouvrir une mission puis son onglet Sourcing. Ne pretends JAMAIS avoir lance une recherche ou trouve des profils.
+
+Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le franchement.`;
+
+    // Build the active system prompt.
+    // Sourcing tool-loop ONLY for an explicit sourcing context (mission). A
+    // bare free conversation must take the streaming path — the sourcing
+    // tools call the now-deleted database-search and would spin forever.
+    const hasMissionContext = !!(project_id || brief_context);
+    const isSourcingMode = context_mode === 'sourcing' || (!context_mode && hasMissionContext);
 
     let activeSystemPrompt: string;
     if (context_mode === 'brief') {
@@ -595,11 +609,14 @@ Propose des exemples concrets de messages.`;
       activeSystemPrompt = processSystemPrompt;
     } else if (context_mode === 'outreach') {
       activeSystemPrompt = outreachSystemPrompt;
-    } else {
+    } else if (isSourcingMode) {
       // Sourcing mode — inject brief context into system prompt
       activeSystemPrompt = brief_context
         ? sourcingSystemPrompt + `\n\n=== BRIEF COMPLET (job_details) ===\n${JSON.stringify(brief_context, null, 2).slice(0, 3000)}`
         : sourcingSystemPrompt;
+    } else {
+      // Free conversation — general recruitment copilot, streaming, no tools
+      activeSystemPrompt = freeSystemPrompt;
     }
 
     // Sprint 3 — Mémoire cross-session : injection des user_insights
