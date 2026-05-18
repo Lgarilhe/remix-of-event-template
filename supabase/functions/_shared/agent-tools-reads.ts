@@ -51,6 +51,68 @@ async function loadMission(
   return (data as MissionRow | null) ?? null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Résout une mission par UUID OU par nom/intitulé (scopé org). Indispensable :
+ * entre deux tours, l'agent ne garde que le NOM des missions (les résultats
+ * d'outils ne sont pas persistés dans l'historique agent_messages), pas leur
+ * UUID. Le cloisonnement par rôle reste assuré par canAccessMission côté
+ * verifyAccess — ici on se contente de localiser la mission dans l'org.
+ */
+async function resolveMissionRef(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<MissionRow | null> {
+  const rawId = String((params.mission_id ?? '') as string).trim();
+  const rawName = String((params.mission_name ?? '') as string).trim();
+  for (const cand of [rawId, rawName]) {
+    if (cand && UUID_RE.test(cand)) {
+      const m = await loadMission(ctx, cand);
+      if (m) return m;
+    }
+  }
+  const nameRef =
+    (rawName && !UUID_RE.test(rawName) ? rawName : '') ||
+    (rawId && !UUID_RE.test(rawId) ? rawId : '');
+  if (!nameRef || !ctx.organizationId) return null;
+  const pat = `%${nameRef.slice(0, 80)}%`;
+  const sel = 'id, name, job_title, client_name, status, created_by, organization_id';
+  const [a, b] = await Promise.all([
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select(sel)
+      .eq('organization_id', ctx.organizationId)
+      .ilike('name', pat)
+      .order('updated_at', { ascending: false })
+      .limit(5),
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select(sel)
+      .eq('organization_id', ctx.organizationId)
+      .ilike('job_title', pat)
+      .order('updated_at', { ascending: false })
+      .limit(5),
+  ]);
+  const rows: MissionRow[] = [];
+  const seen = new Set<string>();
+  for (const r of [
+    ...(((a.data as MissionRow[] | null) ?? [])),
+    ...(((b.data as MissionRow[] | null) ?? [])),
+  ]) {
+    if (r && !seen.has(r.id)) { seen.add(r.id); rows.push(r); }
+  }
+  if (rows.length === 0) return null;
+  const lc = nameRef.toLowerCase();
+  return (
+    rows.find(
+      (r) =>
+        (r.name ?? '').toLowerCase() === lc ||
+        (r.job_title ?? '').toLowerCase() === lc,
+    ) ?? rows[0]
+  );
+}
+
 /** Role-scoped access check for a single mission. */
 async function canAccessMission(
   ctx: ToolContext,
@@ -181,19 +243,28 @@ const getMissionOverview: AgentTool = {
   description:
     "Get a snapshot of ONE mission: meta (title, client, status), sourcing stats, pipeline breakdown by stage, " +
     "and the top candidates by score. Use for 'où en est cette mission', 'résume le pipeline', 'combien de candidats à chaque étape'. " +
-    "Pass the mission id (you know it from the CONTEXTE APPLICATIF block when the user is on a mission).",
+    "Pass mission_id (UUID) if you have it, OR mission_name (the mission's exact name/title as shown to the user). " +
+    "If you only know mission names from earlier in the conversation, pass mission_name — the tool resolves it.",
   category: 'read',
   requiresApproval: false,
   inputSchema: {
     type: 'object',
-    properties: { mission_id: { type: 'string', description: 'sourcing_projects UUID.' } },
-    required: ['mission_id'],
+    properties: {
+      mission_id: { type: 'string', description: 'sourcing_projects UUID (si tu le connais).' },
+      mission_name: { type: 'string', description: "Nom ou intitulé EXACT de la mission (ex: « Lead Developer Go ») — utilise-le si tu n'as pas l'UUID (cas fréquent entre deux tours de conversation)." },
+    },
+    required: [],
   },
   async verifyAccess(params, ctx) {
-    const missionId = String(params.mission_id || '');
-    if (!missionId) return { allowed: false, reason: 'mission_id requis' };
-    const mission = await loadMission(ctx, missionId);
-    if (!mission) return { allowed: false, reason: `Mission ${missionId} introuvable` };
+    const ref = String((params.mission_id ?? params.mission_name ?? '') as string).trim();
+    if (!ref) return { allowed: false, reason: 'Précise la mission (nom ou id).' };
+    const mission = await resolveMissionRef(ctx, params);
+    if (!mission) {
+      return {
+        allowed: false,
+        reason: `Mission « ${ref} » introuvable — donne le nom exact, ou appelle d'abord get_my_missions pour lister les missions.`,
+      };
+    }
     const role = await resolveRole(ctx);
     return (await canAccessMission(ctx, role, mission))
       ? { allowed: true }
@@ -201,7 +272,9 @@ const getMissionOverview: AgentTool = {
   },
   dryRun: trivialDryRun('Lecture : aperçu de la mission'),
   async execute(params, ctx) {
-    const missionId = String(params.mission_id);
+    const resolved = await resolveMissionRef(ctx, params);
+    if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
+    const missionId = resolved.id;
     const [{ data: mission, error: missionErr }, { data: rows, error: rowsErr }] = await Promise.all([
       ctx.adminClient
         .from('sourcing_projects')
@@ -251,25 +324,30 @@ const getMissionOverview: AgentTool = {
 const getMissionCandidates: AgentTool = {
   name: 'get_mission_candidates',
   description:
-    "List candidates of ONE mission with their pipeline stage, status, score and recommendation. " +
-    "Optional filters by stage or minimum score. Use for 'montre les candidats en pré-qualif', " +
-    "'qui sont les meilleurs profils', 'liste des shortlistés'.",
+    "List candidates of ONE mission (their NAMES, headline, pipeline stage, status, score, recommendation). " +
+    "Optional filters by stage or minimum score. Use for 'montre les candidats', 'donne-moi leurs noms', " +
+    "'qui sont les meilleurs profils', 'liste des shortlistés'. " +
+    "Pass mission_id (UUID) if you have it, OR mission_name (exact name/title) — if you only know the mission " +
+    "name from earlier in the conversation, pass mission_name.",
   category: 'read',
   requiresApproval: false,
   inputSchema: {
     type: 'object',
     properties: {
-      mission_id: { type: 'string', description: 'sourcing_projects UUID.' },
+      mission_id: { type: 'string', description: 'sourcing_projects UUID (si tu le connais).' },
+      mission_name: { type: 'string', description: "Nom ou intitulé EXACT de la mission (ex: « Lead Developer Go ») — utilise-le si tu n'as pas l'UUID (cas fréquent entre deux tours)." },
       stage: { type: 'string', description: "Optional pipeline stage filter (e.g. 'Pressenti', 'Pré-qualif')." },
       min_score: { type: 'number', description: 'Optional minimum score (0-100).' },
       limit: { type: 'number', description: 'Max candidates (default 25, hard cap 50).' },
     },
-    required: ['mission_id'],
+    required: [],
   },
   verifyAccess: (params, ctx) => getMissionOverview.verifyAccess(params, ctx),
   dryRun: trivialDryRun('Lecture : candidats de la mission'),
   async execute(params, ctx) {
-    const missionId = String(params.mission_id);
+    const resolved = await resolveMissionRef(ctx, params);
+    if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
+    const missionId = resolved.id;
     const limit = Math.min(Math.max(Number(params.limit) || 25, 1), 50);
     let q = ctx.adminClient
       .from('job_candidate_status')
@@ -297,13 +375,18 @@ const getMissionProcess: AgentTool = {
   requiresApproval: false,
   inputSchema: {
     type: 'object',
-    properties: { mission_id: { type: 'string', description: 'sourcing_projects UUID.' } },
-    required: ['mission_id'],
+    properties: {
+      mission_id: { type: 'string', description: 'sourcing_projects UUID (si tu le connais).' },
+      mission_name: { type: 'string', description: "Nom ou intitulé EXACT de la mission (ex: « Lead Developer Go ») — utilise-le si tu n'as pas l'UUID (cas fréquent entre deux tours de conversation)." },
+    },
+    required: [],
   },
   verifyAccess: (params, ctx) => getMissionOverview.verifyAccess(params, ctx),
   dryRun: trivialDryRun('Lecture : process de la mission'),
   async execute(params, ctx) {
-    const missionId = String(params.mission_id);
+    const resolved = await resolveMissionRef(ctx, params);
+    if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
+    const missionId = resolved.id;
     const [{ data: steps }, { data: team }] = await Promise.all([
       ctx.adminClient
         .from('mission_process_steps')
@@ -338,13 +421,18 @@ const getSequencesStatus: AgentTool = {
   requiresApproval: false,
   inputSchema: {
     type: 'object',
-    properties: { mission_id: { type: 'string', description: 'sourcing_projects UUID.' } },
-    required: ['mission_id'],
+    properties: {
+      mission_id: { type: 'string', description: 'sourcing_projects UUID (si tu le connais).' },
+      mission_name: { type: 'string', description: "Nom ou intitulé EXACT de la mission (ex: « Lead Developer Go ») — utilise-le si tu n'as pas l'UUID (cas fréquent entre deux tours de conversation)." },
+    },
+    required: [],
   },
   verifyAccess: (params, ctx) => getMissionOverview.verifyAccess(params, ctx),
   dryRun: trivialDryRun('Lecture : statut prospection de la mission'),
   async execute(params, ctx) {
-    const missionId = String(params.mission_id);
+    const resolved = await resolveMissionRef(ctx, params);
+    if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
+    const missionId = resolved.id;
     const { data, error } = await ctx.adminClient
       .from('sequence_enrollments')
       .select('status, connection_status, replied_at, completed_at')
