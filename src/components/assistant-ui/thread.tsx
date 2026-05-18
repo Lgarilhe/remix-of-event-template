@@ -5,7 +5,11 @@ import {
   MessagePrimitive,
   useMessage,
 } from '@assistant-ui/react';
-import { Send, ChevronDown, ChevronRight, Brain, Loader2 } from 'lucide-react';
+import {
+  Send, ChevronDown, ChevronRight, Brain, Loader2,
+  Search, PenLine, BarChart3, Lightbulb, SlidersHorizontal,
+  ClipboardList, MessageSquare,
+} from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -13,6 +17,55 @@ import ReactMarkdown from 'react-markdown';
 interface SkalrThreadProps {
   contextMode?: string | null;
 }
+
+type Suggestion = { icon: React.ComponentType<{ className?: string }>; label: string; prompt: string };
+type WelcomeConfig = { title: string; subtitle: string; suggestions: Suggestion[] };
+
+// Notion-AI-style landing: a greeting + clickable suggestions that send on
+// click (ThreadPrimitive.Suggestion `send`). Shown only on an empty thread.
+const WELCOME: Record<string, WelcomeConfig> = {
+  free: {
+    title: 'Comment puis-je t’aider ?',
+    subtitle: 'Sourcing, messages d’approche, analyse de profils, prochaines actions.',
+    suggestions: [
+      { icon: Search, label: 'Sourcer des candidats', prompt: 'Je cherche des candidats pour un poste. Aide-moi à définir les critères.' },
+      { icon: PenLine, label: 'Rédiger un message d’approche', prompt: 'Aide-moi à rédiger un message d’approche personnalisé pour un candidat.' },
+      { icon: BarChart3, label: 'Analyser mes priorités', prompt: 'Analyse mes missions ouvertes et dis-moi quoi prioriser aujourd’hui.' },
+      { icon: Lightbulb, label: 'Que peux-tu faire ?', prompt: 'Que peux-tu faire pour m’aider dans mon recrutement ?' },
+    ],
+  },
+  sourcing: {
+    title: 'Calibrons ta recherche',
+    subtitle: 'Décris le poste, je structure les critères puis l’agent lance la recherche.',
+    suggestions: [
+      { icon: Search, label: 'Lancer le sourcing sur ce poste', prompt: 'Lançons le sourcing pour cette mission. Pose-moi les questions nécessaires pour calibrer.' },
+      { icon: SlidersHorizontal, label: 'Affiner les critères', prompt: 'Aide-moi à affiner les critères de recherche pour ce poste.' },
+    ],
+  },
+  brief: {
+    title: 'Construisons le brief',
+    subtitle: 'Je t’aide à cadrer le besoin, poste par poste.',
+    suggestions: [
+      { icon: ClipboardList, label: 'Compléter le brief', prompt: 'Aide-moi à compléter le brief de ce poste, champ par champ.' },
+      { icon: MessageSquare, label: 'Questions à poser au client', prompt: 'Quelles questions dois-je poser au client pour bien cadrer ce recrutement ?' },
+    ],
+  },
+  process: {
+    title: 'Définissons le process',
+    subtitle: 'Étapes d’évaluation, critères, deal-breakers.',
+    suggestions: [
+      { icon: ClipboardList, label: 'Proposer un process d’évaluation', prompt: 'Propose-moi un process d’évaluation adapté à ce poste.' },
+    ],
+  },
+  outreach: {
+    title: 'Travaillons l’approche',
+    subtitle: 'Messages, séquences de relance, ton adapté au profil.',
+    suggestions: [
+      { icon: PenLine, label: 'Rédiger une séquence d’approche', prompt: 'Aide-moi à créer une séquence d’approche multicanale.' },
+      { icon: MessageSquare, label: 'Améliorer un message', prompt: 'Améliore ce message d’approche : ' },
+    ],
+  },
+};
 
 /** Collapsible reasoning/thinking block — Claude-style */
 const ReasoningBlock = ({ text }: { text: string }) => {
@@ -124,10 +177,38 @@ const UserMessage = () => (
 );
 
 export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode }) => {
+  const w = WELCOME[(contextMode as string) || 'free'] ?? WELCOME.free;
+
   return (
     <ThreadPrimitive.Root className="flex flex-col h-full">
       {/* Messages area */}
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Notion-style welcome — only on an empty thread */}
+        <ThreadPrimitive.Empty>
+          <div className="flex flex-col items-center text-center pt-12 pb-6">
+            <AnimatedOrb size={40} />
+            <h3 className="mt-3 text-base font-display font-black text-foreground">
+              {w.title}
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground max-w-[17rem]">
+              {w.subtitle}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5 w-full max-w-md mx-auto">
+            {w.suggestions.map((s) => (
+              <ThreadPrimitive.Suggestion
+                key={s.prompt}
+                prompt={s.prompt}
+                send
+                className="group flex items-center gap-2.5 text-left text-[13px] rounded-xl border border-border px-3 py-2.5 hover:border-primary/40 hover:bg-muted/40 transition-colors"
+              >
+                <s.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                <span className="text-foreground/80 group-hover:text-foreground">{s.label}</span>
+              </ThreadPrimitive.Suggestion>
+            ))}
+          </div>
+        </ThreadPrimitive.Empty>
+
         <ThreadPrimitive.Messages
           components={{
             UserMessage,

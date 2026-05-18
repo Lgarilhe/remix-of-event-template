@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ArrowLeft, Bot } from 'lucide-react';
+import { History, Bot } from 'lucide-react';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
@@ -37,7 +37,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   accountId,
 }) => {
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [showList, setShowList] = useState(!contextMode);
+  // Notion-AI-style: land directly in the chat. History/new conversation is
+  // reachable from the header control, not a launcher screen.
+  const [showList, setShowList] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -260,9 +262,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
         <button
           onClick={() => setShowList(true)}
+          title="Conversations & nouvelle discussion"
           className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
         >
-          <ArrowLeft className="w-4 h-4 text-foreground" />
+          <History className="w-4 h-4 text-foreground" />
         </button>
         <AnimatedOrb size={24} speed={4}>
           <Bot className="w-3 h-3 text-foreground/70" />
