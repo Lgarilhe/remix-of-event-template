@@ -562,6 +562,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     // tools call the now-deleted database-search and would spin forever.
     const hasMissionContext = !!(project_id || brief_context);
     const isSourcingMode = context_mode === 'sourcing' || (!context_mode && hasMissionContext);
+    // Chat libre = aucun mode opérationnel ET pas de contexte mission (= la
+    // branche `else` du choix de prompt ci-dessous). Phase B.2 ne route que
+    // ce mode-là vers la boucle d'outils, et seulement pour les questions DATA.
+    const isFreeMode = !isSourcingMode
+      && context_mode !== 'brief'
+      && context_mode !== 'process'
+      && context_mode !== 'outreach';
 
     let activeSystemPrompt: string;
     if (context_mode === 'brief') {
@@ -635,8 +642,68 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       console.warn("[search-agent-chat] appContext build skipped:", e);
     }
 
-    // --- Sourcing mode: tool-calling loop (non-streaming), then stream final response ---
-    if (isSourcingMode) {
+    // --- Phase B.2 — routeur hybride (chat libre uniquement) ---
+    // En chat libre, un classifieur Haiku ultra-léger tranche :
+    //   DATA → la demande porte sur les données PROPRES de l'org → on entre
+    //          dans la boucle d'outils (read tools déjà enregistrés).
+    //   CHAT → tout le reste → chemin streaming + Réflexion INCHANGÉ.
+    // Fail-soft : toute erreur/timeout → CHAT (zéro régression sur le chat normal).
+    let classifiedDATA = false;
+    if (isFreeMode) {
+      try {
+        const { callClaudeCompat } = await import("../_shared/call-claude.ts");
+        const clf = await callClaudeCompat({
+          model: "claude-haiku-4-5-20251001",
+          temperature: 0,
+          max_tokens: 3,
+          antiAiStyle: "none",
+          timeoutMs: 5000,
+          maxRetries: 0,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Tu es un classifieur pour le copilot d'un logiciel de recrutement. " +
+                "Réponds UNIQUEMENT par un seul mot, sans ponctuation : DATA ou CHAT.\n" +
+                "DATA = la demande nécessite les données PROPRES de l'organisation de " +
+                "l'utilisateur (ses missions/postes, ses candidats, son pipeline/colonnes, " +
+                "scores, process d'entretien, séquences/relances, statistiques, compteurs). " +
+                "Ex : « combien de candidats sur ma mission X », « où en est mon pipeline », " +
+                "« quelles missions j'ai en cours », « qui a répondu à la séquence ».\n" +
+                "CHAT = tout le reste : rédiger/améliorer un message, conseil, stratégie de " +
+                "sourcing, analyse d'un poste ou d'un profil collé, questions métier " +
+                "générales, salutations.\n" +
+                "En cas de doute, réponds CHAT.",
+            },
+            { role: "user", content: String(message).slice(0, 2000) },
+          ],
+        });
+        classifiedDATA = /\bDATA\b/i.test(clf.content || "");
+        console.log(`[search-agent-chat] B.2 classifier raw="${(clf.content || "").trim()}" → ${classifiedDATA ? "DATA" : "CHAT"}`);
+      } catch (e) {
+        console.warn("[search-agent-chat] B.2 classifier skipped (→ CHAT):", e);
+      }
+    }
+
+    // Free + DATA : on entre dans la boucle d'outils avec le prompt libre,
+    // augmenté d'une consigne d'accès LECTURE. Sans ça le freeSystemPrompt dit
+    // « tu ne peux pas » et le modèle hésiterait à appeler les outils. On
+    // n'augmente QUE ce chemin → le chat normal (CHAT) garde un prompt
+    // byte-identique (zéro régression sur l'UX Réflexion validée).
+    if (isFreeMode && classifiedDATA) {
+      activeSystemPrompt = activeSystemPrompt +
+        `\n\n=== ACCÈS DONNÉES (cette conversation) ===\n` +
+        `Tu disposes d'OUTILS EN LECTURE SEULE sur les données Konekt de cet ` +
+        `utilisateur : ses missions/postes, candidats, pipeline, scores, process ` +
+        `d'entretien, séquences et statistiques. Pour toute question portant sur ` +
+        `ces données, APPELLE les outils et réponds avec les chiffres et faits ` +
+        `réels qu'ils renvoient. Ne dis jamais « je ne peux pas accéder » : tu ` +
+        `peux, en lecture. N'invente aucun chiffre — si un outil ne renvoie rien, ` +
+        `dis-le franchement. Tu restes en lecture seule (tu ne modifies rien).`;
+    }
+
+    // --- Sourcing mode (ou chat libre classé DATA) : boucle d'outils ---
+    if (isSourcingMode || (isFreeMode && classifiedDATA)) {
       const encoder = new TextEncoder();
       let fullResponse = "";
       let _tokensIn = 0;
