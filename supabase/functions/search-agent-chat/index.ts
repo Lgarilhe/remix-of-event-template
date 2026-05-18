@@ -7,6 +7,7 @@ import {
   type ToolContext,
 } from "../_shared/agent-tools.ts";
 import { registerMutatingTools } from "../_shared/agent-tools-mutations.ts";
+import { registerReadTools } from "../_shared/agent-tools-reads.ts";
 import {
   getRelevantInsights,
   formatInsightsForPrompt,
@@ -14,8 +15,9 @@ import {
   extractInsightsFromConversation,
 } from "../_shared/user-memory.ts";
 
-// Register mutation tools at module load (idempotent)
+// Register tools at module load (idempotent)
 registerMutatingTools();
+registerReadTools();
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
