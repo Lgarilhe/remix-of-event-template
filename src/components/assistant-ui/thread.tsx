@@ -159,17 +159,36 @@ const MarkdownText = ({ text }: { text: string }) => {
       <ReactMarkdown
         components={{
           a: ({ href, children, ...props }) => {
-            const url = String(href ?? '');
-            // Lien interne app (chemin relatif) → navigation SPA + ferme le
-            // panel pour que l'utilisateur voie la page (ex. scorecard candidat).
-            if (url.startsWith('/')) {
+            const raw = String(href ?? '');
+            // Détermine si c'est un lien INTERNE app → navigation SPA. On gère :
+            //  - chemin relatif (/ats/scorecard/…)
+            //  - URL absolue same-origin
+            //  - URL absolue avec un domaine ≠ (ex. l'IA préfixe app.konekt.fr,
+            //    qui peut ne pas résoudre) MAIS dont le path est une route app
+            // → on navigue sur le PATH, jamais en pleine page vers un domaine mort.
+            const APP_ROUTE = /^\/(ats|pipeline|missions|qualification|dashboard|inbox|calendar|tasks|settings|prospection|candidates|marketplace|agents)(\/|$|\?)/;
+            let internalPath: string | null = null;
+            if (raw.startsWith('/')) {
+              internalPath = raw;
+            } else {
+              try {
+                const u = new URL(raw, window.location.origin);
+                if (u.origin === window.location.origin || APP_ROUTE.test(u.pathname)) {
+                  internalPath = u.pathname + u.search + u.hash;
+                }
+              } catch {
+                /* pas une URL → traité comme externe ci-dessous */
+              }
+            }
+            if (internalPath) {
+              const path = internalPath;
               return (
                 <a
-                  href={url}
+                  href={path}
                   onClick={(e) => {
                     e.preventDefault();
                     closeAgent();
-                    navigate(url);
+                    navigate(path);
                   }}
                   {...props}
                 >
@@ -178,7 +197,7 @@ const MarkdownText = ({ text }: { text: string }) => {
               );
             }
             return (
-              <a href={url} target="_blank" rel="noopener noreferrer" {...props}>
+              <a href={raw} target="_blank" rel="noopener noreferrer" {...props}>
                 {children}
               </a>
             );

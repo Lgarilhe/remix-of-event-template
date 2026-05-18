@@ -720,9 +720,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `peux, en lecture. N'invente aucun chiffre — si un outil ne renvoie rien, ` +
         `dis-le franchement. ` +
         `Quand tu cites un candidat, rends son nom CLIQUABLE : lien markdown ` +
-        `[Nom](profile_path) en réutilisant exactement le champ « profile_path » ` +
-        `renvoyé par l'outil pour ce candidat. Ne fabrique jamais une URL toi-même ; ` +
-        `si profile_path est absent ou null, laisse le nom en texte simple. ` +
+        `[Nom](profile_path) en réutilisant EXACTEMENT et TEL QUEL le champ ` +
+        `« profile_path » renvoyé par l'outil (il commence déjà par « / », ex. ` +
+        `/ats/scorecard/xxx). N'ajoute JAMAIS « https:// » ni un nom de domaine ` +
+        `(pas de app.konekt.fr, pas de http) : le lien doit rester un chemin ` +
+        `relatif commençant par « / ». Si profile_path est absent ou null, laisse ` +
+        `le nom en texte simple. ` +
         `Tu restes en lecture seule (tu ne modifies rien).`;
     }
 
