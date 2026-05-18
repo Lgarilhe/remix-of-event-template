@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { Job } from '@/types/jobs';
+import { useAppContext, type AppContext } from '@/hooks/useAppContext';
 
 export type AgentContextMode = 'brief' | 'process' | 'sourcing' | 'outreach' | null;
 
@@ -24,6 +25,8 @@ interface AgentContextValue {
   projectId: string | null;
   /** LinkedIn account_id for real profile fetching */
   accountId: string | null;
+  /** Passive app-location context (where the user currently is) */
+  appContext: AppContext;
   openContextualAgent: (params: {
     mode: AgentContextMode;
     briefContext?: Record<string, unknown>;
@@ -51,6 +54,7 @@ const AgentContext = createContext<AgentContextValue>({
   autoJob: null,
   projectId: null,
   accountId: null,
+  appContext: { page: 'Application', path: '/', missionId: null, missionTitle: null, missionTab: null, candidateId: null },
   openContextualAgent: () => {},
 });
 
@@ -69,6 +73,9 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [autoJob, setAutoJob] = useState<Job | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+
+  // Passive: always reflects where the user currently is in the app
+  const appContext = useAppContext();
 
   const openAgent = useCallback((jobId?: string) => {
     if (jobId) setInitialJobId(jobId);
@@ -146,6 +153,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         autoJob,
         projectId,
         accountId,
+        appContext,
         openContextualAgent,
       }}
     >

@@ -9,6 +9,8 @@ interface SkalrAdapterConfig {
    */
   ensureConversationId: () => Promise<string>;
   getAccessToken: () => string;
+  /** Fresh passive app-location context at send time (page/mission/tab/candidate) */
+  getAppContext?: () => unknown;
   apiKey: string;
   modelOverride?: string | null;
   contextMode?: string | null;
@@ -36,6 +38,8 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
       const conversationId = await config.ensureConversationId();
       if (!conversationId) throw new Error('Conversation introuvable');
 
+      const appContext = config.getAppContext?.() ?? undefined;
+
       const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
         method: 'POST',
         headers: {
@@ -52,6 +56,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
           brief_context: config.briefContext || undefined,
           project_id: config.projectId || undefined,
           account_id: config.accountId || undefined,
+          app_context: appContext,
         }),
         signal: abortSignal,
       });

@@ -60,6 +60,12 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
 
+  // Passive app-location context — read fresh at send time via a ref so the
+  // runtime is NOT recreated on every navigation (would reset the chat).
+  const { appContext } = useAgent();
+  const appContextRef = useRef(appContext);
+  appContextRef.current = appContext;
+
   // Lazily ensure a conversation row exists before the first message.
   // The backend 400s without a conversation_id and has no create path, so
   // we create it client-side (RLS-scoped) — same insert as useAgentChat.
@@ -92,6 +98,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
         ensureConversationId,
         getAccessToken: () => accessTokenRef.current || '',
+        getAppContext: () => appContextRef.current,
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         modelOverride: selectedModel,
         contextMode,

@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id, message, job_context, context_mode, brief_context, project_id } = body;
+    const { conversation_id, message, job_context, context_mode, brief_context, project_id, app_context } = body;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -605,6 +605,34 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       console.warn("[search-agent-chat] aiContext load skipped:", e);
     }
 
+    // Contexte applicatif passif : où se trouve l'utilisateur dans l'app.
+    // Bloc dynamique (change à chaque message) → placé en QUEUE du system,
+    // après les blocs cachés, pour ne pas casser le prompt cache. Fail-soft.
+    let appContextBlock = "";
+    try {
+      const ac = app_context;
+      if (ac && typeof ac === "object") {
+        const lines: string[] = [];
+        if (ac.page) lines.push(`Page : ${String(ac.page).slice(0, 80)}`);
+        if (ac.missionTitle || ac.missionId) {
+          const t = ac.missionTitle ? String(ac.missionTitle).slice(0, 160) : "";
+          const id = ac.missionId ? `[id: ${String(ac.missionId).slice(0, 64)}]` : "";
+          lines.push(`Mission ouverte : ${[t, id].filter(Boolean).join(" ")}`);
+        }
+        if (ac.missionTab) lines.push(`Onglet mission : ${String(ac.missionTab).slice(0, 40)}`);
+        if (ac.candidateId) lines.push(`Candidat consulté : [id: ${String(ac.candidateId).slice(0, 64)}]`);
+        if (lines.length > 0) {
+          appContextBlock =
+            `=== CONTEXTE APPLICATIF (où se trouve l'utilisateur, à titre indicatif) ===\n` +
+            `${lines.join("\n")}\n` +
+            `Sers-t'en pour comprendre les références implicites ("ce candidat", "cette mission", "cette page") sans les redemander. N'invente jamais une info absente ici.\n` +
+            `=== FIN CONTEXTE APPLICATIF ===`;
+        }
+      }
+    } catch (e) {
+      console.warn("[search-agent-chat] appContext build skipped:", e);
+    }
+
     // --- Sourcing mode: tool-calling loop (non-streaming), then stream final response ---
     if (isSourcingMode) {
       const encoder = new TextEncoder();
@@ -633,6 +661,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 system: [
                   ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
                   { type: "text", text: activeSystemPrompt },
+                  ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
                 ],
                 messages: currentMessages,
                 tools: allTools,
@@ -851,6 +880,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         system: [
           ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
           { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
+          ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
         ],
         messages,
         stream: true,
