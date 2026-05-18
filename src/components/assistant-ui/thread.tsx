@@ -6,16 +6,19 @@ import {
   useMessage,
 } from '@assistant-ui/react';
 import {
-  ArrowUp, ChevronDown, ChevronRight, Brain,
+  ArrowUp, ChevronRight, Sparkles, Paperclip, X, FileText,
   Search, PenLine, BarChart3, Lightbulb, SlidersHorizontal,
   ClipboardList, MessageSquare,
 } from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { FileUpload, FileUploadTrigger, FileUploadContent } from '@/components/prompt-kit/file-upload';
 
 interface SkalrThreadProps {
   contextMode?: string | null;
+  /** Notion-style: model selector rendered inside the composer toolbar */
+  modelSlot?: React.ReactNode;
 }
 
 type Suggestion = { icon: React.ComponentType<{ className?: string }>; label: string; prompt: string };
@@ -67,49 +70,65 @@ const WELCOME: Record<string, WelcomeConfig> = {
   },
 };
 
-/** Claude-style collapsible reasoning/thinking block */
+/**
+ * Claude/Notion-style reasoning toggle. Auto-expands while the model is still
+ * "thinking" (no answer text yet), then collapses to a discreet line once the
+ * answer streams. The header shimmers while thinking.
+ */
 const ReasoningBlock = ({ text }: { text: string }) => {
-  const [open, setOpen] = useState(false);
-  const lines = text.split('\n').filter(Boolean);
-  const preview = lines.slice(0, 2).join(' ').slice(0, 110);
+  const isRunning = useMessage((s) => s.status?.type === 'running');
+  const hasText = useMessage((s) =>
+    s.content?.some((part: any) => part.type === 'text' && part.text?.trim())
+  );
+  const streaming = isRunning && !hasText;
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const open = userToggled ?? streaming;
 
   return (
-    <button onClick={() => setOpen(!open)} className="w-full text-left group">
-      <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 transition-colors hover:bg-muted/50">
-        <div className="mt-0.5 shrink-0">
-          {open ? (
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+    <div className="text-[13px]">
+      <button
+        onClick={() => setUserToggled(!open)}
+        className="group flex items-center gap-1.5 py-0.5 text-left"
+      >
+        <ChevronRight
+          className={cn(
+            'h-3.5 w-3.5 text-muted-foreground/60 transition-transform duration-200',
+            open && 'rotate-90'
           )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <Brain className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Réflexion
-            </span>
+        />
+        <Sparkles className="h-3 w-3 text-muted-foreground/70" />
+        <span
+          className={cn(
+            'text-[11px] font-semibold uppercase tracking-wider',
+            streaming ? 'konekt-shimmer-text' : 'text-muted-foreground/70 group-hover:text-muted-foreground'
+          )}
+        >
+          {streaming ? 'Réflexion en cours' : 'Réflexion'}
+        </span>
+      </button>
+      <div
+        className={cn(
+          'grid transition-all duration-200 ease-out',
+          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="ml-[7px] mt-1 border-l border-border/60 pl-3 text-xs leading-relaxed text-muted-foreground/80 whitespace-pre-wrap">
+            {text}
           </div>
-          {open ? (
-            <div className="mt-1.5 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap animate-fade-in">
-              {text}
-            </div>
-          ) : (
-            <p className="mt-0.5 text-xs text-muted-foreground/60 truncate">{preview}…</p>
-          )}
         </div>
       </div>
-    </button>
+    </div>
   );
 };
 
-/** Claude/Notion-style shimmering status line */
-const ShimmerThinking = ({ label = 'Réflexion en cours' }: { label?: string }) => (
-  <div className="flex items-center gap-2.5 animate-fade-in">
+/** Claude/Notion-style shimmering status line (only when nothing rendered yet) */
+const ShimmerThinking = () => (
+  <div className="flex items-center gap-2.5 animate-fade-in px-1">
     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/60">
       <AnimatedOrb size={20} speed={6} />
     </div>
-    <span className="konekt-shimmer-text text-[13px] font-medium">{label}…</span>
+    <span className="konekt-shimmer-text text-[13px] font-medium">Réflexion en cours…</span>
   </div>
 );
 
@@ -142,13 +161,13 @@ const AssistantMessage = () => {
   const hasText = useMessage((s) =>
     s.content?.some((part: any) => part.type === 'text' && part.text?.trim())
   );
+  const hasReasoning = useMessage((s) =>
+    s.content?.some((part: any) => part.type === 'reasoning' && part.text?.trim())
+  );
 
-  if (isRunning && !hasText) {
-    return (
-      <div className="px-1">
-        <ShimmerThinking />
-      </div>
-    );
+  // Nothing streamed yet at all → single shimmer line (no double indicator)
+  if (isRunning && !hasText && !hasReasoning) {
+    return <ShimmerThinking />;
   }
 
   return (
@@ -180,8 +199,14 @@ const UserMessage = () => (
   </div>
 );
 
-export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode }) => {
+export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot }) => {
   const w = WELCOME[(contextMode as string) || 'free'] ?? WELCOME.free;
+  const [files, setFiles] = useState<File[]>([]);
+
+  const addFiles = (added: File[]) =>
+    setFiles((prev) => [...prev, ...added].slice(0, 5));
+  const removeFile = (idx: number) =>
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
 
   return (
     <ThreadPrimitive.Root className="flex flex-col h-full bg-background">
@@ -224,44 +249,86 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode }) => {
               AssistantMessage,
             }}
           />
-
-          {/* Loading indicator before any assistant message appears */}
-          <ThreadPrimitive.If running>
-            <div className="px-1">
-              <ShimmerThinking />
-            </div>
-          </ThreadPrimitive.If>
         </div>
       </ThreadPrimitive.Viewport>
 
-      {/* Composer — prompt-kit-style rounded pill (Claude/ChatGPT) */}
+      {/* Composer — prompt-kit-style pill with Notion/Claude toolbar */}
       <div className="shrink-0 px-3 pb-3 pt-1">
         <div className="mx-auto w-full max-w-2xl">
-          <ComposerPrimitive.Root className="relative flex flex-col rounded-[1.75rem] border border-border bg-background p-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
-            <ComposerPrimitive.Input
-              placeholder={
-                contextMode === 'sourcing'
-                  ? 'Décris le profil recherché…'
-                  : contextMode === 'brief'
-                  ? 'Pose une question sur le brief…'
-                  : 'Écris un message à Konekt IA…'
-              }
-              rows={1}
-              autoFocus
-              className="w-full resize-none bg-transparent px-3 py-2.5 text-[14px] leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none max-h-40 min-h-[24px]"
-            />
-            <div className="flex items-center justify-end pt-1 pr-0.5">
-              <ComposerPrimitive.Send
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all',
-                  'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95',
-                  'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100'
-                )}
-              >
-                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-              </ComposerPrimitive.Send>
-            </div>
-          </ComposerPrimitive.Root>
+          <FileUpload onFilesAdded={addFiles} multiple accept="image/*,.pdf,.doc,.docx,.txt,.csv">
+            <ComposerPrimitive.Root className="relative flex flex-col rounded-[1.75rem] border border-border bg-background p-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
+              {/* Attached files */}
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-2 pt-1.5 pb-1">
+                  {files.map((f, i) => (
+                    <span
+                      key={`${f.name}-${i}`}
+                      className="group flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 py-1 pl-2 pr-1 text-[11px] text-foreground/80"
+                    >
+                      <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="max-w-[140px] truncate">{f.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                        aria-label="Retirer le fichier"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <ComposerPrimitive.Input
+                placeholder={
+                  contextMode === 'sourcing'
+                    ? 'Décris le profil recherché…'
+                    : contextMode === 'brief'
+                    ? 'Pose une question sur le brief…'
+                    : 'Écris un message à Konekt IA…'
+                }
+                rows={1}
+                autoFocus
+                className="w-full resize-none bg-transparent px-3 py-2.5 text-[14px] leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none max-h-40 min-h-[24px]"
+              />
+
+              {/* Toolbar */}
+              <div className="flex items-center gap-1 pl-1 pr-0.5 pt-1">
+                <FileUploadTrigger asChild>
+                  <button
+                    type="button"
+                    title="Joindre un fichier"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </button>
+                </FileUploadTrigger>
+
+                {modelSlot}
+
+                <ComposerPrimitive.Send
+                  className={cn(
+                    'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all',
+                    'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95',
+                    'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100'
+                  )}
+                >
+                  <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                </ComposerPrimitive.Send>
+              </div>
+            </ComposerPrimitive.Root>
+
+            {/* Drag-and-drop overlay */}
+            <FileUploadContent>
+              <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary/50 bg-background px-10 py-8 shadow-xl">
+                <Paperclip className="h-7 w-7 text-primary" />
+                <p className="text-sm font-medium text-foreground">Dépose tes fichiers ici</p>
+                <p className="text-xs text-muted-foreground">Images, PDF, Word, texte — 5 max</p>
+              </div>
+            </FileUploadContent>
+          </FileUpload>
+
           <p className="mt-2 text-center text-[10.5px] text-muted-foreground/50">
             Konekt IA peut faire des erreurs — vérifie les infos importantes.
           </p>

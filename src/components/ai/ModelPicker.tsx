@@ -67,6 +67,7 @@ export const ModelPicker = ({
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild disabled={disabled}>
         <button
+          type="button"
           className={cn(
             "inline-flex items-center gap-1.5 text-xs rounded-sm border border-border px-2 py-1 transition-colors",
             "hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",

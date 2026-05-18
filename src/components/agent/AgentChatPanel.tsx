@@ -281,7 +281,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             {contextMode ? 'Mode contextuel' : 'Conversation libre'}
           </p>
         </div>
-        <ModelPicker actionId="agent_search_calibration" value={selectedModel} onChange={setSelectedModel} compact />
       </div>
 
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
@@ -289,7 +288,17 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
       {/* Thread — assistant-ui handles everything */}
       <AssistantRuntimeProvider runtime={runtime}>
-        <SkalrThread contextMode={contextMode} />
+        <SkalrThread
+          contextMode={contextMode}
+          modelSlot={
+            <ModelPicker
+              actionId="agent_search_calibration"
+              value={selectedModel}
+              onChange={setSelectedModel}
+              compact
+            />
+          }
+        />
         <SearchCandidatesToolUI />
         <EnrichCompanyToolUI />
         <WebSearchToolUI />
