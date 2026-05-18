@@ -96,8 +96,11 @@ const trivialDryRun = (summary: string) => async () => ({ summary, details: {} }
 const getMyMissions: AgentTool = {
   name: 'get_my_missions',
   description:
-    "List the recruitment missions (sourcing projects) the user can see, with status and sourcing stats. " +
-    "Use when the user asks 'mes missions', 'quelles missions actives', 'sur quoi je bosse', 'combien de postes ouverts'. " +
+    "List the recruitment missions (sourcing projects) the user can see, with status, sourcing stats AND the real " +
+    "candidate count per mission (plus a total_candidates aggregate). " +
+    "Use when the user asks 'mes missions', 'quelles missions actives', 'sur quoi je bosse', 'combien de postes ouverts', " +
+    "AND for any cross-mission / aggregate question like 'combien de candidats au total', 'combien de candidats sur mes " +
+    "missions', 'lesquelles ont des candidats' — answer those from this tool, do NOT drill into each mission. " +
     "Read-only, results are scoped to the user's role automatically.",
   category: 'read',
   requiresApproval: false,
@@ -130,7 +133,45 @@ const getMyMissions: AgentTool = {
       .order('updated_at', { ascending: false })
       .limit(limit);
     if (error) return { success: false, error: error.message };
-    return { success: true, data: { role, count: (data ?? []).length, missions: data ?? [] } };
+    const missions: Array<Record<string, unknown>> = (data ?? []) as Array<Record<string, unknown>>;
+
+    // Compteur RÉEL de candidats par mission. La liaison mission→candidats est
+    // `job_candidate_status.project_id = sourcing_projects.id` (cf. le hook app
+    // useProjectCandidates) — PAS `job_id`, qui est l'id de job/recherche,
+    // souvent synthétique (« project:<uuid> »). Permet de répondre aux
+    // questions agrégées sans drill-in par mission.
+    const missionIds = missions.map((m) => m.id as string).filter(Boolean);
+    let totalCandidates = 0;
+    let countsTruncated = false;
+    if (missionIds.length > 0) {
+      const { data: cand, error: candErr } = await ctx.adminClient
+        .from('job_candidate_status')
+        .select('project_id')
+        .in('project_id', missionIds)
+        .limit(5000);
+      if (!candErr && Array.isArray(cand)) {
+        const tally: Record<string, number> = {};
+        for (const r of cand as Array<{ project_id: string | null }>) {
+          if (r.project_id) tally[r.project_id] = (tally[r.project_id] || 0) + 1;
+        }
+        for (const m of missions) {
+          const c = tally[m.id as string] || 0;
+          m.candidate_count = c;
+          totalCandidates += c;
+        }
+        countsTruncated = cand.length === 5000;
+      }
+    }
+    return {
+      success: true,
+      data: {
+        role,
+        count: missions.length,
+        total_candidates: totalCandidates,
+        ...(countsTruncated ? { counts_truncated: true } : {}),
+        missions,
+      },
+    };
   },
 };
 
@@ -161,16 +202,19 @@ const getMissionOverview: AgentTool = {
   dryRun: trivialDryRun('Lecture : aperçu de la mission'),
   async execute(params, ctx) {
     const missionId = String(params.mission_id);
-    const [{ data: mission }, { data: rows }] = await Promise.all([
+    const [{ data: mission, error: missionErr }, { data: rows, error: rowsErr }] = await Promise.all([
       ctx.adminClient
         .from('sourcing_projects')
         .select('id, name, job_title, client_name, status, stats_total_found, stats_scored, stats_shortlisted, stats_messaged, stats_dismissed')
         .eq('id', missionId)
         .maybeSingle(),
+      // Liaison candidats : project_id = sourcing_projects.id (cf.
+      // useProjectCandidates app-side). `job_id` est l'id de recherche,
+      // souvent synthétique « project:<uuid> » → ne matcherait rien ici.
       ctx.adminClient
         .from('job_candidate_status')
         .select('candidate_name, pipeline_stage, status, score')
-        .eq('job_id', missionId)
+        .eq('project_id', missionId)
         .order('score', { ascending: false, nullsFirst: false })
         .limit(300),
     ]);
@@ -195,6 +239,9 @@ const getMissionOverview: AgentTool = {
         top_candidates: list.slice(0, 8).map((r) => ({
           name: r.candidate_name, stage: r.pipeline_stage, status: r.status, score: r.score,
         })),
+        ...((missionErr || rowsErr)
+          ? { data_errors: { mission: missionErr?.message ?? null, candidates: rowsErr?.message ?? null } }
+          : {}),
       },
     };
   },
@@ -227,7 +274,8 @@ const getMissionCandidates: AgentTool = {
     let q = ctx.adminClient
       .from('job_candidate_status')
       .select('candidate_name, candidate_headline, pipeline_stage, status, score, recommendation')
-      .eq('job_id', missionId);
+      // project_id = sourcing_projects.id (cf. useProjectCandidates) — pas job_id.
+      .eq('project_id', missionId);
     if (params.stage) q = q.eq('pipeline_stage', String(params.stage));
     if (params.min_score != null) q = q.gte('score', Number(params.min_score));
     const { data, error } = await q
