@@ -2,8 +2,12 @@ import type { ChatModelAdapter, ChatModelRunOptions } from '@assistant-ui/react'
 
 interface SkalrAdapterConfig {
   supabaseUrl: string;
-  getConversationId: () => string;
-  setConversationId: (id: string) => void;
+  /**
+   * Returns the active conversation id, creating one if none exists yet.
+   * The backend has no create-on-the-fly path — the row MUST exist before
+   * the first message, so creation happens client-side (RLS-scoped insert).
+   */
+  ensureConversationId: () => Promise<string>;
   getAccessToken: () => string;
   apiKey: string;
   modelOverride?: string | null;
@@ -27,97 +31,11 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
 
       if (!userContent.trim()) return;
 
-      let conversationId = config.getConversationId();
+      // The backend rejects requests without a conversation_id (400) and has
+      // no create-on-the-fly path. Guarantee the row exists first.
+      const conversationId = await config.ensureConversationId();
+      if (!conversationId) throw new Error('Conversation introuvable');
 
-      // Auto-create conversation if needed
-      if (!conversationId) {
-        const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.getAccessToken()}`,
-            apikey: config.apiKey,
-          },
-          body: JSON.stringify({
-            message: userContent,
-            create_conversation: true,
-            organization_id: config.organizationId,
-            _ai_model: config.modelOverride || undefined,
-            _ai_action: 'agent_search_calibration',
-            context_mode: config.contextMode || undefined,
-            brief_context: config.briefContext || undefined,
-            project_id: config.projectId || undefined,
-            account_id: config.accountId || undefined,
-          }),
-          signal: abortSignal,
-        });
-
-        if (!resp.ok) throw new Error(`Edge function error: ${resp.status}`);
-
-        const reader = resp.body!.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = '';
-        let thinkingAccumulated = '';
-        let isThinking = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          for (const line of chunk.split('\n')) {
-            if (!line.startsWith('data: ')) continue;
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(data);
-
-              // Capture conversation_id from first event
-              if (parsed.conversation_id && !conversationId) {
-                conversationId = parsed.conversation_id;
-                config.setConversationId(conversationId);
-              }
-              if (parsed.done === true) continue;
-
-              const thinkingText = parsed.choices?.[0]?.delta?.thinking;
-              if (thinkingText) {
-                thinkingAccumulated += thinkingText;
-                isThinking = true;
-                yield {
-                  content: [
-                    { type: 'reasoning' as const, text: thinkingAccumulated },
-                  ],
-                };
-                continue;
-              }
-
-              const text = parsed.choices?.[0]?.delta?.content;
-              if (text) {
-                if (isThinking) isThinking = false;
-                accumulated += text;
-                const parts: any[] = [];
-                if (thinkingAccumulated) {
-                  parts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
-                }
-                parts.push({ type: 'text' as const, text: accumulated });
-                yield { content: parts };
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-
-        const finalParts: any[] = [];
-        if (thinkingAccumulated) {
-          finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
-        }
-        finalParts.push({ type: 'text' as const, text: accumulated || '…' });
-        yield { content: finalParts };
-        return;
-      }
-
-      // Existing conversation — stream
       const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
         method: 'POST',
         headers: {

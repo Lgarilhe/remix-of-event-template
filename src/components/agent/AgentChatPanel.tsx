@@ -62,16 +62,37 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
 
+  // Lazily ensure a conversation row exists before the first message.
+  // The backend 400s without a conversation_id and has no create path, so
+  // we create it client-side (RLS-scoped) — same insert as useAgentChat.
+  const ensureConversationId = useCallback(async (): Promise<string> => {
+    if (conversationIdRef.current) return conversationIdRef.current;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !organizationId) throw new Error('Organisation introuvable. Reconnecte-toi.');
+    const job = selectedJob ?? autoJob ?? null;
+    const { data, error } = await supabase
+      .from('agent_conversations')
+      .insert({
+        organization_id: organizationId,
+        created_by: user.id,
+        job_id: job?.id || null,
+        job_title: job?.title || null,
+        status: 'calibrating',
+      })
+      .select()
+      .single();
+    if (error || !data) throw new Error(error?.message || 'Création de conversation impossible');
+    conversationIdRef.current = data.id;
+    setConversationId(data.id);
+    setShowList(false);
+    return data.id;
+  }, [organizationId, selectedJob, autoJob]);
+
   const adapter = useMemo(
     () =>
       createSkalrChatAdapter({
         supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-        getConversationId: () => conversationIdRef.current || '',
-        setConversationId: (id: string) => {
-          conversationIdRef.current = id;
-          setConversationId(id);
-          setShowList(false);
-        },
+        ensureConversationId,
         getAccessToken: () => accessTokenRef.current || '',
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         modelOverride: selectedModel,
@@ -81,7 +102,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         accountId,
         organizationId: organizationId || undefined,
       }),
-    [selectedModel, contextMode, briefContext, projectId, accountId, organizationId],
+    [ensureConversationId, selectedModel, contextMode, briefContext, projectId, accountId, organizationId],
   );
 
   const runtime = useLocalRuntime(adapter);
