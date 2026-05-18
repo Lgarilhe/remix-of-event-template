@@ -651,6 +651,19 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     let classifiedDATA = false;
     if (isFreeMode) {
       try {
+        // Fil récent (derniers tours) → un suivi court ("et leur nom ?",
+        // "lesquelles ?", "détaille") hérite du sujet du tour précédent et
+        // est classé correctement. Le dernier élément de `messages` est le
+        // message courant de l'utilisateur.
+        const recentTranscript = (messages as Array<{ role: string; content: unknown }>)
+          .slice(-5)
+          .map((m) => {
+            const who = m.role === "assistant" ? "Assistant" : "Utilisateur";
+            const txt = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+            return `${who}: ${txt}`.slice(0, 600);
+          })
+          .join("\n")
+          .slice(-3000);
         const { callClaudeCompat } = await import("../_shared/call-claude.ts");
         const clf = await callClaudeCompat({
           model: "claude-haiku-4-5-20251001",
@@ -664,18 +677,24 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               role: "system",
               content:
                 "Tu es un classifieur pour le copilot d'un logiciel de recrutement. " +
+                "On te donne le fil récent de la conversation. Classe le DERNIER message " +
+                "« Utilisateur » EN TENANT COMPTE du contexte : un suivi court (« et leur " +
+                "nom ? », « lesquelles ? », « détaille », « lesquels »…) hérite du sujet " +
+                "du tour précédent.\n" +
                 "Réponds UNIQUEMENT par un seul mot, sans ponctuation : DATA ou CHAT.\n" +
-                "DATA = la demande nécessite les données PROPRES de l'organisation de " +
-                "l'utilisateur (ses missions/postes, ses candidats, son pipeline/colonnes, " +
-                "scores, process d'entretien, séquences/relances, statistiques, compteurs). " +
-                "Ex : « combien de candidats sur ma mission X », « où en est mon pipeline », " +
-                "« quelles missions j'ai en cours », « qui a répondu à la séquence ».\n" +
-                "CHAT = tout le reste : rédiger/améliorer un message, conseil, stratégie de " +
-                "sourcing, analyse d'un poste ou d'un profil collé, questions métier " +
+                "DATA = la demande (ou le suivi) nécessite les données PROPRES de " +
+                "l'organisation : ses missions/postes, ses candidats (noms, scores, étape " +
+                "pipeline), son pipeline, process d'entretien, séquences/relances, " +
+                "statistiques, compteurs. Ex : « combien de candidats sur ma mission X », " +
+                "« où en est mon pipeline », « quelles missions j'ai en cours », « qui a " +
+                "répondu », et TOUT suivi demandant le détail de ces données (ex : après " +
+                "« tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA).\n" +
+                "CHAT = tout le reste : rédiger/améliorer un message, conseil, stratégie " +
+                "de sourcing, analyse d'un poste ou d'un profil collé, questions métier " +
                 "générales, salutations.\n" +
                 "En cas de doute, réponds CHAT.",
             },
-            { role: "user", content: String(message).slice(0, 2000) },
+            { role: "user", content: recentTranscript || String(message).slice(0, 2000) },
           ],
         });
         classifiedDATA = /\bDATA\b/i.test(clf.content || "");
