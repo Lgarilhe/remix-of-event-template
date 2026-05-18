@@ -619,6 +619,16 @@ Propose des exemples concrets de messages.`;
       console.warn('[search-agent-chat] user-memory injection skipped:', e);
     }
 
+    // Contexte IA user/org (Settings → Contexte IA) — injecté en bloc system
+    // séparé, AVANT le prompt opérationnel. Fail-soft : "" si rien configuré.
+    let aiContextBlock = "";
+    try {
+      const { loadAndBuildAiContext } = await import("../_shared/ai-context.ts");
+      aiContextBlock = await loadAndBuildAiContext(supabase, { orgId, userId: user.id });
+    } catch (e) {
+      console.warn("[search-agent-chat] aiContext load skipped:", e);
+    }
+
     // --- Sourcing mode: tool-calling loop (non-streaming), then stream final response ---
     if (isSourcingMode) {
       const encoder = new TextEncoder();
@@ -644,7 +654,10 @@ Propose des exemples concrets de messages.`;
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
-                system: [{ type: "text", text: activeSystemPrompt }],
+                system: [
+                  ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
+                  { type: "text", text: activeSystemPrompt },
+                ],
                 messages: currentMessages,
                 tools: allTools,
               };
@@ -859,7 +872,10 @@ Propose des exemples concrets de messages.`;
           type: "enabled",
           budget_tokens: 16000,
         },
-        system: [{ type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } }],
+        system: [
+          ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
+          { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
+        ],
         messages,
         stream: true,
       }),
