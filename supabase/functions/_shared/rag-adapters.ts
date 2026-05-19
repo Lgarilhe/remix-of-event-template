@@ -235,6 +235,73 @@ export function adaptSequenceHistory(executions: any[]): Chunk[] {
   }];
 }
 
+// 10. Mission / projet de sourcing (brief) → chunk job_context
+// Dérivé UNIQUEMENT des champs sémantiques du brief (pas de stats/dates/
+// filters_snapshot) pour que le content_hash reste stable : les UPDATE de
+// churn (stats_*, last_search_at) produisent un contenu identique → dédup
+// SHA-256 → pas de ré-embedding (même pattern que job_candidate_status).
+export function adaptSourcingProject(project: any): Chunk[] {
+  if (!project) return [];
+  const jd = (project.job_details && typeof project.job_details === 'object') ? project.job_details : {};
+  const lines: string[] = [];
+
+  const title = safeStr(jd.title || project.job_title || project.name || '');
+  const client = safeStr(jd.client?.name || project.client_name || '');
+  if (title) lines.push(`Mission : ${title}`);
+  if (project.name && safeStr(project.name) !== title) lines.push(`Nom interne : ${safeStr(project.name)}`);
+  if (client) lines.push(`Client : ${client}`);
+  if (jd.client?.sector) lines.push(`Secteur client : ${safeStr(jd.client.sector)}`);
+  if (jd.client?.size) lines.push(`Taille client : ${safeStr(jd.client.size)}`);
+
+  if (jd.seniority) lines.push(`Séniorité : ${safeStr(jd.seniority)}`);
+  if (jd.experience_min || jd.experience_max) {
+    lines.push(`Expérience : ${jd.experience_min ?? '?'} - ${jd.experience_max ?? '?'} ans`);
+  }
+  if (jd.contract_type) lines.push(`Contrat : ${safeStr(jd.contract_type)}`);
+  if (jd.location) lines.push(`Localisation : ${safeStr(jd.location)}`);
+  if (jd.remote_policy) {
+    lines.push(`Télétravail : ${safeStr(jd.remote_policy)}${jd.remote_days ? ` (${jd.remote_days} j/sem)` : ''}`);
+  }
+  if (jd.salary_min || jd.salary_max) {
+    const cur = safeStr(jd.salary_currency || '€');
+    lines.push(`Rémunération : ${jd.salary_min ?? '?'} - ${jd.salary_max ?? '?'} ${cur}${jd.salary_type ? ` (${safeStr(jd.salary_type)})` : ''}`);
+  }
+
+  const skillList = (v: any) => (Array.isArray(v) ? v.filter(Boolean).map((s: any) => safeStr(s)) : []);
+  const mustHave = skillList(jd.skills_must_have);
+  const shouldHave = skillList(jd.skills_should_have);
+  const niceToHave = skillList(jd.skills_nice_to_have);
+  if (mustHave.length) lines.push(`Compétences indispensables : ${mustHave.join(', ')}`);
+  if (shouldHave.length) lines.push(`Compétences souhaitées : ${shouldHave.join(', ')}`);
+  if (niceToHave.length) lines.push(`Compétences bonus : ${niceToHave.join(', ')}`);
+  if (Array.isArray(jd.languages) && jd.languages.length) {
+    const langs = jd.languages
+      .map((l: any) => `${safeStr(l?.language)}${l?.level ? ` (${safeStr(l.level)})` : ''}`)
+      .filter((s: string) => s.trim());
+    if (langs.length) lines.push(`Langues : ${langs.join(', ')}`);
+  }
+
+  if (jd.mission_description) lines.push(`Mission : ${truncate(safeStr(jd.mission_description), 600)}`);
+  if (jd.context) lines.push(`Contexte : ${truncate(safeStr(jd.context), 400)}`);
+  if (Array.isArray(jd.evaluation_criteria) && jd.evaluation_criteria.length) {
+    const crit = jd.evaluation_criteria
+      .map((c: any) => typeof c === 'string' ? c : safeStr(c?.label || c?.criterion || c?.name || c?.description || c?.text || ''))
+      .filter(Boolean)
+      .slice(0, 15)
+      .join(' ; ');
+    if (crit) lines.push(`Critères d'évaluation : ${truncate(crit, 400)}`);
+  }
+
+  if (lines.length === 0) return [];
+  return [{
+    chunk_type: 'job_context',
+    content: lines.join('\n'),
+    source_table: 'sourcing_projects',
+    source_id: safeStr(project.id) || undefined,
+    metadata: { title, client, mission_name: safeStr(project.name || '') },
+  }];
+}
+
 // 9. Résultat de scoring
 export function adaptScoringResult(score: any): Chunk[] {
   if (!score) return [];

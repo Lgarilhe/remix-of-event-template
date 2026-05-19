@@ -1025,7 +1025,11 @@ const searchKnowledge: AgentTool = {
     "questions TRANSVERSES qui ne nomment pas de candidat : « quels candidats ont parlé de " +
     "télétravail », « qui a des réserves sur leur dispo », « des retours mentionnant un préavis " +
     "long ». Pour cibler UN candidat précis, passe candidate_name OU candidate_id (réduit la " +
-    "recherche à lui : « qu'a-t-on dit sur X », « nos réserves sur X »). À utiliser pour les " +
+    "recherche à lui : « qu'a-t-on dit sur X », « nos réserves sur X »). Passe entity:'job' " +
+    "pour chercher dans les BRIEFS DE MISSIONS (poste, client, compétences, séniorité, " +
+    "télétravail, rémunération, contexte) au lieu des candidats : « ai-je une mission qui " +
+    "cherche du Go senior », « des missions full remote », « quelles missions chez tel " +
+    "client ». À utiliser pour les " +
     "questions OUVERTES qu'aucun outil structuré ne couvre. Pour des faits structurés (score, " +
     "étape, missions, entretiens, prospection) préfère get_candidate_detail / get_*.",
   category: 'read',
@@ -1034,6 +1038,7 @@ const searchKnowledge: AgentTool = {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'La question / les mots-clés en texte libre à rechercher sémantiquement.' },
+      entity: { type: 'string', description: "OPTIONNEL — 'candidate' (défaut) = cherche dans les candidats ; 'job' = cherche dans les BRIEFS DE MISSIONS (poste/client/compétences/contexte). Mets 'job' pour toute question sur les missions ou postes ouverts." },
       candidate_id: { type: 'string', description: "OPTIONNEL — restreint la recherche à CE candidat (id de profil). Laisse vide pour chercher à travers tous les candidats accessibles." },
       candidate_name: { type: 'string', description: "OPTIONNEL — restreint la recherche à CE candidat (nom EXACT). Laisse vide pour une recherche transverse." },
       mission_id: { type: 'string', description: "UUID mission pour lever une ambiguïté de nom (optionnel, seulement si tu cibles un candidat)." },
@@ -1074,6 +1079,82 @@ const searchKnowledge: AgentTool = {
       const data = await res.json();
       return Array.isArray(data?.chunks) ? data.chunks : [];
     };
+
+    // ── entity:'job' → recherche transverse dans les briefs de missions ──
+    // (RAG v3). owner/admin → toute l'org ; collaborateur → allow-list de
+    // ses missions (own + team). Attribution par mission via entity_id.
+    const entity = String((params.entity ?? 'candidate') as string).toLowerCase() === 'job'
+      ? 'job'
+      : 'candidate';
+    if (entity === 'job') {
+      let jobAllowList: string[] | null = null;
+      let jscope: 'org' | 'missions' = 'org';
+      if (!isPrivileged(role)) {
+        const ids = await collaboratorMissionIds(ctx);
+        jscope = 'missions';
+        if (ids.length === 0) {
+          return { success: true, data: { scope: jscope, entity: 'job', query, found: 0, extracts: [], note: 'Aucune mission accessible.' } };
+        }
+        jobAllowList = ids.slice(0, 3000);
+      }
+      try {
+        const chunks = await callRetrieve({
+          organization_id: ctx.organizationId,
+          org_wide: true,
+          entity_type: 'job',
+          ...(jobAllowList ? { entity_ids: jobAllowList } : {}),
+          query,
+          limit,
+        });
+        const mIds = [...new Set(
+          chunks.map((c) => c.entity_id).filter((x): x is string => typeof x === 'string' && x.length > 0),
+        )];
+        const missionMap = new Map<string, { name: string | null; job_title: string | null; client_name: string | null }>();
+        if (mIds.length > 0) {
+          const { data: ms } = await ctx.adminClient
+            .from('sourcing_projects')
+            .select('id, name, job_title, client_name')
+            .eq('organization_id', ctx.organizationId)
+            .in('id', mIds.slice(0, 200));
+          for (const r of (ms as Array<{ id: string; name: string | null; job_title: string | null; client_name: string | null }> | null) ?? []) {
+            if (!missionMap.has(r.id)) missionMap.set(r.id, { name: r.name, job_title: r.job_title, client_name: r.client_name });
+          }
+        }
+        return {
+          success: true,
+          data: {
+            scope: jscope,
+            entity: 'job',
+            query,
+            found: chunks.length,
+            extracts: chunks.slice(0, limit).map((c) => {
+              const m = c.entity_id ? missionMap.get(c.entity_id) : undefined;
+              return {
+                mission: c.entity_id
+                  ? {
+                      name: m?.name ?? null,
+                      job_title: m?.job_title ?? null,
+                      client: m?.client_name ?? null,
+                      mission_path: `/missions/${c.entity_id}`,
+                    }
+                  : null,
+                type: c.chunk_type,
+                content: String(c.content || '').slice(0, 700),
+                similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
+              };
+            }),
+            ...(chunks.length === 0
+              ? { note: jscope === 'missions'
+                  ? 'Rien trouvé dans tes missions pour cette requête.'
+                  : "Rien trouvé dans les missions de l'organisation pour cette requête." }
+              : {}),
+          },
+        };
+      } catch (e) {
+        console.warn('[search_knowledge] job retrieve-context error:', e);
+        return { success: false, error: 'Recherche sémantique momentanément indisponible.' };
+      }
+    }
 
     const hasCandidate = Boolean(
       String((params.candidate_id ?? params.candidate_name ?? '') as string).trim(),

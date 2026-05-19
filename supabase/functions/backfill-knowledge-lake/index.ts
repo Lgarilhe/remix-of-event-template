@@ -5,6 +5,7 @@ import {
   adaptLinkedInProfile,
   adaptQualificationSession,
   adaptSequenceHistory,
+  adaptSourcingProject,
   type Chunk,
 } from "../_shared/rag-adapters.ts";
 
@@ -151,6 +152,7 @@ const ALL_TABLES = [
   "airtable_shortlists",
   "sequence_step_executions",
   "aircall_calls",
+  "sourcing_projects",
 ];
 
 // ── Main handler ───────────────────────────────────────────────────────
@@ -493,6 +495,15 @@ Deno.serve(async (req) => {
           undefined, // no report for raw aircall calls
         );
         return toIngestChunks("candidate", entityId, adapterChunks);
+      });
+    }
+
+    // RAG v3 — missions/jobs : 1 chunk job_context par projet de sourcing.
+    if (tables.includes("sourcing_projects")) {
+      await processTable("sourcing_projects", (row) => {
+        const projectId = row.id as string;
+        if (!projectId) return [];
+        return toIngestChunks("job", projectId, adaptSourcingProject(row));
       });
     }
 

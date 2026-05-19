@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
-import { adaptLinkedInProfile, type Chunk } from "../_shared/rag-adapters.ts";
+import { adaptLinkedInProfile, adaptSourcingProject, type Chunk } from "../_shared/rag-adapters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,6 +210,27 @@ function buildChunksFromSequenceExecutions(record: Record<string, unknown>) {
   };
 }
 
+// RAG v3 — mission/job : un row sourcing_projects → 1 chunk job_context
+// (entity_type:'job', entity_id = project.id). adaptSourcingProject ne lit
+// que les champs de brief → content_hash stable malgré le churn de stats.
+function buildChunksFromSourcingProject(record: Record<string, unknown>) {
+  const orgId = record.organization_id as string;
+  const projectId = record.id as string;
+  if (!orgId || !projectId) return null;
+  const chunks = adaptSourcingProject(record).map((c) => ({
+    chunk_type: c.chunk_type,
+    content: c.content,
+    metadata: c.metadata,
+  }));
+  if (chunks.length === 0) return null;
+  return {
+    entity_type: "job",
+    entity_id: projectId,
+    organization_id: orgId,
+    chunks,
+  };
+}
+
 // ── Table → builder mapping ────────────────────────────────────────────
 const TABLE_BUILDERS: Record<string, (r: Record<string, unknown>) => { entity_type: string; entity_id: string; organization_id: string; chunks: Array<{ chunk_type: string; content: string; metadata?: any }> } | null> = {
   job_candidate_status: buildChunksFromJobCandidateStatus,
@@ -218,6 +239,7 @@ const TABLE_BUILDERS: Record<string, (r: Record<string, unknown>) => { entity_ty
   call_coaching_sessions: buildChunksFromCoachingSessions,
   candidate_evaluations: buildChunksFromEvaluations,
   sequence_step_executions: buildChunksFromSequenceExecutions,
+  sourcing_projects: buildChunksFromSourcingProject,
 };
 
 // ── Main handler ───────────────────────────────────────────────────────
