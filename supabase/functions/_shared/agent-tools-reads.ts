@@ -1016,23 +1016,26 @@ function ragFetchWithTimeout(
 const searchKnowledge: AgentTool = {
   name: 'search_knowledge',
   description:
-    "Recherche SÉMANTIQUE (texte libre) dans la base de connaissance Konekt sur UN candidat précis : " +
-    "notes internes, commentaires d'équipe, comptes-rendus d'appel, évaluations d'entretien, " +
-    "profil/expériences LinkedIn, échanges. À utiliser pour les questions OUVERTES qu'aucun outil " +
-    "structuré ne couvre : « qu'a-t-on dit sur X », « résume nos retours/réserves sur X », « des " +
-    "notes mentionnant le télétravail / le salaire ? », « pourquoi on a hésité sur X ». Fournis " +
-    "`query` (la question en texte libre) + le candidat (candidate_name OU candidate_id). Pour des " +
-    "faits structurés (score, étape, missions, entretiens, prospection) préfère get_candidate_detail / get_*.",
+    "Recherche SÉMANTIQUE (texte libre) dans la base de connaissance Konekt : notes internes, " +
+    "commentaires d'équipe, comptes-rendus d'appel, évaluations d'entretien, profil/expériences " +
+    "LinkedIn, échanges. Par DÉFAUT cherche À TRAVERS TOUS les candidats accessibles (toute " +
+    "l'organisation pour owner/admin ; tes missions pour un collaborateur) — idéal pour les " +
+    "questions TRANSVERSES qui ne nomment pas de candidat : « quels candidats ont parlé de " +
+    "télétravail », « qui a des réserves sur leur dispo », « des retours mentionnant un préavis " +
+    "long ». Pour cibler UN candidat précis, passe candidate_name OU candidate_id (réduit la " +
+    "recherche à lui : « qu'a-t-on dit sur X », « nos réserves sur X »). À utiliser pour les " +
+    "questions OUVERTES qu'aucun outil structuré ne couvre. Pour des faits structurés (score, " +
+    "étape, missions, entretiens, prospection) préfère get_candidate_detail / get_*.",
   category: 'read',
   requiresApproval: false,
   inputSchema: {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'La question / les mots-clés en texte libre à rechercher sémantiquement.' },
-      candidate_id: { type: 'string', description: "Id de profil du candidat (si tu l'as)." },
-      candidate_name: { type: 'string', description: 'Nom EXACT du candidat (sinon).' },
-      mission_id: { type: 'string', description: "UUID mission pour lever une ambiguïté de nom (optionnel)." },
-      mission_name: { type: 'string', description: 'Nom de mission pour lever une ambiguïté (optionnel).' },
+      candidate_id: { type: 'string', description: "OPTIONNEL — restreint la recherche à CE candidat (id de profil). Laisse vide pour chercher à travers tous les candidats accessibles." },
+      candidate_name: { type: 'string', description: "OPTIONNEL — restreint la recherche à CE candidat (nom EXACT). Laisse vide pour une recherche transverse." },
+      mission_id: { type: 'string', description: "UUID mission pour lever une ambiguïté de nom (optionnel, seulement si tu cibles un candidat)." },
+      mission_name: { type: 'string', description: 'Nom de mission pour lever une ambiguïté (optionnel, seulement si tu cibles un candidat).' },
       limit: { type: 'number', description: "Nb max d'extraits (défaut 8, max 15)." },
     },
     required: ['query'],
@@ -1040,61 +1043,160 @@ const searchKnowledge: AgentTool = {
   async verifyAccess(params, ctx) {
     if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
     if (!String((params.query ?? '') as string).trim()) return { allowed: false, reason: 'Précise la recherche (query).' };
-    const ref = String((params.candidate_id ?? params.candidate_name ?? '') as string).trim();
-    return ref ? { allowed: true } : { allowed: false, reason: 'Précise le candidat (nom exact ou id).' };
+    return { allowed: true };
   },
   dryRun: trivialDryRun('Lecture : recherche sémantique base de connaissance'),
   async execute(params, ctx) {
     const role = await resolveRole(ctx);
-    const ref = await resolveCandidateRef(ctx, params, role);
-    if (!ref) return { success: false, error: "Candidat introuvable — donne le nom exact (ou l'id)." };
-    if ('ambiguous' in ref) {
-      return { success: true, data: { ambiguous: true, candidates: ref.ambiguous, note: 'Plusieurs candidats correspondent — précise lequel.' } };
-    }
-    const { primary } = ref;
     const query = String(params.query ?? '').slice(0, 500);
     const limit = Math.min(Math.max(Number(params.limit) || 8, 1), 15);
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
     if (!supabaseUrl || !anonKey) return { success: false, error: 'Service indisponible.' };
-    try {
+
+    // Appel fail-soft à retrieve-context (anon key, même pattern éprouvé).
+    const callRetrieve = async (
+      payload: Record<string, unknown>,
+    ): Promise<Array<Record<string, any>>> => {
       const res = await ragFetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = await res.json();
+      return Array.isArray(data?.chunks) ? data.chunks : [];
+    };
+
+    const hasCandidate = Boolean(
+      String((params.candidate_id ?? params.candidate_name ?? '') as string).trim(),
+    );
+
+    // ── Ancré sur UN candidat (comportement v1, inchangé) ──────────────
+    if (hasCandidate) {
+      const ref = await resolveCandidateRef(ctx, params, role);
+      if (!ref) return { success: false, error: "Candidat introuvable — donne le nom exact (ou l'id)." };
+      if ('ambiguous' in ref) {
+        return { success: true, data: { ambiguous: true, candidates: ref.ambiguous, note: 'Plusieurs candidats correspondent — précise lequel.' } };
+      }
+      const { primary } = ref;
+      try {
+        const chunks = await callRetrieve({
           organization_id: ctx.organizationId,
           entity_type: 'candidate',
           entity_id: primary.candidate_id,
           query,
           limit,
-        }),
+        });
+        return {
+          success: true,
+          data: {
+            scope: 'candidate',
+            candidate: {
+              name: primary.candidate_name,
+              headline: primary.candidate_headline,
+              profile_path: primary.candidate_id ? `/ats/scorecard/${primary.candidate_id}` : null,
+            },
+            query,
+            found: chunks.length,
+            extracts: chunks.slice(0, limit).map((c) => ({
+              type: c.chunk_type,
+              date: c.metadata?.date ?? c.metadata?.last_message_date ?? null,
+              content: String(c.content || '').slice(0, 700),
+              similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
+            })),
+            ...(chunks.length === 0
+              ? { note: 'Rien trouvé dans la base de connaissance pour ce candidat sur cette requête.' }
+              : {}),
+          },
+        };
+      } catch (e) {
+        console.warn('[search_knowledge] retrieve-context error:', e);
+        return { success: false, error: 'Recherche sémantique momentanément indisponible.' };
+      }
+    }
+
+    // ── Transverse (aucun candidat nommé) : rappel cross-candidats ─────
+    // owner/admin → toute l'org ; collaborateur → allow-list des candidats
+    // de ses missions (own + team), même règle que resolveCandidateRef.
+    let allowList: string[] | null = null;
+    let scope: 'org' | 'missions' = 'org';
+    if (!isPrivileged(role)) {
+      const missionIds = await collaboratorMissionIds(ctx);
+      let cq = ctx.adminClient
+        .from('job_candidate_status')
+        .select('candidate_id')
+        .eq('organization_id', ctx.organizationId);
+      cq = missionIds.length > 0
+        ? cq.or(`created_by.eq.${ctx.userId},project_id.in.(${missionIds.join(',')})`)
+        : cq.eq('created_by', ctx.userId);
+      const { data: rows } = await cq.limit(5000);
+      const ids = new Set<string>();
+      for (const r of (rows as Array<{ candidate_id: string | null }> | null) ?? []) {
+        if (r.candidate_id) ids.add(r.candidate_id);
+      }
+      scope = 'missions';
+      if (ids.size === 0) {
+        return { success: true, data: { scope, query, found: 0, extracts: [], note: 'Aucun candidat accessible dans tes missions.' } };
+      }
+      allowList = [...ids].slice(0, 3000);
+    }
+
+    try {
+      const chunks = await callRetrieve({
+        organization_id: ctx.organizationId,
+        org_wide: true,
+        entity_type: 'candidate',
+        ...(allowList ? { entity_ids: allowList } : {}),
+        query,
+        limit,
       });
-      if (!res.ok) return { success: false, error: `Recherche indisponible (${res.status}).` };
-      const data = await res.json();
-      const chunks: Array<Record<string, any>> = Array.isArray(data?.chunks) ? data.chunks : [];
+      // Attribue chaque extrait à son candidat (résolution de noms en lot).
+      const entIds = [...new Set(
+        chunks.map((c) => c.entity_id).filter((x): x is string => typeof x === 'string' && x.length > 0),
+      )];
+      const nameMap = new Map<string, { name: string | null; headline: string | null }>();
+      if (entIds.length > 0) {
+        const { data: cands } = await ctx.adminClient
+          .from('job_candidate_status')
+          .select('candidate_id, candidate_name, candidate_headline')
+          .eq('organization_id', ctx.organizationId)
+          .in('candidate_id', entIds.slice(0, 200));
+        for (const r of (cands as Array<{ candidate_id: string; candidate_name: string | null; candidate_headline: string | null }> | null) ?? []) {
+          if (!nameMap.has(r.candidate_id)) nameMap.set(r.candidate_id, { name: r.candidate_name, headline: r.candidate_headline });
+        }
+      }
       return {
         success: true,
         data: {
-          candidate: {
-            name: primary.candidate_name,
-            headline: primary.candidate_headline,
-            profile_path: primary.candidate_id ? `/ats/scorecard/${primary.candidate_id}` : null,
-          },
+          scope,
           query,
           found: chunks.length,
-          extracts: chunks.slice(0, limit).map((c) => ({
-            type: c.chunk_type,
-            date: c.metadata?.date ?? c.metadata?.last_message_date ?? null,
-            content: String(c.content || '').slice(0, 700),
-            similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
-          })),
+          extracts: chunks.slice(0, limit).map((c) => {
+            const cand = c.entity_id ? nameMap.get(c.entity_id) : undefined;
+            return {
+              candidate: c.entity_id
+                ? {
+                    name: cand?.name ?? null,
+                    headline: cand?.headline ?? null,
+                    profile_path: `/ats/scorecard/${c.entity_id}`,
+                  }
+                : null,
+              type: c.chunk_type,
+              date: c.metadata?.date ?? c.metadata?.last_message_date ?? null,
+              content: String(c.content || '').slice(0, 700),
+              similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
+            };
+          }),
           ...(chunks.length === 0
-            ? { note: 'Rien trouvé dans la base de connaissance pour ce candidat sur cette requête.' }
+            ? { note: scope === 'missions'
+                ? 'Rien trouvé dans la base de connaissance sur tes missions pour cette requête.'
+                : "Rien trouvé dans la base de connaissance de l'organisation pour cette requête." }
             : {}),
         },
       };
     } catch (e) {
-      console.warn('[search_knowledge] retrieve-context error:', e);
+      console.warn('[search_knowledge] org-wide retrieve-context error:', e);
       return { success: false, error: 'Recherche sémantique momentanément indisponible.' };
     }
   },

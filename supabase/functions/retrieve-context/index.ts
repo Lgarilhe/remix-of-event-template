@@ -66,6 +66,11 @@ Deno.serve(async (req) => {
       organization_id: bodyOrgId,
       entity_type,
       entity_id,
+      // RAG v2 — org-wide / role-scoped retrieval. When org_wide=true, the
+      // search spans the whole org (no single entity_id). entity_ids is an
+      // optional allow-list (collaborator scoping, computed by the caller).
+      org_wide = false,
+      entity_ids,
       query,
       chunk_types,
       limit = 8,
@@ -150,15 +155,17 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Validate required fields ────────────────────────────
-    if (!entity_type || !entity_id || !query) {
+    // org_wide path: only `query` is required (entity_type/entity_id optional).
+    // anchored path (back-compat): entity_type + entity_id + query required.
+    if (!query || (!org_wide && (!entity_type || !entity_id))) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: entity_type, entity_id, query" }),
+        JSON.stringify({ error: "Missing required fields: query (+ entity_type, entity_id unless org_wide)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const validEntityTypes = ["candidate", "job", "company", "conversation"];
-    if (!validEntityTypes.includes(entity_type)) {
+    if (entity_type && !validEntityTypes.includes(entity_type)) {
       return new Response(
         JSON.stringify({ error: `entity_type must be one of: ${validEntityTypes.join(", ")}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -219,7 +226,29 @@ Deno.serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     let chunks: any[] = [];
 
-    if (include_related) {
+    if (org_wide) {
+      // RAG v2 — org-wide cosine (optionally filtered by entity_type and an
+      // entity_id allow-list for collaborator scoping). Returns entity_id/
+      // entity_type so the caller can attribute each extract to its entity.
+      const embeddingStr = `[${queryEmbedding!.join(",")}]`;
+      const allowList = Array.isArray(entity_ids) && entity_ids.length > 0
+        ? entity_ids
+        : null;
+      const { data, error } = await svc.rpc("retrieve_context_org", {
+        p_org_id: organizationId,
+        p_query_embedding: embeddingStr,
+        p_entity_type: entity_type ?? null,
+        p_entity_ids: allowList,
+        p_chunk_types: chunk_types ?? null,
+        p_limit: initialFetchLimit,
+      });
+
+      if (error) {
+        console.error("retrieve_context_org RPC error:", error);
+        throw new Error(`RPC error: ${error.message}`);
+      }
+      chunks = (data ?? []).filter((c: any) => typeof c.similarity === 'number' && c.similarity >= min_similarity);
+    } else if (include_related) {
       // Gather related entity IDs
       const entityIds = [entity_id];
 
@@ -360,7 +389,9 @@ Deno.serve(async (req) => {
     }
 
     // ── 5. Format context for prompt injection ─────────────────
-    const label = ENTITY_LABELS[entity_type] || entity_type.toUpperCase();
+    const label = entity_type
+      ? (ENTITY_LABELS[entity_type] || entity_type.toUpperCase())
+      : "ORG";
     const formattedSections = chunks.map((c) => {
       const datePart = c.metadata?.date ? ` | DATE: ${c.metadata.date}` : "";
       const sim = typeof c.similarity === "number" ? c.similarity.toFixed(2) : "N/A";
@@ -381,6 +412,11 @@ Deno.serve(async (req) => {
         success: true,
         chunks: chunks.map((c) => ({
           id: c.id,
+          // entity_id/entity_type only present on the org_wide RPC return;
+          // undefined for anchored paths (dropped by JSON.stringify) →
+          // existing callers unaffected.
+          entity_id: c.entity_id,
+          entity_type: c.entity_type,
           chunk_type: c.chunk_type,
           content: c.content,
           metadata: c.metadata,
