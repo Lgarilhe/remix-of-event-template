@@ -45,7 +45,7 @@ Vérif manuelle à faire en plus : **pas d'imports orphelins** (grep pour les no
 3. Commit + push → PR ou merge direct sur `main`.
 4. Vercel redéploie auto le frontend (~2min).
 5. **Edge functions** ne sont PAS auto-déployées : `supabase functions deploy <name> --project-ref crckfywoyjxkawathdff`.
-6. **Migrations SQL** ne sont PAS auto-appliquées : `supabase db push --linked` ou `supabase db query --linked --file <file.sql>`.
+6. **Migrations SQL** : auto-appliquées par `.github/workflows/deploy-migrations.yml` sur push `main` (paths `supabase/migrations/**`) via `supabase db push --linked`. ⚠️ Ce workflow a été cassé pendant des semaines (table de suivi remote `supabase_migrations.schema_migrations` désynchro — 6/219 versions trackées seulement → `db push` refuse : « Found local migration files to be inserted before the last migration on remote »). Réparé via l'input `repair_tracking=true` (break-glass, tracking-only). Si tu vois cette erreur : relancer le workflow en `workflow_dispatch` avec `repair_tracking=true`. Hotfix manuel toujours possible : `supabase db push --linked` (idempotent) ou SQL editor.
 7. Rollback Vercel : Dashboard Vercel → Deployments → "Promote to Production" sur le deploy précédent.
 
 ---
@@ -592,8 +592,7 @@ supabase functions deploy --all
 # Or individually:
 supabase functions deploy <function-name>
 ```
-**SQL migrations** also require manual application:
+**SQL migrations** auto-apply via `.github/workflows/deploy-migrations.yml` on push to `main` (paths `supabase/migrations/**`). This was broken for weeks by a remote tracking-table desync (only 6/219 versions tracked → `supabase db push` refuses with "Found local migration files to be inserted before the last migration on remote"). Recovery: re-run the workflow in `workflow_dispatch` with `repair_tracking=true` (break-glass — marks all local versions `applied` in the tracking table only, no DDL re-run, reversible). Manual application still works as a hotfix and is idempotent:
 ```bash
-supabase db push
+supabase db push --linked
 ```
-Without this, old code keeps running on Supabase.
