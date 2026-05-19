@@ -1343,7 +1343,20 @@ async function handleGetChats(
     const timeB = new Date(b.timestamp as string).getTime();
     return timeB - timeA; // Most recent first
   });
-  
+
+  // Lightweight path (internal copilot tool get_linkedin_thread): skip the
+  // per-chat enrichment storm (2 upstream calls × N chats, batched 10). The
+  // list endpoint already returns attendees[name/provider_id], id,
+  // last_message & timestamp — enough to resolve a conversation by attendee
+  // name FAST (3 list calls total instead of ~2×N).
+  if (params.raw) {
+    const capped = chats.slice(0, Math.min(Number(limit) || 60, 125));
+    return new Response(
+      JSON.stringify({ success: true, chats: capped, cursors: nextCursors, cursor: hasMore ? '__has_more__' : null }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   console.log(`Total merged chats: ${chats.length} (Classic: ${classicResult.items.length}, Recruiter: ${recruiterResult.items.length}, Generic: ${genericResult.items.length})`);
 
   // Log folder distribution for debugging

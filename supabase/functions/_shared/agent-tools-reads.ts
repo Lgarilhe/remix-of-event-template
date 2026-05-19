@@ -878,11 +878,13 @@ const getCandidateOutreach: AgentTool = {
   description:
     "Outreach history for ONE candidate: am I/we already in touch? Returns sequence enrollments (status, " +
     "replied, connection, step), InMails sent, and any message-analysis (intent/sentiment/summary). " +
-    "Use for 'je l'ai déjà contacté ?', 'on a échangé avec lui ?', 'j'ai déjà discuté avec <nom> ?', " +
-    "'qu'est-ce qu'il a répondu ?', 'résume notre échange', 'où en est la prospection sur ce candidat'. " +
-    "Now ALSO returns the recent VERBATIM LinkedIn thread (who said what, chronological) when a connected " +
-    "LinkedIn account holds the conversation. Sequence/analysis↔candidate matching stays best-effort (by " +
-    "name). Pass candidate_name (or candidate_id).",
+    "Use for 'je l'ai déjà contacté ?', 'on a échangé avec lui ?', 'où en est la prospection sur ce " +
+    "candidat', 'on lui a écrit ?'. Also returns the recent verbatim LinkedIn thread IF this PIPELINE " +
+    "candidate is reachable on a connected LinkedIn account. ⚠️ For the RAW LinkedIn conversation with " +
+    "ANYONE (« résume mon échange LinkedIn avec X », « qu'est-ce que X a répondu », « de quoi on a parlé " +
+    "avec X ») — ESPECIALLY a contact/pair/prospect who is NOT a pipeline candidate — use " +
+    "get_linkedin_thread instead. Sequence↔candidate matching is best-effort (by name). Pass " +
+    "candidate_name (or candidate_id).",
   category: 'read',
   requiresApproval: false,
   inputSchema: { type: 'object', properties: { ...candidateArg }, required: [] },
@@ -1025,23 +1027,11 @@ function ragFetchWithTimeout(
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
-// Gap B — fil LinkedIn verbatim. Résout le(s) compte(s) LinkedIn de l'org
-// (ceux de l'utilisateur courant d'abord) puis interroge le service de
-// connexion LinkedIn EN INTERNE (clé service-role, Mode B) : get_chats par
-// attendee (= id de profil LinkedIn du candidat = job_candidate_status.
-// candidate_id, cf. CardMessageThread côté front) → get_messages. Fail-soft :
-// renvoie null si pas de compte / pas de conversation / erreur. AUCUNE
-// mention de fournisseur dans le texte (règle branding : on dit "LinkedIn").
-async function fetchLinkedInThread(
-  ctx: ToolContext,
-  candidateId: string,
-): Promise<{ message_count: number; messages: Array<{ from: string; date: string | null; text: string }> } | null> {
-  const candId = String(candidateId || '').trim();
-  if (!candId) return null;
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !serviceKey) return null;
-
+// Comptes LinkedIn connectés de l'org (ceux de l'utilisateur courant en
+// premier — c'est le plus souvent lui qui a la conversation). Cap géré
+// par l'appelant. Partagé par fetchLinkedInThread (candidat) et
+// get_linkedin_thread (n'importe qui dans la messagerie).
+async function resolveOrgLinkedInAccounts(ctx: ToolContext): Promise<string[]> {
   const { data: accRows } = await ctx.adminClient
     .from('member_linkedin_accounts')
     .select('linkedin_account_id, user_id')
@@ -1058,6 +1048,25 @@ async function fetchLinkedInThread(
     const id = (r.linkedin_account_id || '').trim();
     if (id && !seenAcc.has(id)) { seenAcc.add(id); accounts.push(id); }
   }
+  return accounts;
+}
+
+// Gap B — fil LinkedIn verbatim pour un CANDIDAT (id de profil LinkedIn =
+// job_candidate_status.candidate_id, cf. CardMessageThread). get_chats par
+// attendee → get_messages, EN INTERNE (clé service-role, Mode B). Fail-soft :
+// null si pas de compte / pas de conversation / erreur. AUCUNE mention de
+// fournisseur dans le texte (règle branding : on dit "LinkedIn").
+async function fetchLinkedInThread(
+  ctx: ToolContext,
+  candidateId: string,
+): Promise<{ message_count: number; messages: Array<{ from: string; date: string | null; text: string }> } | null> {
+  const candId = String(candidateId || '').trim();
+  if (!candId) return null;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceKey) return null;
+
+  const accounts = await resolveOrgLinkedInAccounts(ctx);
   if (accounts.length === 0) return null;
 
   const callUnipile = async (body: Record<string, unknown>): Promise<any | null> => {
@@ -1109,6 +1118,139 @@ async function fetchLinkedInThread(
   }
   return null;
 }
+
+// ─── Tool — get_linkedin_thread (fil verbatim, N'IMPORTE QUI dans l'inbox) ──
+const getLinkedInThread: AgentTool = {
+  name: 'get_linkedin_thread',
+  description:
+    "Lit le FIL DE DISCUSSION LinkedIn VERBATIM (qui a dit quoi, ordre chronologique) avec UNE " +
+    "personne depuis ta messagerie LinkedIn. Fonctionne pour N'IMPORTE QUI dans ta boîte LinkedIn — " +
+    "candidat OU contact / pair / prospect / client, même s'il n'est PAS dans une mission Konekt. " +
+    "À utiliser dès qu'on te demande « résume mon échange LinkedIn avec X », « qu'est-ce que X m'a " +
+    "répondu », « de quoi on a parlé avec X », « il a dit oui ? », « notre dernière conversation " +
+    "avec X ». Passe person_name = le nom EXACT affiché dans la messagerie. NB : pour le statut de " +
+    "prospection structuré d'un candidat de pipeline (séquence/InMail) utilise get_candidate_outreach.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      person_name: { type: 'string', description: 'Nom EXACT de la personne tel qu\'affiché dans la messagerie LinkedIn (ex. « Adrien Le Marhadour »).' },
+      limit: { type: 'number', description: 'Nb max de messages (défaut 20, max 40).' },
+    },
+    required: ['person_name'],
+  },
+  verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return Promise.resolve({ allowed: false, reason: 'No active organization' });
+    if (!String((params.person_name ?? '') as string).trim()) {
+      return Promise.resolve({ allowed: false, reason: 'Précise le nom de la personne (person_name).' });
+    }
+    return Promise.resolve({ allowed: true });
+  },
+  dryRun: trivialDryRun('Lecture : fil de discussion LinkedIn'),
+  async execute(params, ctx) {
+    const name = String(params.person_name ?? '').trim();
+    const limit = Math.min(Math.max(Number(params.limit) || 20, 1), 40);
+    if (!name) return { success: false, error: 'Précise le nom de la personne (person_name).' };
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return { success: false, error: 'Service indisponible.' };
+
+    const accounts = await resolveOrgLinkedInAccounts(ctx);
+    if (accounts.length === 0) {
+      return { success: true, data: { found: false, note: "Aucun compte LinkedIn connecté sur l'organisation." } };
+    }
+
+    const norm = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+    const target = norm(name);
+
+    const callUnipile = async (body: Record<string, unknown>): Promise<any | null> => {
+      try {
+        const res = await ragFetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }, 15000);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    };
+
+    for (const accountId of accounts.slice(0, 3)) {
+      const chatsResp = await callUnipile({
+        action: 'get_chats',
+        organization_id: ctx.organizationId,
+        account_id: accountId,
+        raw: true,
+        limit: 40,
+      });
+      const chats = chatsResp && Array.isArray(chatsResp.chats) ? chatsResp.chats : [];
+      if (!chats.length) continue;
+      let matched: any = null;
+      let matchedName = '';
+      for (const c of chats) {
+        const atts = Array.isArray(c?.attendees) ? c.attendees : [];
+        let hitName = '';
+        for (const a of atts) {
+          if (a?.is_self) continue;
+          const an = norm(String(a?.name ?? ''));
+          if (an && (an === target || an.includes(target) || target.includes(an))) {
+            hitName = String(a?.name ?? '');
+            break;
+          }
+        }
+        const cn = norm(String(c?.name ?? ''));
+        if (!hitName && cn && (cn === target || cn.includes(target) || target.includes(cn))) {
+          hitName = String(c?.name ?? '');
+        }
+        if (hitName) { matched = c; matchedName = hitName; break; }
+      }
+      if (!matched?.id) continue;
+      const msgResp = await callUnipile({
+        action: 'get_messages',
+        organization_id: ctx.organizationId,
+        account_id: accountId,
+        chat_id: matched.id,
+        limit,
+      });
+      const raw = msgResp && Array.isArray(msgResp.messages) ? msgResp.messages : [];
+      if (!raw.length) continue;
+      const messages = raw
+        .map((m: any) => ({
+          from: m?.is_sender ? 'nous' : 'contact',
+          date: (m?.timestamp || m?.date || null) as string | null,
+          text: String(m?.text ?? m?.text_content ?? '').trim().slice(0, 800),
+        }))
+        .filter((m: { text: string }) => m.text.length > 0)
+        .sort((a: { date: string | null }, b: { date: string | null }) =>
+          new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime())
+        .slice(-limit);
+      if (messages.length === 0) continue;
+      return {
+        success: true,
+        data: {
+          found: true,
+          person: { name: matchedName || name },
+          message_count: messages.length,
+          messages,
+          note: 'Fil LinkedIn verbatim (messages récents, ordre chronologique). « contact » = ' +
+            (matchedName || name) + ', « nous » = toi.',
+        },
+      };
+    }
+    return {
+      success: true,
+      data: {
+        found: false,
+        note: 'Aucune conversation LinkedIn trouvée avec « ' + name + ' » dans tes comptes ' +
+          "LinkedIn connectés (vérifie l'orthographe exacte, ou la conversation est trop ancienne).",
+      },
+    };
+  },
+};
 
 const searchKnowledge: AgentTool = {
   name: 'search_knowledge',
@@ -1400,6 +1542,7 @@ export function registerReadTools(): void {
   registerTool(getCandidateDetail);
   registerTool(getUpcomingInterviews);
   registerTool(getCandidateOutreach);
+  registerTool(getLinkedInThread);
   registerTool(searchKnowledge);
   registered = true;
 }
