@@ -718,7 +718,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `(parcours/skills/scoring/évaluations/notes via get_candidate_detail), ` +
         `les entretiens à venir (get_upcoming_interviews), et l'historique de ` +
         `prospection d'un candidat (get_candidate_outreach : déjà contacté ? a ` +
-        `répondu ?). Pour toute question portant sur ` +
+        `répondu ?). Pour les questions OUVERTES / texte libre sur un candidat ` +
+        `(« qu'a-t-on dit sur X », « nos retours/réserves sur X », « des notes ` +
+        `mentionnant le télétravail / le salaire », « pourquoi on a hésité ») ` +
+        `utilise search_knowledge (recherche sémantique : notes, commentaires, ` +
+        `comptes-rendus d'appel, évaluations, échanges) ; pour des faits ` +
+        `structurés (score, étape, missions, entretiens) garde get_candidate_detail ` +
+        `/ get_*. Pour toute question portant sur ` +
         `ces données, APPELLE les outils et réponds avec les chiffres et faits ` +
         `réels qu'ils renvoient. Ne dis jamais « je ne peux pas accéder » : tu ` +
         `peux, en lecture. N'invente aucun chiffre — si un outil ne renvoie rien, ` +

@@ -996,6 +996,110 @@ const getCandidateOutreach: AgentTool = {
   },
 };
 
+// ─── Tool — search_knowledge (RAG sémantique, ancré candidat) ──────────────
+// Invoque l'edge fn `retrieve-context` (recherche vectorielle sur le
+// knowledge lake, alimenté en temps réel par triggers : notes, commentaires,
+// comptes-rendus d'appel, évaluations, profil/expériences LinkedIn, échanges).
+// Même pattern éprouvé que generate-reply-suggestions (anon key, fail-soft).
+// La base est indexée par entity_id = job_candidate_status.candidate_id
+// (vérifié dans auto-ingest-context) = exactement primary.candidate_id.
+function ragFetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 25000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+const searchKnowledge: AgentTool = {
+  name: 'search_knowledge',
+  description:
+    "Recherche SÉMANTIQUE (texte libre) dans la base de connaissance Konekt sur UN candidat précis : " +
+    "notes internes, commentaires d'équipe, comptes-rendus d'appel, évaluations d'entretien, " +
+    "profil/expériences LinkedIn, échanges. À utiliser pour les questions OUVERTES qu'aucun outil " +
+    "structuré ne couvre : « qu'a-t-on dit sur X », « résume nos retours/réserves sur X », « des " +
+    "notes mentionnant le télétravail / le salaire ? », « pourquoi on a hésité sur X ». Fournis " +
+    "`query` (la question en texte libre) + le candidat (candidate_name OU candidate_id). Pour des " +
+    "faits structurés (score, étape, missions, entretiens, prospection) préfère get_candidate_detail / get_*.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'La question / les mots-clés en texte libre à rechercher sémantiquement.' },
+      candidate_id: { type: 'string', description: "Id de profil du candidat (si tu l'as)." },
+      candidate_name: { type: 'string', description: 'Nom EXACT du candidat (sinon).' },
+      mission_id: { type: 'string', description: "UUID mission pour lever une ambiguïté de nom (optionnel)." },
+      mission_name: { type: 'string', description: 'Nom de mission pour lever une ambiguïté (optionnel).' },
+      limit: { type: 'number', description: "Nb max d'extraits (défaut 8, max 15)." },
+    },
+    required: ['query'],
+  },
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    if (!String((params.query ?? '') as string).trim()) return { allowed: false, reason: 'Précise la recherche (query).' };
+    const ref = String((params.candidate_id ?? params.candidate_name ?? '') as string).trim();
+    return ref ? { allowed: true } : { allowed: false, reason: 'Précise le candidat (nom exact ou id).' };
+  },
+  dryRun: trivialDryRun('Lecture : recherche sémantique base de connaissance'),
+  async execute(params, ctx) {
+    const role = await resolveRole(ctx);
+    const ref = await resolveCandidateRef(ctx, params, role);
+    if (!ref) return { success: false, error: "Candidat introuvable — donne le nom exact (ou l'id)." };
+    if ('ambiguous' in ref) {
+      return { success: true, data: { ambiguous: true, candidates: ref.ambiguous, note: 'Plusieurs candidats correspondent — précise lequel.' } };
+    }
+    const { primary } = ref;
+    const query = String(params.query ?? '').slice(0, 500);
+    const limit = Math.min(Math.max(Number(params.limit) || 8, 1), 15);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!supabaseUrl || !anonKey) return { success: false, error: 'Service indisponible.' };
+    try {
+      const res = await ragFetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: ctx.organizationId,
+          entity_type: 'candidate',
+          entity_id: primary.candidate_id,
+          query,
+          limit,
+        }),
+      });
+      if (!res.ok) return { success: false, error: `Recherche indisponible (${res.status}).` };
+      const data = await res.json();
+      const chunks: Array<Record<string, any>> = Array.isArray(data?.chunks) ? data.chunks : [];
+      return {
+        success: true,
+        data: {
+          candidate: {
+            name: primary.candidate_name,
+            headline: primary.candidate_headline,
+            profile_path: primary.candidate_id ? `/ats/scorecard/${primary.candidate_id}` : null,
+          },
+          query,
+          found: chunks.length,
+          extracts: chunks.slice(0, limit).map((c) => ({
+            type: c.chunk_type,
+            date: c.metadata?.date ?? c.metadata?.last_message_date ?? null,
+            content: String(c.content || '').slice(0, 700),
+            similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
+          })),
+          ...(chunks.length === 0
+            ? { note: 'Rien trouvé dans la base de connaissance pour ce candidat sur cette requête.' }
+            : {}),
+        },
+      };
+    } catch (e) {
+      console.warn('[search_knowledge] retrieve-context error:', e);
+      return { success: false, error: 'Recherche sémantique momentanément indisponible.' };
+    }
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -1011,5 +1115,6 @@ export function registerReadTools(): void {
   registerTool(getCandidateDetail);
   registerTool(getUpcomingInterviews);
   registerTool(getCandidateOutreach);
+  registerTool(searchKnowledge);
   registered = true;
 }
