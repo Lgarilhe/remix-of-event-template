@@ -7,7 +7,7 @@ import { Job } from '@/types/jobs';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
-import { useLocalRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
+import { useLocalRuntime, AssistantRuntimeProvider, type ChatModelAdapter, type ThreadMessageLike } from '@assistant-ui/react';
 import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
 import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
@@ -24,6 +24,31 @@ interface AgentChatPanelProps {
   accountId?: string | null;
 }
 
+/**
+ * Owns the assistant-ui runtime. Isolated in its own component so it can be
+ * REMOUNTED (via `key`) when the conversation changes — `useLocalRuntime`
+ * only reads `initialMessages` once at creation, so re-seeding the thread
+ * from `agent_messages` (history click / restore on reopen) requires a fresh
+ * runtime. A model/context change does NOT change the key → no remount, the
+ * in-flight stream is preserved.
+ */
+const ChatThread: React.FC<{
+  adapter: ChatModelAdapter;
+  initialMessages: readonly ThreadMessageLike[];
+  contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null;
+  modelSlot: React.ReactNode;
+}> = ({ adapter, initialMessages, contextMode, modelSlot }) => {
+  const runtime = useLocalRuntime(adapter, { initialMessages });
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} />
+      <SearchCandidatesToolUI />
+      <EnrichCompanyToolUI />
+      <WebSearchToolUI />
+    </AssistantRuntimeProvider>
+  );
+};
+
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   onClose,
   contextMode,
@@ -33,13 +58,24 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   projectId,
   accountId,
 }) => {
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  // conversationId lives in AgentContext (NOT local state): the Copilot panel
+  // unmounts when the Sheet closes, so local state would be lost on reopen.
+  // The context survives above the Sheet → reopening resumes the conversation.
+  const { appContext, initialMessage: agentCtxMessage, conversationId, setConversationId } = useAgent();
   // Notion-AI-style: land directly in the chat. History/new conversation is
   // reachable from the header control, not a launcher screen.
   const [showList, setShowList] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  // History rehydration: a fresh runtime is keyed by `seedKey` and seeded with
+  // `initialMessages` fetched from agent_messages. `seeding` gates the thread
+  // so we don't flash the welcome screen before history loads.
+  const [initialMessages, setInitialMessages] = useState<readonly ThreadMessageLike[]>([]);
+  const [seedKey, setSeedKey] = useState(0);
+  // Start in "seeding" if a conversation is already active (panel reopened):
+  // shows the loader straight away instead of flashing the empty welcome.
+  const [seeding, setSeeding] = useState<boolean>(Boolean(conversationId));
 
   const { organizationId } = useOrganization();
 
@@ -62,7 +98,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
   // Passive app-location context — read fresh at send time via a ref so the
   // runtime is NOT recreated on every navigation (would reset the chat).
-  const { appContext } = useAgent();
   const appContextRef = useRef(appContext);
   appContextRef.current = appContext;
 
@@ -110,7 +145,46 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     [ensureConversationId, selectedModel, contextMode, briefContext, projectId, accountId, organizationId],
   );
 
-  const runtime = useLocalRuntime(adapter);
+  // Fetch a conversation's messages from agent_messages (RLS-scoped) and
+  // remount the runtime seeded with them. id=null → fresh empty chat.
+  const seedFrom = useCallback(async (id: string | null) => {
+    if (!id) {
+      setInitialMessages([]);
+      setSeeding(false);
+      setSeedKey((k) => k + 1);
+      return;
+    }
+    setSeeding(true);
+    try {
+      const { data } = await supabase
+        .from('agent_messages')
+        .select('role, content, created_at')
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: true });
+      const msgs: ThreadMessageLike[] = (data || [])
+        .filter(
+          (r) =>
+            (r.role === 'user' || r.role === 'assistant') &&
+            typeof r.content === 'string' &&
+            r.content.trim().length > 0,
+        )
+        .map((r) => ({ role: r.role as 'user' | 'assistant', content: r.content as string }));
+      setInitialMessages(msgs);
+    } catch {
+      setInitialMessages([]);
+    }
+    setSeedKey((k) => k + 1);
+    setSeeding(false);
+  }, []);
+
+  // Restore on (re)mount: the panel unmounts when the Sheet closes, so on
+  // reopen we rehydrate the conversation that's still in context. Mount-only
+  // on purpose — the lazy id-create on first message must NOT reseed (it would
+  // remount mid-stream and drop the in-flight answer).
+  useEffect(() => {
+    if (conversationId) seedFrom(conversationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // List conversations for history
   const listConversations = useCallback(async () => {
@@ -127,19 +201,21 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   }, []);
 
   const handleNewConversation = useCallback(async (job?: Job | null) => {
-    // Just clear conversation — the adapter will auto-create on first message
+    // Clear conversation — the adapter auto-creates on first message — and
+    // remount a fresh empty runtime.
     setConversationId(null);
     setSelectedJob(job || null);
     setShowList(false);
-  }, []);
+    seedFrom(null);
+  }, [setConversationId, seedFrom]);
 
   const handleSelectConversation = useCallback((conv: AgentConversation) => {
     setConversationId(conv.id);
     setShowList(false);
-  }, []);
+    seedFrom(conv.id);
+  }, [setConversationId, seedFrom]);
 
   // Handle initial message from AgentContext
-  const { initialMessage: agentCtxMessage } = useAgent();
   const effectiveInitialMessage = initialMessage ?? agentCtxMessage;
   const initialMessageHandledRef = useRef<string | null>(null);
 
@@ -232,9 +308,17 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
       <AgentToolApprovalCard conversationId={conversationId} />
 
-      {/* Thread — assistant-ui handles everything */}
-      <AssistantRuntimeProvider runtime={runtime}>
-        <SkalrThread
+      {/* Thread — keyed by seedKey so it remounts (fresh seeded runtime)
+          on history-select / restore, but NOT on model/context change. */}
+      {seeding ? (
+        <div className="flex-1 flex items-center justify-center">
+          <AnimatedOrb size={32} speed={3} />
+        </div>
+      ) : (
+        <ChatThread
+          key={seedKey}
+          adapter={adapter}
+          initialMessages={initialMessages}
           contextMode={contextMode}
           modelSlot={
             <ModelPicker
@@ -245,10 +329,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             />
           }
         />
-        <SearchCandidatesToolUI />
-        <EnrichCompanyToolUI />
-        <WebSearchToolUI />
-      </AssistantRuntimeProvider>
+      )}
     </div>
   );
 };
