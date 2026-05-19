@@ -284,7 +284,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
         <button
           onClick={() => setShowList(true)}
-          title="Conversations & nouvelle discussion"
+          title="Historique des conversations"
           className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
         >
           <History className="w-4 h-4 text-foreground" />
@@ -294,7 +294,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </AnimatedOrb>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold truncate text-foreground">
-            {contextMode === 'sourcing' ? 'Sourcing Assistant' 
+            {contextMode === 'sourcing' ? 'Sourcing Assistant'
               : contextMode === 'brief' ? 'Brief Assistant'
               : contextMode === 'outreach' ? 'Outreach Assistant'
               : 'Copilot IA'}
@@ -303,6 +303,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             {contextMode ? 'Mode contextuel' : 'Conversation libre'}
           </p>
         </div>
+        <button
+          onClick={() => handleNewConversation()}
+          title="Nouvelle conversation"
+          className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors shrink-0"
+        >
+          <SquarePen className="w-4 h-4 text-foreground" />
+        </button>
       </div>
 
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
