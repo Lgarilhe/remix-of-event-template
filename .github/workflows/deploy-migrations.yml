@@ -10,10 +10,23 @@ name: Deploy Supabase Migrations
 #   SUPABASE_DB_PASSWORD    — password de la DB postgres (Dashboard → Settings → Database)
 #   Add at https://github.com/Lgarilhe/remix-of-event-template/settings/secrets/actions
 #
-# ⚠️ Les migrations Supabase sont APPEND-ONLY et idempotentes (CREATE TABLE IF
-# NOT EXISTS, etc.). On utilise `supabase db push` qui détecte les nouvelles
-# migrations et les applique dans l'ordre. Aucun rollback automatique : tester
-# en local d'abord avec `supabase db reset --linked` (sur preview branch).
+# ⚠️ Mécanisme : `supabase db push` n'applique QUE les migrations absentes de la
+# table de suivi remote `supabase_migrations.schema_migrations`. Si cette table
+# est désynchronisée du schéma réel (migrations appliquées hors-bande / collées
+# à la main dans le SQL editor, mais jamais enregistrées), `db push` refuse de
+# tourner ("Found local migration files to be inserted before the last migration
+# on remote database") et le job échoue sous `set -euo pipefail`. C'est ce qui a
+# cassé l'auto-apply pendant des semaines (table de suivi à 6 lignes seulement,
+# bloc 20260416000000→20260422140000 de la migration Lovable→Supabase).
+#
+# 🔧 Réparation (one-time / break-glass) : déclencher ce workflow en
+# workflow_dispatch avec repair_tracking=true. Ça marque TOUTES les migrations
+# locales comme `applied` dans la table de suivi (UPSERT, table de suivi
+# uniquement — AUCUN DDL re-joué, réversible via `migration repair --status
+# reverted`). À n'utiliser que si la table de suivi est désynchro du schéma réel.
+#
+# Aucun rollback automatique du DDL : tester en local d'abord avec
+# `supabase db reset --linked` (sur preview branch).
 
 on:
   push:
@@ -24,6 +37,11 @@ on:
     inputs:
       dry_run:
         description: 'Dry run (only show what would be applied, no actual changes)'
+        required: false
+        type: boolean
+        default: false
+      repair_tracking:
+        description: 'BREAK-GLASS: mark ALL local migrations as applied in the remote tracking table (use only if tracking is desynced from the real schema — touches the tracking table only, no DDL re-run)'
         required: false
         type: boolean
         default: false
@@ -77,6 +95,24 @@ jobs:
           echo "=== Migration status (LOCAL vs REMOTE) ==="
           supabase migration list --linked --password "$SUPABASE_DB_PASSWORD" || true
 
+      - name: Repair migration tracking (break-glass — tracking table only)
+        if: ${{ inputs.repair_tracking == true }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Reconcile supabase_migrations.schema_migrations with the real schema:
+          # mark every local migration version as 'applied'. This is an UPSERT
+          # into the tracking table ONLY — it does NOT execute any migration DDL.
+          # Safe because the production schema is kept current out-of-band; this
+          # only records that fact. Reversible: `migration repair --status reverted`.
+          mapfile -t VERSIONS < <(for f in supabase/migrations/*.sql; do basename "$f" | grep -oE '^[0-9]+'; done | sort -u)
+          echo "=== Repairing ${#VERSIONS[@]} migration versions as 'applied' (tracking table only) ==="
+          supabase migration repair --status applied "${VERSIONS[@]}" --linked --password "$SUPABASE_DB_PASSWORD"
+          echo "=== Tracking table AFTER repair ==="
+          supabase migration list --linked --password "$SUPABASE_DB_PASSWORD" || true
+
       - name: Apply migrations (db push)
         if: ${{ inputs.dry_run != true }}
         env:
@@ -85,16 +121,21 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Pushing migrations to production ==="
-          # Sans --include-all : ne pousse QUE les migrations qui ne sont pas
-          # déjà dans la table supabase_migrations remote. --include-all
-          # tenterait de re-appliquer les ~100 migrations historiques → plantage.
+          # Sans --include-all : ne pousse QUE les migrations absentes de la
+          # table de suivi remote. Suppose cette table synchro avec le schéma
+          # réel — si désynchro, lancer d'abord en repair_tracking=true.
           supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
 
-      - name: Dry run — skipped actual push
+      - name: Dry run — show pending migrations (no changes)
         if: ${{ inputs.dry_run == true }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          echo "::notice::Dry run mode — no migrations were applied."
-          echo "Re-run this workflow with dry_run=false to actually push."
+          set -euo pipefail
+          echo "=== Dry run — migrations that WOULD be applied (none = tracking healthy) ==="
+          supabase db push --dry-run --linked --password "$SUPABASE_DB_PASSWORD"
+          echo "::notice::Dry run mode — no migrations were applied. Re-run with dry_run=false to push."
 
       - name: Final migration status
         if: ${{ inputs.dry_run != true }}
