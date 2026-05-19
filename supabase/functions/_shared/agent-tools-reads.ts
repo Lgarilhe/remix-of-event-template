@@ -996,11 +996,13 @@ const getCandidateOutreach: AgentTool = {
   },
 };
 
-// ─── Tool — search_knowledge (RAG sémantique, ancré candidat) ──────────────
+// ─── Tool — search_knowledge (RAG sémantique : ciblé candidat OU transverse) ─
 // Invoque l'edge fn `retrieve-context` (recherche vectorielle sur le
 // knowledge lake, alimenté en temps réel par triggers : notes, commentaires,
 // comptes-rendus d'appel, évaluations, profil/expériences LinkedIn, échanges).
-// Même pattern éprouvé que generate-reply-suggestions (anon key, fail-soft).
+// Appel interne edge→edge en SERVICE ROLE (Mode B de retrieve-context) — PAS
+// anon : l'anon key n'est ni JWT user ni service key → requireAuth 401.
+// Pattern qui marche = generate-outreach-message / process-sequences.
 // La base est indexée par entity_id = job_candidate_status.candidate_id
 // (vérifié dans auto-ingest-context) = exactement primary.candidate_id.
 function ragFetchWithTimeout(
@@ -1051,16 +1053,21 @@ const searchKnowledge: AgentTool = {
     const query = String(params.query ?? '').slice(0, 500);
     const limit = Math.min(Math.max(Number(params.limit) || 8, 1), 15);
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return { success: false, error: 'Service indisponible.' };
+    // SERVICE ROLE (pas anon) : appel interne edge→edge. retrieve-context
+    // exige requireAuth → l'anon key n'est NI un JWT user NI la service key
+    // donc getUser échoue → 401. Le pattern qui marche (generate-outreach-
+    // message, process-sequences) = service role → Mode B (auth.method
+    // 'service_role' + organization_id du body, déjà vérifié côté appelant).
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return { success: false, error: 'Service indisponible.' };
 
-    // Appel fail-soft à retrieve-context (anon key, même pattern éprouvé).
+    // Appel fail-soft à retrieve-context (service role, Mode B interne).
     const callRetrieve = async (
       payload: Record<string, unknown>,
     ): Promise<Array<Record<string, any>>> => {
       const res = await ragFetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`status ${res.status}`);
