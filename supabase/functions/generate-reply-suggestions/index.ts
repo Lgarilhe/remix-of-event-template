@@ -19,13 +19,18 @@ async function fetchRAGContext(
 ): Promise<string | null> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    if (!supabaseUrl || !anonKey) return null;
+    // SERVICE ROLE (pas anon) : appel interne edge→edge. retrieve-context
+    // exige requireAuth → l'anon key n'est NI un JWT user NI la service key
+    // donc getUser échoue → 401. Le pattern qui marche (generate-outreach-
+    // message, process-sequences) = service role → Mode B (auth.method
+    // 'service_role' + organization_id du body, envoyé ci-dessous).
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return null;
 
     const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/retrieve-context`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${anonKey}`,
+        'Authorization': `Bearer ${serviceKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
