@@ -159,35 +159,53 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // --- Auth: validate JWT and org membership ---
+    // --- Auth: JWT + org membership, OR internal service-role (Mode B) ---
+    // Mode B = appel interne edge→edge avec la clé service-role (ex. l'outil
+    // copilot get_candidate_outreach qui lit le fil LinkedIn verbatim côté
+    // serveur). Cloisonnement org assuré par organization_id requis (les
+    // credentials sont résolus par org) + l'appelant a déjà vérifié l'accès
+    // au candidat (rôle/org). Même pattern éprouvé que retrieve-context /
+    // ingest-context / auto-ingest-context.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAuth = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const _bearer = authHeader.replace('Bearer ', '').trim();
+    const _serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const isInternal = !!_serviceKey && _bearer === _serviceKey;
+
+    let userId = '';
+    if (!isInternal) {
+      const supabaseAuth = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      userId = user.id;
     }
 
     const { action, account_id, organization_id, ...params } = await req.json();
 
-    if (organization_id) {
+    if (isInternal) {
+      if (!organization_id) {
+        return new Response(JSON.stringify({ error: 'organization_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    } else if (organization_id) {
       const sb = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
-      const { data: membership } = await sb.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organization_id).maybeSingle();
+      const { data: membership } = await sb.from('organization_members').select('id').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
       if (!membership) {
         return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
-    // --- Rate limiting: 60 requests per minute per user (skip for service_role) ---
-    {
+    // --- Rate limiting: 60 req/min per user (skipped for internal service-role) ---
+    if (!isInternal) {
       const sbService = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
       const { data: allowed } = await sbService.rpc('check_rate_limit', {
-        p_user_id: user.id,
+        p_user_id: userId,
         p_action: 'unipile_search',
         p_max_requests: 60,
         p_window_seconds: 60,

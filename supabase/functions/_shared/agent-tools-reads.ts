@@ -879,8 +879,10 @@ const getCandidateOutreach: AgentTool = {
     "Outreach history for ONE candidate: am I/we already in touch? Returns sequence enrollments (status, " +
     "replied, connection, step), InMails sent, and any message-analysis (intent/sentiment/summary). " +
     "Use for 'je l'ai déjà contacté ?', 'on a échangé avec lui ?', 'j'ai déjà discuté avec <nom> ?', " +
-    "'où en est la prospection sur ce candidat'. NOTE: the verbatim LinkedIn thread is NOT here (needs the " +
-    "inbox); message↔candidate matching is best-effort (by name). Pass candidate_name (or candidate_id).",
+    "'qu'est-ce qu'il a répondu ?', 'résume notre échange', 'où en est la prospection sur ce candidat'. " +
+    "Now ALSO returns the recent VERBATIM LinkedIn thread (who said what, chronological) when a connected " +
+    "LinkedIn account holds the conversation. Sequence/analysis↔candidate matching stays best-effort (by " +
+    "name). Pass candidate_name (or candidate_id).",
   category: 'read',
   requiresApproval: false,
   inputSchema: { type: 'object', properties: { ...candidateArg }, required: [] },
@@ -966,6 +968,14 @@ const getCandidateOutreach: AgentTool = {
     });
     const replied = enrollments.some((e) => !!e.replied_at) || analyses.length > 0;
     const contacted = enrollments.length > 0 || inmails.some((i) => i.status === 'sent' || !!i.sent_at);
+    // Gap B — fil LinkedIn verbatim (live, fail-soft, jamais bloquant).
+    const thread = await fetchLinkedInThread(ctx, cid).catch(() => null);
+    const note = thread
+      ? 'Fil LinkedIn verbatim ci-dessous (messages récents, ordre chronologique). ' +
+        'Le rapprochement séquence/analyse↔candidat reste approximatif (par nom).'
+      : 'Fil LinkedIn verbatim indisponible (aucun compte LinkedIn connecté ne contient ' +
+        "cette conversation, ou conversation introuvable). Rapprochement message↔candidat " +
+        'approximatif (par nom).';
     return {
       success: true,
       data: {
@@ -989,8 +999,8 @@ const getCandidateOutreach: AgentTool = {
           subject: i.subject, status: i.status, sent_at: i.sent_at, scheduled_at: i.scheduled_at,
         })),
         message_analyses: analyses,
-        note: "Le fil verbatim des messages LinkedIn n'est pas inclus (ouvrir la boîte de réception). " +
-          'Le rapprochement message↔candidat est approximatif (par nom).',
+        linkedin_thread: thread,
+        note,
       },
     };
   },
@@ -1013,6 +1023,91 @@ function ragFetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// Gap B — fil LinkedIn verbatim. Résout le(s) compte(s) LinkedIn de l'org
+// (ceux de l'utilisateur courant d'abord) puis interroge le service de
+// connexion LinkedIn EN INTERNE (clé service-role, Mode B) : get_chats par
+// attendee (= id de profil LinkedIn du candidat = job_candidate_status.
+// candidate_id, cf. CardMessageThread côté front) → get_messages. Fail-soft :
+// renvoie null si pas de compte / pas de conversation / erreur. AUCUNE
+// mention de fournisseur dans le texte (règle branding : on dit "LinkedIn").
+async function fetchLinkedInThread(
+  ctx: ToolContext,
+  candidateId: string,
+): Promise<{ message_count: number; messages: Array<{ from: string; date: string | null; text: string }> } | null> {
+  const candId = String(candidateId || '').trim();
+  if (!candId) return null;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceKey) return null;
+
+  const { data: accRows } = await ctx.adminClient
+    .from('member_linkedin_accounts')
+    .select('linkedin_account_id, user_id')
+    .eq('organization_id', ctx.organizationId)
+    .limit(20);
+  const rows = (accRows as Array<{ linkedin_account_id: string | null; user_id: string | null }> | null) ?? [];
+  const accounts: string[] = [];
+  const seenAcc = new Set<string>();
+  for (const r of rows) {
+    const id = (r.linkedin_account_id || '').trim();
+    if (id && r.user_id === ctx.userId && !seenAcc.has(id)) { seenAcc.add(id); accounts.push(id); }
+  }
+  for (const r of rows) {
+    const id = (r.linkedin_account_id || '').trim();
+    if (id && !seenAcc.has(id)) { seenAcc.add(id); accounts.push(id); }
+  }
+  if (accounts.length === 0) return null;
+
+  const callUnipile = async (body: Record<string, unknown>): Promise<any | null> => {
+    try {
+      const res = await ragFetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }, 12000);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  };
+
+  for (const accountId of accounts.slice(0, 3)) {
+    const chatsResp = await callUnipile({
+      action: 'get_chats',
+      organization_id: ctx.organizationId,
+      account_id: accountId,
+      attendee_provider_id: candId,
+      limit: 5,
+    });
+    const chats = chatsResp && Array.isArray(chatsResp.chats) ? chatsResp.chats : [];
+    const chatId = chats[0]?.id;
+    if (!chatId) continue;
+    const msgResp = await callUnipile({
+      action: 'get_messages',
+      organization_id: ctx.organizationId,
+      account_id: accountId,
+      chat_id: chatId,
+      limit: 20,
+    });
+    const raw = msgResp && Array.isArray(msgResp.messages) ? msgResp.messages : [];
+    if (!raw.length) continue;
+    const messages = raw
+      .map((m: any) => ({
+        from: m?.is_sender ? 'nous' : 'candidat',
+        date: (m?.timestamp || m?.date || null) as string | null,
+        text: String(m?.text ?? m?.text_content ?? '').trim().slice(0, 800),
+      }))
+      .filter((m: { text: string }) => m.text.length > 0)
+      .sort((a: { date: string | null }, b: { date: string | null }) =>
+        new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime())
+      .slice(-20);
+    if (messages.length === 0) continue;
+    return { message_count: messages.length, messages };
+  }
+  return null;
 }
 
 const searchKnowledge: AgentTool = {
