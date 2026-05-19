@@ -1344,15 +1344,58 @@ async function handleGetChats(
     return timeB - timeA; // Most recent first
   });
 
-  // Lightweight path (internal copilot tool get_linkedin_thread): skip the
-  // per-chat enrichment storm (2 upstream calls × N chats, batched 10). The
-  // list endpoint already returns attendees[name/provider_id], id,
-  // last_message & timestamp — enough to resolve a conversation by attendee
-  // name FAST (3 list calls total instead of ~2×N).
+  // Lightweight path (internal copilot tool get_linkedin_thread). The raw
+  // /chats list only carries attendee_provider_id + chat id (NO name, NO
+  // last_message). To resolve a conversation BY ATTENDEE NAME we do a
+  // names-ONLY enrichment: one /chat_attendees/{id} call per chat (cached,
+  // batched), SKIPPING the always-on fetchLastMessage half of the normal
+  // enrichment storm. Capped to the recent-sorted top N (limit) → bounded
+  // (~N small calls) instead of ~2×AllChats.
   if (params.raw) {
-    const capped = chats.slice(0, Math.min(Number(limit) || 60, 125));
+    const capped = chats.slice(0, Math.min(Number(limit) || 40, 60));
+    const attCache = new Map<string, Record<string, unknown> | null>();
+    const enrichName = async (chat: Record<string, unknown>) => {
+      const apid = chat.attendee_provider_id as string | undefined;
+      const base = {
+        id: chat.id,
+        attendee_provider_id: apid ?? null,
+        name: chat.name ?? null,
+        timestamp: chat.timestamp ?? null,
+        folder: chat.folder ?? null,
+      };
+      if (!apid) return { ...base, attendees: [] };
+      if (!attCache.has(apid)) {
+        try {
+          const r = await fetchWithTimeout(
+            `${baseUrl}/chat_attendees/${encodeURIComponent(apid)}`,
+            { headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' } },
+          );
+          attCache.set(apid, r.ok ? await r.json() : null);
+        } catch {
+          attCache.set(apid, null);
+        }
+      }
+      const att = attCache.get(apid) || null;
+      return {
+        ...base,
+        attendees: att
+          ? [{
+              name: (att as Record<string, unknown>).name ?? null,
+              provider_id: (att as Record<string, unknown>).provider_id ?? apid,
+              id: (att as Record<string, unknown>).id ?? null,
+              is_self: (att as Record<string, unknown>).is_self ?? 0,
+            }]
+          : [],
+      };
+    };
+    const out: Record<string, unknown>[] = [];
+    const RAW_BATCH = 10;
+    for (let i = 0; i < capped.length; i += RAW_BATCH) {
+      const batch = capped.slice(i, i + RAW_BATCH);
+      out.push(...await Promise.all(batch.map(enrichName)));
+    }
     return new Response(
-      JSON.stringify({ success: true, chats: capped, cursors: nextCursors, cursor: hasMore ? '__has_more__' : null }),
+      JSON.stringify({ success: true, chats: out, cursors: nextCursors, cursor: hasMore ? '__has_more__' : null }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
