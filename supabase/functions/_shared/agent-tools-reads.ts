@@ -421,8 +421,10 @@ const getSequencesStatus: AgentTool = {
   name: 'get_sequences_status',
   description:
     "Get the outreach status for ONE mission: how many candidates are enrolled in sequences, broken down by " +
-    "enrollment status, plus reply/connection counts. Use for 'où en est la prospection', 'combien ont répondu', " +
-    "'qui est en séquence'.",
+    "enrollment status, reply/connection counts, AND `to_follow_up` (enrolled, no reply yet, sequence still " +
+    "active = candidates « à relancer ») + `no_reply`. Use for 'où en est la prospection', 'combien ont répondu', " +
+    "'qui est en séquence', and 'combien de candidats à relancer' (for a global 'à relancer' total, call " +
+    "get_my_missions then this tool per mission and sum `to_follow_up`).",
   category: 'read',
   requiresApproval: false,
   inputSchema: {
@@ -448,15 +450,547 @@ const getSequencesStatus: AgentTool = {
     const rows = (data as Array<{ status: string; connection_status: string | null; replied_at: string | null; completed_at: string | null }> | null) ?? [];
     const byStatus: Record<string, number> = {};
     for (const r of rows) byStatus[r.status || '(?)'] = (byStatus[r.status || '(?)'] || 0) + 1;
+    // « À relancer » = inscrit en séquence, pas encore de réponse, séquence non
+    // terminée/arrêtée. no_reply = contacté mais silencieux (réponse absente).
+    const TERMINAL = new Set([
+      'replied', 'completed', 'stopped', 'failed', 'bounced', 'unsubscribed', 'cancelled',
+    ]);
+    const toFollowUp = rows.filter(
+      (r) => !r.replied_at && !r.completed_at && !TERMINAL.has((r.status || '').toLowerCase()),
+    ).length;
     return {
       success: true,
       data: {
         total_enrolled: rows.length,
         by_status: byStatus,
         replied: rows.filter((r) => !!r.replied_at).length,
+        no_reply: rows.filter((r) => !r.replied_at).length,
+        to_follow_up: toFollowUp,
         connected: rows.filter((r) => r.connection_status === 'connected').length,
         completed: rows.filter((r) => !!r.completed_at).length,
         truncated: rows.length === 1000,
+      },
+    };
+  },
+};
+
+// ============================================================================
+// Phase C — candidate-level read tools
+// ============================================================================
+
+interface CandRow {
+  id: string;
+  candidate_id: string;
+  candidate_name: string | null;
+  candidate_headline: string | null;
+  linkedin_profile_url: string | null;
+  linkedin_profile_data: unknown;
+  scoring_details: unknown;
+  score: number | null;
+  recommendation: string | null;
+  pipeline_stage: string | null;
+  status: string;
+  project_id: string | null;
+  created_by: string;
+  updated_at: string;
+}
+
+const CAND_COLS =
+  'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, ' +
+  'linkedin_profile_data, scoring_details, score, recommendation, pipeline_stage, ' +
+  'status, project_id, created_by, updated_at';
+
+const asArr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/** Date LinkedIn : string OU objet { year, month }. */
+function ldate(d: unknown): string {
+  if (!d) return '';
+  if (typeof d === 'object') {
+    const o = d as Record<string, unknown>;
+    return String(o.year ?? o.month ?? '');
+  }
+  return String(d);
+}
+
+/**
+ * Normalise le blob `linkedin_profile_data` (forme variable selon la source :
+ * LinkedIn live / Base Konekt). Mêmes clés de repli que `_shared/rag-adapters.ts`
+ * (référence backend faisant autorité) — ne pas deviner, refléter l'existant.
+ */
+function summarizeProfile(pd: unknown): Record<string, unknown> | null {
+  if (!pd || typeof pd !== 'object') return null;
+  const p = pd as Record<string, any>;
+  const name = `${p.first_name || p.name || ''} ${p.last_name || ''}`.trim();
+  const expRaw =
+    [p.work_experience, p.experiences, p.positions?.values]
+      .map(asArr)
+      .find((a) => a.length) || [];
+  const eduRaw = [p.education, p.educations].map(asArr).find((a) => a.length) || [];
+  const experiences = expRaw.slice(0, 12).map((x: any) => {
+    const start = ldate(x.start_date ?? x.starts_at);
+    const end = x.end_date || x.ends_at ? ldate(x.end_date ?? x.ends_at) : (start ? 'présent' : '');
+    return {
+      title: String(x.title || x.role || '').trim(),
+      company: String(x.company_name || x.company || '').trim(),
+      period: start ? `${start} - ${end}` : '',
+      description: String(x.description || '').trim().slice(0, 280),
+    };
+  }).filter((e) => e.title || e.company);
+  const education = eduRaw.slice(0, 8).map((x: any) => {
+    const start = ldate(x.start_date ?? x.starts_at);
+    const end = x.end_date || x.ends_at ? ldate(x.end_date ?? x.ends_at) : '';
+    return {
+      school: String(x.school || x.school_name || x.institution || x.name || '').trim(),
+      degree: String(x.degree || x.degree_name || x.field_of_study || x.field || '').trim(),
+      period: start ? `${start} - ${end}`.trim() : '',
+    };
+  }).filter((e) => e.school || e.degree);
+  const skills = asArr(p.skills)
+    .map((s: any) => (typeof s === 'string' ? s : s?.name || ''))
+    .filter(Boolean)
+    .slice(0, 25);
+  const languages = asArr(p.languages)
+    .map((l: any) => (typeof l === 'string' ? l : l?.name || l?.language || ''))
+    .filter(Boolean)
+    .slice(0, 10);
+  return {
+    name: name || null,
+    headline: String(p.headline || p.occupation || '').trim() || null,
+    location: String(p.location || p.city || '').trim() || null,
+    about: String(p.about || p.summary || '').trim().slice(0, 1200) || null,
+    skills,
+    experiences,
+    education,
+    languages,
+    profile_picture_url: p.profile_picture_url || p.profile_pic_url || p.picture || null,
+  };
+}
+
+/** Extrait un scoring lisible depuis `scoring_details` (clés tolérantes). */
+function summarizeScoring(
+  sd: unknown,
+  row: { score: number | null; recommendation: string | null },
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  if (typeof row.score === 'number') out.score = row.score;
+  if (row.recommendation) out.recommendation = row.recommendation;
+  if (sd && typeof sd === 'object') {
+    const o = sd as Record<string, any>;
+    const pick = (...keys: string[]) => {
+      for (const k of keys) if (o[k] != null) return o[k];
+      return undefined;
+    };
+    const cap = (v: unknown, n: number) => (Array.isArray(v) ? v.slice(0, n) : v);
+    if (out.score == null) {
+      const ms = pick('match_score', 'llmScore', 'score');
+      if (ms != null) out.score = ms;
+    }
+    const matching = pick('matching_skills', 'matched_skills');
+    const missing = pick('missing_skills', 'missingSkills');
+    const strengths = pick('strengths');
+    const weaknesses = pick('weaknesses', 'concerns');
+    const summary = pick('summary', 'reasoning', 'explanation');
+    const expM = pick('experience_match', 'experienceMatch');
+    const locM = pick('location_match', 'locationMatch');
+    if (matching != null) out.matching_skills = cap(matching, 25);
+    if (missing != null) out.missing_skills = cap(missing, 25);
+    if (strengths != null) out.strengths = cap(strengths, 15);
+    if (weaknesses != null) out.weaknesses = cap(weaknesses, 15);
+    if (summary != null) out.summary = String(summary).slice(0, 1000);
+    if (expM != null) out.experience_match = expM;
+    if (locM != null) out.location_match = locM;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function pickPrimary(rows: CandRow[]): CandRow {
+  return [...rows].sort((a, b) => {
+    const ad = a.linkedin_profile_data ? 1 : 0;
+    const bd = b.linkedin_profile_data ? 1 : 0;
+    if (ad !== bd) return bd - ad;
+    const as = typeof a.score === 'number' ? a.score : -1;
+    const bs = typeof b.score === 'number' ? b.score : -1;
+    if (as !== bs) return bs - as;
+    return (b.updated_at || '').localeCompare(a.updated_at || '');
+  })[0];
+}
+
+type CandResolve =
+  | { primary: CandRow; all: CandRow[] }
+  | { ambiguous: Array<{ candidate_id: string; name: string | null; headline: string | null }> }
+  | null;
+
+/**
+ * Résout un candidat par `candidate_id` (= id de profil LinkedIn, opaque — PAS
+ * un UUID) OU par `candidate_name` (ilike), scopé org + rôle. Optionnellement
+ * désambiguïsé par mission. Un même candidat peut avoir N lignes (1 par
+ * mission) → on renvoie la ligne « primaire » (profil enrichi > score > récence)
+ * + toutes ses lignes. Si plusieurs candidats distincts matchent un nom → liste
+ * d'ambiguïté pour que l'agent demande lequel.
+ */
+async function resolveCandidateRef(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+  role: OrgRole,
+): Promise<CandResolve> {
+  if (!ctx.organizationId) return null;
+  const candId = String((params.candidate_id ?? '') as string).trim();
+  const candName = String((params.candidate_name ?? '') as string).trim();
+  let q = ctx.adminClient
+    .from('job_candidate_status')
+    .select(CAND_COLS)
+    .eq('organization_id', ctx.organizationId);
+  if (candId) q = q.eq('candidate_id', candId);
+  else if (candName) q = q.ilike('candidate_name', `%${candName.slice(0, 80)}%`);
+  else return null;
+  const mission = (params.mission_id || params.mission_name)
+    ? await resolveMissionRef(ctx, params)
+    : null;
+  if (mission) q = q.eq('project_id', mission.id);
+  const { data } = await q.order('updated_at', { ascending: false }).limit(60);
+  let rows = ((data as CandRow[] | null) ?? []);
+  if (!isPrivileged(role)) {
+    const ids = new Set(await collaboratorMissionIds(ctx));
+    rows = rows.filter(
+      (r) => r.created_by === ctx.userId || (!!r.project_id && ids.has(r.project_id)),
+    );
+  }
+  if (rows.length === 0) return null;
+  const byCand = new Map<string, CandRow[]>();
+  for (const r of rows) {
+    const list = byCand.get(r.candidate_id) ?? [];
+    list.push(r);
+    byCand.set(r.candidate_id, list);
+  }
+  if (byCand.size > 1 && !candId) {
+    const lc = candName.toLowerCase();
+    const exact = [...byCand.values()].filter((rs) =>
+      rs.some((r) => (r.candidate_name || '').toLowerCase() === lc),
+    );
+    if (exact.length === 1) return { primary: pickPrimary(exact[0]), all: exact[0] };
+    return {
+      ambiguous: [...byCand.values()].slice(0, 10).map((rs) => ({
+        candidate_id: rs[0].candidate_id,
+        name: rs[0].candidate_name,
+        headline: rs[0].candidate_headline,
+      })),
+    };
+  }
+  const all = [...byCand.values()][0];
+  return { primary: pickPrimary(all), all };
+}
+
+const candidateArg = {
+  candidate_id: { type: 'string', description: "Id de profil du candidat (si tu l'as)." },
+  candidate_name: { type: 'string', description: 'Nom EXACT du candidat (sinon).' },
+  mission_id: { type: 'string', description: 'UUID mission pour lever une ambiguïté (optionnel).' },
+  mission_name: { type: 'string', description: 'Nom de mission pour lever une ambiguïté (optionnel).' },
+};
+
+function requireCandidateArg(params: Record<string, unknown>, ctx: ToolContext) {
+  if (!ctx.organizationId) return { allowed: false as const, reason: 'No active organization' };
+  const ref = String((params.candidate_id ?? params.candidate_name ?? '') as string).trim();
+  return ref
+    ? { allowed: true as const }
+    : { allowed: false as const, reason: 'Précise le candidat (nom exact ou id).' };
+}
+
+// ─── Tool — get_candidate_detail ───────────────────────────────────────────
+const getCandidateDetail: AgentTool = {
+  name: 'get_candidate_detail',
+  description:
+    "Deep-dive on ONE candidate: parcours (expériences, formation), compétences, langues, headline, " +
+    "scoring détaillé (score, points forts/faibles, skills manquants, adéquation expérience/localisation), " +
+    "évaluations d'entretien et notes internes, et la liste des missions où il apparaît (avec étape/statut). " +
+    "Use for 'tu peux m'en dire plus sur lui/elle', 'parle-moi de <nom>', 'son parcours', 'pourquoi ce score', " +
+    "'ses points forts'. Pass candidate_name (or candidate_id); add mission_name to disambiguate. " +
+    "Returns profile_path → render the name as a markdown link.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: { type: 'object', properties: { ...candidateArg }, required: [] },
+  verifyAccess: (params, ctx) => Promise.resolve(requireCandidateArg(params, ctx)),
+  dryRun: trivialDryRun('Lecture : fiche détaillée du candidat'),
+  async execute(params, ctx) {
+    const role = await resolveRole(ctx);
+    const ref = await resolveCandidateRef(ctx, params, role);
+    if (!ref) return { success: false, error: "Candidat introuvable — donne le nom exact (ou l'id), éventuellement avec la mission." };
+    if ('ambiguous' in ref) {
+      return { success: true, data: { ambiguous: true, candidates: ref.ambiguous, note: 'Plusieurs candidats correspondent — précise lequel (ou la mission).' } };
+    }
+    const { primary, all } = ref;
+    const projectIds = [...new Set(all.map((r) => r.project_id).filter(Boolean))] as string[];
+    const missionNames: Record<string, string> = {};
+    if (projectIds.length) {
+      const { data: ms } = await ctx.adminClient
+        .from('sourcing_projects')
+        .select('id, name, job_title')
+        .in('id', projectIds);
+      for (const m of (ms as Array<{ id: string; name: string | null; job_title: string | null }> | null) ?? []) {
+        missionNames[m.id] = m.name || m.job_title || m.id;
+      }
+    }
+    const [{ data: evals }, { data: notes }] = await Promise.all([
+      ctx.adminClient
+        .from('candidate_evaluations')
+        .select('interview_stage, overall_score, recommendation, summary, ai_generated, created_at')
+        .eq('organization_id', ctx.organizationId)
+        .eq('candidate_id', primary.candidate_id)
+        .order('created_at', { ascending: false })
+        .limit(10),
+      ctx.adminClient
+        .from('candidate_notes')
+        .select('content, created_at')
+        .eq('organization_id', ctx.organizationId)
+        .eq('candidate_id', primary.candidate_id)
+        .order('created_at', { ascending: false })
+        .limit(10),
+    ]);
+    return {
+      success: true,
+      data: {
+        candidate: {
+          name: primary.candidate_name,
+          headline: primary.candidate_headline,
+          linkedin_profile_url: primary.linkedin_profile_url,
+          profile_path: primary.candidate_id ? `/ats/scorecard/${primary.candidate_id}` : null,
+        },
+        profile: summarizeProfile(primary.linkedin_profile_data),
+        scoring: summarizeScoring(primary.scoring_details, primary),
+        missions: all.map((r) => ({
+          mission: r.project_id ? (missionNames[r.project_id] || null) : null,
+          stage: r.pipeline_stage,
+          status: r.status,
+          score: r.score,
+          recommendation: r.recommendation,
+        })),
+        evaluations: ((evals as Array<Record<string, unknown>> | null) ?? []).map((e) => ({
+          ...e,
+          summary: e.summary ? String(e.summary).slice(0, 600) : null,
+        })),
+        notes: ((notes as Array<{ content: string; created_at: string }> | null) ?? []).map((n) => ({
+          content: String(n.content || '').slice(0, 600),
+          created_at: n.created_at,
+        })),
+      },
+    };
+  },
+};
+
+// ─── Tool — get_upcoming_interviews ────────────────────────────────────────
+const getUpcomingInterviews: AgentTool = {
+  name: 'get_upcoming_interviews',
+  description:
+    "List scheduled interviews / qualification sessions in a date window (default: next 7 days). " +
+    "Use for 'j'ai des entretiens cette semaine ?', 'mes prochains entretiens', 'qui je vois bientôt', " +
+    "'entretiens prévus sur la mission X'. Optional: days (window length), from/to (ISO), mission_name, " +
+    "candidate_name. Returns candidate, créneau, lieu, statut, mission, profile_path.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      days: { type: 'number', description: 'Taille de la fenêtre en jours à partir de maintenant (défaut 7, max 60).' },
+      from: { type: 'string', description: 'Début de fenêtre ISO (optionnel, défaut = maintenant).' },
+      to: { type: 'string', description: 'Fin de fenêtre ISO (optionnel, défaut = maintenant + days).' },
+      mission_id: { type: 'string', description: 'UUID mission (optionnel).' },
+      mission_name: { type: 'string', description: 'Nom de mission (optionnel).' },
+      candidate_name: { type: 'string', description: 'Filtrer sur un candidat (optionnel).' },
+    },
+    required: [],
+  },
+  async verifyAccess(_p, ctx) {
+    return ctx.organizationId ? { allowed: true } : { allowed: false, reason: 'No active organization' };
+  },
+  dryRun: trivialDryRun('Lecture : entretiens à venir'),
+  async execute(params, ctx) {
+    const role = await resolveRole(ctx);
+    const days = Math.min(Math.max(Number(params.days) || 7, 1), 60);
+    const now = new Date();
+    const safeISO = (v: unknown, fallback: Date): string => {
+      try {
+        const d = new Date(String(v));
+        return isNaN(d.getTime()) ? fallback.toISOString() : d.toISOString();
+      } catch { return fallback.toISOString(); }
+    };
+    const fromISO = params.from ? safeISO(params.from, now) : now.toISOString();
+    const toISO = params.to
+      ? safeISO(params.to, new Date(now.getTime() + days * 864e5))
+      : new Date(now.getTime() + days * 864e5).toISOString();
+    let q = ctx.adminClient
+      .from('qualification_sessions')
+      .select('candidate_name, candidate_headline, candidate_profile_id, candidate_linkedin_url, event_name, event_location, event_start_at, event_end_at, status, verdict, job_title, project_id, created_by')
+      .eq('organization_id', ctx.organizationId)
+      .gte('event_start_at', fromISO)
+      .lte('event_start_at', toISO);
+    const mission = (params.mission_id || params.mission_name)
+      ? await resolveMissionRef(ctx, params)
+      : null;
+    if (mission) q = q.eq('project_id', mission.id);
+    if (params.candidate_name) {
+      q = q.ilike('candidate_name', `%${String(params.candidate_name).slice(0, 80)}%`);
+    }
+    const { data, error } = await q.order('event_start_at', { ascending: true }).limit(100);
+    if (error) return { success: false, error: error.message };
+    let rows = ((data as Array<Record<string, any>> | null) ?? []);
+    if (!isPrivileged(role)) {
+      const ids = new Set(await collaboratorMissionIds(ctx));
+      rows = rows.filter(
+        (r) => r.created_by === ctx.userId || (!!r.project_id && ids.has(r.project_id)),
+      );
+    }
+    const projectIds = [...new Set(rows.map((r) => r.project_id).filter(Boolean))] as string[];
+    const missionNames: Record<string, string> = {};
+    if (projectIds.length) {
+      const { data: ms } = await ctx.adminClient
+        .from('sourcing_projects')
+        .select('id, name, job_title')
+        .in('id', projectIds);
+      for (const m of (ms as Array<{ id: string; name: string | null; job_title: string | null }> | null) ?? []) {
+        missionNames[m.id] = m.name || m.job_title || m.id;
+      }
+    }
+    return {
+      success: true,
+      data: {
+        range: { from: fromISO, to: toISO },
+        count: rows.length,
+        interviews: rows.map((r) => ({
+          candidate_name: r.candidate_name,
+          candidate_headline: r.candidate_headline,
+          event_name: r.event_name,
+          event_location: r.event_location,
+          start_at: r.event_start_at,
+          end_at: r.event_end_at,
+          status: r.status,
+          verdict: r.verdict,
+          mission: r.project_id ? (missionNames[r.project_id] || null) : (r.job_title || null),
+          profile_path: r.candidate_profile_id ? `/ats/scorecard/${r.candidate_profile_id}` : null,
+        })),
+        truncated: rows.length === 100,
+      },
+    };
+  },
+};
+
+// ─── Tool — get_candidate_outreach ─────────────────────────────────────────
+const getCandidateOutreach: AgentTool = {
+  name: 'get_candidate_outreach',
+  description:
+    "Outreach history for ONE candidate: am I/we already in touch? Returns sequence enrollments (status, " +
+    "replied, connection, step), InMails sent, and any message-analysis (intent/sentiment/summary). " +
+    "Use for 'je l'ai déjà contacté ?', 'on a échangé avec lui ?', 'j'ai déjà discuté avec <nom> ?', " +
+    "'où en est la prospection sur ce candidat'. NOTE: the verbatim LinkedIn thread is NOT here (needs the " +
+    "inbox); message↔candidate matching is best-effort (by name). Pass candidate_name (or candidate_id).",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: { type: 'object', properties: { ...candidateArg }, required: [] },
+  verifyAccess: (params, ctx) => Promise.resolve(requireCandidateArg(params, ctx)),
+  dryRun: trivialDryRun('Lecture : historique de prospection du candidat'),
+  async execute(params, ctx) {
+    const role = await resolveRole(ctx);
+    const ref = await resolveCandidateRef(ctx, params, role);
+    if (!ref) return { success: false, error: "Candidat introuvable — donne le nom exact (ou l'id)." };
+    if ('ambiguous' in ref) {
+      return { success: true, data: { ambiguous: true, candidates: ref.ambiguous, note: 'Plusieurs candidats correspondent — précise lequel.' } };
+    }
+    const { primary } = ref;
+    const cid = primary.candidate_id;
+    const url = (primary.linkedin_profile_url || '').trim();
+    const idSafe = /^[\w.-]+$/.test(cid);
+    const orParts = idSafe
+      ? [`profile_id.eq.${cid}`, `provider_id.eq.${cid}`, `resolved_profile_id.eq.${cid}`].join(',')
+      : '';
+    const enrollSel =
+      'status, connection_status, replied_at, completed_at, current_step_order, ' +
+      'sequence_id, job_id, job_title, created_by, profile_url';
+    const enrollByIdQ = orParts
+      ? ctx.adminClient
+          .from('sequence_enrollments')
+          .select(enrollSel)
+          .eq('organization_id', ctx.organizationId)
+          .or(orParts)
+          .limit(50)
+      : Promise.resolve({ data: [] as Array<Record<string, any>> });
+    const enrollByUrlQ = url
+      ? ctx.adminClient
+          .from('sequence_enrollments')
+          .select(enrollSel)
+          .eq('organization_id', ctx.organizationId)
+          .eq('profile_url', url)
+          .limit(50)
+      : Promise.resolve({ data: [] as Array<Record<string, any>> });
+    const inmailQ = idSafe
+      ? ctx.adminClient
+          .from('inmail_queue')
+          .select('subject, status, sent_at, scheduled_at, created_by')
+          .eq('organization_id', ctx.organizationId)
+          .eq('recipient_profile_id', cid)
+          .order('created_at', { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [] as Array<Record<string, any>> });
+    const nameForMsg = (primary.candidate_name || '').trim();
+    const msgQ = nameForMsg
+      ? ctx.adminClient
+          .from('message_analysis_cache')
+          .select('analysis, recipient_name, updated_at')
+          .eq('organization_id', ctx.organizationId)
+          .ilike('recipient_name', `%${nameForMsg.slice(0, 60)}%`)
+          .order('updated_at', { ascending: false })
+          .limit(5)
+      : Promise.resolve({ data: [] as Array<Record<string, any>> });
+    const [eById, eByUrl, inm, msg] = await Promise.all([enrollByIdQ, enrollByUrlQ, inmailQ, msgQ]);
+    const seen = new Set<string>();
+    let enrollments: Array<Record<string, any>> = [];
+    for (const r of [...((eById.data as any[]) ?? []), ...((eByUrl.data as any[]) ?? [])]) {
+      const k = `${r.sequence_id}|${r.status}|${r.current_step_order}|${r.replied_at ?? ''}`;
+      if (!seen.has(k)) { seen.add(k); enrollments.push(r); }
+    }
+    if (!isPrivileged(role)) {
+      const ids = new Set(await collaboratorMissionIds(ctx));
+      enrollments = enrollments.filter(
+        (r) => r.created_by === ctx.userId || (!!r.job_id && ids.has(r.job_id)),
+      );
+    }
+    const inmails = ((inm.data as any[]) ?? []).filter(
+      (r) => isPrivileged(role) || r.created_by === ctx.userId,
+    );
+    const analyses = ((msg.data as any[]) ?? []).map((m) => {
+      const a = (m.analysis && typeof m.analysis === 'object') ? m.analysis as Record<string, unknown> : {};
+      return {
+        intent: a.intent ?? null,
+        sentiment: a.sentiment ?? null,
+        summary: a.summary ? String(a.summary).slice(0, 400) : null,
+        recipient_name: m.recipient_name,
+        updated_at: m.updated_at,
+      };
+    });
+    const replied = enrollments.some((e) => !!e.replied_at) || analyses.length > 0;
+    const contacted = enrollments.length > 0 || inmails.some((i) => i.status === 'sent' || !!i.sent_at);
+    return {
+      success: true,
+      data: {
+        candidate: {
+          name: primary.candidate_name,
+          headline: primary.candidate_headline,
+          profile_path: cid ? `/ats/scorecard/${cid}` : null,
+        },
+        contacted,
+        replied,
+        enrollments: enrollments.map((e) => ({
+          status: e.status,
+          connection_status: e.connection_status,
+          replied: !!e.replied_at,
+          replied_at: e.replied_at,
+          completed_at: e.completed_at,
+          step: e.current_step_order,
+          mission: e.job_title || null,
+        })),
+        inmails: inmails.map((i) => ({
+          subject: i.subject, status: i.status, sent_at: i.sent_at, scheduled_at: i.scheduled_at,
+        })),
+        message_analyses: analyses,
+        note: "Le fil verbatim des messages LinkedIn n'est pas inclus (ouvrir la boîte de réception). " +
+          'Le rapprochement message↔candidat est approximatif (par nom).',
       },
     };
   },
@@ -474,5 +1008,8 @@ export function registerReadTools(): void {
   registerTool(getMissionCandidates);
   registerTool(getMissionProcess);
   registerTool(getSequencesStatus);
+  registerTool(getCandidateDetail);
+  registerTool(getUpcomingInterviews);
+  registerTool(getCandidateOutreach);
   registered = true;
 }
