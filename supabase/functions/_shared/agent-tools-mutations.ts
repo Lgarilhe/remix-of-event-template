@@ -2024,6 +2024,368 @@ const resumeSequence: AgentTool = {
   },
 };
 
+// ─── Tool 16 — invite_team_member ───────────────────────────────────────────
+// Crée une invitation dans organization_invitations (email + role + token).
+// Note : l'envoi de l'email d'invitation est géré séparément (frontend / trigger
+// post-insert). Ce tool insère uniquement la row d'invitation.
+
+const ALLOWED_INVITE_ROLES = ['admin', 'collaborator'] as const;
+type InviteRole = (typeof ALLOWED_INVITE_ROLES)[number];
+
+const inviteTeamMember: AgentTool = {
+  name: 'invite_team_member',
+  description:
+    "Invite a new member to the user's organization by email. " +
+    "Use this when the user says 'invite x@y.fr en collaborateur', 'ajoute Marie à mon équipe'. " +
+    "Creates an invitation row (expires in 7 days). The actual invitation email is sent by the org's existing notification pipeline (frontend trigger or post-insert hook). " +
+    "Only `admin` and `collaborator` roles allowed via the copilot — to grant `owner`, use the Settings → Team UI. " +
+    "The caller must be admin or owner of the org. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      email: {
+        type: 'string',
+        description: "Email address of the person to invite. Lowercased and trimmed before insert.",
+      },
+      role: {
+        type: 'string',
+        enum: ALLOWED_INVITE_ROLES as unknown as string[],
+        description: "Role to grant on acceptance. One of: admin, collaborator. Default: collaborator.",
+      },
+    },
+    required: ['email'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const email = String(params.email || '').trim().toLowerCase();
+    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    if (!email) return { allowed: false, reason: 'email is required' };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { allowed: false, reason: `Email invalide : "${email}"` };
+    }
+    if (!(ALLOWED_INVITE_ROLES as readonly string[]).includes(role)) {
+      return { allowed: false, reason: `role must be one of: ${ALLOWED_INVITE_ROLES.join(', ')}` };
+    }
+
+    // Caller must be admin or owner of the org
+    const { data: callerRole } = await ctx.adminClient
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', ctx.organizationId)
+      .eq('user_id', ctx.userId)
+      .maybeSingle();
+    if (!callerRole) return { allowed: false, reason: "Vous n'êtes pas membre de cette organisation." };
+    if (callerRole.role !== 'admin' && callerRole.role !== 'owner') {
+      return { allowed: false, reason: `Seuls les admins et owners peuvent inviter (votre rôle: ${callerRole.role}).` };
+    }
+
+    // Email must not already be a member (best-effort via profiles)
+    const { data: existing } = await ctx.adminClient
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+    if (existing) {
+      const { data: alreadyMember } = await ctx.adminClient
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', ctx.organizationId)
+        .eq('user_id', existing.id)
+        .maybeSingle();
+      if (alreadyMember) {
+        return { allowed: false, reason: `${email} est déjà membre de l'organisation.` };
+      }
+    }
+
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const email = String(params.email || '').trim().toLowerCase();
+    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+
+    const { data: org } = await ctx.adminClient
+      .from('organizations')
+      .select('name')
+      .eq('id', ctx.organizationId)
+      .maybeSingle();
+
+    // Check for pending invitation to same email
+    const { data: pending } = await ctx.adminClient
+      .from('organization_invitations')
+      .select('id, created_at, expires_at, status')
+      .eq('organization_id', ctx.organizationId)
+      .eq('email', email)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    return {
+      summary: `Inviter ${email} dans "${org?.name || 'votre organisation'}" en tant que ${role}`,
+      details: {
+        email,
+        role,
+        organization_id: ctx.organizationId,
+        organization_name: org?.name ?? null,
+        has_pending_invitation: !!pending,
+        existing_invitation_id: pending?.id ?? null,
+        existing_expires_at: pending?.expires_at ?? null,
+      },
+      warning: pending
+        ? `Une invitation pending existe déjà pour cet email (créée le ${pending.created_at}). Confirmer en créera une nouvelle (la précédente reste valide jusqu'à expiration).`
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const email = String(params.email).trim().toLowerCase();
+    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+
+    // Generate a token + expiration (+7d)
+    const token = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error } = await ctx.adminClient
+      .from('organization_invitations')
+      .insert({
+        organization_id: ctx.organizationId,
+        email,
+        role,
+        token,
+        status: 'pending',
+        invited_by: ctx.userId,
+        expires_at: expiresAt,
+      })
+      .select('id, email, role, token, expires_at')
+      .single();
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        invitation_id: data.id,
+        email: data.email,
+        role: data.role,
+        token: data.token,
+        expires_at: data.expires_at,
+        message: "Invitation créée. L'email partira selon le pipeline de notifications standard. Si l'invité n'a pas reçu d'email sous 5 min, vérifiez Settings → Équipe (l'invitation est visible et le lien réutilisable).",
+      },
+    };
+  },
+};
+
+// ─── Tool 17 — update_member_quota ──────────────────────────────────────────
+// Modifie les quotas LinkedIn (member_quotas) d'un membre de l'équipe :
+// max_actions_per_day, business_hours_start/end, timezone. Utile pour
+// rééquilibrer la charge entre Konekt (matin) et leadmagnet (après-midi)
+// ou pour caper temporairement un collaborateur. Réservé admin/owner.
+
+const updateMemberQuota: AgentTool = {
+  name: 'update_member_quota',
+  description:
+    "Update a team member's LinkedIn safety quotas (max actions per day, business hours, timezone). " +
+    "Use this when the user says 'augmente le cap LinkedIn de X à 100/jour', 'mets Marie en 9h-17h', 'réduis le quota de Théo'. " +
+    "Caller must be admin or owner. UPSERTs the member_quotas row (creates if missing). " +
+    "max_actions_per_day affects all LinkedIn outbound actions (messages, invitations, InMails) — keep ≤ 100 to respect LinkedIn auto-flag thresholds. " +
+    "business_hours_start/end are integer hours 0-23 (e.g. 8=8h00, 19=19h00). Action emitted outside this range is auto-rescheduled. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      target_user_id: {
+        type: 'string',
+        description: 'UUID of the team member whose quotas are being modified. Use `get_team_overview` first to fetch valid IDs.',
+      },
+      max_actions_per_day: {
+        type: 'integer',
+        description: 'Daily cap of visible LinkedIn actions. Soft-bound: keep ≤ 100 to stay under LinkedIn flagging thresholds.',
+      },
+      business_hours_start: {
+        type: 'integer',
+        description: 'Start hour (0-23). Actions before this hour are deferred.',
+      },
+      business_hours_end: {
+        type: 'integer',
+        description: 'End hour (0-23). Actions after this hour are deferred.',
+      },
+      timezone: {
+        type: 'string',
+        description: "IANA timezone string (e.g. 'Europe/Paris', 'America/New_York').",
+      },
+    },
+    required: ['target_user_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const targetUserId = String(params.target_user_id || '');
+    if (!targetUserId) return { allowed: false, reason: 'target_user_id is required' };
+
+    // Validate field bounds
+    const max = params.max_actions_per_day;
+    if (max !== undefined && (typeof max !== 'number' || max < 1 || max > 500)) {
+      return { allowed: false, reason: 'max_actions_per_day must be an integer between 1 and 500' };
+    }
+    const bhStart = params.business_hours_start;
+    const bhEnd = params.business_hours_end;
+    if (bhStart !== undefined && (typeof bhStart !== 'number' || bhStart < 0 || bhStart > 23)) {
+      return { allowed: false, reason: 'business_hours_start must be 0-23' };
+    }
+    if (bhEnd !== undefined && (typeof bhEnd !== 'number' || bhEnd < 0 || bhEnd > 23)) {
+      return { allowed: false, reason: 'business_hours_end must be 0-23' };
+    }
+    if (bhStart !== undefined && bhEnd !== undefined && (bhStart as number) >= (bhEnd as number)) {
+      return { allowed: false, reason: 'business_hours_start must be strictly less than business_hours_end' };
+    }
+    if (params.timezone !== undefined && typeof params.timezone === 'string') {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: params.timezone });
+      } catch {
+        return { allowed: false, reason: `Invalid timezone: "${params.timezone}"` };
+      }
+    }
+
+    // Caller must be admin or owner
+    const { data: callerRole } = await ctx.adminClient
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', ctx.organizationId)
+      .eq('user_id', ctx.userId)
+      .maybeSingle();
+    if (!callerRole) return { allowed: false, reason: "Vous n'êtes pas membre de cette organisation." };
+    if (callerRole.role !== 'admin' && callerRole.role !== 'owner') {
+      return { allowed: false, reason: `Seuls les admins et owners peuvent modifier les quotas (votre rôle: ${callerRole.role}).` };
+    }
+
+    // Target must be a member of the same org
+    const { data: targetMember } = await ctx.adminClient
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', ctx.organizationId)
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+    if (!targetMember) {
+      return { allowed: false, reason: `L'utilisateur ${targetUserId} n'est pas membre de votre organisation.` };
+    }
+
+    // At least one field to update
+    const hasUpdate = ['max_actions_per_day', 'business_hours_start', 'business_hours_end', 'timezone'].some(
+      (k) => params[k] !== undefined,
+    );
+    if (!hasUpdate) {
+      return { allowed: false, reason: 'Au moins un champ à modifier doit être fourni.' };
+    }
+
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const targetUserId = String(params.target_user_id);
+
+    const [{ data: profile }, { data: current }] = await Promise.all([
+      ctx.adminClient
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', targetUserId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('member_quotas')
+        .select('max_actions_per_day, business_hours_start, business_hours_end, timezone')
+        .eq('user_id', targetUserId)
+        .maybeSingle(),
+    ]);
+
+    const memberLabel = profile?.full_name || profile?.email || targetUserId;
+    const diff: Array<{ field: string; from: unknown; to: unknown }> = [];
+    const fields = ['max_actions_per_day', 'business_hours_start', 'business_hours_end', 'timezone'] as const;
+    for (const f of fields) {
+      if (params[f] !== undefined) {
+        diff.push({ field: f, from: current?.[f] ?? null, to: params[f] });
+      }
+    }
+
+    return {
+      summary: `Mettre à jour les quotas LinkedIn de ${memberLabel} — ${diff.map((d) => d.field).join(', ')}`,
+      details: {
+        target_user_id: targetUserId,
+        target_name: profile?.full_name ?? null,
+        target_email: profile?.email ?? null,
+        had_existing_row: !!current,
+        diff,
+      },
+      warning: typeof params.max_actions_per_day === 'number' && params.max_actions_per_day > 100
+        ? `⚠️ max_actions_per_day > 100 augmente le risque de flag LinkedIn (warning #260513-007211). Préfère ≤ 100.`
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const targetUserId = String(params.target_user_id);
+
+    // Build update payload (only the fields explicitly provided)
+    const updates: Record<string, unknown> = {};
+    for (const k of ['max_actions_per_day', 'business_hours_start', 'business_hours_end', 'timezone'] as const) {
+      if (params[k] !== undefined) updates[k] = params[k];
+    }
+
+    // Check if row exists → UPDATE, else INSERT (we need org_id on insert)
+    const { data: existing } = await ctx.adminClient
+      .from('member_quotas')
+      .select('id')
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (existing) {
+      const { data, error } = await ctx.adminClient
+        .from('member_quotas')
+        .update(updates)
+        .eq('id', existing.id)
+        .select('id, max_actions_per_day, business_hours_start, business_hours_end, timezone, updated_at')
+        .single();
+      if (error) return { success: false, error: error.message };
+      return {
+        success: true,
+        data: {
+          quota_id: data.id,
+          action: 'updated',
+          max_actions_per_day: data.max_actions_per_day,
+          business_hours_start: data.business_hours_start,
+          business_hours_end: data.business_hours_end,
+          timezone: data.timezone,
+          updated_at: data.updated_at,
+        },
+      };
+    }
+
+    const { data, error } = await ctx.adminClient
+      .from('member_quotas')
+      .insert({
+        user_id: targetUserId,
+        organization_id: ctx.organizationId,
+        ...updates,
+      })
+      .select('id, max_actions_per_day, business_hours_start, business_hours_end, timezone, created_at')
+      .single();
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        quota_id: data.id,
+        action: 'created',
+        max_actions_per_day: data.max_actions_per_day,
+        business_hours_start: data.business_hours_start,
+        business_hours_end: data.business_hours_end,
+        timezone: data.timezone,
+        created_at: data.created_at,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -2050,6 +2412,9 @@ export function registerMutatingTools(): void {
   registerTool(sendLinkedInMessage);
   registerTool(pauseSequence);
   registerTool(resumeSequence);
+  // Phase A.4 — Équipe
+  registerTool(inviteTeamMember);
+  registerTool(updateMemberQuota);
   // schedule_interview reporté : pas de calendar branché, table events
   // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;
