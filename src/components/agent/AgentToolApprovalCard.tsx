@@ -513,7 +513,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                     size="sm"
                     variant="outline"
                     onClick={() => handleAction(row.id, 'reject')}
-                    disabled={loading !== null}
+                    disabled={loading != null}
                     className="h-7 px-2.5 text-xs gap-1 border-border"
                   >
                     {loading === 'reject' ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
@@ -523,7 +523,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                     size="sm"
                     variant="outline"
                     onClick={() => startEditing(row)}
-                    disabled={loading !== null}
+                    disabled={loading != null}
                     className="h-7 px-2.5 text-xs gap-1 border-border"
                   >
                     <Pencil className="w-3 h-3" />
@@ -538,7 +538,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                         handleAction(row.id, 'approve');
                       }
                     }}
-                    disabled={loading !== null}
+                    disabled={loading != null}
                     className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
                   >
                     {loading === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
@@ -551,7 +551,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                     size="sm"
                     variant="outline"
                     onClick={cancelEditing}
-                    disabled={loading !== null}
+                    disabled={loading != null}
                     className="h-7 px-2.5 text-xs gap-1 border-border"
                   >
                     <X className="w-3 h-3" />
@@ -560,7 +560,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                   <Button
                     size="sm"
                     onClick={() => handleSaveAndApprove(row.id)}
-                    disabled={loading !== null}
+                    disabled={loading != null}
                     className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
                   >
                     {loading === 'save' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
