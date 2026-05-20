@@ -139,6 +139,8 @@ const TOOL_LABEL: Record<string, string> = {
   // Phase A.4 — Équipe
   invite_team_member: 'Inviter un membre',
   update_member_quota: 'Modifier les quotas d\'un membre',
+  // Phase Calibration — Push de filtres de recherche
+  apply_search_filters_to_mission: 'Appliquer les filtres de recherche LinkedIn',
 };
 
 // ─── Editable fields configuration ─────────────────────────────────────────

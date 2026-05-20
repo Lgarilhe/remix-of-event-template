@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -217,10 +217,16 @@ export const useSourcingProjects = () => {
 };
 
 // Hook to get a single project with all fields (including job_details and filters_snapshot)
+//
+// Realtime : subscribes to UPDATE events on this row and invalidates the React
+// Query cache so any change (e.g. agent IA pushing filters via
+// `apply_search_filters_to_mission`) propagates to consumers like
+// useLinkedInSearch without a manual reload.
 export const useSourcingProject = (projectId: string | null | undefined) => {
   const { isReady, user } = useAuthReady();
+  const queryClient = useQueryClient();
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['sourcing-project', projectId],
     queryFn: async () => {
       if (!projectId) return null;
@@ -239,6 +245,32 @@ export const useSourcingProject = (projectId: string | null | undefined) => {
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes cache
   });
+
+  // Realtime invalidation on row UPDATE (filters_snapshot, job_details, status, ...)
+  useEffect(() => {
+    if (!projectId) return;
+    const channel = supabase
+      .channel(`sourcing-project-${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'sourcing_projects',
+          filter: `id=eq.${projectId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['sourcing-project', projectId] });
+          queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [projectId, queryClient]);
+
+  return query;
 };
 
 // Hook to get candidates for a specific project

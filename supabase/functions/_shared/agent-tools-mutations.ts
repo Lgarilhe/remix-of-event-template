@@ -2443,6 +2443,165 @@ const updateMemberQuota: AgentTool = {
   },
 };
 
+// ─── Tool 18 — apply_search_filters_to_mission ──────────────────────────────
+// Push les filtres LinkedIn calibrés par le copilot directement dans
+// sourcing_projects.filters_snapshot. Différent de regenerate_search_filters
+// (qui re-prompt Claude à partir du brief sans input user) : ici l'agent passe
+// explicitement les filtres convenus avec l'utilisateur en chat (rôle, skills,
+// localisation, séniorité, exclusions).
+//
+// Format attendu = AI format reconnu par useLinkedInSearch (lignes 302-306) :
+//   - keywords (Boolean string)
+//   - role[] : [{ keywords: string, ... }]
+//   - skills_keywords[] : ['Kubernetes', 'Python', ...]
+//   - location_keywords[] : ['Paris', 'Île-de-France', ...]
+//   - years_of_experience_min / years_of_experience_max
+//   - api : 'recruiter' | 'classic' | 'sales_navigator' (défaut: recruiter)
+// Le hook front detecte l'AI format au reload et transforme en UI state.
+
+const applySearchFiltersToMission: AgentTool = {
+  name: 'apply_search_filters_to_mission',
+  description:
+    "Push search filters calibrated WITH the user during chat directly into the mission's filters_snapshot. " +
+    "Use this after a calibration conversation when the user agreed on titles, skills, location, seniority, exclusions — " +
+    "you then push these filters into the live mission so the LinkedIn search panel reflects them on next reload. " +
+    "Different from `regenerate_search_filters` (which re-prompts an AI based on the brief alone without user calibration). " +
+    "Pass the filters in AI format : { keywords, role[], skills_keywords[], location_keywords[], years_of_experience_min/max, api }. " +
+    "Always proposes the change for user approval — never executes silently. " +
+    "After execution, prompt the user to reload the Sourcing page to see the filters applied (no auto-reload yet).",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: {
+        type: 'string',
+        description: 'The sourcing_projects (mission) UUID.',
+      },
+      filters: {
+        type: 'object',
+        description:
+          "Filters object in AI format (recognised by useLinkedInSearch). Common fields: " +
+          "`keywords` (Boolean string, e.g. 'Kubernetes AND (MLflow OR Airflow)'), " +
+          "`role` (array of {keywords: string}, e.g. [{keywords:'Data Engineer OR MLOps Engineer'}]), " +
+          "`skills_keywords` (string[], e.g. ['Kubernetes','Python','Terraform']), " +
+          "`location_keywords` (string[], e.g. ['Île-de-France','Paris']), " +
+          "`years_of_experience_min`, `years_of_experience_max` (numbers), " +
+          "`api` ('recruiter' | 'classic' | 'sales_navigator', default 'recruiter'). " +
+          "You can include any extra hints (suggestions[], notes) — they're persisted alongside.",
+        additionalProperties: true,
+      },
+      replace: {
+        type: 'boolean',
+        description: "If true, REPLACES the existing filters_snapshot entirely. If false (default), MERGES (existing fields are kept unless overwritten by the new payload).",
+      },
+    },
+    required: ['job_id', 'filters'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const jobId = String(params.job_id || '');
+    if (!jobId) return { allowed: false, reason: 'job_id is required' };
+
+    const filters = params.filters && typeof params.filters === 'object' ? params.filters as Record<string, unknown> : null;
+    if (!filters || Object.keys(filters).length === 0) {
+      return { allowed: false, reason: 'filters must be a non-empty object' };
+    }
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const jobId = String(params.job_id);
+    const filters = params.filters as Record<string, unknown>;
+    const replace = params.replace === true;
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, filters_snapshot')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    const jobLabel = project?.job_title || project?.name || jobId;
+    const hadExisting = !!(project?.filters_snapshot && Object.keys(project.filters_snapshot as Record<string, unknown>).length > 0);
+
+    // Build a concise preview of what's being pushed
+    const preview: Record<string, unknown> = {};
+    if (filters.role) preview.role = filters.role;
+    if (filters.skills_keywords) preview.skills_keywords = filters.skills_keywords;
+    if (filters.location_keywords) preview.location_keywords = filters.location_keywords;
+    if (filters.years_of_experience_min !== undefined) preview.years_of_experience_min = filters.years_of_experience_min;
+    if (filters.years_of_experience_max !== undefined) preview.years_of_experience_max = filters.years_of_experience_max;
+    if (filters.keywords) preview.keywords_excerpt = String(filters.keywords).slice(0, 120) + (String(filters.keywords).length > 120 ? '…' : '');
+
+    return {
+      summary: `Pousser ${Object.keys(filters).length} champs de filtres LinkedIn vers la mission "${jobLabel}" (${replace ? 'remplace' : 'fusionne'} avec les filtres actuels)`,
+      details: {
+        job_id: jobId,
+        job_label: jobLabel,
+        client_label: project?.client_name ?? null,
+        had_existing_filters: hadExisting,
+        mode: replace ? 'replace' : 'merge',
+        preview,
+        full_payload: filters,
+      },
+      warning: hadExisting && replace
+        ? "Mode 'replace' : les filtres actuels seront entièrement écrasés (tweaks manuels perdus)."
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const jobId = String(params.job_id);
+    const filters = params.filters as Record<string, unknown>;
+    const replace = params.replace === true;
+
+    let merged: Record<string, unknown>;
+    if (replace) {
+      merged = { ...filters, generated_at: new Date().toISOString() };
+    } else {
+      const { data: project, error: fetchError } = await ctx.adminClient
+        .from('sourcing_projects')
+        .select('filters_snapshot')
+        .eq('id', jobId)
+        .eq('organization_id', ctx.organizationId)
+        .single();
+      if (fetchError) return { success: false, error: fetchError.message };
+      const current = (project.filters_snapshot as Record<string, unknown> | null) ?? {};
+      merged = { ...current, ...filters, generated_at: new Date().toISOString() };
+    }
+
+    const { data, error } = await ctx.adminClient
+      .from('sourcing_projects')
+      .update({ filters_snapshot: merged })
+      .eq('id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .select('id, updated_at')
+      .single();
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        mission_id: data.id,
+        updated_at: data.updated_at,
+        fields_pushed: Object.keys(filters),
+        message:
+          "Filtres appliqués sur la mission. Si tu es déjà sur l'onglet Sourcing de cette mission, rafraîchis la page pour les voir charger automatiquement dans le panneau de recherche LinkedIn.",
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -2472,6 +2631,8 @@ export function registerMutatingTools(): void {
   // Phase A.4 — Équipe
   registerTool(inviteTeamMember);
   registerTool(updateMemberQuota);
+  // Phase Calibration — Push de filtres de recherche depuis le chat
+  registerTool(applySearchFiltersToMission);
   // schedule_interview reporté : pas de calendar branché, table events
   // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;
