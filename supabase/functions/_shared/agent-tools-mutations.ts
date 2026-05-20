@@ -12,6 +12,7 @@
 
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
+import { checkLinkedInQuota } from './linkedin-quotas.ts';
 
 // ─── Tool 1 — update_candidate_stage ────────────────────────────────────────
 // MVP : seul tool implémenté pour valider la mécanique end-to-end.
@@ -1625,6 +1626,404 @@ const regenerateSearchFilters: AgentTool = {
   },
 };
 
+// ─── Tool 13 — send_linkedin_message ────────────────────────────────────────
+// Envoi standalone d'un message LinkedIn via l'edge unipile-search (Mode B).
+// Quota-gated : check business hours + cap journalier via member_quotas.
+// Conformité LinkedIn warning #260513-007211 (license sharing).
+
+const sendLinkedInMessage: AgentTool = {
+  name: 'send_linkedin_message',
+  description:
+    "Send a one-off LinkedIn message to a recipient (NOT through a sequence). " +
+    "Use this when the user says 'envoie un message LinkedIn à X disant ...', 'écris à Y pour confirmer l'entretien'. " +
+    "Quota-gated : checks the user's business hours (member_quotas) and daily LinkedIn action cap. " +
+    "If outside business hours OR cap reached, the action is REFUSED — the user must wait or raise their cap. " +
+    "Two modes : `chat_id` continues an existing conversation, `recipient_provider_id` starts a new chat. " +
+    "Set `is_inmail=true` for Recruiter InMail (requires premium balance, consumes a credit). " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_external',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      account_id: {
+        type: 'string',
+        description: "The user's LinkedIn account_id (from member_linkedin_accounts). REQUIRED.",
+      },
+      chat_id: {
+        type: 'string',
+        description: "ID of an existing LinkedIn conversation to continue. Use this when replying to an ongoing thread.",
+      },
+      recipient_provider_id: {
+        type: 'string',
+        description: "LinkedIn provider_id of the recipient (e.g. 'ACoAA...'). Use this when starting a brand new conversation. Mutually exclusive with chat_id.",
+      },
+      text: {
+        type: 'string',
+        description: "The message body in French (max 1500 chars). Plain text — no markdown.",
+      },
+      is_inmail: {
+        type: 'boolean',
+        description: "Set true for Recruiter InMail (2nd/3rd degree contacts not connected). Default false.",
+      },
+      subject: {
+        type: 'string',
+        description: "InMail subject line (required when is_inmail=true).",
+      },
+    },
+    required: ['account_id', 'text'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const accountId = String(params.account_id || '');
+    const text = String(params.text || '').trim();
+    const chatId = params.chat_id ? String(params.chat_id) : '';
+    const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : '';
+    const isInmail = params.is_inmail === true;
+    const subject = params.subject ? String(params.subject) : '';
+
+    if (!accountId) return { allowed: false, reason: 'account_id is required' };
+    if (!text) return { allowed: false, reason: 'text is required and cannot be empty' };
+    if (text.length > 1500) return { allowed: false, reason: 'text too long (max 1500 chars)' };
+    if (!chatId && !recipientId) {
+      return { allowed: false, reason: 'Either chat_id (existing conversation) or recipient_provider_id (new chat) is required' };
+    }
+    if (chatId && recipientId) {
+      return { allowed: false, reason: 'chat_id and recipient_provider_id are mutually exclusive — pick one' };
+    }
+    if (isInmail && !subject) {
+      return { allowed: false, reason: "subject is required when is_inmail=true" };
+    }
+
+    // Account must belong to the user in the current org
+    const { data: account } = await ctx.adminClient
+      .from('member_linkedin_accounts')
+      .select('account_id, account_status')
+      .eq('account_id', accountId)
+      .eq('user_id', ctx.userId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    if (!account) {
+      return { allowed: false, reason: `Le compte LinkedIn ${accountId} n'est pas rattaché à votre profil dans cette organisation.` };
+    }
+    if (account.account_status && account.account_status !== 'OK') {
+      return { allowed: false, reason: `Compte LinkedIn ${accountId} en statut "${account.account_status}". Reconnecte-le avant d'envoyer.` };
+    }
+
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const accountId = String(params.account_id);
+    const text = String(params.text);
+    const chatId = params.chat_id ? String(params.chat_id) : null;
+    const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
+    const isInmail = params.is_inmail === true;
+    const subject = params.subject ? String(params.subject) : null;
+
+    const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId);
+    const preview = text.length > 120 ? text.slice(0, 117) + '…' : text;
+
+    // Resolve recipient name if possible (best-effort)
+    let recipientLabel = recipientId || (chatId ? `chat ${chatId}` : 'inconnu');
+    if (recipientId) {
+      const { data: candidate } = await ctx.adminClient
+        .from('job_candidate_status')
+        .select('candidate_name')
+        .eq('candidate_id', recipientId)
+        .eq('organization_id', ctx.organizationId)
+        .limit(1)
+        .maybeSingle();
+      if (candidate?.candidate_name) recipientLabel = candidate.candidate_name;
+    }
+
+    const warning = !quotaCheck.allowed
+      ? quotaCheck.reason
+      : quotaCheck.count_today >= quotaCheck.max_per_day - 5
+      ? `Attention quota : ${quotaCheck.count_today}/${quotaCheck.max_per_day} actions LinkedIn aujourd'hui.`
+      : undefined;
+
+    return {
+      summary: isInmail
+        ? `Envoyer un InMail à ${recipientLabel} — sujet "${subject}"`
+        : chatId
+        ? `Répondre dans la conversation avec ${recipientLabel}`
+        : `Envoyer un message LinkedIn à ${recipientLabel}`,
+      details: {
+        account_id: accountId,
+        mode: chatId ? 'reply_in_chat' : 'new_chat',
+        chat_id: chatId,
+        recipient_provider_id: recipientId,
+        recipient_label: recipientLabel,
+        text_preview: preview,
+        text_length: text.length,
+        is_inmail: isInmail,
+        subject,
+        quota_count_today: quotaCheck.count_today,
+        quota_max_per_day: quotaCheck.max_per_day,
+        in_business_hours: quotaCheck.in_business_hours,
+        timezone: quotaCheck.timezone,
+      },
+      warning,
+    };
+  },
+
+  async execute(params, ctx) {
+    const accountId = String(params.account_id);
+    const text = String(params.text);
+    const chatId = params.chat_id ? String(params.chat_id) : null;
+    const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
+    const isInmail = params.is_inmail === true;
+    const subject = params.subject ? String(params.subject) : null;
+
+    // Re-check quota at execute-time (the dryRun might be stale by a few minutes)
+    const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId);
+    if (!quotaCheck.allowed) {
+      return { success: false, error: quotaCheck.reason };
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return { success: false, error: 'Supabase env not configured' };
+
+    const body: Record<string, unknown> = {
+      action: 'send_message',
+      account_id: accountId,
+      organization_id: ctx.organizationId,
+      text,
+    };
+    if (chatId) body.chat_id = chatId;
+    if (recipientId) body.recipient_id = recipientId;
+    if (isInmail) {
+      body.is_inmail = true;
+      if (subject) body.subject = subject;
+    }
+
+    try {
+      const response = await fetch(`${supabaseUrl}/functions/v1/unipile-search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (!response.ok || data.success === false) {
+        return { success: false, error: data.error || `LinkedIn send failed (HTTP ${response.status})` };
+      }
+
+      return {
+        success: true,
+        data: {
+          message: chatId
+            ? 'Message envoyé dans la conversation existante.'
+            : isInmail
+            ? 'InMail envoyé.'
+            : 'Message LinkedIn envoyé (nouvelle conversation créée).',
+          quota_after: {
+            count_today: quotaCheck.count_today + 1,
+            max_per_day: quotaCheck.max_per_day,
+          },
+          unipile_response: data,
+        },
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error during LinkedIn send' };
+    }
+  },
+};
+
+// ─── Tool 14 — pause_sequence ───────────────────────────────────────────────
+// Met en pause une séquence outreach (is_active=false). Les steps en attente
+// restent dans sequence_step_executions mais le cron skip les enrollments
+// quand is_active=false.
+
+const pauseSequence: AgentTool = {
+  name: 'pause_sequence',
+  description:
+    "Pause an outreach sequence (stops all enrolled candidates from progressing). " +
+    "Use this when the user says 'mets en pause la séquence X', 'arrête temporairement Y'. " +
+    "Reversible via `resume_sequence`. The enrolled candidates and their progress are preserved. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      sequence_id: {
+        type: 'string',
+        description: 'The outreach_sequences UUID to pause.',
+      },
+    },
+    required: ['sequence_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const sequenceId = String(params.sequence_id || '');
+    if (!sequenceId) return { allowed: false, reason: 'sequence_id is required' };
+
+    const { data: seq } = await ctx.adminClient
+      .from('outreach_sequences')
+      .select('id, organization_id, is_active')
+      .eq('id', sequenceId)
+      .maybeSingle();
+    if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
+    if (seq.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const sequenceId = String(params.sequence_id);
+    const [{ data: seq }, { count: activeEnrollments }] = await Promise.all([
+      ctx.adminClient
+        .from('outreach_sequences')
+        .select('name, is_active, project_id')
+        .eq('id', sequenceId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('sequence_id', sequenceId)
+        .in('status', ['active', 'pending']),
+    ]);
+
+    const seqName = seq?.name || sequenceId;
+    const isNoOp = seq?.is_active === false;
+
+    return {
+      summary: isNoOp
+        ? `La séquence "${seqName}" est déjà en pause`
+        : `Mettre en pause la séquence "${seqName}" (${activeEnrollments ?? 0} candidats actifs gelés)`,
+      details: {
+        sequence_id: sequenceId,
+        sequence_name: seqName,
+        from_is_active: seq?.is_active ?? null,
+        to_is_active: false,
+        active_enrollments: activeEnrollments ?? 0,
+        is_no_op: isNoOp,
+      },
+      warning: isNoOp ? 'Aucun changement.' : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const sequenceId = String(params.sequence_id);
+    const { data, error } = await ctx.adminClient
+      .from('outreach_sequences')
+      .update({ is_active: false })
+      .eq('id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .select('id, is_active, updated_at')
+      .single();
+    if (error) return { success: false, error: error.message };
+    return {
+      success: true,
+      data: {
+        sequence_id: data.id,
+        is_active: data.is_active,
+        updated_at: data.updated_at,
+        message: 'Séquence en pause. Les candidats inscrits ne progresseront plus jusqu\'à la reprise.',
+      },
+    };
+  },
+};
+
+// ─── Tool 15 — resume_sequence ──────────────────────────────────────────────
+// Réactive une séquence pausée (is_active=true).
+
+const resumeSequence: AgentTool = {
+  name: 'resume_sequence',
+  description:
+    "Resume a paused outreach sequence — enrolled candidates start progressing again on the next cron tick. " +
+    "Use this when the user says 'relance la séquence X', 'réactive Y'. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      sequence_id: {
+        type: 'string',
+        description: 'The outreach_sequences UUID to resume.',
+      },
+    },
+    required: ['sequence_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const sequenceId = String(params.sequence_id || '');
+    if (!sequenceId) return { allowed: false, reason: 'sequence_id is required' };
+    const { data: seq } = await ctx.adminClient
+      .from('outreach_sequences')
+      .select('id, organization_id')
+      .eq('id', sequenceId)
+      .maybeSingle();
+    if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
+    if (seq.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const sequenceId = String(params.sequence_id);
+    const [{ data: seq }, { count: enrollments }] = await Promise.all([
+      ctx.adminClient
+        .from('outreach_sequences')
+        .select('name, is_active')
+        .eq('id', sequenceId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('sequence_id', sequenceId)
+        .in('status', ['active', 'pending']),
+    ]);
+
+    const seqName = seq?.name || sequenceId;
+    const isNoOp = seq?.is_active === true;
+
+    return {
+      summary: isNoOp
+        ? `La séquence "${seqName}" est déjà active`
+        : `Réactiver la séquence "${seqName}" (${enrollments ?? 0} candidats reprendront leur progression)`,
+      details: {
+        sequence_id: sequenceId,
+        sequence_name: seqName,
+        from_is_active: seq?.is_active ?? null,
+        to_is_active: true,
+        enrollments_to_resume: enrollments ?? 0,
+        is_no_op: isNoOp,
+      },
+      warning: isNoOp ? 'Aucun changement.' : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const sequenceId = String(params.sequence_id);
+    const { data, error } = await ctx.adminClient
+      .from('outreach_sequences')
+      .update({ is_active: true })
+      .eq('id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .select('id, is_active, updated_at')
+      .single();
+    if (error) return { success: false, error: error.message };
+    return {
+      success: true,
+      data: {
+        sequence_id: data.id,
+        is_active: data.is_active,
+        updated_at: data.updated_at,
+        message: 'Séquence réactivée. La progression reprendra au prochain tick du cron (toutes les minutes en business hours).',
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -1647,6 +2046,10 @@ export function registerMutatingTools(): void {
   registerTool(updateMissionStatus);
   registerTool(updateMissionBrief);
   registerTool(regenerateSearchFilters);
+  // Phase A.3 — Outreach quota-gated
+  registerTool(sendLinkedInMessage);
+  registerTool(pauseSequence);
+  registerTool(resumeSequence);
   // schedule_interview reporté : pas de calendar branché, table events
   // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;
