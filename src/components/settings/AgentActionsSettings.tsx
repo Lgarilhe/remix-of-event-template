@@ -14,9 +14,10 @@
  *  3. Comprendre un échec — voir le error_message dans real_result quand
  *     status=failed.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +30,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   CheckCircle2,
   Clock,
   Ban,
@@ -37,11 +48,16 @@ import {
   History,
   Activity,
   AlertTriangle,
+  RotateCcw,
+  Check,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 type ActionStatus = 'proposed' | 'approved' | 'executed' | 'auto_executed' | 'failed' | 'rejected';
 
@@ -146,6 +162,30 @@ const STATUS_CONFIG: Record<
   },
 };
 
+// Sensitive tool list (mirror of AgentToolApprovalCard) — approving these
+// from the Settings tab still requires a confirmation dialog.
+const SENSITIVE_TOOLS = new Set<string>([
+  'send_linkedin_message',
+  'dismiss_candidate',
+  'invite_team_member',
+  'update_member_quota',
+  'update_mission_status',
+]);
+
+function isSensitiveAction(toolName: string, params: Record<string, unknown>): boolean {
+  if (!SENSITIVE_TOOLS.has(toolName)) return false;
+  if (toolName === 'update_mission_status') {
+    const ns = String(params.new_status || '');
+    return ns === 'archived' || ns === 'completed';
+  }
+  return true;
+}
+
+interface PendingDialog {
+  action: 'approve' | 'reject' | 'requeue' | 'cancel';
+  row: AgentAction;
+}
+
 export const AgentActionsSettings = () => {
   const { organizationId, isAdmin, isOwner } = useOrganization();
   const isPrivileged = isAdmin || isOwner;
@@ -153,6 +193,8 @@ export const AgentActionsSettings = () => {
   const [scope, setScope] = useState<'mine' | 'org'>('mine');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [includeReads, setIncludeReads] = useState(false);
+  const [actionLoading, setActionLoading] = useState<Record<string, string | null>>({});
+  const [pendingDialog, setPendingDialog] = useState<PendingDialog | null>(null);
 
   // Lock scope to mine for non-privileged
   useEffect(() => {
@@ -228,6 +270,121 @@ export const AgentActionsSettings = () => {
     enabled: scope === 'org' && userIds.length > 0,
     staleTime: 5 * 60 * 1000,
   });
+
+  // ─── Action handlers ─────────────────────────────────────────────────────
+  const runApproveReject = useCallback(
+    async (row: AgentAction, action: 'approve' | 'reject') => {
+      setActionLoading((prev) => ({ ...prev, [row.id]: action }));
+      try {
+        const { data, error } = await invokeEdgeFunction<{
+          success: boolean;
+          error?: string;
+          data?: Record<string, unknown>;
+        }>('agent-tool-action', { execution_id: row.id, action });
+        if (error || !data?.success) {
+          toast.error(data?.error || error?.message || `Action ${action} a échoué`);
+          return;
+        }
+        if (action === 'reject') {
+          toast.success('Action rejetée');
+        } else if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
+          const when = new Date(data.data.scheduled_for as string).toLocaleString('fr-FR', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          toast.success(`Action programmée pour ${when}`, { duration: 6000 });
+        } else {
+          toast.success('Action exécutée ✓');
+        }
+        // Realtime should refresh automatically, but invalidate as a safety net
+        queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [row.id]: null }));
+      }
+    },
+    [queryClient, organizationId],
+  );
+
+  const requeueFailed = useCallback(
+    async (row: AgentAction) => {
+      setActionLoading((prev) => ({ ...prev, [row.id]: 'requeue' }));
+      try {
+        // Reset failed → proposed so the AgentToolApprovalCard banner picks
+        // it back up. We do NOT auto-execute — user must explicitly approve
+        // again (with potentially new context).
+        const { error } = await supabase
+          .from('agent_tool_executions')
+          .update({
+            status: 'proposed',
+            real_result: null,
+            executed_at: null,
+            approved_at: null,
+            scheduled_for: null,
+            proposed_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('status', 'failed');
+        if (error) {
+          toast.error(`Relance échouée : ${error.message}`);
+          return;
+        }
+        toast.success('Action remise en attente — approuve-la depuis le chat ou ici');
+        queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [row.id]: null }));
+      }
+    },
+    [queryClient, organizationId],
+  );
+
+  const cancelScheduled = useCallback(
+    async (row: AgentAction) => {
+      setActionLoading((prev) => ({ ...prev, [row.id]: 'cancel' }));
+      try {
+        const { error } = await supabase
+          .from('agent_tool_executions')
+          .update({
+            status: 'rejected',
+            user_note: '[Annulée depuis Settings — programmation annulée]',
+            scheduled_for: null,
+          })
+          .eq('id', row.id)
+          .eq('status', 'approved')
+          .is('executed_at', null);
+        if (error) {
+          toast.error(`Annulation échouée : ${error.message}`);
+          return;
+        }
+        toast.success('Programmation annulée');
+        queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [row.id]: null }));
+      }
+    },
+    [queryClient, organizationId],
+  );
+
+  const handleActionClick = useCallback(
+    (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel') => {
+      // Sensitive approves → confirmation dialog. Everything else runs
+      // directly (reject is intentional, requeue/cancel are reversible).
+      if (action === 'approve' && isSensitiveAction(row.tool_name, row.params)) {
+        setPendingDialog({ action, row });
+        return;
+      }
+      if (action === 'approve' || action === 'reject') {
+        runApproveReject(row, action);
+      } else if (action === 'requeue') {
+        requeueFailed(row);
+      } else {
+        cancelScheduled(row);
+      }
+    },
+    [runApproveReject, requeueFailed, cancelScheduled],
+  );
 
   if (isLoading) {
     return (
@@ -341,10 +498,53 @@ export const AgentActionsSettings = () => {
               action={action}
               showAuthor={scope === 'org'}
               authorName={memberNames[action.user_id]}
+              loadingAction={actionLoading[action.id] ?? null}
+              onAction={handleActionClick}
             />
           ))}
         </div>
       )}
+
+      {/* Dialog de confirmation pour les actions sensibles approuvées depuis la liste */}
+      <AlertDialog open={pendingDialog !== null} onOpenChange={(open) => !open && setPendingDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer cette action sensible</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                {pendingDialog && (
+                  <>
+                    <p>
+                      Tu vas approuver l'action <strong>{TOOL_LABEL[pendingDialog.row.tool_name] || pendingDialog.row.tool_name}</strong>.
+                    </p>
+                    {pendingDialog.row.dry_run_result?.summary && (
+                      <p className="text-xs text-muted-foreground">
+                        {pendingDialog.row.dry_run_result.summary}
+                      </p>
+                    )}
+                    {pendingDialog.row.dry_run_result?.warning && (
+                      <p className="text-xs text-warning">⚠️ {pendingDialog.row.dry_run_result.warning}</p>
+                    )}
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDialog) {
+                  runApproveReject(pendingDialog.row, 'approve');
+                  setPendingDialog(null);
+                }
+              }}
+            >
+              Oui, j'approuve
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
@@ -353,9 +553,11 @@ interface ActionRowProps {
   action: AgentAction;
   showAuthor: boolean;
   authorName?: string;
+  loadingAction: string | null;
+  onAction: (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel') => void;
 }
 
-function ActionRow({ action, showAuthor, authorName }: ActionRowProps) {
+function ActionRow({ action, showAuthor, authorName, loadingAction, onAction }: ActionRowProps) {
   // Sub-status : 'approved' avec scheduled_for futur = en attente d'envoi
   const isQueued =
     action.status === 'approved' &&
@@ -433,6 +635,76 @@ function ActionRow({ action, showAuthor, authorName }: ActionRowProps) {
 
           {resultMessage && (
             <div className="mt-1 text-[11px] text-success break-words">{resultMessage}</div>
+          )}
+
+          {/* Action buttons inline — only for actionable states */}
+          {(action.status === 'proposed' || action.status === 'failed' || isQueued) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {action.status === 'proposed' && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px] gap-1"
+                    disabled={loadingAction != null}
+                    onClick={() => onAction(action, 'approve')}
+                  >
+                    {loadingAction === 'approve' ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Check className="w-3 h-3" />
+                    )}
+                    Approuver
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px] gap-1"
+                    disabled={loadingAction != null}
+                    onClick={() => onAction(action, 'reject')}
+                  >
+                    {loadingAction === 'reject' ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <X className="w-3 h-3" />
+                    )}
+                    Rejeter
+                  </Button>
+                </>
+              )}
+              {isQueued && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px] gap-1 text-warning border-warning/40 hover:bg-warning/10"
+                  disabled={loadingAction != null}
+                  onClick={() => onAction(action, 'cancel')}
+                >
+                  {loadingAction === 'cancel' ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Ban className="w-3 h-3" />
+                  )}
+                  Annuler la programmation
+                </Button>
+              )}
+              {action.status === 'failed' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px] gap-1"
+                  disabled={loadingAction != null}
+                  onClick={() => onAction(action, 'requeue')}
+                >
+                  {loadingAction === 'requeue' ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3 h-3" />
+                  )}
+                  Relancer
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
