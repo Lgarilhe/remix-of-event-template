@@ -775,6 +775,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `et get_vivier_overview (CRM/vivier — contacts et entreprises connus, top engagés). ` +
         `Pour lire le fil de discussion LINKEDIN verbatim avec quelqu'un (candidat OU contact) : ` +
         `get_linkedin_thread(person_name). ` +
+        `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
+        `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
+        `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
+        `status, tool_name, since_hours, scope). C'est la seule source de vérité. ` +
         `Quand tu cites un candidat, rends son nom CLIQUABLE : lien markdown ` +
         `[Nom](profile_path) en réutilisant EXACTEMENT et TEL QUEL le champ ` +
         `« profile_path » renvoyé par l'outil (il commence déjà par « / », ex. ` +
@@ -847,7 +851,15 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `sauf si l'user mentionne explicitement un compte précis (le tool prend ton ` +
         `1er compte connecté automatiquement).\n` +
         `Pour les params strictement obligatoires (candidate_id, job_id), ` +
-        `résous-les via les outils de lecture — ne les invente pas.`;
+        `résous-les via les outils de lecture — ne les invente pas.\n` +
+        `• Statut d'une action ANTÉRIEURE (« tu as bien envoyé ? », « c'est ` +
+        `parti ? », « c'est planifié ? », « où en est ma demande ? », ` +
+        `« qu'est-ce que tu as fait récemment ? ») → appelle ` +
+        `get_recent_agent_actions(tool_name optionnel, status optionnel) AVANT de ` +
+        `répondre. C'est la SEULE source de vérité. Ne devine pas, ne dis pas ` +
+        `« c'est fait » sans avoir vu une row avec status='executed' ou ` +
+        `'auto_executed'. Si tu vois status='proposed' → l'action attend ENCORE ` +
+        `l'approbation user dans le bandeau. Si status='failed' → cite l'error_message.`;
     }
 
     // --- Sourcing mode (ou chat libre classé DATA/ACTION) : boucle d'outils ---

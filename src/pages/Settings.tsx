@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Building2, Users, Plug, Check, Loader2, Pencil,
   UserCircle, CreditCard, Sparkles, MessageSquare, Bookmark, Briefcase, Store, Wand2,
-  UserPlus,
+  UserPlus, History,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,6 +34,7 @@ import { AgencySettings } from '@/components/settings/AgencySettings';
 import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
 import { PedigreePresetsSettings } from '@/components/settings/PedigreePresetsSettings';
 import { AiContextSettings } from '@/components/settings/AiContextSettings';
+import { AgentActionsSettings } from '@/components/settings/AgentActionsSettings';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 
@@ -107,6 +108,7 @@ const Settings = () => {
     if (tab === 'account') return 'account';
     if (tab === 'templates') return 'templates';
     if (tab === 'ai-context') return 'ai-context';
+    if (tab === 'agent-actions') return 'agent-actions';
     if (tab === 'connectors' && !isCollaborator && hasConnectors) return 'connectors';
     if (tab === 'team' && !isCollaborator) return 'team';
     if (tab === 'presets' && !isCollaborator) return 'presets';
@@ -136,6 +138,7 @@ const Settings = () => {
         ...(!isCollaborator ? [{ value: 'presets', label: 'ICP sociétés', icon: Bookmark }] : []),
         { value: 'templates', label: 'Templates', icon: MessageSquare },
         { value: 'ai-context', label: 'Contexte IA', icon: Wand2 },
+        { value: 'agent-actions', label: 'Actions IA', icon: History },
       ],
     },
     {
@@ -431,6 +434,10 @@ const Settings = () => {
 
             {activeTab === 'ai-context' && (
               <AiContextSettings />
+            )}
+
+            {activeTab === 'agent-actions' && (
+              <AgentActionsSettings />
             )}
 
             {activeTab === 'connectors' && (

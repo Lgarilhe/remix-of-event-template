@@ -1909,6 +1909,146 @@ const getTeamOverview: AgentTool = {
   },
 };
 
+// ─── Tool — get_recent_agent_actions (statut des actions IA) ───────────────
+const getRecentAgentActions: AgentTool = {
+  name: 'get_recent_agent_actions',
+  description:
+    "Liste les actions récentes proposées/exécutées par le copilot IA. SEULE SOURCE DE VÉRITÉ " +
+    "pour savoir si une action a effectivement été exécutée. À utiliser obligatoirement quand " +
+    "l'utilisateur demande : « tu as bien envoyé le message ? », « est-ce que c'est planifié ? », " +
+    "« où en est ma demande ? », « qu'est-ce que tu as fait récemment ? », « l'invitation est " +
+    "partie ? ». Filtres facultatifs : status (proposed=en attente d'approbation, executed=exécuté " +
+    "avec succès, auto_executed=lecture exécutée, failed=échoué, rejected=rejeté par user), tool_name " +
+    "(ex. send_linkedin_message), since_hours (1-168, défaut 24), scope (mine=mes actions, défaut ; " +
+    "org=toutes les actions de l'org — owner/admin seulement). Chaque ligne renvoie : id, tool, " +
+    "status, résumé du dryRun, cible, timestamps, et message d'erreur si failed. NE JAMAIS " +
+    "prétendre qu'une action est exécutée sans avoir appelé ce tool d'abord.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      status: {
+        type: 'string',
+        enum: ['proposed', 'approved', 'executed', 'auto_executed', 'failed', 'rejected'],
+        description: 'Filtre par statut',
+      },
+      tool_name: {
+        type: 'string',
+        description: 'Filtre par nom de tool (ex. send_linkedin_message)',
+      },
+      since_hours: {
+        type: 'integer',
+        description: 'Fenêtre temporelle en heures (1-168, défaut 24)',
+        minimum: 1,
+        maximum: 168,
+      },
+      limit: {
+        type: 'integer',
+        description: 'Nombre max de lignes (défaut 20, max 50)',
+        minimum: 1,
+        maximum: 50,
+      },
+      scope: {
+        type: 'string',
+        enum: ['mine', 'org'],
+        description: "« mine » = mes actions (défaut). « org » = toutes les actions de l'org (owner/admin uniquement).",
+      },
+    },
+    required: [],
+  },
+  verifyAccess(_p, ctx) {
+    if (!ctx.organizationId || !ctx.userId) {
+      return Promise.resolve({ allowed: false, reason: 'No active organization/user' });
+    }
+    return Promise.resolve({ allowed: true });
+  },
+  dryRun: trivialDryRun('Lecture : historique des actions IA'),
+  async execute(params, ctx) {
+    const sinceHours = Math.min(168, Math.max(1, Number(params.since_hours ?? 24)));
+    const limit = Math.min(50, Math.max(1, Number(params.limit ?? 20)));
+    const status = params.status ? String(params.status) : null;
+    const toolName = params.tool_name ? String(params.tool_name) : null;
+    const requestedScope = String(params.scope ?? 'mine');
+
+    const role = await resolveRole(ctx);
+    const scope = requestedScope === 'org' && isPrivileged(role) ? 'org' : 'mine';
+
+    const since = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString();
+
+    let q = ctx.adminClient
+      .from('agent_tool_executions')
+      .select(
+        'id, tool_name, status, params, dry_run_result, real_result, user_id, proposed_at, approved_at, executed_at',
+      )
+      .eq('organization_id', ctx.organizationId)
+      .gte('proposed_at', since)
+      .order('proposed_at', { ascending: false })
+      .limit(limit);
+
+    if (scope === 'mine') q = q.eq('user_id', ctx.userId);
+    if (status) q = q.eq('status', status);
+    if (toolName) q = q.eq('tool_name', toolName);
+
+    const { data, error } = await q;
+    if (error) return { success: false, error: error.message };
+
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+
+    // Resolve member names if scope = org
+    const nameByUser: Record<string, string> = {};
+    if (scope === 'org' && rows.length > 0) {
+      const userIds = [...new Set(rows.map((r) => String(r.user_id)))];
+      const { data: profs } = await ctx.adminClient
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+      for (const p of ((profs as Array<{ id: string; full_name: string | null }> | null) ?? [])) {
+        if (p.full_name) nameByUser[p.id] = p.full_name;
+      }
+    }
+
+    const actions = rows.map((r) => {
+      const dryRun = (r.dry_run_result || {}) as Record<string, unknown>;
+      const realRes = (r.real_result || {}) as Record<string, unknown>;
+      return {
+        id: r.id,
+        tool: r.tool_name,
+        status: r.status,
+        summary: dryRun.summary ?? null,
+        target: dryRun.details ?? null,
+        proposed_at: r.proposed_at,
+        approved_at: r.approved_at ?? null,
+        executed_at: r.executed_at ?? null,
+        ...(scope === 'org' ? { by_user: nameByUser[String(r.user_id)] ?? '—' } : {}),
+        ...(r.status === 'failed'
+          ? { error_message: realRes.error ?? realRes.message ?? null }
+          : {}),
+        ...(r.status === 'executed' || r.status === 'auto_executed'
+          ? { result_brief: typeof realRes.message === 'string' ? realRes.message : null }
+          : {}),
+      };
+    });
+
+    const byStatus: Record<string, number> = {};
+    for (const r of rows) {
+      byStatus[String(r.status)] = (byStatus[String(r.status)] ?? 0) + 1;
+    }
+
+    return {
+      success: true,
+      data: {
+        scope,
+        since_hours: sinceHours,
+        filters: { status, tool_name: toolName },
+        total: rows.length,
+        by_status: byStatus,
+        actions,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -1929,5 +2069,6 @@ export function registerReadTools(): void {
   registerTool(getVivierOverview);
   registerTool(getOrgAnalytics);
   registerTool(getTeamOverview);
+  registerTool(getRecentAgentActions);
   registered = true;
 }
