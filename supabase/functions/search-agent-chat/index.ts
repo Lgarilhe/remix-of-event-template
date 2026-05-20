@@ -644,11 +644,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
     // --- Phase B.2 — routeur hybride (chat libre uniquement) ---
     // En chat libre, un classifieur Haiku ultra-léger tranche :
-    //   DATA → la demande porte sur les données PROPRES de l'org → on entre
-    //          dans la boucle d'outils (read tools déjà enregistrés).
-    //   CHAT → tout le reste → chemin streaming + Réflexion INCHANGÉ.
+    //   DATA   → demande qui porte sur les données PROPRES de l'org (lecture).
+    //   ACTION → demande de FAIRE quelque chose (envoyer, ajouter une note,
+    //            inviter, écarter, mettre en pause, modifier, archiver…).
+    //   CHAT   → tout le reste → chemin streaming + Réflexion INCHANGÉ.
+    // DATA et ACTION nécessitent les tools (read + mutating) → tools loop.
     // Fail-soft : toute erreur/timeout → CHAT (zéro régression sur le chat normal).
     let classifiedDATA = false;
+    let classifiedACTION = false;
     if (isFreeMode) {
       try {
         // Fil récent (derniers tours) → un suivi court ("et leur nom ?",
@@ -668,7 +671,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         const clf = await callClaudeCompat({
           model: "claude-haiku-4-5-20251001",
           temperature: 0,
-          max_tokens: 3,
+          max_tokens: 4,
           antiAiStyle: "none",
           timeoutMs: 5000,
           maxRetries: 0,
@@ -681,35 +684,48 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 "« Utilisateur » EN TENANT COMPTE du contexte : un suivi court (« et leur " +
                 "nom ? », « lesquelles ? », « détaille », « lesquels »…) hérite du sujet " +
                 "du tour précédent.\n" +
-                "Réponds UNIQUEMENT par un seul mot, sans ponctuation : DATA ou CHAT.\n" +
-                "DATA = la demande (ou le suivi) nécessite les données PROPRES de " +
-                "l'organisation : ses missions/postes, ses candidats (noms, scores, étape " +
-                "pipeline), son pipeline, process d'entretien, séquences/relances, " +
-                "statistiques, compteurs. Ex : « combien de candidats sur ma mission X », " +
-                "« où en est mon pipeline », « quelles missions j'ai en cours », « qui a " +
-                "répondu », et TOUT suivi demandant le détail de ces données (ex : après " +
-                "« tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA).\n" +
-                "CHAT = tout le reste : rédiger/améliorer un message, conseil, stratégie " +
-                "de sourcing, analyse d'un poste ou d'un profil collé, questions métier " +
-                "générales, salutations.\n" +
-                "En cas de doute, réponds CHAT.",
+                "Réponds UNIQUEMENT par un seul mot, sans ponctuation : DATA, ACTION, ou CHAT.\n" +
+                "DATA = la demande (ou le suivi) nécessite de LIRE les données PROPRES de " +
+                "l'organisation : missions/postes, candidats (noms, scores, étape pipeline), " +
+                "pipeline, process d'entretien, séquences/relances, statistiques, compteurs, " +
+                "équipe, crédits, fil LinkedIn verbatim, vivier/CRM, contexte RAG. Ex : « combien " +
+                "de candidats sur ma mission X », « où en est mon pipeline », « résume mon échange " +
+                "LinkedIn avec X », « quelles missions j'ai en cours », et TOUT suivi demandant " +
+                "le détail (ex : après « tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA).\n" +
+                "ACTION = la demande exprime une MODIFICATION / un envoi à effectuer dans Konekt : " +
+                "envoyer un message LinkedIn, ajouter une note, écarter/dismiss un candidat, " +
+                "assigner à un collaborateur, mettre en pause/reprendre une séquence, créer/" +
+                "archiver/clôturer une mission, modifier un brief, appliquer/régénérer des " +
+                "filtres de recherche, inviter un membre, modifier ses quotas, enrichir un " +
+                "contact (chercher email/téléphone). Mots-clés typiques : envoie/envoi, écris " +
+                "à, ajoute, écarte, archive, mets en pause, relance, applique, pousse, modifie, " +
+                "change, invite, assigne, créer une mission, retire de.\n" +
+                "CHAT = tout le reste : rédiger/améliorer un message SANS l'envoyer, conseil, " +
+                "stratégie de sourcing, analyse d'un poste ou d'un profil collé, questions " +
+                "métier générales, salutations. ⚠️ Distinction critique : « rédige-moi un " +
+                "message pour X » = CHAT (juste le texte) ; « ENVOIE un message à X » = ACTION.\n" +
+                "En cas de doute entre DATA et ACTION, choisis ACTION. Entre tools et chat, " +
+                "préfère le chat seulement si la demande est purement conversationnelle.",
             },
             { role: "user", content: recentTranscript || String(message).slice(0, 2000) },
           ],
         });
-        classifiedDATA = /\bDATA\b/i.test(clf.content || "");
-        console.log(`[search-agent-chat] B.2 classifier raw="${(clf.content || "").trim()}" → ${classifiedDATA ? "DATA" : "CHAT"}`);
+        const raw = (clf.content || "").trim();
+        classifiedDATA = /\bDATA\b/i.test(raw);
+        classifiedACTION = /\bACTION\b/i.test(raw);
+        console.log(`[search-agent-chat] B.2 classifier raw="${raw}" → DATA=${classifiedDATA} ACTION=${classifiedACTION}`);
       } catch (e) {
         console.warn("[search-agent-chat] B.2 classifier skipped (→ CHAT):", e);
       }
     }
+    const classifiedTOOLS = classifiedDATA || classifiedACTION;
 
-    // Free + DATA : on entre dans la boucle d'outils avec le prompt libre,
-    // augmenté d'une consigne d'accès LECTURE. Sans ça le freeSystemPrompt dit
-    // « tu ne peux pas » et le modèle hésiterait à appeler les outils. On
-    // n'augmente QUE ce chemin → le chat normal (CHAT) garde un prompt
-    // byte-identique (zéro régression sur l'UX Réflexion validée).
-    if (isFreeMode && classifiedDATA) {
+    // Free + (DATA ou ACTION) : on entre dans la boucle d'outils avec le prompt
+    // libre, augmenté d'une consigne d'accès LECTURE + ACTIONS. Sans ça le
+    // freeSystemPrompt dit « tu ne peux pas » et le modèle hésiterait à appeler
+    // les outils. On n'augmente QUE ce chemin → le chat normal (CHAT) garde
+    // un prompt byte-identique (zéro régression sur l'UX Réflexion validée).
+    if (isFreeMode && classifiedTOOLS) {
       activeSystemPrompt = activeSystemPrompt +
         `\n\n=== ACCÈS DONNÉES (cette conversation) ===\n` +
         `Tu disposes d'OUTILS EN LECTURE SEULE sur les données Konekt de cet ` +
@@ -784,8 +800,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `résous-les via les outils de lecture — ne les invente pas.`;
     }
 
-    // --- Sourcing mode (ou chat libre classé DATA) : boucle d'outils ---
-    if (isSourcingMode || (isFreeMode && classifiedDATA)) {
+    // --- Sourcing mode (ou chat libre classé DATA/ACTION) : boucle d'outils ---
+    if (isSourcingMode || (isFreeMode && classifiedTOOLS)) {
       const encoder = new TextEncoder();
       let fullResponse = "";
       let _tokensIn = 0;
