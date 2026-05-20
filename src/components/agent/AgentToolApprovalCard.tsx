@@ -26,7 +26,16 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface ToolExecutionRow {
   id: string;
@@ -308,8 +317,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
   const [actionLoading, setActionLoading] = useState<Record<string, 'approve' | 'reject' | 'save' | null>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedParams, setEditedParams] = useState<Record<string, unknown>>({});
-  /** Per-row confirmation state for sensitive actions (Clarif.3) */
-  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  /** ID de la row pour laquelle un dialog de confirmation sensible est ouvert (Clarif.3) */
+  const [confirmDialogId, setConfirmDialogId] = useState<string | null>(null);
 
   // Initial fetch + realtime subscription
   useEffect(() => {
@@ -440,10 +449,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
         const isEditing = editingId === row.id;
         const isSensitive = isSensitiveAction(row.tool_name, row.params);
         const targetLabel = targetLabelForTool(row.tool_name, row.dry_run_result?.details);
-        const isConfirmed = confirmed[row.id] === true;
-        // Approve button gated by confirmation only when sensitive + not editing
-        // (Edit mode = the user has already re-read & patched the params)
-        const approveBlockedBySensitive = isSensitive && !isEditing && !isConfirmed;
+        // Edit mode bypasses the sensitive dialog (the user has already re-read
+        // and patched the params — confirmation implicit).
+        const approveNeedsDialog = isSensitive && !isEditing;
 
         return (
           <div
@@ -490,21 +498,10 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
             {isSensitive && !isEditing && (
               <div className="mt-1 flex items-start gap-2 rounded border border-warning/40 bg-warning/5 p-2">
                 <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-warning" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wide font-bold text-warning/90 mb-1">
-                    Action sensible — confirmation requise
-                  </div>
-                  <label htmlFor={`confirm-${row.id}`} className="flex items-start gap-2 cursor-pointer text-xs leading-snug">
-                    <Checkbox
-                      id={`confirm-${row.id}`}
-                      checked={isConfirmed}
-                      onCheckedChange={(c) => setConfirmed((prev) => ({ ...prev, [row.id]: !!c && c !== 'indeterminate' }))}
-                      className="mt-0.5"
-                    />
-                    <span className="text-foreground">
-                      Je confirme avoir vérifié la cible : <strong>{targetLabel}</strong>.
-                    </span>
-                  </label>
+                <div className="text-xs leading-snug text-foreground">
+                  <span className="font-bold text-warning/90">Action sensible</span> — une
+                  fenêtre de confirmation s'ouvrira au clic sur Approuver pour vérifier la
+                  cible (<strong>{targetLabel}</strong>).
                 </div>
               </div>
             )}
@@ -534,10 +531,15 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => handleAction(row.id, 'approve')}
-                    disabled={loading !== null || approveBlockedBySensitive}
-                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
-                    title={approveBlockedBySensitive ? 'Coche la case de confirmation pour activer' : undefined}
+                    onClick={() => {
+                      if (approveNeedsDialog) {
+                        setConfirmDialogId(row.id);
+                      } else {
+                        handleAction(row.id, 'approve');
+                      }
+                    }}
+                    disabled={loading !== null}
+                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
                   >
                     {loading === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                     Approuver
@@ -570,6 +572,50 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           </div>
         );
       })}
+
+      {/* Dialog de confirmation pour les actions sensibles (Clarif.3 v2) */}
+      <AlertDialog open={confirmDialogId !== null} onOpenChange={(open) => !open && setConfirmDialogId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer cette action sensible</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                {confirmDialogId && (() => {
+                  const row = pending.find((p) => p.id === confirmDialogId);
+                  if (!row) return null;
+                  const target = targetLabelForTool(row.tool_name, row.dry_run_result?.details);
+                  return (
+                    <>
+                      <p className="mb-2">
+                        Tu vas effectuer cette action sur <strong>{target}</strong>.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {row.dry_run_result?.summary || row.tool_name}
+                      </p>
+                      {row.dry_run_result?.warning && (
+                        <p className="mt-2 text-xs text-warning">⚠️ {row.dry_run_result.warning}</p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDialogId) {
+                  handleAction(confirmDialogId, 'approve');
+                  setConfirmDialogId(null);
+                }
+              }}
+            >
+              Oui, j'approuve
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
