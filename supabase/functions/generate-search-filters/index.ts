@@ -145,7 +145,21 @@ Deno.serve(async (req) => {
     } catch (authResponse) {
       return authResponse as Response;
     }
-    const userId = auth.userId;
+
+    // Body parsed early — Mode B (service_role) accepts a user_id_override
+    // to attribute the AI call + rate limit to the originating user.
+    const _body = await req.json();
+    const { job, search_source } = _body as { job: Job; search_source?: string };
+    const userIdOverride = typeof (_body as Record<string, unknown>).user_id_override === 'string'
+      ? (_body as Record<string, unknown>).user_id_override as string
+      : null;
+    const userId = auth.userId ?? userIdOverride;
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: 'Service-role calls must provide user_id_override' }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Rate limit: 20 req/min
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
@@ -154,8 +168,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const _body = await req.json();
-    const { job, search_source } = _body as { job: Job; search_source?: string };
     const isDatabase = search_source === 'database';
 
     // Lazy import to avoid crashing the function if _shared modules have issues

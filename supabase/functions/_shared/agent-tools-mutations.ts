@@ -1188,6 +1188,443 @@ const assignCandidateToMember: AgentTool = {
   },
 };
 
+// ─── Tool 10 — update_mission_status ────────────────────────────────────────
+// Bascule le statut d'une mission entre active/paused/archived/completed.
+
+const MISSION_STATUSES = ['active', 'paused', 'archived', 'completed'] as const;
+type MissionStatus = (typeof MISSION_STATUSES)[number];
+
+const MISSION_STATUS_LABELS: Record<MissionStatus, string> = {
+  active: 'Active',
+  paused: 'En pause',
+  archived: 'Archivée',
+  completed: 'Clôturée (pourvue)',
+};
+
+const updateMissionStatus: AgentTool = {
+  name: 'update_mission_status',
+  description:
+    "Change the status of a mission (active/paused/archived/completed). " +
+    "Use this when the user says 'mets cette mission en pause', 'archive cette mission', 'cette mission est pourvue', 'réactive la mission X'. " +
+    "'paused' = temporary stop (resumable). 'archived' = no longer needed (kept for history). 'completed' = position filled. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: {
+        type: 'string',
+        description: 'The sourcing_projects (mission) UUID.',
+      },
+      new_status: {
+        type: 'string',
+        enum: MISSION_STATUSES as unknown as string[],
+        description: "New status. One of: active, paused, archived, completed.",
+      },
+    },
+    required: ['job_id', 'new_status'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const jobId = String(params.job_id || '');
+    const newStatus = String(params.new_status || '');
+    if (!jobId || !newStatus) return { allowed: false, reason: 'job_id and new_status are required' };
+    if (!(MISSION_STATUSES as readonly string[]).includes(newStatus)) {
+      return { allowed: false, reason: `new_status must be one of: ${MISSION_STATUSES.join(', ')}` };
+    }
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const jobId = String(params.job_id);
+    const newStatus = String(params.new_status) as MissionStatus;
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, status')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    const jobLabel = project?.job_title || project?.name || jobId;
+    const fromStatus = project?.status as MissionStatus | undefined;
+    const isNoOp = fromStatus === newStatus;
+
+    return {
+      summary: isNoOp
+        ? `La mission "${jobLabel}" est déjà au statut "${MISSION_STATUS_LABELS[newStatus]}"`
+        : `Passer la mission "${jobLabel}" : "${fromStatus ? MISSION_STATUS_LABELS[fromStatus] ?? fromStatus : '(non défini)'}" → "${MISSION_STATUS_LABELS[newStatus]}"`,
+      details: {
+        job_id: jobId,
+        job_label: jobLabel,
+        client_label: project?.client_name ?? null,
+        from_status: fromStatus ?? null,
+        to_status: newStatus,
+        is_no_op: isNoOp,
+      },
+      warning: isNoOp
+        ? 'Aucun changement.'
+        : newStatus === 'archived'
+        ? "Mission archivée : elle sera masquée des vues actives mais conservée pour l'historique."
+        : newStatus === 'completed'
+        ? "Mission clôturée : marquée comme pourvue."
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const jobId = String(params.job_id);
+    const newStatus = String(params.new_status) as MissionStatus;
+
+    const { data, error } = await ctx.adminClient
+      .from('sourcing_projects')
+      .update({ status: newStatus })
+      .eq('id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .select('id, status, updated_at')
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return {
+      success: true,
+      data: {
+        mission_id: data.id,
+        new_status: data.status,
+        updated_at: data.updated_at,
+      },
+    };
+  },
+};
+
+// ─── Tool 11 — update_mission_brief ─────────────────────────────────────────
+// Patch partiel sur sourcing_projects.job_details (JSONB). Whitelist stricte
+// des champs : on ne laisse pas l'IA toucher pedigree/calibration/evaluation_*
+// (changements lourds qui impactent le scoring). Pour ces champs, redirection
+// vers l'UI brief wizard.
+
+const BRIEF_UPDATABLE_FIELDS = [
+  'title',
+  'reference',
+  'contract_type',
+  'urgency',
+  'location',
+  'remote_policy',
+  'remote_days',
+  'team_size',
+  'context',
+  'mission_description',
+  'seniority',
+  'experience_min',
+  'experience_max',
+  'salary_min',
+  'salary_max',
+  'salary_currency',
+  'salary_type',
+  'skills_must_have',
+  'skills_should_have',
+  'skills_nice_to_have',
+  'skills_to_avoid',
+] as const;
+type BriefField = (typeof BRIEF_UPDATABLE_FIELDS)[number];
+
+const updateMissionBrief: AgentTool = {
+  name: 'update_mission_brief',
+  description:
+    "Patch specific fields of a mission's brief (job_details JSONB). " +
+    "Use this when the user says 'mets le salaire de cette mission à 70-90k', 'change la localisation pour Lyon', 'ajoute Kubernetes aux skills must-have'. " +
+    "Updatable fields: title, contract_type, urgency, location, remote_policy, remote_days, salary_min/max/currency, seniority, experience_min/max, skills_must_have, skills_should_have, skills_nice_to_have, skills_to_avoid, mission_description, context. " +
+    "Other fields (pedigree, calibration profiles, evaluation criteria) require the brief wizard — DO NOT propose to change them here. " +
+    "Skills are arrays — pass the full new array (this REPLACES the existing one). " +
+    "After updating a field that affects sourcing (skills, location, seniority), it is good practice to suggest regenerating the search filters via the `regenerate_search_filters` tool. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: {
+        type: 'string',
+        description: 'The sourcing_projects (mission) UUID.',
+      },
+      updates: {
+        type: 'object',
+        description:
+          "Object containing ONLY the fields to update. Must be a subset of the updatable fields list. " +
+          "For skills arrays, pass the COMPLETE new array (not a delta).",
+        additionalProperties: true,
+      },
+    },
+    required: ['job_id', 'updates'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const jobId = String(params.job_id || '');
+    if (!jobId) return { allowed: false, reason: 'job_id is required' };
+
+    const updates = params.updates && typeof params.updates === 'object' ? params.updates as Record<string, unknown> : null;
+    if (!updates || Object.keys(updates).length === 0) {
+      return { allowed: false, reason: 'updates is required and must contain at least one field' };
+    }
+
+    const invalidFields = Object.keys(updates).filter((k) => !(BRIEF_UPDATABLE_FIELDS as readonly string[]).includes(k));
+    if (invalidFields.length > 0) {
+      return {
+        allowed: false,
+        reason: `Champs non modifiables via le copilot : ${invalidFields.join(', ')}. Ces champs nécessitent l'éditeur brief.`,
+      };
+    }
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const jobId = String(params.job_id);
+    const updates = params.updates as Record<string, unknown>;
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, job_details')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    const jobLabel = project?.job_title || project?.name || jobId;
+    const currentDetails = (project?.job_details as Record<string, unknown> | null) ?? {};
+
+    // Build a per-field diff
+    const diff: Array<{ field: string; from: unknown; to: unknown }> = [];
+    for (const [field, newValue] of Object.entries(updates)) {
+      diff.push({ field, from: currentDetails[field] ?? null, to: newValue });
+    }
+
+    const fieldsChanged = diff.map((d) => d.field).join(', ');
+    const touchesSourcing = diff.some((d) =>
+      ['skills_must_have', 'skills_should_have', 'skills_nice_to_have', 'location', 'seniority', 'experience_min', 'experience_max'].includes(d.field),
+    );
+
+    return {
+      summary: `Mettre à jour le brief de "${jobLabel}" — champs : ${fieldsChanged}`,
+      details: {
+        job_id: jobId,
+        job_label: jobLabel,
+        client_label: project?.client_name ?? null,
+        diff,
+        touches_sourcing: touchesSourcing,
+      },
+      warning: touchesSourcing
+        ? "Ce changement affecte le sourcing. Pense à régénérer les filtres LinkedIn après (outil regenerate_search_filters)."
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const jobId = String(params.job_id);
+    const updates = params.updates as Record<string, unknown>;
+
+    // Fetch current job_details, merge with updates (only whitelisted fields kept)
+    const { data: project, error: fetchError } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('job_details')
+      .eq('id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .single();
+
+    if (fetchError) return { success: false, error: fetchError.message };
+
+    const currentDetails = (project.job_details as Record<string, unknown> | null) ?? {};
+    const filteredUpdates: Record<string, unknown> = {};
+    for (const [field, value] of Object.entries(updates)) {
+      if ((BRIEF_UPDATABLE_FIELDS as readonly string[]).includes(field)) {
+        filteredUpdates[field] = value;
+      }
+    }
+    const merged = { ...currentDetails, ...filteredUpdates };
+
+    const { data, error } = await ctx.adminClient
+      .from('sourcing_projects')
+      .update({ job_details: merged })
+      .eq('id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .select('id, job_details, updated_at')
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return {
+      success: true,
+      data: {
+        mission_id: data.id,
+        updated_fields: Object.keys(filteredUpdates),
+        updated_at: data.updated_at,
+      },
+    };
+  },
+};
+
+// ─── Tool 12 — regenerate_search_filters ────────────────────────────────────
+// Régénère les filtres LinkedIn (filters_snapshot) en appelant
+// generate-search-filters en interne. Écrase la version actuelle —
+// requiresApproval=true pour éviter de perdre une tweak custom de l'user.
+
+const regenerateSearchFilters: AgentTool = {
+  name: 'regenerate_search_filters',
+  description:
+    "Regenerate the LinkedIn search filters for a mission by re-running the AI based on the latest brief. " +
+    "Use this when the user says 'régénère les filtres', 'refait les filtres LinkedIn de cette mission', " +
+    "or right after `update_mission_brief` changed skills/location/seniority. " +
+    "OVERWRITES the existing filters_snapshot — if the user has manually tweaked filters, they will be lost. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: {
+        type: 'string',
+        description: 'The sourcing_projects (mission) UUID.',
+      },
+    },
+    required: ['job_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const jobId = String(params.job_id || '');
+    if (!jobId) return { allowed: false, reason: 'job_id is required' };
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id, job_details')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+
+    // Need at least minimal brief content for the AI to work with
+    const details = (project.job_details as Record<string, unknown> | null) ?? {};
+    const hasContent = Boolean(
+      details.title ||
+      details.mission_description ||
+      (Array.isArray(details.skills_must_have) && (details.skills_must_have as unknown[]).length > 0),
+    );
+    if (!hasContent) {
+      return {
+        allowed: false,
+        reason: 'Le brief de cette mission est trop vide pour régénérer des filtres. Ajoute au moins un titre ou une description.',
+      };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const jobId = String(params.job_id);
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, filters_snapshot')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    const jobLabel = project?.job_title || project?.name || jobId;
+    const hasExistingFilters = !!project?.filters_snapshot;
+
+    return {
+      summary: `Régénérer les filtres LinkedIn pour "${jobLabel}"`,
+      details: {
+        job_id: jobId,
+        job_label: jobLabel,
+        client_label: project?.client_name ?? null,
+        has_existing_filters: hasExistingFilters,
+      },
+      warning: hasExistingFilters
+        ? "Les filtres actuels seront écrasés. Tweaks manuels perdus."
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const jobId = String(params.job_id);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return { success: false, error: 'Supabase env not configured' };
+
+    // 1. Load the mission's job_details (used as `job` payload for generate-search-filters)
+    const { data: project, error: fetchError } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, name, job_title, job_details')
+      .eq('id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .single();
+    if (fetchError) return { success: false, error: fetchError.message };
+
+    const details = (project.job_details as Record<string, unknown> | null) ?? {};
+    const synthJob = {
+      id: `project:${jobId}`,
+      title: details.title || project.job_title || project.name,
+      description: details.mission_description || details.context || '',
+      mustHave: Array.isArray(details.skills_must_have) ? details.skills_must_have : [],
+      shouldHave: Array.isArray(details.skills_should_have) ? details.skills_should_have : [],
+      niceToHave: Array.isArray(details.skills_nice_to_have) ? details.skills_nice_to_have : [],
+      seniority: details.seniority || null,
+      location: details.location || null,
+      experience_min: details.experience_min ?? null,
+      experience_max: details.experience_max ?? null,
+    };
+
+    // 2. Invoke generate-search-filters in Mode B (service-role + user_id_override)
+    try {
+      const response = await fetch(`${supabaseUrl}/functions/v1/generate-search-filters`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          job: synthJob,
+          user_id_override: ctx.userId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) return { success: false, error: data.error || `generate-search-filters HTTP ${response.status}` };
+
+      // 3. Persist as filters_snapshot
+      const { error: updateError } = await ctx.adminClient
+        .from('sourcing_projects')
+        .update({ filters_snapshot: data })
+        .eq('id', jobId)
+        .eq('organization_id', ctx.organizationId);
+      if (updateError) return { success: false, error: updateError.message };
+
+      return {
+        success: true,
+        data: {
+          mission_id: jobId,
+          message: 'Filtres LinkedIn régénérés. Visibles dans la mission → sourcing.',
+        },
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -1206,6 +1643,10 @@ export function registerMutatingTools(): void {
   registerTool(addCandidateNote);
   registerTool(dismissCandidate);
   registerTool(assignCandidateToMember);
+  // Phase A.2 — Mission management
+  registerTool(updateMissionStatus);
+  registerTool(updateMissionBrief);
+  registerTool(regenerateSearchFilters);
   // schedule_interview reporté : pas de calendar branché, table events
   // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;
