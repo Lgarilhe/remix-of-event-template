@@ -17,7 +17,7 @@
  * pendant que l'user lit le chat, le bandeau apparaît automatiquement.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Check, X, AlertTriangle, Loader2, Pencil } from 'lucide-react';
+import { Check, X, AlertTriangle, Loader2, Pencil, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ToolExecutionRow {
   id: string;
@@ -42,6 +43,77 @@ interface ToolExecutionRow {
 
 interface AgentToolApprovalCardProps {
   conversationId: string | null;
+}
+
+// ─── Sensitive tools — require explicit "I confirmed the target" check ────
+// Clarif.3 : pre-flight visuel. Avant d'approuver une de ces actions, l'user
+// doit cocher une case "Je confirme la cible" qui rappelle le nom de
+// l'entité (extrait de dry_run_result.details). Le bouton Approuver reste
+// désactivé tant que la case n'est pas cochée. Skipped en mode Edit (l'user
+// a relu et patché les params → confirmation implicite).
+const SENSITIVE_TOOLS = new Set<string>([
+  'send_linkedin_message',
+  'dismiss_candidate',
+  'invite_team_member',
+  'update_member_quota',
+  // update_mission_status est sensible uniquement quand on archive/clôture
+  // — la sensibilité réelle est décidée par `isSensitiveAction()` qui regarde
+  // params.new_status (handled below).
+  'update_mission_status',
+]);
+
+/**
+ * Pour les tools où la sensibilité dépend des params (genre update_mission_status
+ * → seul archived/completed est sensible). Renvoie le tool comme "non sensible"
+ * dans les cas légers.
+ */
+function isSensitiveAction(toolName: string, params: Record<string, unknown>): boolean {
+  if (!SENSITIVE_TOOLS.has(toolName)) return false;
+  if (toolName === 'update_mission_status') {
+    const ns = String(params.new_status || '');
+    return ns === 'archived' || ns === 'completed';
+  }
+  return true;
+}
+
+/**
+ * Extrait le libellé de la cible pour la checkbox de confirmation, à partir
+ * de dry_run_result.details. Best-effort — fallback sur "l'entité ciblée".
+ */
+function targetLabelForTool(toolName: string, details: Record<string, unknown> | undefined): string {
+  if (!details) return "l'entité ciblée";
+  switch (toolName) {
+    case 'send_linkedin_message': {
+      const name = details.recipient_label || details.recipient_provider_id || details.chat_id;
+      return name ? `le destinataire « ${name} »` : "le destinataire";
+    }
+    case 'dismiss_candidate': {
+      const cand = details.candidate_name || details.candidate_id;
+      const job = details.job_label;
+      if (cand && job) return `« ${cand} » sur la mission « ${job} »`;
+      if (cand) return `« ${cand} »`;
+      return "le candidat ciblé";
+    }
+    case 'invite_team_member': {
+      const email = details.email;
+      const role = details.role;
+      const org = details.organization_name;
+      if (email && org) return `${email} (rôle ${role || 'collaborateur'}) dans « ${org} »`;
+      if (email) return email as string;
+      return "l'invité";
+    }
+    case 'update_member_quota': {
+      const name = details.target_name || details.target_email || details.target_user_id;
+      return name ? `les quotas de « ${name} »` : "les quotas du membre ciblé";
+    }
+    case 'update_mission_status': {
+      const job = details.job_label;
+      const to = details.to_status;
+      return job && to ? `« ${job} » vers le statut « ${to} »` : "la mission ciblée";
+    }
+    default:
+      return "l'entité ciblée";
+  }
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -234,6 +306,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
   const [actionLoading, setActionLoading] = useState<Record<string, 'approve' | 'reject' | 'save' | null>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedParams, setEditedParams] = useState<Record<string, unknown>>({});
+  /** Per-row confirmation state for sensitive actions (Clarif.3) */
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
 
   // Initial fetch + realtime subscription
   useEffect(() => {
@@ -362,6 +436,12 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
         const label = TOOL_LABEL[row.tool_name] || row.tool_name;
         const loading = actionLoading[row.id];
         const isEditing = editingId === row.id;
+        const isSensitive = isSensitiveAction(row.tool_name, row.params);
+        const targetLabel = targetLabelForTool(row.tool_name, row.dry_run_result?.details);
+        const isConfirmed = confirmed[row.id] === true;
+        // Approve button gated by confirmation only when sensitive + not editing
+        // (Edit mode = the user has already re-read & patched the params)
+        const approveBlockedBySensitive = isSensitive && !isEditing && !isConfirmed;
 
         return (
           <div
@@ -405,6 +485,28 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
               </div>
             )}
 
+            {isSensitive && !isEditing && (
+              <div className="mt-1 flex items-start gap-2 rounded border border-warning/40 bg-warning/5 p-2">
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-warning" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide font-bold text-warning/90 mb-1">
+                    Action sensible — confirmation requise
+                  </div>
+                  <label htmlFor={`confirm-${row.id}`} className="flex items-start gap-2 cursor-pointer text-xs leading-snug">
+                    <Checkbox
+                      id={`confirm-${row.id}`}
+                      checked={isConfirmed}
+                      onCheckedChange={(c) => setConfirmed((prev) => ({ ...prev, [row.id]: c === true }))}
+                      className="mt-0.5"
+                    />
+                    <span className="text-foreground">
+                      Je confirme avoir vérifié la cible : <strong>{targetLabel}</strong>.
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 pt-1">
               {!isEditing ? (
                 <>
@@ -431,8 +533,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                   <Button
                     size="sm"
                     onClick={() => handleAction(row.id, 'approve')}
-                    disabled={loading !== null}
-                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
+                    disabled={loading !== null || approveBlockedBySensitive}
+                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
+                    title={approveBlockedBySensitive ? 'Coche la case de confirmation pour activer' : undefined}
                   >
                     {loading === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                     Approuver
