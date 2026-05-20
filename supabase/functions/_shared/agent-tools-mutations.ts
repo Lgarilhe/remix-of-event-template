@@ -723,6 +723,471 @@ const enrichCandidateContact: AgentTool = {
   },
 };
 
+// ─── Tool 7 — add_candidate_note ────────────────────────────────────────────
+// Ajoute une note libre attachée à un candidat (table candidate_notes, niveau
+// org, cross-mission). Le candidat doit avoir été "découvert" au moins une
+// fois (présent dans job_candidate_status pour l'org de l'user).
+
+const addCandidateNote: AgentTool = {
+  name: 'add_candidate_note',
+  description:
+    "Add a free-text note attached to a candidate (org-wide, cross-mission). " +
+    "Use this when the user says things like 'ajoute une note à X', 'note pour Marie : appelé ce matin, à recontacter mardi', " +
+    "'mémo : Théo est en vacances jusqu'au 15'. The note becomes visible on the candidate's pipeline card. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_id: {
+        type: 'string',
+        description:
+          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or notion_candidate_id, or whichever ID was stored when the candidate was first discovered). MUST already exist in job_candidate_status for the user's org.",
+      },
+      content: {
+        type: 'string',
+        description: "The note content in French (free text, plain or markdown). Max 4000 chars.",
+      },
+    },
+    required: ['candidate_id', 'content'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const candidateId = String(params.candidate_id || '');
+    const content = String(params.content || '').trim();
+    if (!candidateId) return { allowed: false, reason: 'candidate_id is required' };
+    if (!content) return { allowed: false, reason: 'content is required and cannot be empty' };
+    if (content.length > 4000) return { allowed: false, reason: 'content too long (max 4000 chars)' };
+
+    // Candidate must exist at least once in this org's pipeline
+    const { data: row } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('id')
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', ctx.organizationId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!row) {
+      return {
+        allowed: false,
+        reason: `Le candidat ${candidateId} n'est encore associé à aucune mission de votre organisation. Découvrez-le d'abord via une recherche LinkedIn.`,
+      };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const content = String(params.content);
+
+    const { data: candidate } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_name, candidate_headline')
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', ctx.organizationId)
+      .limit(1)
+      .maybeSingle();
+
+    const candidateLabel = candidate?.candidate_name || candidateId;
+    const preview = content.length > 80 ? content.slice(0, 77) + '…' : content;
+
+    return {
+      summary: `Ajouter une note sur ${candidateLabel} : « ${preview} »`,
+      details: {
+        candidate_id: candidateId,
+        candidate_name: candidate?.candidate_name ?? null,
+        candidate_headline: candidate?.candidate_headline ?? null,
+        content_preview: preview,
+        content_full: content,
+        content_length: content.length,
+      },
+    };
+  },
+
+  async execute(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const content = String(params.content);
+
+    const { data, error } = await ctx.adminClient
+      .from('candidate_notes')
+      .insert({
+        candidate_id: candidateId,
+        content,
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+      })
+      .select('id, created_at')
+      .single();
+
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        note_id: data.id,
+        created_at: data.created_at,
+        message: 'Note ajoutée. Visible sur la card pipeline du candidat.',
+      },
+    };
+  },
+};
+
+// ─── Tool 8 — dismiss_candidate ─────────────────────────────────────────────
+// Marque un candidat comme "écarté" pour une mission spécifique (status=
+// 'dismissed' dans job_candidate_status). N'utilise PAS pipeline_stage='Perdu'
+// car ce stade signifie "process abouti puis perdu en fin de tunnel", alors
+// que dismissed = "pas pertinent dès le départ pour cette mission".
+
+const dismissCandidate: AgentTool = {
+  name: 'dismiss_candidate',
+  description:
+    "Mark a candidate as dismissed (not relevant) for a specific mission. " +
+    "Use this when the user says 'écarte X de cette mission', 'pas intéressant pour cette mission', 'retire Y du sourcing'. " +
+    "Different from 'Perdu' (which means the candidate went through the funnel and was lost at the end) — dismissed means filtered out upfront. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_id: {
+        type: 'string',
+        description: "The candidate's stable identifier. MUST already exist in job_candidate_status for the given mission.",
+      },
+      job_id: {
+        type: 'string',
+        description: 'The sourcing_projects (mission) UUID this dismissal applies to.',
+      },
+      reason: {
+        type: 'string',
+        description: "Optional short note explaining why (stored in skip_reason).",
+      },
+    },
+    required: ['candidate_id', 'job_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const jobId = String(params.job_id || '');
+    const candidateId = String(params.candidate_id || '');
+    if (!jobId || !candidateId) return { allowed: false, reason: 'job_id and candidate_id are required' };
+
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+
+    const { data: row } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('id, status')
+      .eq('job_id', jobId)
+      .eq('candidate_id', candidateId)
+      .maybeSingle();
+
+    if (!row) {
+      return {
+        allowed: false,
+        reason: `Le candidat ${candidateId} n'est pas associé à cette mission.`,
+      };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const jobId = String(params.job_id);
+    const reason = params.reason ? String(params.reason) : null;
+
+    const [{ data: current }, { data: project }] = await Promise.all([
+      ctx.adminClient
+        .from('job_candidate_status')
+        .select('status, candidate_name, candidate_headline')
+        .eq('candidate_id', candidateId)
+        .eq('job_id', jobId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sourcing_projects')
+        .select('name, job_title, client_name')
+        .eq('id', jobId)
+        .maybeSingle(),
+    ]);
+
+    const jobLabel = project?.job_title || project?.name || jobId;
+    const candidateLabel = current?.candidate_name || candidateId;
+    const isNoOp = current?.status === 'dismissed';
+
+    return {
+      summary: isNoOp
+        ? `${candidateLabel} est déjà écarté de "${jobLabel}"`
+        : `Écarter ${candidateLabel} de la mission "${jobLabel}"`,
+      details: {
+        candidate_id: candidateId,
+        candidate_name: current?.candidate_name ?? null,
+        candidate_headline: current?.candidate_headline ?? null,
+        job_id: jobId,
+        job_label: jobLabel,
+        client_label: project?.client_name ?? null,
+        from_status: current?.status ?? null,
+        to_status: 'dismissed',
+        reason,
+        is_no_op: isNoOp,
+      },
+      warning: isNoOp ? 'Aucun changement — déjà écarté.' : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const jobId = String(params.job_id);
+    const reason = params.reason ? String(params.reason) : null;
+
+    const updatePayload: Record<string, unknown> = { status: 'dismissed' };
+    if (reason) updatePayload.skip_reason = reason;
+
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .update(updatePayload)
+      .eq('job_id', jobId)
+      .eq('candidate_id', candidateId)
+      .select('id, status, skip_reason, updated_at')
+      .single();
+
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        row_id: data.id,
+        new_status: data.status,
+        skip_reason: data.skip_reason,
+        updated_at: data.updated_at,
+      },
+    };
+  },
+};
+
+// ─── Tool 9 — assign_candidate_to_member ────────────────────────────────────
+// Assigne un candidat à un membre de l'équipe pour une mission donnée.
+// Idempotent : UPSERT sur (candidate_id, job_id, organization_id) → si déjà
+// assigné, update l'assigned_to. Le membre cible doit appartenir à l'org.
+
+const assignCandidateToMember: AgentTool = {
+  name: 'assign_candidate_to_member',
+  description:
+    "Assign a candidate to a specific team member for a given mission. " +
+    "Use this when the user says 'assigne X à Marie', 'donne ce candidat à Théo', 'mets Sophie sur Y'. " +
+    "The target member must be in the user's organization. " +
+    "If the candidate is already assigned to someone else, this reassigns. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_id: {
+        type: 'string',
+        description: "The candidate's stable identifier. MUST already exist in job_candidate_status for the given mission.",
+      },
+      job_id: {
+        type: 'string',
+        description: 'The sourcing_projects (mission) UUID this assignment applies to.',
+      },
+      assigned_to_user_id: {
+        type: 'string',
+        description:
+          "UUID of the team member who will own this candidate. Use `get_team_overview` first to fetch valid member IDs. MUST be a member of the user's organization.",
+      },
+    },
+    required: ['candidate_id', 'job_id', 'assigned_to_user_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    const jobId = String(params.job_id || '');
+    const candidateId = String(params.candidate_id || '');
+    const assigneeId = String(params.assigned_to_user_id || '');
+    if (!jobId || !candidateId || !assigneeId) {
+      return { allowed: false, reason: 'job_id, candidate_id and assigned_to_user_id are required' };
+    }
+
+    // 1. Mission in user's org
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+
+    // 2. Candidate exists in this mission
+    const { data: row } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('id')
+      .eq('job_id', jobId)
+      .eq('candidate_id', candidateId)
+      .maybeSingle();
+    if (!row) {
+      return {
+        allowed: false,
+        reason: `Le candidat ${candidateId} n'est pas associé à cette mission.`,
+      };
+    }
+
+    // 3. Assignee is a member of the org
+    const { data: member } = await ctx.adminClient
+      .from('organization_members')
+      .select('user_id, role')
+      .eq('organization_id', ctx.organizationId)
+      .eq('user_id', assigneeId)
+      .maybeSingle();
+    if (!member) {
+      return {
+        allowed: false,
+        reason: `L'utilisateur ${assigneeId} n'est pas membre de votre organisation.`,
+      };
+    }
+
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const jobId = String(params.job_id);
+    const assigneeId = String(params.assigned_to_user_id);
+
+    const [{ data: current }, { data: project }, { data: assignee }, { data: existing }] = await Promise.all([
+      ctx.adminClient
+        .from('job_candidate_status')
+        .select('candidate_name, candidate_headline')
+        .eq('candidate_id', candidateId)
+        .eq('job_id', jobId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('sourcing_projects')
+        .select('name, job_title, client_name')
+        .eq('id', jobId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', assigneeId)
+        .maybeSingle(),
+      ctx.adminClient
+        .from('candidate_assignments')
+        .select('assigned_to, status')
+        .eq('candidate_id', candidateId)
+        .eq('job_id', jobId)
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle(),
+    ]);
+
+    const jobLabel = project?.job_title || project?.name || jobId;
+    const candidateLabel = current?.candidate_name || candidateId;
+    const assigneeLabel = assignee?.full_name || assignee?.email || assigneeId;
+    const isReassignment = existing && existing.assigned_to !== assigneeId;
+    const isNoOp = existing?.assigned_to === assigneeId && existing?.status === 'active';
+
+    let summary: string;
+    if (isNoOp) {
+      summary = `${candidateLabel} est déjà assigné à ${assigneeLabel} sur "${jobLabel}"`;
+    } else if (isReassignment) {
+      summary = `Réassigner ${candidateLabel} à ${assigneeLabel} sur "${jobLabel}" (était assigné à quelqu'un d'autre)`;
+    } else {
+      summary = `Assigner ${candidateLabel} à ${assigneeLabel} sur "${jobLabel}"`;
+    }
+
+    return {
+      summary,
+      details: {
+        candidate_id: candidateId,
+        candidate_name: current?.candidate_name ?? null,
+        candidate_headline: current?.candidate_headline ?? null,
+        job_id: jobId,
+        job_label: jobLabel,
+        client_label: project?.client_name ?? null,
+        assigned_to_user_id: assigneeId,
+        assigned_to_name: assignee?.full_name ?? null,
+        assigned_to_email: assignee?.email ?? null,
+        previously_assigned_to: existing?.assigned_to ?? null,
+        is_reassignment: !!isReassignment,
+        is_no_op: !!isNoOp,
+      },
+      warning: isNoOp ? 'Aucun changement — déjà assigné à cette personne.' : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const candidateId = String(params.candidate_id);
+    const jobId = String(params.job_id);
+    const assigneeId = String(params.assigned_to_user_id);
+
+    // Fetch candidate_name for the assignment row (denormalized for UI lookups)
+    const { data: current } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_name')
+      .eq('candidate_id', candidateId)
+      .eq('job_id', jobId)
+      .maybeSingle();
+
+    // Check if assignment already exists
+    const { data: existing } = await ctx.adminClient
+      .from('candidate_assignments')
+      .select('id')
+      .eq('candidate_id', candidateId)
+      .eq('job_id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+
+    const payload = {
+      candidate_id: candidateId,
+      candidate_name: current?.candidate_name ?? null,
+      job_id: jobId,
+      organization_id: ctx.organizationId,
+      assigned_to: assigneeId,
+      assigned_by: ctx.userId,
+      assignment_method: 'ai_copilot',
+      status: 'active',
+    };
+
+    if (existing) {
+      const { data, error } = await ctx.adminClient
+        .from('candidate_assignments')
+        .update(payload)
+        .eq('id', existing.id)
+        .select('id, assigned_to, status, updated_at')
+        .single();
+      if (error) return { success: false, error: error.message };
+      return { success: true, data: { assignment_id: data.id, action: 'reassigned', assigned_to: data.assigned_to, status: data.status, updated_at: data.updated_at } };
+    }
+
+    const { data, error } = await ctx.adminClient
+      .from('candidate_assignments')
+      .insert(payload)
+      .select('id, assigned_to, status, created_at')
+      .single();
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        assignment_id: data.id,
+        action: 'assigned',
+        assigned_to: data.assigned_to,
+        status: data.status,
+        created_at: data.created_at,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -737,6 +1202,10 @@ export function registerMutatingTools(): void {
   registerTool(enrollInSequence);
   registerTool(draftOutreachMessage);
   registerTool(enrichCandidateContact);
+  // Phase A.1 — Pipeline candidat
+  registerTool(addCandidateNote);
+  registerTool(dismissCandidate);
+  registerTool(assignCandidateToMember);
   // schedule_interview reporté : pas de calendar branché, table events
   // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
   registered = true;
