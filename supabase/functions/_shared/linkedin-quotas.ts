@@ -140,7 +140,12 @@ export function nextBusinessHoursStart(
     // The actual UTC instant for "startHour:00 in tz" = localTimestampMs - tzOffsetMs
     const targetUtcMs = localTimestampMs - tzOffsetMs;
     if (targetUtcMs > now.getTime()) {
-      return new Date(targetUtcMs).toISOString();
+      // Anti-burst LinkedIn (2026-05-20) : décale le scheduled_for de 0 à
+      // 45 min aléatoire pour qu'une vague d'actions approuvées hors plage
+      // ne parte pas toutes à 8h00 pile (pattern bot évident). Chaque action
+      // tirée indépendamment → spread naturel sur 45 min en début de plage.
+      const jitterMs = Math.floor(Math.random() * 45 * 60 * 1000);
+      return new Date(targetUtcMs + jitterMs).toISOString();
     }
   }
   // Fallback : 24h from now (better than throwing)

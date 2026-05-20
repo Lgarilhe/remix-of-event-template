@@ -33,7 +33,17 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const BATCH_LIMIT = 50; // garde-fou : on traite jusqu'à 50 actions par tick (toutes les 2 min → 1500/h plafond théorique)
+// Anti-burst LinkedIn (2026-05-20) : réduit de 50 → 10 actions par tick.
+// Cron toutes les 2 min → plafond théorique 300/h (vs 1500/h avant) ; en
+// pratique on est très en-dessous (cap user = 80/jour). Combiné au jitter
+// de nextBusinessHoursStart (0-45 min), les actions se spread naturellement.
+const BATCH_LIMIT = 10;
+// Sleep aléatoire 5-15s entre deux actions pour humaniser le pacing au
+// niveau du cron (en plus du jitter sur scheduled_for à la queue).
+function humanDelayMs(): number {
+  return Math.floor(Math.random() * 10_000) + 5_000;
+}
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Register tools once at module load — `register*` are idempotent (no-op
 // after first call) so multiple invocations of the cron stay cheap.
@@ -104,14 +114,23 @@ Deno.serve(async (req) => {
     error?: string;
   }> = [];
 
-  for (const row of rows as Array<{
-    id: string;
-    tool_name: string;
-    user_id: string;
-    organization_id: string;
-    conversation_id: string | null;
-    scheduled_for: string;
-  }>) {
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] as {
+      id: string;
+      tool_name: string;
+      user_id: string;
+      organization_id: string;
+      conversation_id: string | null;
+      scheduled_for: string;
+    };
+    // Délai humanisant entre 2 actions (sauf la 1ère). Limite : le timeout
+    // edge function Supabase est 60s, donc 10 actions × ~10s max sleep
+    // ≈ 90s. On reste large : sleep max 15s × 10 = 150s WC, mais executeAction
+    // prend <2s donc on est ok dans 60s tant que pas toutes au max.
+    if (i > 0) {
+      await sleep(humanDelayMs());
+    }
+
     const ctx: ToolContext = {
       userId: row.user_id,
       organizationId: row.organization_id,
