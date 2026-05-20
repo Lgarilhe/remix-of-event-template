@@ -1527,6 +1527,46 @@ const searchKnowledge: AgentTool = {
   },
 };
 
+// Anti-hallucination : les comptes Konekt internes / sandbox utilisent des
+// sentinelles (credits_remaining = 999 999 999, period_end ~ 2126) que le LLM
+// avait tendance à "corriger" en chiffres plausibles inventés (validé en prod
+// 2026-05-19 : 999 999 999 → 97 274 ; 2126-04-28 → 30 juin 2025). On les
+// remplace par des libellés explicites côté outil, le LLM n'a plus à deviner.
+function formatPeriodEnd(pe: unknown): string | null {
+  if (!pe) return null;
+  const d = new Date(String(pe));
+  const ms = d.getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms / (365 * 86400000) > 10) {
+    return 'sans expiration (compte interne)';
+  }
+  return String(pe);
+}
+function formatCredits(b: Record<string, any> | null, role: OrgRole): Record<string, unknown> | null {
+  if (!b) return null;
+  const remaining = Number(b.credits_remaining);
+  const total = Number(b.credits_total);
+  const isUnlimited = remaining >= 999_000_000 || total >= 999_000_000;
+  const periodEnd = formatPeriodEnd(b.period_end);
+  if (!isPrivileged(role)) {
+    return { period_end: periodEnd, note: 'Solde détaillé visible uniquement par owner/admin.' };
+  }
+  if (isUnlimited) {
+    return {
+      balance: 'illimité',
+      period_end: periodEnd,
+      note: "Compte Konekt interne / sandbox — pas de plafond réel. Si tu vois 999 999 999 ou une date en 2126, ce sont des sentinelles techniques : reformule simplement « solde illimité » / « sans expiration », n'invente PAS un chiffre.",
+    };
+  }
+  return {
+    balance: remaining,
+    total,
+    plan_credits: b.plan_credits,
+    topup_credits: b.topup_credits,
+    period_start: b.period_start,
+    period_end: periodEnd,
+  };
+}
+
 // ─── Tool — get_vivier_overview (CRM / vivier de contacts de l'org) ────────
 const getVivierOverview: AgentTool = {
   name: 'get_vivier_overview',
@@ -1738,18 +1778,10 @@ const getOrgAnalytics: AgentTool = {
     const useRows = ((use.data as Array<{ credits_used: number | null }> | null) ?? []);
     const creditsUsedPeriod = useRows.reduce((s, r) => s + Number(r.credits_used || 0), 0);
 
-    const b = (bal.data as Record<string, any> | null) ?? null;
-    const creditsBlock: Record<string, unknown> = { used_period: creditsUsedPeriod };
-    if (b && isPrivileged(role)) {
-      creditsBlock.balance = b.credits_remaining;
-      creditsBlock.total = b.credits_total;
-      creditsBlock.plan_credits = b.plan_credits;
-      creditsBlock.topup_credits = b.topup_credits;
-      creditsBlock.period_end = b.period_end;
-    } else if (b) {
-      creditsBlock.period_end = b.period_end;
-      creditsBlock.note = 'Solde détaillé visible uniquement par owner/admin.';
-    }
+    const creditsBlock: Record<string, unknown> = {
+      used_period: creditsUsedPeriod,
+      ...(formatCredits((bal.data as Record<string, any> | null) ?? null, role) ?? {}),
+    };
 
     return {
       success: true,
@@ -1855,19 +1887,7 @@ const getTeamOverview: AgentTool = {
 
     const invRows = ((inv.data as Array<{ email: string; role: string; expires_at: string }> | null) ?? []);
 
-    const b = (bal.data as Record<string, any> | null) ?? null;
-    const aiCredits: Record<string, unknown> | null = b
-      ? (isPrivileged(role)
-          ? {
-              balance: b.credits_remaining,
-              total: b.credits_total,
-              plan_credits: b.plan_credits,
-              topup_credits: b.topup_credits,
-              period_start: b.period_start,
-              period_end: b.period_end,
-            }
-          : { period_end: b.period_end, note: 'Solde détaillé visible uniquement par owner/admin.' })
-      : null;
+    const aiCredits = formatCredits((bal.data as Record<string, any> | null) ?? null, role);
 
     return {
       success: true,
