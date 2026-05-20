@@ -18,7 +18,16 @@ export function computeReadiness(project: SourcingProject): StepReadiness[] {
   const { filled, total } = countBriefFields(jd);
   const briefPct = total === 0 ? 0 : Math.round((filled / total) * 100);
 
-  const hasBrief = !!(jd.title && (jd.mission_description || jd.raw_brief));
+  // hasBrief = on a au minimum un intitulé de poste pour sourcer.
+  // Fallback sur les colonnes top-level project.job_title / project.name —
+  // les missions créées via create_mission (agent IA) avant la migration
+  // job_details expansion (commit 11704529) avaient le titre dans la colonne
+  // SQL mais pas dans le JSONB. Sans ce fallback le sourcing reste verrouillé
+  // alors qu'on a tout ce qu'il faut. La description reste un nice-to-have
+  // pour le scoring mais pas un bloquant pour démarrer la recherche.
+  const hasBrief = !!(
+    jd.title || project.job_title || project.name
+  );
   const hasFilters = !!(project.filters_snapshot && Object.keys(project.filters_snapshot).length > 0);
   const hasProcessSteps = Array.isArray((jd as any).process_steps) && (jd as any).process_steps.length > 0;
   const hasCandidates = (project.stats_total_found || 0) > 0;
