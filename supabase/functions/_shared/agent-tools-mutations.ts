@@ -1633,6 +1633,12 @@ const regenerateSearchFilters: AgentTool = {
  * Résout l'account_id LinkedIn à utiliser :
  * - Si fourni en param, vérifie qu'il appartient à l'user dans l'org courante.
  * - Sinon, prend le 1er compte LinkedIn de l'user (account_status='OK' prioritaire).
+ *
+ * ⚠️ Le schéma `member_linkedin_accounts` utilise `linkedin_account_id` (pas
+ * `account_id`) et `linked_at` (pas `created_at`) — c'est la convention héritée
+ * de unipile-webhook. La signature externe garde `account_id` parce que c'est
+ * l'identifiant Unipile partagé partout ailleurs (params, edge function bodies).
+ *
  * Retourne { account_id, account_status } | { error }.
  */
 async function resolveSendingAccount(
@@ -1644,26 +1650,29 @@ async function resolveSendingAccount(
   if (requested) {
     const { data } = await ctx.adminClient
       .from('member_linkedin_accounts')
-      .select('account_id, account_status')
-      .eq('account_id', requested)
+      .select('linkedin_account_id, account_status')
+      .eq('linkedin_account_id', requested)
       .eq('user_id', ctx.userId)
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
     if (!data) {
       return { error: `Le compte LinkedIn ${requested} n'est pas rattaché à votre profil dans cette organisation.` };
     }
-    return { account_id: data.account_id as string, account_status: (data.account_status as string | null) ?? null };
+    return {
+      account_id: (data as Record<string, unknown>).linkedin_account_id as string,
+      account_status: ((data as Record<string, unknown>).account_status as string | null) ?? null,
+    };
   }
 
   // Fallback : take the user's first LinkedIn account (status=OK first)
   const { data: accounts } = await ctx.adminClient
     .from('member_linkedin_accounts')
-    .select('account_id, account_status, created_at')
+    .select('linkedin_account_id, account_status, linked_at')
     .eq('user_id', ctx.userId)
     .eq('organization_id', ctx.organizationId)
-    .order('created_at', { ascending: true });
+    .order('linked_at', { ascending: true });
 
-  const list = (accounts ?? []) as Array<{ account_id: string; account_status: string | null; created_at: string }>;
+  const list = (accounts ?? []) as Array<{ linkedin_account_id: string; account_status: string | null; linked_at: string }>;
   if (list.length === 0) {
     return { error: "Aucun compte LinkedIn n'est connecté à votre profil. Connecte-en un via Paramètres → Comptes connectés." };
   }
@@ -1672,7 +1681,7 @@ async function resolveSendingAccount(
   // error than "no account").
   const okOne = list.find((a) => a.account_status === 'OK');
   const chosen = okOne ?? list[0];
-  return { account_id: chosen.account_id, account_status: chosen.account_status };
+  return { account_id: chosen.linkedin_account_id, account_status: chosen.account_status };
 }
 
 const sendLinkedInMessage: AgentTool = {
