@@ -726,15 +726,21 @@ const enrichCandidateContact: AgentTool = {
 
 // ─── Tool 7 — add_candidate_note ────────────────────────────────────────────
 // Ajoute une note libre attachée à un candidat (table candidate_notes, niveau
-// org, cross-mission). Le candidat doit avoir été "découvert" au moins une
-// fois (présent dans job_candidate_status pour l'org de l'user).
+// org, cross-mission). Le candidat n'a PAS besoin d'être déjà dans le pipeline
+// (job_candidate_status) — on accepte aussi les notes sur des prospects/
+// contacts LinkedIn hors pipeline (cas Gloria Fils, Adrien Le Marhadour, etc.).
+// Si le candidat est en pipeline, on enrichit le dryRun avec son nom/headline ;
+// sinon on prend le candidate_id passé tel quel comme label.
 
 const addCandidateNote: AgentTool = {
   name: 'add_candidate_note',
   description:
-    "Add a free-text note attached to a candidate (org-wide, cross-mission). " +
+    "Add a free-text note attached to a candidate or LinkedIn contact (org-wide, cross-mission). " +
     "Use this when the user says things like 'ajoute une note à X', 'note pour Marie : appelé ce matin, à recontacter mardi', " +
-    "'mémo : Théo est en vacances jusqu'au 15'. The note becomes visible on the candidate's pipeline card. " +
+    "'mémo : Théo est en vacances jusqu'au 15'. " +
+    "The candidate does NOT need to be in the pipeline — works for prospects, LinkedIn contacts, peers, anyone the user mentions by name. " +
+    "Pass `candidate_id` = (a) the LinkedIn provider_id if known, (b) the LinkedIn URL slug from a profile link, OR (c) the person's full name as a fallback. " +
+    "Pipeline candidates will show the note on their card ; orphan notes are searchable via the RAG / semantic search. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -744,7 +750,7 @@ const addCandidateNote: AgentTool = {
       candidate_id: {
         type: 'string',
         description:
-          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or notion_candidate_id, or whichever ID was stored when the candidate was first discovered). MUST already exist in job_candidate_status for the user's org.",
+          "Stable identifier for the candidate/contact. Preferred order: (1) LinkedIn provider_id ('ACoAA...') if known, (2) LinkedIn URL slug ('marie-dupont' from linkedin.com/in/marie-dupont), (3) the person's full name ('Gloria Fils'). The note attaches to a pipeline card only if this matches an existing job_candidate_status.candidate_id ; otherwise it's an org-wide orphan note (still useful, searchable).",
       },
       content: {
         type: 'string',
@@ -754,33 +760,19 @@ const addCandidateNote: AgentTool = {
     required: ['candidate_id', 'content'],
   },
 
-  async verifyAccess(params, ctx) {
-    const candidateId = String(params.candidate_id || '');
+  async verifyAccess(params, _ctx) {
+    const candidateId = String(params.candidate_id || '').trim();
     const content = String(params.content || '').trim();
     if (!candidateId) return { allowed: false, reason: 'candidate_id is required' };
     if (!content) return { allowed: false, reason: 'content is required and cannot be empty' };
     if (content.length > 4000) return { allowed: false, reason: 'content too long (max 4000 chars)' };
-
-    // Candidate must exist at least once in this org's pipeline
-    const { data: row } = await ctx.adminClient
-      .from('job_candidate_status')
-      .select('id')
-      .eq('candidate_id', candidateId)
-      .eq('organization_id', ctx.organizationId)
-      .limit(1)
-      .maybeSingle();
-
-    if (!row) {
-      return {
-        allowed: false,
-        reason: `Le candidat ${candidateId} n'est encore associé à aucune mission de votre organisation. Découvrez-le d'abord via une recherche LinkedIn.`,
-      };
-    }
+    // No pipeline-existence check : orphan notes are allowed by design.
+    // organization_id scoping is enforced at execute-time via ctx.organizationId.
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
-    const candidateId = String(params.candidate_id);
+    const candidateId = String(params.candidate_id).trim();
     const content = String(params.content);
 
     const { data: candidate } = await ctx.adminClient
@@ -791,6 +783,7 @@ const addCandidateNote: AgentTool = {
       .limit(1)
       .maybeSingle();
 
+    const isInPipeline = !!candidate;
     const candidateLabel = candidate?.candidate_name || candidateId;
     const preview = content.length > 80 ? content.slice(0, 77) + '…' : content;
 
@@ -800,10 +793,14 @@ const addCandidateNote: AgentTool = {
         candidate_id: candidateId,
         candidate_name: candidate?.candidate_name ?? null,
         candidate_headline: candidate?.candidate_headline ?? null,
+        is_in_pipeline: isInPipeline,
         content_preview: preview,
         content_full: content,
         content_length: content.length,
       },
+      warning: isInPipeline
+        ? undefined
+        : "Note hors pipeline : ce candidat/contact n'est pas (encore) associé à une de tes missions. La note sera créée et retrouvable via la recherche, mais n'apparaîtra sur aucune card pipeline tant que la personne n'est pas sourcée.",
     };
   },
 
