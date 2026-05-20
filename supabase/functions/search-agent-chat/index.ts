@@ -738,6 +738,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `« to_follow_up » (= en séquence, sans réponse encore). Distingue bien les ` +
         `candidats jamais contactés (« Nouveau », pas encore en séquence) des ` +
         `candidats contactés sans réponse (= à relancer). ` +
+        `Pour les questions plus LARGES sur l'organisation, tu as : ` +
+        `get_org_analytics (stats cross-mission sur une période — missions par statut, ` +
+        `pipeline agrégé, séquences/InMails/entretiens, crédits IA), get_team_overview ` +
+        `(membres, rôles, qui a connecté LinkedIn/email, invitations en attente, crédits), ` +
+        `et get_vivier_overview (CRM/vivier — contacts et entreprises connus, top engagés). ` +
+        `Pour lire le fil de discussion LINKEDIN verbatim avec quelqu'un (candidat OU contact) : ` +
+        `get_linkedin_thread(person_name). ` +
         `Quand tu cites un candidat, rends son nom CLIQUABLE : lien markdown ` +
         `[Nom](profile_path) en réutilisant EXACTEMENT et TEL QUEL le champ ` +
         `« profile_path » renvoyé par l'outil (il commence déjà par « / », ex. ` +

@@ -1527,6 +1527,360 @@ const searchKnowledge: AgentTool = {
   },
 };
 
+// ─── Tool — get_vivier_overview (CRM / vivier de contacts de l'org) ────────
+const getVivierOverview: AgentTool = {
+  name: 'get_vivier_overview',
+  description:
+    "Vue synthétique du VIVIER de contacts de l'organisation (CRM Konekt) : nombre total de " +
+    "contacts et d'entreprises, top contacts les plus actifs (shortlists/notes/rdv) et top " +
+    "entreprises engagées. À utiliser pour « combien de contacts j'ai dans mon vivier », " +
+    "« qui sont nos contacts les plus actifs », « quelles entreprises on connaît », « mon " +
+    "vivier de prospection ». Filtre optionnel par nom (search).",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      search: { type: 'string', description: 'Optionnel : filtre par nom de contact ou société (substring).' },
+      limit: { type: 'number', description: 'Nb max de contacts/entreprises à lister (défaut 10, max 25).' },
+    },
+    required: [],
+  },
+  verifyAccess(_p, ctx) {
+    if (!ctx.organizationId) return Promise.resolve({ allowed: false, reason: 'No active organization' });
+    return Promise.resolve({ allowed: true });
+  },
+  dryRun: trivialDryRun('Lecture : vivier de contacts / entreprises'),
+  async execute(params, ctx) {
+    const search = String(params.search ?? '').trim().slice(0, 80) || null;
+    const limit = Math.min(Math.max(Number(params.limit) || 10, 1), 25);
+    const [cR, oR] = await Promise.all([
+      ctx.adminClient.rpc('get_vivier_contacts', {
+        p_limit: limit, p_offset: 0,
+        p_source_base: null, p_contact_type: null,
+        p_min_shortlists: null, p_search: search,
+      }),
+      ctx.adminClient.rpc('get_vivier_companies', {
+        p_limit: Math.min(limit, 10), p_offset: 0,
+        p_source_base: null, p_city: null, p_headcount: null,
+        p_sort_by: null, p_last_interaction_days: null,
+        p_min_shortlists: null, p_min_notes: null,
+        p_min_appointments: null, p_min_placements: null,
+        p_min_contacts: null,
+        p_has_appointments: null, p_has_notes: null, p_has_placements: null,
+        p_search: search,
+      }),
+    ]);
+    const cRows = ((cR.data as any[]) ?? []);
+    const oRows = ((oR.data as any[]) ?? []);
+    const contactsTotal = Number(cRows[0]?.total_count ?? 0);
+    const companiesTotal = Number(oRows[0]?.total_count ?? 0);
+    const top_contacts = cRows.slice(0, limit).map((c) => ({
+      name: c.full_name, email: c.email, title: c.title,
+      company: c.company_name,
+      shortlists: Number(c.shortlist_count ?? 0),
+      notes: Number(c.note_count ?? 0),
+      appointments: Number(c.appointment_count ?? 0),
+      placements: Number(c.placement_count ?? 0),
+      last_interaction: c.last_interaction_date ?? null,
+    }));
+    const top_companies = oRows.slice(0, Math.min(limit, 10)).map((c) => ({
+      name: c.company_name, city: c.city, headcount: c.headcount,
+      contacts: Number(c.contact_count ?? 0),
+      shortlists: Number(c.shortlist_count ?? 0),
+      notes: Number(c.note_count ?? 0),
+      appointments: Number(c.appointment_count ?? 0),
+      placements: Number(c.placement_count ?? 0),
+      last_interaction: c.last_interaction_date ?? null,
+    }));
+    return {
+      success: true,
+      data: {
+        totals: { contacts: contactsTotal, companies: companiesTotal },
+        top_contacts, top_companies,
+        ...(search ? { search } : {}),
+        ...(contactsTotal === 0 && companiesTotal === 0
+          ? { note: 'Vivier vide pour cette organisation (aucun contact / entreprise synchronisé).' }
+          : {}),
+      },
+    };
+  },
+};
+
+// ─── Tool — get_org_analytics (agrégats cross-mission / org-wide) ──────────
+const getOrgAnalytics: AgentTool = {
+  name: 'get_org_analytics',
+  description:
+    "Tableau de bord cross-mission de l'organisation : nb total de missions par statut, " +
+    "pipeline agrégé par étape (tous candidats accessibles confondus), activité d'outreach " +
+    "sur la période (séquences créées/actives, réponses, InMails envoyés/en attente), " +
+    "entretiens (qualifications) et leurs verdicts, consommation de crédits IA. owner/admin = " +
+    "toute l'organisation ; collaborateur = ses missions (own + team). À utiliser pour « mes " +
+    "stats du mois », « combien de candidats au total », « activité de prospection », " +
+    "« combien d'entretiens cette semaine », « où en sont mes missions ».",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      period_days: { type: 'number', description: 'Fenêtre temporelle en jours (défaut 30, max 90).' },
+    },
+    required: [],
+  },
+  verifyAccess(_p, ctx) {
+    if (!ctx.organizationId) return Promise.resolve({ allowed: false, reason: 'No active organization' });
+    return Promise.resolve({ allowed: true });
+  },
+  dryRun: trivialDryRun('Lecture : analytics cross-mission'),
+  async execute(params, ctx) {
+    const role = await resolveRole(ctx);
+    const periodDays = Math.min(Math.max(Number(params.period_days) || 30, 1), 90);
+    const now = new Date();
+    const fromIso = new Date(now.getTime() - periodDays * 86400000).toISOString();
+
+    let missionIds: string[] | null = null;
+    if (!isPrivileged(role)) {
+      missionIds = await collaboratorMissionIds(ctx);
+      if (missionIds.length === 0) {
+        return {
+          success: true,
+          data: {
+            role,
+            period: { days: periodDays, from: fromIso, to: now.toISOString() },
+            missions: { total: 0, by_status: {} },
+            pipeline: { total_candidates: 0, by_stage: {} },
+            outreach_period: { sequences_created: 0, sequences_active: 0, replies: 0, inmails_sent: 0, inmails_pending: 0 },
+            interviews_period: { total: 0, by_verdict: {} },
+            ai_credits: { used_period: 0 },
+            note: 'Aucune mission accessible pour ce collaborateur.',
+          },
+        };
+      }
+    }
+
+    let mq = ctx.adminClient.from('sourcing_projects')
+      .select('id, status').eq('organization_id', ctx.organizationId);
+    if (missionIds) mq = mq.in('id', missionIds);
+    const missionsP = mq.limit(500);
+
+    let pq = ctx.adminClient.from('job_candidate_status')
+      .select('pipeline_stage, project_id, created_by')
+      .eq('organization_id', ctx.organizationId);
+    if (missionIds) {
+      pq = pq.or(`created_by.eq.${ctx.userId},project_id.in.(${missionIds.join(',')})`);
+    }
+    const pipelineP = pq.limit(5000);
+
+    let sq = ctx.adminClient.from('sequence_enrollments')
+      .select('status, replied_at, job_id, created_at')
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', fromIso);
+    if (missionIds) sq = sq.in('job_id', missionIds);
+    const seqP = sq.limit(2000);
+
+    let iq = ctx.adminClient.from('inmail_queue')
+      .select('status, sent_at, created_by, created_at')
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', fromIso);
+    if (!isPrivileged(role)) iq = iq.eq('created_by', ctx.userId);
+    const inmailP = iq.limit(2000);
+
+    let qq = ctx.adminClient.from('qualification_sessions')
+      .select('status, verdict, event_start_at, project_id, created_by')
+      .eq('organization_id', ctx.organizationId)
+      .gte('event_start_at', fromIso);
+    if (missionIds) {
+      qq = qq.or(`created_by.eq.${ctx.userId},project_id.in.(${missionIds.join(',')})`);
+    }
+    const interviewsP = qq.limit(500);
+
+    const balP = ctx.adminClient.from('ai_credit_balances')
+      .select('credits_remaining, credits_total, period_start, period_end, plan_credits, topup_credits')
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    const usageP = ctx.adminClient.from('ai_credit_transactions')
+      .select('credits_used')
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', fromIso)
+      .limit(10000);
+
+    const [m, p, se, im, qs, bal, use] = await Promise.all([missionsP, pipelineP, seqP, inmailP, interviewsP, balP, usageP]);
+
+    const mRows = ((m.data as Array<{ status: string | null }> | null) ?? []);
+    const missionsByStatus: Record<string, number> = {};
+    for (const r of mRows) {
+      const k = String(r.status || 'unknown');
+      missionsByStatus[k] = (missionsByStatus[k] || 0) + 1;
+    }
+
+    const pRows = ((p.data as Array<{ pipeline_stage: string | null }> | null) ?? []);
+    const stages: Record<string, number> = {};
+    for (const r of pRows) {
+      const k = String(r.pipeline_stage || 'sans_étape');
+      stages[k] = (stages[k] || 0) + 1;
+    }
+
+    const seqRows = ((se.data as Array<{ status: string; replied_at: string | null }> | null) ?? []);
+    const sequencesActive = seqRows.filter((r) => r.status === 'active' || r.status === 'running').length;
+    const sequenceReplies = seqRows.filter((r) => !!r.replied_at).length;
+
+    const imRows = ((im.data as Array<{ status: string; sent_at: string | null }> | null) ?? []);
+    const inmailsSent = imRows.filter((r) => r.status === 'sent' || !!r.sent_at).length;
+    const inmailsPending = imRows.filter((r) => r.status === 'pending' || r.status === 'scheduled').length;
+
+    const qsRows = ((qs.data as Array<{ verdict: string | null }> | null) ?? []);
+    const byVerdict: Record<string, number> = {};
+    for (const r of qsRows) {
+      const k = String(r.verdict || 'sans_verdict');
+      byVerdict[k] = (byVerdict[k] || 0) + 1;
+    }
+
+    const useRows = ((use.data as Array<{ credits_used: number | null }> | null) ?? []);
+    const creditsUsedPeriod = useRows.reduce((s, r) => s + Number(r.credits_used || 0), 0);
+
+    const b = (bal.data as Record<string, any> | null) ?? null;
+    const creditsBlock: Record<string, unknown> = { used_period: creditsUsedPeriod };
+    if (b && isPrivileged(role)) {
+      creditsBlock.balance = b.credits_remaining;
+      creditsBlock.total = b.credits_total;
+      creditsBlock.plan_credits = b.plan_credits;
+      creditsBlock.topup_credits = b.topup_credits;
+      creditsBlock.period_end = b.period_end;
+    } else if (b) {
+      creditsBlock.period_end = b.period_end;
+      creditsBlock.note = 'Solde détaillé visible uniquement par owner/admin.';
+    }
+
+    return {
+      success: true,
+      data: {
+        role,
+        period: { days: periodDays, from: fromIso, to: now.toISOString() },
+        missions: { total: mRows.length, by_status: missionsByStatus },
+        pipeline: { total_candidates: pRows.length, by_stage: stages },
+        outreach_period: {
+          sequences_created: seqRows.length,
+          sequences_active: sequencesActive,
+          replies: sequenceReplies,
+          inmails_sent: inmailsSent,
+          inmails_pending: inmailsPending,
+        },
+        interviews_period: { total: qsRows.length, by_verdict: byVerdict },
+        ai_credits: creditsBlock,
+      },
+    };
+  },
+};
+
+// ─── Tool — get_team_overview (équipe + connectivité + crédits IA) ─────────
+const getTeamOverview: AgentTool = {
+  name: 'get_team_overview',
+  description:
+    "Vue de l'équipe Konekt : membres de l'organisation avec leur rôle (owner/admin/" +
+    "collaborateur), qui a connecté son LinkedIn et/ou sa boîte mail, invitations en attente, " +
+    "et état des crédits IA (le solde détaillé n'est visible que par owner/admin ; les autres " +
+    "voient juste la date de fin de période). À utiliser pour « qui est dans mon équipe », " +
+    "« qui a connecté son LinkedIn », « mon solde de crédits IA », « invitations en attente ».",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: { type: 'object', properties: {}, required: [] },
+  verifyAccess(_p, ctx) {
+    if (!ctx.organizationId) return Promise.resolve({ allowed: false, reason: 'No active organization' });
+    return Promise.resolve({ allowed: true });
+  },
+  dryRun: trivialDryRun('Lecture : équipe + crédits IA'),
+  async execute(_params, ctx) {
+    const role = await resolveRole(ctx);
+    const [members, liAcc, emAcc, inv, bal] = await Promise.all([
+      ctx.adminClient.from('organization_members')
+        .select('user_id, role, created_at')
+        .eq('organization_id', ctx.organizationId)
+        .limit(200),
+      ctx.adminClient.from('member_linkedin_accounts')
+        .select('user_id, linkedin_account_name')
+        .eq('organization_id', ctx.organizationId)
+        .limit(50),
+      ctx.adminClient.from('member_email_accounts')
+        .select('user_id, email_address, provider, account_status')
+        .eq('organization_id', ctx.organizationId)
+        .limit(50),
+      ctx.adminClient.from('mission_invitations')
+        .select('email, role, expires_at, project_id, created_at')
+        .eq('organization_id', ctx.organizationId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(20),
+      ctx.adminClient.from('ai_credit_balances')
+        .select('credits_remaining, credits_total, period_start, period_end, plan_credits, topup_credits')
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle(),
+    ]);
+
+    const memberRows = ((members.data as Array<{ user_id: string; role: string; created_at: string }> | null) ?? []);
+    const userIds = [...new Set(memberRows.map((m) => m.user_id))].slice(0, 200);
+    const profiles: Record<string, { full_name: string | null }> = {};
+    if (userIds.length > 0) {
+      const { data: profRows } = await ctx.adminClient
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+      for (const pr of ((profRows as Array<{ id: string; full_name: string | null }> | null) ?? [])) {
+        profiles[pr.id] = { full_name: pr.full_name };
+      }
+    }
+    const liByUser = new Set<string>();
+    const liNameByUser = new Map<string, string>();
+    for (const r of ((liAcc.data as Array<{ user_id: string; linkedin_account_name: string | null }> | null) ?? [])) {
+      liByUser.add(r.user_id);
+      if (r.linkedin_account_name) liNameByUser.set(r.user_id, r.linkedin_account_name);
+    }
+    const emByUser = new Map<string, { email: string | null; provider: string | null; status: string | null }>();
+    for (const r of ((emAcc.data as Array<{ user_id: string; email_address: string | null; provider: string | null; account_status: string | null }> | null) ?? [])) {
+      emByUser.set(r.user_id, { email: r.email_address, provider: r.provider, status: r.account_status });
+    }
+
+    const team = memberRows.map((mr) => {
+      const isMe = mr.user_id === ctx.userId;
+      const em = emByUser.get(mr.user_id);
+      return {
+        name: (profiles[mr.user_id]?.full_name || '—') + (isMe ? ' (toi)' : ''),
+        role: mr.role,
+        joined_at: mr.created_at,
+        linkedin_connected: liByUser.has(mr.user_id),
+        ...(liNameByUser.has(mr.user_id) ? { linkedin_account_name: liNameByUser.get(mr.user_id) } : {}),
+        email_connected: !!em,
+        ...(em ? { email_provider: em.provider, email_status: em.status } : {}),
+      };
+    });
+
+    const invRows = ((inv.data as Array<{ email: string; role: string; expires_at: string }> | null) ?? []);
+
+    const b = (bal.data as Record<string, any> | null) ?? null;
+    const aiCredits: Record<string, unknown> | null = b
+      ? (isPrivileged(role)
+          ? {
+              balance: b.credits_remaining,
+              total: b.credits_total,
+              plan_credits: b.plan_credits,
+              topup_credits: b.topup_credits,
+              period_start: b.period_start,
+              period_end: b.period_end,
+            }
+          : { period_end: b.period_end, note: 'Solde détaillé visible uniquement par owner/admin.' })
+      : null;
+
+    return {
+      success: true,
+      data: {
+        my_role: role,
+        team,
+        pending_invitations: invRows.map((i) => ({ email: i.email, role: i.role, expires_at: i.expires_at })),
+        ai_credits: aiCredits,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -1544,5 +1898,8 @@ export function registerReadTools(): void {
   registerTool(getCandidateOutreach);
   registerTool(getLinkedInThread);
   registerTool(searchKnowledge);
+  registerTool(getVivierOverview);
+  registerTool(getOrgAnalytics);
+  registerTool(getTeamOverview);
   registered = true;
 }
