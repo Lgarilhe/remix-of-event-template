@@ -8,7 +8,8 @@ import {
 import {
   ArrowUp, ChevronRight, Sparkles, Paperclip, X, FileText,
   Search, PenLine, BarChart3, Lightbulb, SlidersHorizontal,
-  ClipboardList, MessageSquare,
+  ClipboardList, MessageSquare, CheckCircle2, XCircle, AlertTriangle,
+  MapPin, Briefcase,
 } from 'lucide-react';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
@@ -135,24 +136,69 @@ const ShimmerThinking = () => (
 );
 
 /**
- * Extrait les blocs `[OPTIONS][...][/OPTIONS]` du texte assistant pour les
- * rendre en chips cliquables (chaque option envoie sa string comme message
- * suivant). Gère aussi le streaming : si on a un `[OPTIONS]` ouvrant mais
- * pas encore le `[/OPTIONS]` fermant, on cache la portion partielle au lieu
- * de l'afficher en raw pendant la frappe.
+ * Extrait les blocs système (`[OPTIONS]`, `[PROFILE]`, `[SCORING_TEST]`,
+ * `[SEARCH_PLAN]`, `[AGENT_ACTION]`) du texte assistant.
  *
- * Strip aussi les autres balises système (SEARCH_PLAN, AGENT_ACTION,
- * SCORING_TEST, PROFILE) car le legacy AgentMessageBubble qui les rendait
- * n'est pas utilisé par le runtime assistant-ui actuel — sans strip, elles
- * apparaîtraient en JSON brut.
+ * - OPTIONS → chips cliquables (chaque option envoie sa string comme message
+ *   suivant).
+ * - PROFILE → cards de profils échantillon (calibration agent autonome).
+ * - SCORING_TEST → card de breakdown du scoring.
+ * - SEARCH_PLAN → card résumé du plan de recherche.
+ * - AGENT_ACTION → strippé (déclenche une action côté backend, pas d'UI).
+ *
+ * Gère aussi le streaming : tag ouvrant sans fermant → on cache la portion
+ * partielle au lieu de l'afficher en raw pendant la frappe.
  */
 const SYSTEM_TAGS = ['OPTIONS', 'SEARCH_PLAN', 'AGENT_ACTION', 'SCORING_TEST', 'PROFILE'] as const;
 
-function parseAssistantText(text: string): { stripped: string; options: string[] } {
+interface SampleProfileData {
+  name: string;
+  title: string;
+  company: string;
+  location: string;
+  yearsExp: number;
+  score?: number;
+  trajectory: string[];
+  strengths: string[];
+  concerns: string[];
+  tags: string[];
+}
+
+interface ScoringTestData {
+  purpose: string;
+  profiles: Array<{
+    name: string;
+    title: string;
+    company: string;
+    score: number;
+    recommendation: 'go' | 'maybe' | 'skip';
+    criteria: Array<{ label: string; verdict: 'pass' | 'partial' | 'fail'; detail: string }>;
+  }>;
+}
+
+interface SearchPlanData {
+  summary?: string;
+  filters?: Record<string, unknown>;
+  scoring_criteria?: Record<string, unknown>;
+  stop_conditions?: Record<string, unknown>;
+}
+
+interface ParseResult {
+  stripped: string;
+  options: string[];
+  profiles: SampleProfileData[];
+  scoringTest: ScoringTestData | null;
+  searchPlan: SearchPlanData | null;
+}
+
+function parseAssistantText(text: string): ParseResult {
   const options: string[] = [];
+  const profiles: SampleProfileData[] = [];
+  let scoringTest: ScoringTestData | null = null;
+  let searchPlan: SearchPlanData | null = null;
   let stripped = text;
 
-  // 1. Extract complete OPTIONS blocks (multi-occurrence supported)
+  // 1a. Extract OPTIONS (multiple)
   const optionsRe = /\[OPTIONS\]\s*(\[[\s\S]*?\])\s*\[\/OPTIONS\]/g;
   let m: RegExpExecArray | null;
   while ((m = optionsRe.exec(text)) !== null) {
@@ -164,9 +210,51 @@ function parseAssistantText(text: string): { stripped: string; options: string[]
           if (label) options.push(label);
         }
       }
-    } catch {
-      /* skip malformed JSON — happens during partial streaming */
-    }
+    } catch { /* partial stream */ }
+  }
+
+  // 1b. Extract PROFILE blocks (one card per match — used during calibration)
+  const profileRe = /\[PROFILE\]\s*([\s\S]*?)\s*\[\/PROFILE\]/g;
+  while ((m = profileRe.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(m[1]) as Partial<SampleProfileData>;
+      if (parsed && typeof parsed.name === 'string') {
+        profiles.push({
+          name: parsed.name,
+          title: parsed.title ?? '',
+          company: parsed.company ?? '',
+          location: parsed.location ?? '',
+          yearsExp: typeof parsed.yearsExp === 'number' ? parsed.yearsExp : 0,
+          score: typeof parsed.score === 'number' ? parsed.score : undefined,
+          trajectory: Array.isArray(parsed.trajectory) ? parsed.trajectory : [],
+          strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+          concerns: Array.isArray(parsed.concerns) ? parsed.concerns : [],
+          tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+        });
+      }
+    } catch { /* partial stream */ }
+  }
+
+  // 1c. Extract SCORING_TEST (single)
+  const stMatch = text.match(/\[SCORING_TEST\]\s*([\s\S]*?)\s*\[\/SCORING_TEST\]/);
+  if (stMatch) {
+    try {
+      const parsed = JSON.parse(stMatch[1]);
+      if (parsed && Array.isArray(parsed.profiles)) {
+        scoringTest = parsed as ScoringTestData;
+      }
+    } catch { /* partial stream */ }
+  }
+
+  // 1d. Extract SEARCH_PLAN (single)
+  const spMatch = text.match(/\[SEARCH_PLAN\]\s*([\s\S]*?)\s*\[\/SEARCH_PLAN\]/);
+  if (spMatch) {
+    try {
+      const parsed = JSON.parse(spMatch[1]);
+      if (parsed && typeof parsed === 'object') {
+        searchPlan = parsed as SearchPlanData;
+      }
+    } catch { /* partial stream */ }
   }
 
   // 2. Strip ALL complete system tag blocks from displayed text
@@ -174,7 +262,7 @@ function parseAssistantText(text: string): { stripped: string; options: string[]
     stripped = stripped.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[\\/${tag}\\]`, 'g'), '');
   }
 
-  // 3. Hide any in-flight (partial) opening tag — would render raw otherwise
+  // 3. Hide any in-flight (partial) opening tag
   for (const tag of SYSTEM_TAGS) {
     const openIdx = stripped.indexOf(`[${tag}]`);
     if (openIdx !== -1) {
@@ -183,14 +271,23 @@ function parseAssistantText(text: string): { stripped: string; options: string[]
     }
   }
 
-  return { stripped: stripped.replace(/\n{3,}/g, '\n\n').trim(), options };
+  return {
+    stripped: stripped.replace(/\n{3,}/g, '\n\n').trim(),
+    options,
+    profiles,
+    scoringTest,
+    searchPlan,
+  };
 }
 
 /** Markdown renderer tuned for chat readability (Claude/ChatGPT-like) */
 const MarkdownText = ({ text }: { text: string }) => {
   const navigate = useNavigate();
   const { closeAgent } = useAgent();
-  const { stripped, options } = React.useMemo(() => parseAssistantText(text), [text]);
+  const { stripped, options, profiles, scoringTest, searchPlan } = React.useMemo(
+    () => parseAssistantText(text),
+    [text],
+  );
 
   return (
     <div className="space-y-2">
@@ -265,7 +362,246 @@ const MarkdownText = ({ text }: { text: string }) => {
         </div>
       )}
 
+      {searchPlan && <SearchPlanCard plan={searchPlan} />}
+      {scoringTest && <ScoringTestCard data={scoringTest} />}
+      {profiles.length > 0 && <SampleProfilesCards profiles={profiles} />}
+
       {options.length > 0 && <OptionsChips options={options} />}
+    </div>
+  );
+};
+
+/** Normalise un champ "list" qui peut être array, string CSV ou null. */
+function pickList(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => (typeof x === 'string' ? x.trim() : String(x ?? '').trim()))
+      .filter(Boolean);
+  }
+  if (typeof v === 'string') return v.split(',').map((x) => x.trim()).filter(Boolean);
+  return [];
+}
+
+/** Card pour le bloc [SEARCH_PLAN] — résumé du plan de recherche produit par l'IA. */
+const SearchPlanCard = ({ plan }: { plan: SearchPlanData }) => {
+  const filters = (plan.filters ?? {}) as Record<string, unknown>;
+  const stop = (plan.stop_conditions ?? {}) as Record<string, unknown>;
+  const summary = typeof plan.summary === 'string' ? plan.summary : '';
+  const items: Array<{ label: string; value: string }> = [];
+  if (summary) items.push({ label: 'Résumé', value: summary });
+  const keywords = pickList(filters.keywords);
+  const locations = pickList(filters.location_keywords);
+  const titles = pickList(filters.title_keywords);
+  const companies = pickList(filters.company_keywords);
+  const skills = pickList(filters.skills);
+  if (keywords.length) items.push({ label: 'Mots-clés', value: keywords.join(', ') });
+  if (locations.length) items.push({ label: 'Localisation', value: locations.join(', ') });
+  if (titles.length) items.push({ label: 'Titres', value: titles.join(', ') });
+  if (companies.length) items.push({ label: 'Entreprises', value: companies.join(', ') });
+  if (skills.length) items.push({ label: 'Compétences', value: skills.join(', ') });
+  if (filters.calculated_experience_min != null || filters.calculated_experience_max != null) {
+    items.push({
+      label: 'Expérience',
+      value: `${filters.calculated_experience_min ?? '?'}–${filters.calculated_experience_max ?? '?'} ans`,
+    });
+  }
+  const targetGo = stop.target_go_profiles;
+
+  return (
+    <div className="border border-border/60 rounded-xl overflow-hidden bg-card my-2">
+      <div className="px-3.5 py-2.5 bg-muted/30 flex items-center gap-2 border-b border-border/40">
+        <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Search className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <span className="text-xs font-bold text-foreground">Plan de recherche</span>
+        {typeof targetGo === 'number' && (
+          <span className="ml-auto px-2 py-0.5 text-[10px] font-semibold rounded-md bg-muted text-muted-foreground">
+            cible : {targetGo} profils
+          </span>
+        )}
+      </div>
+      <div className="px-3.5 py-3 space-y-2.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground/20 shrink-0 mt-[7px]" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">{item.label}</p>
+              <p className="text-[13px] text-foreground/80 mt-0.5 leading-relaxed break-words">{item.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/** Card pour le bloc [SCORING_TEST] — preview du scoring sur quelques profils. */
+const ScoringTestCard = ({ data }: { data: ScoringTestData }) => {
+  const verdictCfg: Record<string, { icon: typeof CheckCircle2; cls: string }> = {
+    pass: { icon: CheckCircle2, cls: 'text-success bg-success/10 border-success/20' },
+    partial: { icon: AlertTriangle, cls: 'text-warning bg-warning/10 border-warning/20' },
+    fail: { icon: XCircle, cls: 'text-destructive bg-destructive/10 border-destructive/20' },
+  };
+  const recCfg: Record<string, { label: string; cls: string }> = {
+    go: { label: 'À contacter', cls: 'bg-success/15 text-success border-success/20' },
+    maybe: { label: 'À évaluer', cls: 'bg-warning/15 text-warning border-warning/20' },
+    skip: { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground border-border' },
+  };
+
+  return (
+    <div className="border border-border/60 rounded-xl overflow-hidden bg-card my-2">
+      <div className="px-3.5 py-2.5 bg-muted/30 border-b border-border/40">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
+            <BarChart3 className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <span className="text-xs font-bold text-foreground">Test de scoring</span>
+        </div>
+        {data.purpose && (
+          <p className="text-[11px] text-muted-foreground leading-relaxed pl-[34px]">{data.purpose}</p>
+        )}
+      </div>
+      <div className="divide-y divide-border/30">
+        {data.profiles.map((profile, i) => {
+          const rec = recCfg[profile.recommendation] ?? recCfg.maybe;
+          const scoreColor =
+            profile.score >= 75 ? 'text-success' : profile.score >= 50 ? 'text-warning' : 'text-destructive';
+          return (
+            <div key={i} className="px-3.5 py-3 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-muted border border-border/40">
+                  <span className={cn('text-base font-black tabular-nums', scoreColor)}>{profile.score}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">{profile.name}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{profile.title} @ {profile.company}</p>
+                </div>
+                <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0', rec.cls)}>
+                  {rec.label}
+                </span>
+              </div>
+              <div className="space-y-1 pl-12">
+                {profile.criteria.map((c, j) => {
+                  const v = verdictCfg[c.verdict] ?? verdictCfg.partial;
+                  const VI = v.icon;
+                  return (
+                    <div
+                      key={j}
+                      className={cn('flex items-start gap-2 px-2 py-1 rounded-lg border text-[11px]', v.cls)}
+                    >
+                      <VI className="h-3 w-3 shrink-0 mt-0.5" />
+                      <div className="min-w-0 leading-snug">
+                        <span className="font-semibold">{c.label}</span>
+                        <span className="text-foreground/60 ml-1.5">— {c.detail}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/** Cards pour les blocs [PROFILE] — profils échantillons proposés en calibration.
+ *  Version lean read-only : l'utilisateur valide ou rejette en envoyant un message
+ *  texte (typé ou via OptionsChips dans le même message). Pas de feedback wiring
+ *  complexe ici — le pattern original avec onSendFeedback est dans l'ancien
+ *  AgentMessageBubble, on garde simple pour l'instant. */
+const SampleProfilesCards = ({ profiles }: { profiles: SampleProfileData[] }) => {
+  return (
+    <div className="space-y-2 my-2">
+      {profiles.map((profile, i) => {
+        const initials = profile.name
+          .split(/\s+/)
+          .map((w) => w[0]?.toUpperCase())
+          .join('')
+          .slice(0, 2);
+        const scoreColor =
+          profile.score == null
+            ? 'text-foreground'
+            : profile.score >= 75
+            ? 'text-success'
+            : profile.score >= 50
+            ? 'text-warning'
+            : 'text-destructive';
+        return (
+          <div key={i} className="border border-border/60 rounded-xl overflow-hidden bg-card">
+            <div className="px-3.5 py-3 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-foreground truncate">{profile.name}</p>
+                  {typeof profile.score === 'number' && (
+                    <span className={cn('text-[11px] font-bold tabular-nums', scoreColor)}>{profile.score}</span>
+                  )}
+                </div>
+                {profile.title && (
+                  <p className="text-xs text-muted-foreground truncate mt-0.5 flex items-center gap-1">
+                    <Briefcase className="h-3 w-3 shrink-0" />
+                    {profile.title}
+                    {profile.company && <span>@ {profile.company}</span>}
+                  </p>
+                )}
+                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                  {profile.location && (
+                    <span className="flex items-center gap-0.5">
+                      <MapPin className="h-3 w-3" /> {profile.location}
+                    </span>
+                  )}
+                  {profile.yearsExp > 0 && <span>· {profile.yearsExp} ans XP</span>}
+                </div>
+              </div>
+            </div>
+            {profile.tags.length > 0 && (
+              <div className="px-3.5 pb-2 flex flex-wrap gap-1">
+                {profile.tags.slice(0, 8).map((tag, j) => (
+                  <span
+                    key={j}
+                    className="text-[10px] font-medium px-1.5 py-0.5 bg-primary/10 text-primary rounded-md"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+            {profile.trajectory.length > 0 && (
+              <div className="px-3.5 pb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground mb-1">Parcours</p>
+                <div className="flex items-center gap-1.5 text-[11px] text-foreground/70 overflow-x-auto no-scrollbar">
+                  {profile.trajectory.slice(0, 5).map((t, j) => (
+                    <React.Fragment key={j}>
+                      {j > 0 && <span className="text-muted-foreground/30">→</span>}
+                      <span className="whitespace-nowrap">{t}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(profile.strengths.length > 0 || profile.concerns.length > 0) && (
+              <div className="px-3.5 pb-3 space-y-1">
+                {profile.strengths.map((s, j) => (
+                  <div key={`s-${j}`} className="flex items-start gap-1.5 text-[11px]">
+                    <CheckCircle2 className="h-3 w-3 text-success shrink-0 mt-0.5" />
+                    <span className="text-foreground/70">{s}</span>
+                  </div>
+                ))}
+                {profile.concerns.map((c, j) => (
+                  <div key={`c-${j}`} className="flex items-start gap-1.5 text-[11px]">
+                    <AlertTriangle className="h-3 w-3 text-warning shrink-0 mt-0.5" />
+                    <span className="text-foreground/70">{c}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
