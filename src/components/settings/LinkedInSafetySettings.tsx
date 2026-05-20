@@ -112,7 +112,7 @@ export const LinkedInSafetySettings = () => {
                   onValueChange={(v) => { setStartHour(parseInt(v, 10)); setDirty(true); }}
                 >
                   <SelectTrigger id="start-hour"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[70vh]">
                     {startOptions.map(h => (
                       <SelectItem key={h} value={String(h)}>{String(h).padStart(2, '0')}:00</SelectItem>
                     ))}
@@ -127,7 +127,7 @@ export const LinkedInSafetySettings = () => {
                   onValueChange={(v) => { setEndHour(parseInt(v, 10)); setDirty(true); }}
                 >
                   <SelectTrigger id="end-hour"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[70vh]">
                     {endOptions.map(h => (
                       <SelectItem key={h} value={String(h)}>{String(h).padStart(2, '0')}:00</SelectItem>
                     ))}
