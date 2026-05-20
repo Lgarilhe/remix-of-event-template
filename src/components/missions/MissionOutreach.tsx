@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MissionContextBanner } from './MissionContextBanner';
+// MissionContextBanner retiré — voir patch 2026-05-20.
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -160,17 +160,7 @@ export const MissionOutreach = ({ project }: MissionOutreachProps) => {
         </div>
       )}
 
-      {/* Contextual banner */}
-      {enrollmentStats.total === 0 && goCount === 0 && (
-        <MissionContextBanner
-          icon="✉️"
-          title="Contactez vos candidats"
-          description="Créez une séquence de messages personnalisés. L'IA adapte chaque message en fonction du profil et du poste."
-          storageKey={`outreach-onboarding:${project.id}`}
-          variant="info"
-          className="border-b border-border"
-        />
-      )}
+      {/* Bandeau "Contactez vos candidats" retiré (demande Laurent 2026-05-20). */}
       {/* Account selector (if multiple accounts) */}
       {accounts.length > 1 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-border">

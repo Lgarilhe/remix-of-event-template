@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { MissionContextBanner } from './MissionContextBanner';
+// MissionContextBanner retiré — voir patch 2026-05-20.
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionProcess, ProcessStep } from '@/hooks/useMissionProcess';
 import { useMissionInvitations } from '@/hooks/useMissionInvitations';
@@ -775,15 +775,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      {/* Contextual banner */}
-      <MissionContextBanner
-        icon="🏗️"
-        title="Structurez votre process"
-        description="Définissez les étapes d'évaluation. L'IA adaptera le scoring et les scorecards en fonction du process défini."
-        storageKey={`process-onboarding:${project.id}`}
-        variant="info"
-        className="mb-4"
-      />
+      {/* Bandeau "Structurez votre process" retiré (demande Laurent 2026-05-20). */}
       {readOnly && (
         <div className="px-4 py-3 rounded-lg border border-border bg-muted/30 flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">

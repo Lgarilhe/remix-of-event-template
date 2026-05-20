@@ -198,11 +198,10 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
   project,
   onNavigateToSub,
 }) => {
-  const readiness = useMissionReadiness(project);
+  // readiness conservé pour usage futur (computeNextStep + hero card retirés)
+  // — l'appel reste car d'autres composants pourraient s'y brancher plus tard.
+  useMissionReadiness(project);
   const jd = (project.job_details || {}) as JobDetails;
-
-  const nextStep = useMemo(() => computeNextStep(project, readiness), [project, readiness]);
-  const NextIcon = nextStep.icon;
 
   const created = formatRelativeTime(project.created_at);
   const hasFiltersSnapshot = !!(project.filters_snapshot && Object.keys(project.filters_snapshot).length > 0);
@@ -272,46 +271,12 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
         </p>
       </div>
 
-      {/* ── HERO NEXT-STEP CARD ── */}
-      <div
-        className="rounded-xl p-5 my-5 relative overflow-hidden konekt-skalr-bg-soft konekt-glow konekt-fade-up"
-        style={{
-          border: '1px solid hsl(271 81% 56% / 0.35)',
-          animationDelay: '60ms',
-        }}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 relative z-10">
-          <div className="h-12 w-12 rounded-xl grid place-items-center flex-shrink-0 konekt-skalr-bg konekt-shine">
-            <NextIcon className="w-5 h-5 text-white" strokeWidth={2.5} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p
-              className="text-[10px] uppercase tracking-wider font-semibold mb-0.5"
-              style={{ color: 'hsl(330 81% 75%)' }}
-            >
-              Étape suivante
-            </p>
-            <h3 className="font-display text-[18px] sm:text-[19px] font-bold leading-tight">
-              {nextStep.title}
-            </h3>
-            <p className="text-[12px] text-muted-foreground mt-1 leading-snug">{nextStep.desc}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigateToSub(nextStep.targetSub)}
-            disabled={!nextStep.available}
-            className={cn(
-              'h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center justify-center gap-1.5 flex-shrink-0 w-full sm:w-auto',
-              'konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97]',
-              !nextStep.available && 'opacity-50 cursor-not-allowed',
-            )}
-          >
-            <Zap className="w-3.5 h-3.5" strokeWidth={2.5} />
-            <span>{nextStep.cta}</span>
-            <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
-          </button>
-        </div>
-      </div>
+      {/* Hero "Étape suivante" retiré (demande Laurent 2026-05-20) — l'user
+          n'a pas besoin d'être guidé vers la prochaine étape de façon visuelle
+          intrusive, il sait où il va. Le PhaseStepper en haut suffit comme
+          repère. computeNextStep + l'import des icônes Sparkles/Search/Zap/
+          ArrowRight/Briefcase ne sont plus utilisés ici mais conservés au
+          cas où la décision est revertée. */}
 
       {/* ── Brief en bref + Process recruteur ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 konekt-fade-up" style={{ animationDelay: '120ms' }}>
