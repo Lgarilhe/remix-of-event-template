@@ -258,12 +258,12 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
               // Brief, Process & Config : layout 1280px max, aligné à gauche.
               // Form principal + sidebar sticky (auto-save / KPI / conseils).
               (activeSub === 'brief' || activeSub === 'process' || activeSub === 'config') && 'max-w-[1280px] w-full',
-              // Autres forms/dashboards : 960px centrés (lecture confortable)
+              // Autres forms/dashboards : 960px aligné à gauche (demande Laurent 2026-05-20 — plus de centrage)
               NARROW_SUBS.has(activeSub)
                 && activeSub !== 'brief'
                 && activeSub !== 'process'
                 && activeSub !== 'config'
-                && 'max-w-[960px] mx-auto w-full',
+                && 'max-w-[960px] w-full',
               // Sourcing/Pipeline : pleine largeur (filtres + grille)
             )}
           >

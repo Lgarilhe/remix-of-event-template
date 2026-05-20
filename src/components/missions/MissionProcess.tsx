@@ -845,12 +845,12 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
           <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
         </div>
       ) : steps.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center">
+        <div className="rounded-lg border border-dashed border-border p-8">
           <div className="text-4xl mb-4">🏗️</div>
           <h3 className="text-sm font-semibold text-foreground mb-1">
             {readOnly ? 'Aucune étape définie' : 'Configurez votre process d\'interview'}
           </h3>
-          <p className="text-xs text-muted-foreground mb-6 max-w-sm mx-auto">
+          <p className="text-xs text-muted-foreground mb-6 max-w-sm">
             {readOnly ? 'Aucune étape définie pour cette mission.' : 'Choisissez un template adapté ou laissez l\'IA analyser le brief pour suggérer le process idéal.'}
           </p>
           {!readOnly && (

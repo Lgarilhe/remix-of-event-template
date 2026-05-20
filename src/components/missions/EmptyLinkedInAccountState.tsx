@@ -16,7 +16,7 @@ export const EmptyLinkedInAccountState: React.FC<EmptyLinkedInAccountStateProps>
   const navigate = useNavigate();
   return (
     <div className="bg-background border border-border p-6 sm:p-8">
-      <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div className="flex flex-col py-12">
         <div className="w-12 h-12 border border-border flex items-center justify-center mb-4">
           <Users className="w-5 h-5 text-muted-foreground" />
         </div>

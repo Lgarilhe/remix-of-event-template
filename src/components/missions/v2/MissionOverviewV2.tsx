@@ -224,7 +224,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
   const topSkills = (jd.skills_must_have || []).slice(0, 4);
 
   return (
-    <div className="max-w-[920px] mx-auto pb-8">
+    <div className="max-w-[920px] pb-8">
       {/* ── Header : pills + titre + meta ── */}
       <div className="konekt-fade-up">
         <div className="flex items-center gap-2 mb-2 flex-wrap">
