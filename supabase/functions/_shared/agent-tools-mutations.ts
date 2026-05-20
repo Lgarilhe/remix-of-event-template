@@ -1627,6 +1627,53 @@ const regenerateSearchFilters: AgentTool = {
 // Envoi standalone d'un message LinkedIn via l'edge unipile-search (Mode B).
 // Quota-gated : check business hours + cap journalier via member_quotas.
 // Conformité LinkedIn warning #260513-007211 (license sharing).
+// account_id optionnel — fallback sur le 1er compte LinkedIn OK de l'user.
+
+/**
+ * Résout l'account_id LinkedIn à utiliser :
+ * - Si fourni en param, vérifie qu'il appartient à l'user dans l'org courante.
+ * - Sinon, prend le 1er compte LinkedIn de l'user (account_status='OK' prioritaire).
+ * Retourne { account_id, account_status } | { error }.
+ */
+async function resolveSendingAccount(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ account_id: string; account_status: string | null } | { error: string }> {
+  const requested = params.account_id ? String(params.account_id).trim() : '';
+
+  if (requested) {
+    const { data } = await ctx.adminClient
+      .from('member_linkedin_accounts')
+      .select('account_id, account_status')
+      .eq('account_id', requested)
+      .eq('user_id', ctx.userId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    if (!data) {
+      return { error: `Le compte LinkedIn ${requested} n'est pas rattaché à votre profil dans cette organisation.` };
+    }
+    return { account_id: data.account_id as string, account_status: (data.account_status as string | null) ?? null };
+  }
+
+  // Fallback : take the user's first LinkedIn account (status=OK first)
+  const { data: accounts } = await ctx.adminClient
+    .from('member_linkedin_accounts')
+    .select('account_id, account_status, created_at')
+    .eq('user_id', ctx.userId)
+    .eq('organization_id', ctx.organizationId)
+    .order('created_at', { ascending: true });
+
+  const list = (accounts ?? []) as Array<{ account_id: string; account_status: string | null; created_at: string }>;
+  if (list.length === 0) {
+    return { error: "Aucun compte LinkedIn n'est connecté à votre profil. Connecte-en un via Paramètres → Comptes connectés." };
+  }
+  // Prefer the first OK account ; otherwise return the first connected (the
+  // status check below will reject CREDENTIALS / DISCONNECTED with a clearer
+  // error than "no account").
+  const okOne = list.find((a) => a.account_status === 'OK');
+  const chosen = okOne ?? list[0];
+  return { account_id: chosen.account_id, account_status: chosen.account_status };
+}
 
 const sendLinkedInMessage: AgentTool = {
   name: 'send_linkedin_message',
@@ -1636,6 +1683,8 @@ const sendLinkedInMessage: AgentTool = {
     "Quota-gated : checks the user's business hours (member_quotas) and daily LinkedIn action cap. " +
     "If outside business hours OR cap reached, the action is REFUSED — the user must wait or raise their cap. " +
     "Two modes : `chat_id` continues an existing conversation, `recipient_provider_id` starts a new chat. " +
+    "If the user has an existing LinkedIn thread with the recipient (verified via `get_linkedin_thread`), prefer `chat_id` over `recipient_provider_id` — it appends to the same conversation. " +
+    "`account_id` is OPTIONAL — defaults to the user's first connected LinkedIn account (OK status preferred). Only set it explicitly if the user mentions a specific connected account or you know they have multiple. " +
     "Set `is_inmail=true` for Recruiter InMail (requires premium balance, consumes a credit). " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_external',
@@ -1645,11 +1694,11 @@ const sendLinkedInMessage: AgentTool = {
     properties: {
       account_id: {
         type: 'string',
-        description: "The user's LinkedIn account_id (from member_linkedin_accounts). REQUIRED.",
+        description: "OPTIONAL — the user's LinkedIn account_id (from member_linkedin_accounts). If omitted, the tool falls back to the user's first connected LinkedIn account.",
       },
       chat_id: {
         type: 'string',
-        description: "ID of an existing LinkedIn conversation to continue. Use this when replying to an ongoing thread.",
+        description: "ID of an existing LinkedIn conversation to continue (returned by `get_linkedin_thread`). Use this when replying to an ongoing thread.",
       },
       recipient_provider_id: {
         type: 'string',
@@ -1668,18 +1717,16 @@ const sendLinkedInMessage: AgentTool = {
         description: "InMail subject line (required when is_inmail=true).",
       },
     },
-    required: ['account_id', 'text'],
+    required: ['text'],
   },
 
   async verifyAccess(params, ctx) {
-    const accountId = String(params.account_id || '');
     const text = String(params.text || '').trim();
     const chatId = params.chat_id ? String(params.chat_id) : '';
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : '';
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : '';
 
-    if (!accountId) return { allowed: false, reason: 'account_id is required' };
     if (!text) return { allowed: false, reason: 'text is required and cannot be empty' };
     if (text.length > 1500) return { allowed: false, reason: 'text too long (max 1500 chars)' };
     if (!chatId && !recipientId) {
@@ -1692,26 +1739,27 @@ const sendLinkedInMessage: AgentTool = {
       return { allowed: false, reason: "subject is required when is_inmail=true" };
     }
 
-    // Account must belong to the user in the current org
-    const { data: account } = await ctx.adminClient
-      .from('member_linkedin_accounts')
-      .select('account_id, account_status')
-      .eq('account_id', accountId)
-      .eq('user_id', ctx.userId)
-      .eq('organization_id', ctx.organizationId)
-      .maybeSingle();
-    if (!account) {
-      return { allowed: false, reason: `Le compte LinkedIn ${accountId} n'est pas rattaché à votre profil dans cette organisation.` };
-    }
-    if (account.account_status && account.account_status !== 'OK') {
-      return { allowed: false, reason: `Compte LinkedIn ${accountId} en statut "${account.account_status}". Reconnecte-le avant d'envoyer.` };
+    const resolved = await resolveSendingAccount(params, ctx);
+    if ('error' in resolved) return { allowed: false, reason: resolved.error };
+    if (resolved.account_status && resolved.account_status !== 'OK') {
+      return { allowed: false, reason: `Compte LinkedIn ${resolved.account_id} en statut "${resolved.account_status}". Reconnecte-le avant d'envoyer.` };
     }
 
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
-    const accountId = String(params.account_id);
+    const resolved = await resolveSendingAccount(params, ctx);
+    if ('error' in resolved) {
+      // verifyAccess already gated this — should not reach here, but be safe
+      return {
+        summary: 'Envoi LinkedIn impossible : compte introuvable',
+        details: { error: resolved.error },
+        warning: resolved.error,
+      };
+    }
+    const accountId = resolved.account_id;
+    const accountWasAutoResolved = !params.account_id;
     const text = String(params.text);
     const chatId = params.chat_id ? String(params.chat_id) : null;
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
@@ -1748,6 +1796,7 @@ const sendLinkedInMessage: AgentTool = {
         : `Envoyer un message LinkedIn à ${recipientLabel}`,
       details: {
         account_id: accountId,
+        account_auto_resolved: accountWasAutoResolved,
         mode: chatId ? 'reply_in_chat' : 'new_chat',
         chat_id: chatId,
         recipient_provider_id: recipientId,
@@ -1766,7 +1815,9 @@ const sendLinkedInMessage: AgentTool = {
   },
 
   async execute(params, ctx) {
-    const accountId = String(params.account_id);
+    const resolved = await resolveSendingAccount(params, ctx);
+    if ('error' in resolved) return { success: false, error: resolved.error };
+    const accountId = resolved.account_id;
     const text = String(params.text);
     const chatId = params.chat_id ? String(params.chat_id) : null;
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
