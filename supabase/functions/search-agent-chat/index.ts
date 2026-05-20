@@ -828,6 +828,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `bandeau au-dessus. Pour la déclencher, clique sur **Approuver** — moi je ne ` +
         `peux pas valider à ta place. » Tu peux re-confirmer ce qui sera envoyé/modifié ` +
         `et la cible, mais JAMAIS prétendre l'avoir exécuté. ` +
+        `\n**⛔ Boucle interdite** : après un \`awaiting_approval\`, tu DOIS répondre ` +
+        `en texte (1-2 phrases max) pour confirmer ce qui est en attente. NE RAPPELLE ` +
+        `JAMAIS le même outil mutant dans le même tour avec les mêmes paramètres — ça ` +
+        `crée un deuxième bandeau identique. NE CHAÎNE PAS NON PLUS un 2ème outil ` +
+        `mutant sans texte d'intro : un seul \`awaiting_approval\` à la fois, suivi ` +
+        `d'un message texte. Si l'user a demandé plusieurs actions, propose-les UNE ` +
+        `par UNE et explique-le.` +
         `\n\n**🎯 UX des questions de clarification (CRITIQUE)** : ` +
         `Quand tu poses des questions à l'utilisateur (clarification, calibrage, ` +
         `confirmation), respecte ces 3 règles STRICTES :\n` +
@@ -1033,6 +1040,18 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 }
               }
               break;
+            }
+
+            // Fallback : si la boucle s'est terminée sans aucun texte (cas où
+            // Claude n'a généré que des tool_use sans narration, ou a épuisé
+            // les 5 tours en chaînant des mutations). On émet une narration
+            // pour éviter que l'UI affiche "..." perpétuel (bug Laurent 2026-05-20).
+            if (!fullResponse.trim()) {
+              console.warn('[search-agent-chat] Tool loop ended with empty response — emitting fallback narration');
+              const fallback = "J'ai préparé une ou plusieurs actions. Consulte le bandeau d'approbation au-dessus du chat pour les valider, puis dis-moi ce que tu veux faire ensuite.";
+              fullResponse = fallback;
+              const chunk = { choices: [{ delta: { content: fallback }, index: 0 }] };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
 
             // Extract metadata from response

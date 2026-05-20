@@ -115,8 +115,22 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
       if (thinkingAccumulated) {
         finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
       }
-      finalParts.push({ type: 'text' as const, text: accumulated || '…' });
-      yield { content: finalParts };
+      if (accumulated) {
+        finalParts.push({ type: 'text' as const, text: accumulated });
+      } else if (!thinkingAccumulated) {
+        // Stream s'est fermé sans aucun texte ni reasoning : cas où l'agent
+        // a uniquement appelé une mutation (awaiting_approval) sans narration,
+        // ou s'est bloqué dans une boucle de tool_use. Avant 2026-05-20 ce
+        // fallback était le caractère "…" brut, qui s'affichait littéralement
+        // comme bulle vide perdue (cf. bug remonté par Laurent).
+        finalParts.push({
+          type: 'text' as const,
+          text: "Je n'ai pas pu formuler de réponse. Si une action attend ton approbation, elle s'affiche en bandeau au-dessus du chat. Sinon, reformule ta demande.",
+        });
+      }
+      if (finalParts.length > 0) {
+        yield { content: finalParts };
+      }
     },
   };
 }
