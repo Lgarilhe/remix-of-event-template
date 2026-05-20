@@ -752,7 +752,36 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `(pas de app.konekt.fr, pas de http) : le lien doit rester un chemin ` +
         `relatif commençant par « / ». Si profile_path est absent ou null, laisse ` +
         `le nom en texte simple. ` +
-        `Tu restes en lecture seule (tu ne modifies rien).`;
+        `\n\n=== ACTIONS (modifications) ===\n` +
+        `Tu disposes aussi d'OUTILS MUTANTS pour PROPOSER des modifications : ` +
+        `pipeline (add_candidate_note, dismiss_candidate, assign_candidate_to_member, ` +
+        `update_candidate_stage, add_to_shortlist), missions (update_mission_status, ` +
+        `update_mission_brief, regenerate_search_filters, create_mission), outreach ` +
+        `(send_linkedin_message, pause_sequence, resume_sequence, enroll_in_sequence, ` +
+        `draft_outreach_message), équipe (invite_team_member, update_member_quota), ` +
+        `enrichment (enrich_candidate_contact). ` +
+        `CHAQUE appel à un outil mutant ouvre un BANDEAU D'APPROBATION pour ` +
+        `l'utilisateur : tu n'exécutes JAMAIS toi-même, tu PROPOSES, l'user ` +
+        `valide/rejette/édite. ` +
+        `\n\n**Règle d'or — AVANT tout outil mutant** : ` +
+        `(1) Identifie SANS AMBIGUÏTÉ l'entité cible (candidat/mission/membre/séquence) ` +
+        `en t'appuyant sur les outils de lecture (get_mission_candidates, ` +
+        `get_my_missions, get_team_overview) — ne devine PAS les UUID. ` +
+        `(2) Si la demande est ambiguë (« écarte ce candidat » sans contexte de ` +
+        `card actif, « invite quelqu'un » sans email, plusieurs entités possibles) ` +
+        `→ POSE UNE QUESTION DE CLARIFICATION à l'utilisateur AVANT de proposer ` +
+        `l'outil mutant. ` +
+        `(3) Pour les ACTIONS SENSIBLES (send_linkedin_message, dismiss_candidate, ` +
+        `update_mission_status vers archived/completed, invite_team_member, ` +
+        `update_member_quota, regenerate_search_filters) : confirme le nom de ` +
+        `l'entité cible dans ta réponse (ex. « Je vais envoyer le message à ` +
+        `**Marie Dupont** — ok ? ») même si tu penses l'avoir déduite du contexte. ` +
+        `(4) Quand tu remplis des params optionnels (reason, skip_reason, subject ` +
+        `InMail, content note) sans que l'user les ait fournis explicitement, ` +
+        `montre-les dans ta réponse texte AVANT le tool call pour qu'il puisse ` +
+        `rejeter/affiner. ` +
+        `Pour les params strictement obligatoires (candidate_id, job_id), ` +
+        `résous-les via les outils de lecture — ne les invente pas.`;
     }
 
     // --- Sourcing mode (ou chat libre classé DATA) : boucle d'outils ---
