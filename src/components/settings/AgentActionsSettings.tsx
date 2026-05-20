@@ -64,6 +64,8 @@ interface AgentAction {
   proposed_at: string;
   approved_at: string | null;
   executed_at: string | null;
+  /** ISO timestamp when a queued action becomes eligible for the cron. null = immediate. */
+  scheduled_for: string | null;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -171,7 +173,7 @@ export const AgentActionsSettings = () => {
       let q = supabase
         .from('agent_tool_executions')
         .select(
-          'id, tool_name, status, params, dry_run_result, real_result, user_id, proposed_at, approved_at, executed_at',
+          'id, tool_name, status, params, dry_run_result, real_result, user_id, proposed_at, approved_at, executed_at, scheduled_for',
         )
         .eq('organization_id', organizationId)
         .order('proposed_at', { ascending: false })
@@ -354,7 +356,18 @@ interface ActionRowProps {
 }
 
 function ActionRow({ action, showAuthor, authorName }: ActionRowProps) {
-  const cfg = STATUS_CONFIG[action.status];
+  // Sub-status : 'approved' avec scheduled_for futur = en attente d'envoi
+  const isQueued =
+    action.status === 'approved' &&
+    action.scheduled_for !== null &&
+    new Date(action.scheduled_for).getTime() > Date.now();
+  const cfg = isQueued
+    ? {
+        label: 'Programmée',
+        icon: Clock,
+        className: 'bg-info/10 text-info border-info/40',
+      }
+    : STATUS_CONFIG[action.status];
   const Icon = cfg.icon;
   const label = TOOL_LABEL[action.tool_name] || action.tool_name;
   const summary = action.dry_run_result?.summary || '';
@@ -367,6 +380,15 @@ function ActionRow({ action, showAuthor, authorName }: ActionRowProps) {
     action.status === 'executed' && typeof action.real_result?.message === 'string'
       ? action.real_result.message
       : null;
+  const scheduledLabel = isQueued && action.scheduled_for
+    ? new Date(action.scheduled_for).toLocaleString('fr-FR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
   const time = action.executed_at || action.approved_at || action.proposed_at;
 
   return (
@@ -393,6 +415,13 @@ function ActionRow({ action, showAuthor, authorName }: ActionRowProps) {
             <div className="mt-1 flex items-start gap-1 text-[11px] text-warning">
               <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
               <span>{warning}</span>
+            </div>
+          )}
+
+          {isQueued && scheduledLabel && (
+            <div className="mt-1 flex items-start gap-1 text-[11px] text-info">
+              <Clock className="w-3 h-3 shrink-0 mt-0.5" />
+              <span>Envoi prévu : <strong>{scheduledLabel}</strong></span>
             </div>
           )}
 

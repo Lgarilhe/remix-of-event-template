@@ -389,7 +389,21 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           toast.error(data?.error || error?.message || `Action ${action} a échoué`);
           return;
         }
-        toast.success(action === 'approve' ? 'Action exécutée ✓' : 'Action rejetée');
+        if (action === 'reject') {
+          toast.success('Action rejetée');
+        } else if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
+          // L'action a été mise en file (hors plage horaire) au lieu d'exécutée
+          const when = new Date(data.data.scheduled_for as string).toLocaleString('fr-FR', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          toast.success(`Action programmée pour ${when}`, { duration: 6000 });
+        } else {
+          toast.success('Action exécutée ✓');
+        }
         // Optimistic remove (realtime confirmera)
         setPending((prev) => prev.filter((p) => p.id !== executionId));
       } finally {
@@ -422,7 +436,18 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           toast.error(data?.error || error?.message || 'Approbation après édition a échoué');
           return;
         }
-        toast.success('Action exécutée avec tes modifs ✓');
+        if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
+          const when = new Date(data.data.scheduled_for as string).toLocaleString('fr-FR', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          toast.success(`Action programmée pour ${when} (avec tes modifs)`, { duration: 6000 });
+        } else {
+          toast.success('Action exécutée avec tes modifs ✓');
+        }
         setEditingId(null);
         setEditedParams({});
         setPending((prev) => prev.filter((p) => p.id !== executionId));

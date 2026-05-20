@@ -219,6 +219,12 @@ export async function handleProposedToolCall(
 /**
  * Appelé depuis l'UI quand l'user clique "Approve" sur un bandeau.
  * Récupère la row, vérifie qu'elle est en 'proposed' ou 'approved', exécute, met à jour.
+ *
+ * Comportement spécial — QUEUE HORS-PLAGE : si dryRun a inscrit un
+ * `scheduled_for` futur dans `dry_run_result.details.scheduled_for`,
+ * on marque la row comme approuvée + scheduled_for + approved_at, mais
+ * on N'EXÉCUTE PAS. Le cron process-scheduled-actions s'en charge quand
+ * la plage horaire s'ouvre. Évite que l'user reste collé hors 8h-16h.
  */
 export async function confirmToolExecution(
   executionId: string,
@@ -257,6 +263,36 @@ export async function confirmToolExecution(
     return { success: false, error: `Tool ${row.tool_name} not registered`, executionId };
   }
 
+  // ── QUEUE HORS-PLAGE : si dryRun a fixé un scheduled_for futur, on ne
+  // l'exécute pas maintenant. Le cron prendra le relais.
+  const dryRunDetails = ((row.dry_run_result as Record<string, unknown> | null) ?? {});
+  const detailsObj = (dryRunDetails.details as Record<string, unknown> | null) ?? dryRunDetails;
+  const scheduledForRaw = detailsObj?.scheduled_for ?? null;
+  if (typeof scheduledForRaw === 'string' && scheduledForRaw.length > 0) {
+    const scheduledMs = Date.parse(scheduledForRaw);
+    if (!Number.isNaN(scheduledMs) && scheduledMs > Date.now() + 30_000) {
+      // > 30s in the future → queue, don't execute
+      await ctx.adminClient
+        .from('agent_tool_executions')
+        .update({
+          status: 'approved',
+          approved_at: new Date().toISOString(),
+          scheduled_for: new Date(scheduledMs).toISOString(),
+        })
+        .eq('id', executionId);
+      return {
+        success: true,
+        data: {
+          scheduled: true,
+          scheduled_for: new Date(scheduledMs).toISOString(),
+          message: `Action programmée pour ${new Date(scheduledMs).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}.`,
+        },
+        executionId,
+      };
+    }
+  }
+
+  // ── Path standard : exécution immédiate
   // Mark as approved (transitionnel, traçable)
   await ctx.adminClient
     .from('agent_tool_executions')
@@ -272,6 +308,75 @@ export async function confirmToolExecution(
   }
 
   // Update final status
+  await ctx.adminClient
+    .from('agent_tool_executions')
+    .update({
+      status: result.success ? 'executed' : 'failed',
+      real_result: result as unknown as Record<string, unknown>,
+      executed_at: new Date().toISOString(),
+    })
+    .eq('id', executionId);
+
+  return { ...result, executionId };
+}
+
+/**
+ * Appelé par le cron process-scheduled-actions. Exécute une row dont
+ * scheduled_for est échu et qui est encore en status='approved'.
+ * Différent de confirmToolExecution : pas de transition 'proposed'→'approved'
+ * (déjà fait), et pas de re-check du scheduled_for (le cron a déjà filtré).
+ */
+export async function executeScheduledAction(
+  executionId: string,
+  ctx: ToolContext,
+): Promise<ExecuteResult & { executionId: string }> {
+  const { data: row, error } = await ctx.adminClient
+    .from('agent_tool_executions')
+    .select('*')
+    .eq('id', executionId)
+    .single();
+
+  if (error || !row) {
+    return { success: false, error: 'Execution not found', executionId };
+  }
+  if (row.status !== 'approved') {
+    return { success: false, error: `Cannot execute scheduled from status ${row.status}`, executionId };
+  }
+  if (row.executed_at) {
+    return { success: false, error: 'Already executed', executionId };
+  }
+
+  const tool = getTool(row.tool_name);
+  if (!tool) {
+    await ctx.adminClient
+      .from('agent_tool_executions')
+      .update({
+        status: 'failed',
+        real_result: { error: `Tool ${row.tool_name} not registered` } as unknown as Record<string, unknown>,
+        executed_at: new Date().toISOString(),
+      })
+      .eq('id', executionId);
+    return { success: false, error: `Tool ${row.tool_name} not registered`, executionId };
+  }
+
+  // Build a ctx scoped to the original user/org so the tool's verifyAccess
+  // checks (and any service-role queries it makes) target the correct
+  // organization.
+  const scopedCtx: ToolContext = {
+    ...ctx,
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    conversationId: row.conversation_id,
+    messageId: row.message_id,
+  };
+
+  let result: ExecuteResult;
+  try {
+    result = await tool.execute(row.params as Record<string, unknown>, scopedCtx);
+  } catch (err) {
+    result = { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
   await ctx.adminClient
     .from('agent_tool_executions')
     .update({

@@ -12,7 +12,7 @@
 
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
-import { checkLinkedInQuota } from './linkedin-quotas.ts';
+import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 
 // ─── Tool 1 — update_candidate_stage ────────────────────────────────────────
 // MVP : seul tool implémenté pour valider la mécanique end-to-end.
@@ -1831,7 +1831,8 @@ const sendLinkedInMessage: AgentTool = {
     "Send a one-off LinkedIn message to a recipient (NOT through a sequence). " +
     "Use this when the user says 'envoie un message LinkedIn à X disant ...', 'écris à Y pour confirmer l'entretien'. " +
     "Quota-gated : checks the user's business hours (member_quotas) and daily LinkedIn action cap. " +
-    "If outside business hours OR cap reached, the action is REFUSED — the user must wait or raise their cap. " +
+    "Si on est HORS plage horaire, l'action est AUTOMATIQUEMENT PROGRAMMÉE pour la prochaine ouverture (8h le lendemain ouvré par défaut) — l'user approuve normalement, le cron envoie au bon moment. Ne dis JAMAIS « hors plage, je ne peux pas envoyer » : tu peux toujours, le tool gère le timing. " +
+    "Si le cap journalier est atteint, l'action est REFUSED (hard reject — le user doit attendre demain ou monter son cap). " +
     "Two modes : `chat_id` continues an existing conversation, `recipient_provider_id` starts a new chat. " +
     "If the user has an existing LinkedIn thread with the recipient (verified via `get_linkedin_thread`), prefer `chat_id` over `recipient_provider_id` — it appends to the same conversation. " +
     "`account_id` is OPTIONAL — defaults to the user's first connected LinkedIn account (OK status preferred). Only set it explicitly if the user mentions a specific connected account or you know they have multiple. " +
@@ -1924,6 +1925,14 @@ const sendLinkedInMessage: AgentTool = {
     const subject = params.subject ? String(params.subject) : null;
 
     const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId);
+    const userQuotas = await getUserQuotas(ctx.adminClient, ctx.userId);
+    // Si on est hors plage MAIS pas au-dessus du cap, on PLANIFIE pour la
+    // prochaine ouverture de business hours (au lieu de refuser).
+    const isOverCap = quotaCheck.count_today >= quotaCheck.max_per_day;
+    const isOutOfHours = !quotaCheck.in_business_hours;
+    const scheduledForIso = isOutOfHours && !isOverCap
+      ? nextBusinessHoursStart(userQuotas.timezone, userQuotas.business_hours_start, userQuotas.business_hours_end)
+      : null;
     const preview = text.length > 120 ? text.slice(0, 117) + '…' : text;
 
     // Recipient label resolution priority :
@@ -1944,8 +1953,22 @@ const sendLinkedInMessage: AgentTool = {
       if (candidate?.candidate_name) recipientLabel = candidate.candidate_name;
     }
 
-    const warning = !quotaCheck.allowed
+    // Format scheduled_for for human warning (FR locale, target tz)
+    const formattedScheduled = scheduledForIso
+      ? new Date(scheduledForIso).toLocaleString('fr-FR', {
+          timeZone: userQuotas.timezone,
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : null;
+
+    const warning = isOverCap
       ? quotaCheck.reason
+      : scheduledForIso
+      ? `Hors plage horaire ${userQuotas.business_hours_start}h-${userQuotas.business_hours_end}h ${userQuotas.timezone}. À l'approbation, le message sera mis en file et envoyé automatiquement le ${formattedScheduled}.`
       : quotaCheck.count_today >= quotaCheck.max_per_day - 5
       ? `Attention quota : ${quotaCheck.count_today}/${quotaCheck.max_per_day} actions LinkedIn aujourd'hui.`
       : undefined;
@@ -1971,6 +1994,10 @@ const sendLinkedInMessage: AgentTool = {
         quota_max_per_day: quotaCheck.max_per_day,
         in_business_hours: quotaCheck.in_business_hours,
         timezone: quotaCheck.timezone,
+        // ↓ Lu par confirmToolExecution : si présent et > now+30s, l'action
+        //    est queue au lieu d'être exécutée immédiatement.
+        scheduled_for: scheduledForIso,
+        scheduled_for_human: formattedScheduled,
       },
       warning,
     };

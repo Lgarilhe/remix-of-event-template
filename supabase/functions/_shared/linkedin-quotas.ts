@@ -51,6 +51,102 @@ export function isWithinBusinessHours(timezone: string, startHour = 8, endHour =
   }
 }
 
+/**
+ * Computes the next UTC ISO timestamp at which business hours open in the
+ * given timezone. Returns now() if we are already within business hours.
+ *
+ * Algorithm :
+ *   - Find startHour:00 in the user's timezone TODAY ; if it's still in the
+ *     future, use it.
+ *   - Otherwise advance day-by-day, skipping weekends, until startHour fits.
+ *   - Cap at +7 days as a safety net.
+ *
+ * Returns ISO string (UTC).
+ */
+export function nextBusinessHoursStart(
+  timezone: string,
+  startHour = 8,
+  endHour = 19,
+): string {
+  const tz = safeTimezone(timezone);
+  const now = new Date();
+  if (isWithinBusinessHours(tz, startHour, endHour)) {
+    return now.toISOString();
+  }
+
+  // Iterate up to 7 days forward
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const probe = new Date(now);
+    probe.setUTCDate(probe.getUTCDate() + offset);
+    // Get the weekday in target tz for this probe day at startHour
+    // We construct "startHour:00:00 in tz" by formatting the probe date
+    // and reading back the hour & weekday parts.
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+      hour: 'numeric',
+      hour12: false,
+    }).formatToParts(probe);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+    const year = get('year');
+    const month = get('month');
+    const day = get('day');
+    const weekday = get('weekday');
+
+    if (weekday === 'Sat' || weekday === 'Sun') continue;
+
+    // Build a Date that represents `YYYY-MM-DD startHour:00:00` *in the user's tz*.
+    // We do this by computing the offset of that local-tz time from UTC.
+    const localTimestampMs = Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      startHour,
+      0,
+      0,
+      0,
+    );
+    // The localTimestampMs above is interpreted as if startHour was UTC. We need
+    // to shift back by tz offset. Compute tz offset for that date:
+    const tzStr = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(new Date(localTimestampMs));
+    // tzStr is the same wall-clock interpreted as a different UTC instant.
+    // Parse it back :
+    const m = tzStr.match(/(\d+)\/(\d+)\/(\d+),\s*(\d+):(\d+):(\d+)/);
+    if (!m) continue;
+    // tzWallMs = the UTC instant at which UTC clock reads YYYY-MM-DD startHour in tz
+    const tzWallMs = Date.UTC(
+      Number(m[3]),
+      Number(m[1]) - 1,
+      Number(m[2]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6]),
+      0,
+    );
+    // tz offset = how far ahead of UTC the user is
+    const tzOffsetMs = tzWallMs - localTimestampMs;
+    // The actual UTC instant for "startHour:00 in tz" = localTimestampMs - tzOffsetMs
+    const targetUtcMs = localTimestampMs - tzOffsetMs;
+    if (targetUtcMs > now.getTime()) {
+      return new Date(targetUtcMs).toISOString();
+    }
+  }
+  // Fallback : 24h from now (better than throwing)
+  return new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
+}
+
 /** Load member_quotas row, falling back to DEFAULT_USER_QUOTAS for missing fields. */
 export async function getUserQuotas(
   admin: SupabaseClient,
