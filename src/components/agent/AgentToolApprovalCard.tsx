@@ -5,17 +5,27 @@
  *
  * S'affiche quand l'agent a appelé un tool mutation et créé une row
  * agent_tool_executions avec status='proposed'. L'user voit le summary
- * du dry-run + warning éventuel + boutons Approuver / Rejeter.
+ * du dry-run + warning éventuel + boutons Rejeter / Modifier / Approuver.
+ *
+ * Mode Edit (Clarif.2) : permet à l'user de patcher les params proposés par
+ * Claude avant exécution. UPDATE direct sur agent_tool_executions.params puis
+ * appel à agent-tool-action 'approve'. Whitelist des champs éditables côté UI
+ * — les UUIDs/enums restent lisibles mais non-modifiables pour éviter casser
+ * verifyAccess.
  *
  * Realtime via Supabase channel : si l'agent crée une nouvelle proposition
  * pendant que l'user lit le chat, le bandeau apparaît automatiquement.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Check, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Check, X, AlertTriangle, Loader2, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 
 interface ToolExecutionRow {
   id: string;
@@ -41,11 +51,189 @@ const TOOL_LABEL: Record<string, string> = {
   create_mission: 'Créer une mission',
   enroll_in_sequence: 'Enrôler dans une séquence',
   schedule_interview: 'Planifier un entretien',
+  enrich_candidate_contact: 'Enrichir un contact',
+  // Phase A.1 — Pipeline candidat
+  add_candidate_note: 'Ajouter une note candidat',
+  dismiss_candidate: 'Écarter un candidat',
+  assign_candidate_to_member: 'Assigner un candidat',
+  // Phase A.2 — Mission management
+  update_mission_status: 'Modifier le statut mission',
+  update_mission_brief: 'Modifier le brief mission',
+  regenerate_search_filters: 'Régénérer les filtres LinkedIn',
+  // Phase A.3 — Outreach quota-gated
+  send_linkedin_message: 'Envoyer un message LinkedIn',
+  pause_sequence: 'Mettre en pause une séquence',
+  resume_sequence: 'Reprendre une séquence',
+  // Phase A.4 — Équipe
+  invite_team_member: 'Inviter un membre',
+  update_member_quota: 'Modifier les quotas d\'un membre',
+};
+
+// ─── Editable fields configuration ─────────────────────────────────────────
+// On limite l'édition aux champs textuels/numériques/booléens où l'user peut
+// pertinemment raffiner ce que Claude a proposé. Les UUIDs (candidate_id,
+// job_id, target_user_id, etc.) restent affichés en lecture seule — les
+// modifier casserait verifyAccess (et n'a aucun sens : ce sont des refs
+// résolues).
+
+const READONLY_FIELDS = new Set([
+  'candidate_id',
+  'job_id',
+  'sequence_id',
+  'target_user_id',
+  'assigned_to_user_id',
+  'organization_id',
+  'project_id',
+  'account_id',
+  'chat_id',
+  'recipient_provider_id',
+  'linkedin_url',
+]);
+
+// Champs typés comme textarea (multilignes)
+const TEXTAREA_FIELDS = new Set([
+  'text',
+  'message',
+  'content',
+  'reason',
+  'skip_reason',
+  'subject',
+  'mission_description',
+  'context',
+]);
+
+type FieldType = 'string' | 'textarea' | 'number' | 'boolean' | 'json' | 'readonly';
+
+function fieldTypeFor(key: string, value: unknown): FieldType {
+  if (READONLY_FIELDS.has(key)) return 'readonly';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'string') {
+    if (TEXTAREA_FIELDS.has(key) || value.length > 80) return 'textarea';
+    return 'string';
+  }
+  if (value === null || value === undefined) {
+    if (TEXTAREA_FIELDS.has(key)) return 'textarea';
+    return 'string';
+  }
+  return 'json';
+}
+
+function humanLabel(key: string): string {
+  // candidate_id → "Candidate Id", max_actions_per_day → "Max Actions Per Day"
+  return key
+    .split('_')
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(' ');
+}
+
+interface EditableParamFieldProps {
+  field: string;
+  value: unknown;
+  onChange: (newValue: unknown) => void;
+}
+
+const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, onChange }) => {
+  const type = fieldTypeFor(field, value);
+  const label = humanLabel(field);
+
+  if (type === 'readonly') {
+    return (
+      <div className="flex flex-col gap-1">
+        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+          {label} <span className="font-mono normal-case">(lecture seule)</span>
+        </Label>
+        <div className="text-xs font-mono text-muted-foreground bg-muted/40 px-2 py-1 rounded break-all">
+          {String(value ?? '∅')}
+        </div>
+      </div>
+    );
+  }
+
+  if (type === 'boolean') {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+          {label}
+        </Label>
+        <Switch checked={!!value} onCheckedChange={onChange} />
+      </div>
+    );
+  }
+
+  if (type === 'number') {
+    return (
+      <div className="flex flex-col gap-1">
+        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{label}</Label>
+        <Input
+          type="number"
+          value={String(value ?? '')}
+          onChange={(e) => {
+            const n = e.target.value === '' ? null : Number(e.target.value);
+            onChange(Number.isNaN(n) ? value : n);
+          }}
+          className="h-8 text-xs"
+        />
+      </div>
+    );
+  }
+
+  if (type === 'textarea') {
+    return (
+      <div className="flex flex-col gap-1">
+        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{label}</Label>
+        <Textarea
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          rows={Math.min(8, Math.max(3, Math.ceil(String(value ?? '').length / 60)))}
+          className="text-xs font-mono leading-snug"
+        />
+      </div>
+    );
+  }
+
+  if (type === 'json') {
+    // Object / array : JSON read-write textarea, best-effort
+    return (
+      <div className="flex flex-col gap-1">
+        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+          {label} <span className="normal-case">(JSON)</span>
+        </Label>
+        <Textarea
+          value={JSON.stringify(value, null, 2)}
+          onChange={(e) => {
+            try {
+              onChange(JSON.parse(e.target.value));
+            } catch {
+              // keep raw string; will fail validation but the user sees their input
+              onChange(e.target.value);
+            }
+          }}
+          rows={6}
+          className="text-xs font-mono leading-snug"
+        />
+      </div>
+    );
+  }
+
+  // default string
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{label}</Label>
+      <Input
+        value={String(value ?? '')}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 text-xs"
+      />
+    </div>
+  );
 };
 
 export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ conversationId }) => {
   const [pending, setPending] = useState<ToolExecutionRow[]>([]);
-  const [actionLoading, setActionLoading] = useState<Record<string, 'approve' | 'reject' | null>>({});
+  const [actionLoading, setActionLoading] = useState<Record<string, 'approve' | 'reject' | 'save' | null>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editedParams, setEditedParams] = useState<Record<string, unknown>>({});
 
   // Initial fetch + realtime subscription
   useEffect(() => {
@@ -120,6 +308,50 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
     [],
   );
 
+  const handleSaveAndApprove = useCallback(
+    async (executionId: string) => {
+      setActionLoading((prev) => ({ ...prev, [executionId]: 'save' }));
+      try {
+        // 1. UPDATE params on the row (only the original proposer's row, RLS-protected)
+        const { error: updateError } = await supabase
+          .from('agent_tool_executions')
+          .update({ params: editedParams })
+          .eq('id', executionId)
+          .eq('status', 'proposed');
+        if (updateError) {
+          toast.error(`Sauvegarde échouée : ${updateError.message}`);
+          return;
+        }
+        // 2. Approve via the existing edge fn (re-runs dryRun → execute with the new params)
+        const { data, error } = await invokeEdgeFunction<{ success: boolean; error?: string; data?: Record<string, unknown> }>(
+          'agent-tool-action',
+          { execution_id: executionId, action: 'approve' },
+        );
+        if (error || !data?.success) {
+          toast.error(data?.error || error?.message || 'Approbation après édition a échoué');
+          return;
+        }
+        toast.success('Action exécutée avec tes modifs ✓');
+        setEditingId(null);
+        setEditedParams({});
+        setPending((prev) => prev.filter((p) => p.id !== executionId));
+      } finally {
+        setActionLoading((prev) => ({ ...prev, [executionId]: null }));
+      }
+    },
+    [editedParams],
+  );
+
+  const startEditing = useCallback((row: ToolExecutionRow) => {
+    setEditingId(row.id);
+    setEditedParams({ ...row.params });
+  }, []);
+
+  const cancelEditing = useCallback(() => {
+    setEditingId(null);
+    setEditedParams({});
+  }, []);
+
   if (!conversationId || pending.length === 0) return null;
 
   return (
@@ -129,6 +361,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
         const warning = row.dry_run_result?.warning;
         const label = TOOL_LABEL[row.tool_name] || row.tool_name;
         const loading = actionLoading[row.id];
+        const isEditing = editingId === row.id;
 
         return (
           <div
@@ -156,26 +389,78 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
               </div>
             </div>
 
+            {isEditing && (
+              <div className="mt-2 pt-2 border-t border-dashed border-border flex flex-col gap-2.5">
+                <div className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground/80">
+                  Modifier les paramètres avant d'exécuter
+                </div>
+                {Object.entries(editedParams).map(([field, value]) => (
+                  <EditableParamField
+                    key={field}
+                    field={field}
+                    value={value}
+                    onChange={(newValue) => setEditedParams((prev) => ({ ...prev, [field]: newValue }))}
+                  />
+                ))}
+              </div>
+            )}
+
             <div className="flex items-center gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleAction(row.id, 'reject')}
-                disabled={loading !== null}
-                className="h-7 px-2.5 text-xs gap-1 border-border"
-              >
-                {loading === 'reject' ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
-                Rejeter
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => handleAction(row.id, 'approve')}
-                disabled={loading !== null}
-                className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
-              >
-                {loading === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                Approuver
-              </Button>
+              {!isEditing ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleAction(row.id, 'reject')}
+                    disabled={loading !== null}
+                    className="h-7 px-2.5 text-xs gap-1 border-border"
+                  >
+                    {loading === 'reject' ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                    Rejeter
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => startEditing(row)}
+                    disabled={loading !== null}
+                    className="h-7 px-2.5 text-xs gap-1 border-border"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Modifier
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleAction(row.id, 'approve')}
+                    disabled={loading !== null}
+                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
+                  >
+                    {loading === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    Approuver
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={cancelEditing}
+                    disabled={loading !== null}
+                    className="h-7 px-2.5 text-xs gap-1 border-border"
+                  >
+                    <X className="w-3 h-3" />
+                    Annuler
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleSaveAndApprove(row.id)}
+                    disabled={loading !== null}
+                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
+                  >
+                    {loading === 'save' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    Approuver avec modifs
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         );
