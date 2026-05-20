@@ -1234,10 +1234,15 @@ const getLinkedInThread: AgentTool = {
         data: {
           found: true,
           person: { name: matchedName || name },
+          // Surfaced for tool chaining : if the user asks to send a reply,
+          // pass these IDs to send_linkedin_message (chat_id for reply mode).
+          chat_id: matched.id as string,
+          account_id: accountId,
           message_count: messages.length,
           messages,
           note: 'Fil LinkedIn verbatim (messages récents, ordre chronologique). « contact » = ' +
-            (matchedName || name) + ', « nous » = toi.',
+            (matchedName || name) + ', « nous » = toi. Pour envoyer une réponse, appelle ' +
+            'send_linkedin_message(chat_id="' + matched.id + '", text="…") — n\'invente PAS de provider_id.',
         },
       };
     }
