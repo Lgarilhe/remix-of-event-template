@@ -823,8 +823,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `• send_linkedin_message à une personne dont tu n'as PAS le provider_id → ` +
         `appelle D'ABORD get_linkedin_thread(person_name) qui te renverra ` +
         `chat_id+account_id ; ensuite passe ce chat_id à send_linkedin_message (mode ` +
-        `reply, conserve le fil existant). N'invente JAMAIS de recipient_provider_id ` +
-        `(ACoAA…) à partir d'un nom — c'est une fabrication, ça plante.\n` +
+        `reply, conserve le fil existant) ET TOUJOURS recipient_name=<le nom complet ` +
+        `de la personne> pour que le bandeau affiche un nom lisible et non un hash. ` +
+        `N'invente JAMAIS de recipient_provider_id (ACoAA…) à partir d'un nom — c'est ` +
+        `une fabrication, ça plante.\n` +
         `• apply_search_filters_to_mission → utilise le job_id de la mission active ` +
         `(via app_context si tu es sur une page mission, sinon get_my_missions).\n` +
         `• send_linkedin_message → account_id est OPTIONNEL : NE LE FOURNIS PAS ` +

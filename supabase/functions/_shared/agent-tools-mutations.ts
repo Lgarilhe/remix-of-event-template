@@ -1713,6 +1713,13 @@ const sendLinkedInMessage: AgentTool = {
         type: 'string',
         description: "LinkedIn provider_id of the recipient (e.g. 'ACoAA...'). Use this when starting a brand new conversation. Mutually exclusive with chat_id.",
       },
+      recipient_name: {
+        type: 'string',
+        description:
+          "ALWAYS pass the recipient's display name (e.g. 'Guillaume Valladier') for the approval banner UI label. " +
+          "If you just called get_linkedin_thread(person_name=X), pass the same X here. " +
+          "Without it, the user sees an opaque chat ID like 'chat EFjEVUgyW8e3ihJGaffqRQ' instead of a name. ",
+      },
       text: {
         type: 'string',
         description: "The message body in French (max 1500 chars). Plain text — no markdown.",
@@ -1778,9 +1785,14 @@ const sendLinkedInMessage: AgentTool = {
     const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId);
     const preview = text.length > 120 ? text.slice(0, 117) + '…' : text;
 
-    // Resolve recipient name if possible (best-effort)
-    let recipientLabel = recipientId || (chatId ? `chat ${chatId}` : 'inconnu');
-    if (recipientId) {
+    // Recipient label resolution priority :
+    //   1. explicit recipient_name param (Claude passes it from get_linkedin_thread)
+    //   2. pipeline lookup by provider_id (if new_chat mode)
+    //   3. raw provider_id (least informative)
+    //   4. fallback to chat hash (worst case — Claude forgot recipient_name)
+    const recipientName = params.recipient_name ? String(params.recipient_name).trim() : '';
+    let recipientLabel = recipientName || recipientId || (chatId ? `chat ${chatId}` : 'inconnu');
+    if (!recipientName && recipientId) {
       const { data: candidate } = await ctx.adminClient
         .from('job_candidate_status')
         .select('candidate_name')

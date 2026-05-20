@@ -498,7 +498,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                     <Checkbox
                       id={`confirm-${row.id}`}
                       checked={isConfirmed}
-                      onCheckedChange={(c) => setConfirmed((prev) => ({ ...prev, [row.id]: c === true }))}
+                      onCheckedChange={(c) => setConfirmed((prev) => ({ ...prev, [row.id]: !!c && c !== 'indeterminate' }))}
                       className="mt-0.5"
                     />
                     <span className="text-foreground">

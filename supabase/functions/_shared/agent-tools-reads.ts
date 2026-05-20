@@ -1242,7 +1242,10 @@ const getLinkedInThread: AgentTool = {
           messages,
           note: 'Fil LinkedIn verbatim (messages récents, ordre chronologique). « contact » = ' +
             (matchedName || name) + ', « nous » = toi. Pour envoyer une réponse, appelle ' +
-            'send_linkedin_message(chat_id="' + matched.id + '", text="…") — n\'invente PAS de provider_id.',
+            'send_linkedin_message(chat_id="' + matched.id + '", recipient_name="' +
+            (matchedName || name) + '", text="…") — passe TOUJOURS recipient_name pour ' +
+            'que le bandeau d\'approbation affiche un nom lisible (pas un hash de chat). ' +
+            'N\'invente PAS de provider_id.',
         },
       };
     }
