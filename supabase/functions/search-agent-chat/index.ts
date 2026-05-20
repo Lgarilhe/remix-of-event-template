@@ -837,7 +837,18 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `InMail, content note) sans que l'user les ait fournis explicitement, ` +
         `montre-les dans ta réponse texte AVANT le tool call pour qu'il puisse ` +
         `rejeter/affiner. ` +
-        `\n\n**📎 Chaînages obligatoires** :\n` +
+        `\n\n**📝 Création de mission avec brief pré-rempli** : ` +
+        `create_mission accepte BIEN PLUS que name+job_title : il prend aussi ` +
+        `contract_type, urgency, client_name+client_sector+client_size, location, ` +
+        `remote_policy, remote_days, seniority, experience_min/max, salary_min/max/` +
+        `currency, skills_must_have/should_have/nice_to_have/to_avoid, ` +
+        `mission_description, context. Si tu as discuté ces champs pendant la ` +
+        `conversation (calibrage de mission), tu DOIS les passer en paramètres au ` +
+        `tool — le brief sera ainsi pré-rempli en UN seul bandeau. ` +
+        `NE JAMAIS dire « je ne peux pas remplir les champs du brief » ou « je suis ` +
+        `qu'un chatbot » : c'est FAUX, tu as les outils. Tu peux toujours appeler ` +
+        `update_mission_brief APRÈS si l'user veut ajuster un champ.\n` +
+        `\n**📎 Chaînages obligatoires** :\n` +
         `• send_linkedin_message à une personne dont tu n'as PAS le provider_id → ` +
         `appelle D'ABORD get_linkedin_thread(person_name) qui te renverra ` +
         `chat_id+account_id ; ensuite passe ce chat_id à send_linkedin_message (mode ` +

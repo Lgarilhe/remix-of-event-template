@@ -245,18 +245,67 @@ const addToShortlist: AgentTool = {
 const createMission: AgentTool = {
   name: 'create_mission',
   description:
-    "Create a new recruitment mission (sourcing project) in the user's workspace. " +
-    "Use when the user says 'crée une mission pour X', 'nouveau poste de Y chez Z'. " +
-    "Always proposes for approval — the mission won't appear in the kanban until the user approves.",
+    "Crée une nouvelle mission de recrutement (sourcing project) ET remplit le brief avec " +
+    "TOUT ce qui a été clarifié pendant la conversation (localisation, remote, salaire, " +
+    "expérience, stack, skills must/should-have, description, contexte client, urgence, etc.). " +
+    "UTILISATION OBLIGATOIRE : quand l'utilisateur a passé du temps à clarifier les critères " +
+    "(« je cherche un Data Scientist 3-7 ans à Paris, 60-75K, Python/ML classique, pas de remote »), " +
+    "tu DOIS passer TOUS ces champs en paramètres — pas juste name/job_title. Le brief sera " +
+    "ainsi pré-rempli et l'user n'aura plus qu'à compléter les champs experts (pedigree, " +
+    "critères d'évaluation détaillés) via l'éditeur brief. " +
+    "Ne JAMAIS dire « je ne peux pas remplir le brief » — c'est faux, ce tool le fait. " +
+    "Toujours proposé pour approbation — la mission n'apparaît dans le kanban qu'après le clic Approuver.",
   category: 'mutation_safe',
   requiresApproval: true,
   inputSchema: {
     type: 'object',
     properties: {
-      name: { type: 'string', description: 'Short mission name (≤80 chars), e.g. "DevOps Senior — Acme Series B".' },
-      job_title: { type: 'string', description: 'The role being recruited for, e.g. "DevOps Engineer".' },
-      client_name: { type: 'string', description: 'Optional client / company name.' },
-      description: { type: 'string', description: 'Optional 1-3 sentence brief.' },
+      // ── Identité ─────────────────────────────────────────────
+      name: { type: 'string', description: "Nom court de la mission (≤80 chars), e.g. « Data Scientist confirmé — Eleven Strategy »." },
+      job_title: { type: 'string', description: "Intitulé du poste, e.g. « Data Scientist »." },
+      client_name: { type: 'string', description: "Nom du client / entreprise externe (optionnel si recrutement interne)." },
+      client_sector: { type: 'string', description: "Secteur du client (e.g. « Conseil stratégique IA & Data »)." },
+      client_size: {
+        type: 'string',
+        enum: ['startup', 'scale-up', 'mid-market', 'enterprise'],
+        description: "Taille du client.",
+      },
+      description: { type: 'string', description: "Pitch court (1-3 phrases) — sera mis dans la colonne description ET dans context du brief." },
+      contract_type: {
+        type: 'string',
+        enum: ['cdi', 'cdd', 'freelance', 'alternance', 'stage', 'interim'],
+        description: "Type de contrat (défaut CDI si non précisé).",
+      },
+      urgency: {
+        type: 'string',
+        enum: ['low', 'medium', 'high', 'critical'],
+        description: "Niveau d'urgence (low/medium/high/critical).",
+      },
+
+      // ── Poste & localisation ─────────────────────────────────
+      location: { type: 'string', description: "Localisation lisible humain (e.g. « Paris 9ème + proche banlieue (30min max) »)." },
+      remote_policy: {
+        type: 'string',
+        enum: ['onsite', 'hybrid', 'full_remote'],
+        description: "Politique remote. « onsite » = 100% présentiel, « hybrid » = X jours/sem, « full_remote » = full distanciel.",
+      },
+      remote_days: { type: 'integer', description: "Si hybrid : nombre de jours remote par semaine (0-5)." },
+      mission_description: { type: 'string', description: "Description longue de la mission (ce que la personne va faire au quotidien)." },
+      context: { type: 'string', description: "Contexte client / contexte du recrutement (pourquoi ce poste maintenant, équipe, etc.)." },
+
+      // ── Profil & rémun ──────────────────────────────────────
+      seniority: { type: 'string', description: "Niveau (e.g. « confirmé », « senior », « junior »)." },
+      experience_min: { type: 'integer', description: "Années d'expérience minimum requises." },
+      experience_max: { type: 'integer', description: "Années d'expérience maximum souhaitées." },
+      salary_min: { type: 'integer', description: "Rémun min en milliers (60 = 60K€)." },
+      salary_max: { type: 'integer', description: "Rémun max en milliers (75 = 75K€)." },
+      salary_currency: { type: 'string', description: "Devise (défaut EUR)." },
+
+      // ── Skills ───────────────────────────────────────────────
+      skills_must_have: { type: 'array', items: { type: 'string' }, description: "Skills strictement requis (e.g. [\"Python\", \"scikit-learn\", \"pandas\"])." },
+      skills_should_have: { type: 'array', items: { type: 'string' }, description: "Skills fortement souhaités." },
+      skills_nice_to_have: { type: 'array', items: { type: 'string' }, description: "Skills bonus." },
+      skills_to_avoid: { type: 'array', items: { type: 'string' }, description: "Skills à exclure (e.g. profils ESN si on n'en veut pas)." },
     },
     required: ['name', 'job_title'],
   },
@@ -267,19 +316,100 @@ const createMission: AgentTool = {
   },
 
   async dryRun(params, _ctx) {
+    // Build a human-readable list of the brief fields that will be pre-filled
+    const briefBits: string[] = [];
+    if (params.contract_type) briefBits.push(`contrat ${params.contract_type}`);
+    if (params.urgency) briefBits.push(`urgence ${params.urgency}`);
+    if (params.location) briefBits.push(String(params.location));
+    if (params.remote_policy) briefBits.push(`remote=${params.remote_policy}${params.remote_days != null ? ` (${params.remote_days}j)` : ''}`);
+    if (params.seniority) briefBits.push(String(params.seniority));
+    if (params.experience_min != null || params.experience_max != null) {
+      briefBits.push(`exp ${params.experience_min ?? '?'}-${params.experience_max ?? '?'} ans`);
+    }
+    if (params.salary_min != null || params.salary_max != null) {
+      briefBits.push(`${params.salary_min ?? '?'}-${params.salary_max ?? '?'}K€`);
+    }
+    const skills = (params.skills_must_have as string[] | undefined) ?? [];
+    if (skills.length) briefBits.push(`skills: ${skills.slice(0, 5).join(', ')}${skills.length > 5 ? '…' : ''}`);
+
     return {
-      summary: `Créer la mission « ${params.name} » (${params.job_title})${params.client_name ? ` chez ${params.client_name}` : ''}`,
+      summary:
+        `Créer la mission « ${params.name} » (${params.job_title})` +
+        (params.client_name ? ` chez ${params.client_name}` : '') +
+        (briefBits.length ? `\nBrief pré-rempli : ${briefBits.join(' · ')}` : ''),
       details: {
         name: params.name,
         job_title: params.job_title,
         client_name: params.client_name ?? null,
+        client_sector: params.client_sector ?? null,
+        client_size: params.client_size ?? null,
         description: params.description ?? null,
+        contract_type: params.contract_type ?? null,
+        urgency: params.urgency ?? null,
+        location: params.location ?? null,
+        remote_policy: params.remote_policy ?? null,
+        remote_days: params.remote_days ?? null,
+        seniority: params.seniority ?? null,
+        experience_min: params.experience_min ?? null,
+        experience_max: params.experience_max ?? null,
+        salary_min: params.salary_min ?? null,
+        salary_max: params.salary_max ?? null,
+        salary_currency: params.salary_currency ?? null,
+        skills_must_have: params.skills_must_have ?? null,
+        skills_should_have: params.skills_should_have ?? null,
+        skills_nice_to_have: params.skills_nice_to_have ?? null,
+        skills_to_avoid: params.skills_to_avoid ?? null,
+        mission_description: params.mission_description ?? null,
+        context: params.context ?? null,
         status: 'active',
       },
     };
   },
 
   async execute(params, ctx) {
+    // Build job_details JSONB from all provided fields (snake_case mirrors the
+    // JobDetails type in src/types/jobDetails.ts).
+    const jobDetails: Record<string, unknown> = {};
+    const passThrough: Array<[string, unknown]> = [
+      ['title', params.job_title],
+      ['contract_type', params.contract_type],
+      ['urgency', params.urgency],
+      ['location', params.location],
+      ['remote_policy', params.remote_policy],
+      ['remote_days', params.remote_days],
+      ['seniority', params.seniority],
+      ['experience_min', params.experience_min],
+      ['experience_max', params.experience_max],
+      ['salary_min', params.salary_min],
+      ['salary_max', params.salary_max],
+      ['salary_currency', params.salary_currency ?? (params.salary_min || params.salary_max ? 'EUR' : undefined)],
+      ['mission_description', params.mission_description ?? params.description],
+      ['context', params.context],
+      ['skills_must_have', params.skills_must_have],
+      ['skills_should_have', params.skills_should_have],
+      ['skills_nice_to_have', params.skills_nice_to_have],
+      ['skills_to_avoid', params.skills_to_avoid],
+    ];
+    for (const [k, v] of passThrough) {
+      if (v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0)) {
+        jobDetails[k] = v;
+      }
+    }
+
+    // Client nested object — only if we have at least the name
+    if (params.client_name) {
+      jobDetails.client = {
+        name: String(params.client_name),
+        ...(params.client_sector ? { sector: String(params.client_sector) } : {}),
+        ...(params.client_size ? { size: String(params.client_size) } : {}),
+      };
+    }
+
+    // Mark brief as AI-structured so downstream UIs can flag it
+    if (Object.keys(jobDetails).length > 0) {
+      jobDetails.brief_source = 'ai_structured';
+    }
+
     const { data, error } = await ctx.adminClient
       .from('sourcing_projects')
       .insert({
@@ -291,14 +421,25 @@ const createMission: AgentTool = {
         created_by: ctx.userId,
         status: 'active',
         filters_snapshot: {},
+        ...(Object.keys(jobDetails).length > 0 ? { job_details: jobDetails } : {}),
       })
       .select('id, name, job_title')
       .single();
 
     if (error) return { success: false, error: error.message };
+
+    const filledFields = Object.keys(jobDetails).filter((k) => k !== 'brief_source');
     return {
       success: true,
-      data: { mission_id: data.id, name: data.name, job_title: data.job_title },
+      data: {
+        mission_id: data.id,
+        name: data.name,
+        job_title: data.job_title,
+        brief_fields_filled: filledFields,
+        message: filledFields.length
+          ? `Mission créée avec ${filledFields.length} champs du brief pré-remplis. L'user peut compléter pedigree/évaluation/critères dans l'éditeur brief.`
+          : 'Mission créée (brief vide).',
+      },
     };
   },
 };
