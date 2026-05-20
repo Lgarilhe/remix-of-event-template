@@ -639,19 +639,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </button>
           )}
 
-          {/* Select all — renforcée (border-2 foreground + bg fixe + shadow)
-              pour ressortir comme un vrai contrôle cliquable. */}
-          <div className="flex items-center gap-1.5 pl-2 border-l border-border shrink-0">
-            <Checkbox
-              checked={allSelectableSelected && selectableProfiles.length > 0}
-              onCheckedChange={onToggleSelectAll}
-              id="select-all"
-              className="h-4 w-4 border-2 border-foreground/50 bg-background hover:border-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary shadow"
-            />
-            <label htmlFor="select-all" className="text-[11.5px] text-foreground hover:text-foreground cursor-pointer select-none font-medium">
-              Tout sélectionner
-            </label>
-          </div>
+          {/* "Tout sélectionner" déplacé en ligne au-dessus des cards
+              (demande Laurent 2026-05-20) — voir bloc plus bas, aligné
+              avec la bulle de sélection de chaque candidat. */}
         </div>
       )}
 
@@ -957,6 +947,23 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 onArchive={selectedJob ? onArchive : undefined}
                 storageKey={selectedJob?.id || 'no-job'}
               />
+            )}
+
+            {/* Sélection groupée — alignée avec la bulle de chaque card
+                pour rendre l'action évidente (demande Laurent 2026-05-20).
+                Vue compact gère son propre select-all dans le header de table. */}
+            {viewMode !== 'compact' && selectedJob && (
+              <div className="flex items-center gap-2 pl-2 sm:pl-3 py-1">
+                <Checkbox
+                  checked={allSelectableSelected && selectableProfiles.length > 0}
+                  onCheckedChange={onToggleSelectAll}
+                  id="select-all"
+                  className="w-5 h-5 border-2 border-foreground/50 bg-background hover:border-foreground hover:bg-muted shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-colors"
+                />
+                <label htmlFor="select-all" className="text-[11.5px] text-foreground cursor-pointer select-none font-medium">
+                  Tout sélectionner
+                </label>
+              </div>
             )}
 
             {/* Vue cards (mode 'detailed') — chaque profil dans sa card riche */}
