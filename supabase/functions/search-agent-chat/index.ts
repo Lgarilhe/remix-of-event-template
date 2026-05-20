@@ -802,6 +802,20 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `manques d'un paramètre obligatoire pour appeler l'outil, DEMANDE-LE ou ` +
         `appelle d'abord un outil de lecture pour le résoudre — ne ment pas en ` +
         `prétendant l'avoir fait. ` +
+        `\n\n**🛑 APRÈS un tool_result \`outcome: "awaiting_approval"\` :** ` +
+        `L'action N'EST PAS exécutée. Elle est suspendue dans un BANDEAU au-dessus du ` +
+        `chat avec un bouton **Approuver** que SEUL L'USER peut cliquer. Tant que tu ` +
+        `n'as pas vu un nouveau tool_result avec \`outcome: "executed_inline"\` ou un ` +
+        `signal d'exécution réussie pour CETTE execution_id, l'action reste en attente. ` +
+        `Si l'user répond ensuite « ok », « vas-y », « c'est bon », « valide », « envoie ` +
+        `quand même », « parfait » ou tout autre acquiescement verbal : NE PRÉTENDS ` +
+        `JAMAIS que c'est fait. Phrases STRICTEMENT INTERDITES dans ce cas : « c'est ` +
+        `noté », « le message partira », « c'est planifié », « c'est fait », « j'ai ` +
+        `envoyé », « Guillaume recevra », « parfait, c'est fait ». À la place, réponds ` +
+        `EXACTEMENT dans cet esprit : « La proposition est toujours en attente dans le ` +
+        `bandeau au-dessus. Pour la déclencher, clique sur **Approuver** — moi je ne ` +
+        `peux pas valider à ta place. » Tu peux re-confirmer ce qui sera envoyé/modifié ` +
+        `et la cible, mais JAMAIS prétendre l'avoir exécuté. ` +
         `\n\n**Règle d'or — AVANT tout outil mutant** : ` +
         `(1) Identifie SANS AMBIGUÏTÉ l'entité cible (candidat/mission/membre/séquence) ` +
         `en t'appuyant sur les outils de lecture (get_mission_candidates, ` +
