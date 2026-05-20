@@ -718,6 +718,20 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         console.warn("[search-agent-chat] B.2 classifier skipped (→ CHAT):", e);
       }
     }
+    // Fallback déterministe : si Haiku rate et classe en CHAT, on rattrape les
+    // verbes/intentions d'action évidentes via regex sur le message courant.
+    // Faux positifs acceptés (ex. "envoie de tristesse" → ACTION false-pos →
+    // tools chargés mais Claude n'appellera aucun outil donc inoffensif).
+    // Faux négatifs sont plus douloureux (Claude fabrique des réponses sans
+    // tool call) → on préfère élargir.
+    if (isFreeMode && !classifiedDATA && !classifiedACTION) {
+      const lastUserMsg = String(message || '').slice(0, 500).toLowerCase();
+      const ACTION_KEYWORDS = /\b(envoie?|envoyer|envoi|écris\s+à|ajoute|écarte?r?|écartes|dismiss|archive|archiv\w+|invite|assigne|assignes|applique|appliques|pousse|pousses|mets?\s+en\s+pause|relance|relances|reprends?|réactive|modifie|modifies|change\s+(le|la|les|de|du)|enrichis|enrich\w+|trouve\s+l['"]?email|crée\s+(la|une|le)|supprime|delete|push)\b/i;
+      if (ACTION_KEYWORDS.test(lastUserMsg)) {
+        classifiedACTION = true;
+        console.log(`[search-agent-chat] B.2 keyword fallback → ACTION=true (Haiku missed it)`);
+      }
+    }
     const classifiedTOOLS = classifiedDATA || classifiedACTION;
 
     // Free + (DATA ou ACTION) : on entre dans la boucle d'outils avec le prompt
