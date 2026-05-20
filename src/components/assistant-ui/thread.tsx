@@ -134,78 +134,181 @@ const ShimmerThinking = () => (
   </div>
 );
 
+/**
+ * Extrait les blocs `[OPTIONS][...][/OPTIONS]` du texte assistant pour les
+ * rendre en chips cliquables (chaque option envoie sa string comme message
+ * suivant). Gère aussi le streaming : si on a un `[OPTIONS]` ouvrant mais
+ * pas encore le `[/OPTIONS]` fermant, on cache la portion partielle au lieu
+ * de l'afficher en raw pendant la frappe.
+ *
+ * Strip aussi les autres balises système (SEARCH_PLAN, AGENT_ACTION,
+ * SCORING_TEST, PROFILE) car le legacy AgentMessageBubble qui les rendait
+ * n'est pas utilisé par le runtime assistant-ui actuel — sans strip, elles
+ * apparaîtraient en JSON brut.
+ */
+const SYSTEM_TAGS = ['OPTIONS', 'SEARCH_PLAN', 'AGENT_ACTION', 'SCORING_TEST', 'PROFILE'] as const;
+
+function parseAssistantText(text: string): { stripped: string; options: string[] } {
+  const options: string[] = [];
+  let stripped = text;
+
+  // 1. Extract complete OPTIONS blocks (multi-occurrence supported)
+  const optionsRe = /\[OPTIONS\]\s*(\[[\s\S]*?\])\s*\[\/OPTIONS\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = optionsRe.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(m[1]);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const label = typeof item === 'string' ? item.trim() : '';
+          if (label) options.push(label);
+        }
+      }
+    } catch {
+      /* skip malformed JSON — happens during partial streaming */
+    }
+  }
+
+  // 2. Strip ALL complete system tag blocks from displayed text
+  for (const tag of SYSTEM_TAGS) {
+    stripped = stripped.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[\\/${tag}\\]`, 'g'), '');
+  }
+
+  // 3. Hide any in-flight (partial) opening tag — would render raw otherwise
+  for (const tag of SYSTEM_TAGS) {
+    const openIdx = stripped.indexOf(`[${tag}]`);
+    if (openIdx !== -1) {
+      stripped = stripped.slice(0, openIdx);
+      break;
+    }
+  }
+
+  return { stripped: stripped.replace(/\n{3,}/g, '\n\n').trim(), options };
+}
+
 /** Markdown renderer tuned for chat readability (Claude/ChatGPT-like) */
 const MarkdownText = ({ text }: { text: string }) => {
   const navigate = useNavigate();
   const { closeAgent } = useAgent();
+  const { stripped, options } = React.useMemo(() => parseAssistantText(text), [text]);
+
+  return (
+    <div className="space-y-2">
+      {stripped && (
+        <div
+          className={cn(
+            'text-[14px] leading-[1.7] text-foreground',
+            '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+            '[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal',
+            '[&_li]:my-1 [&_li]:marker:text-muted-foreground',
+            '[&_strong]:font-semibold [&_strong]:text-foreground',
+            '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a]:cursor-pointer hover:[&_a]:text-primary/80',
+            '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-[12.5px] [&_code]:font-mono',
+            '[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
+            '[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1.5',
+            '[&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-1.5',
+            '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1',
+            '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2',
+            '[&_hr]:my-3 [&_hr]:border-border/60',
+          )}
+        >
+          <ReactMarkdown
+            components={{
+              a: ({ href, children, ...props }) => {
+                const raw = String(href ?? '');
+                // Détermine si c'est un lien INTERNE app → navigation SPA. On gère :
+                //  - chemin relatif (/ats/scorecard/…)
+                //  - URL absolue same-origin
+                //  - URL absolue avec un domaine ≠ (ex. l'IA préfixe app.konekt.fr,
+                //    qui peut ne pas résoudre) MAIS dont le path est une route app
+                // → on navigue sur le PATH, jamais en pleine page vers un domaine mort.
+                const APP_ROUTE = /^\/(ats|pipeline|missions|qualification|dashboard|inbox|calendar|tasks|settings|prospection|candidates|marketplace|agents)(\/|$|\?)/;
+                let internalPath: string | null = null;
+                if (raw.startsWith('/')) {
+                  internalPath = raw;
+                } else {
+                  try {
+                    const u = new URL(raw, window.location.origin);
+                    if (u.origin === window.location.origin || APP_ROUTE.test(u.pathname)) {
+                      internalPath = u.pathname + u.search + u.hash;
+                    }
+                  } catch {
+                    /* pas une URL → traité comme externe ci-dessous */
+                  }
+                }
+                if (internalPath) {
+                  const path = internalPath;
+                  return (
+                    <a
+                      href={path}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        closeAgent();
+                        navigate(path);
+                      }}
+                      {...props}
+                    >
+                      {children}
+                    </a>
+                  );
+                }
+                return (
+                  <a href={raw} target="_blank" rel="noopener noreferrer" {...props}>
+                    {children}
+                  </a>
+                );
+              },
+            }}
+          >
+            {stripped}
+          </ReactMarkdown>
+        </div>
+      )}
+
+      {options.length > 0 && <OptionsChips options={options} />}
+    </div>
+  );
+};
+
+/**
+ * Chips cliquables pour les options proposées par l'IA. Chaque chip utilise
+ * ThreadPrimitive.Suggestion avec `send`, donc le clic envoie automatiquement
+ * la string en tant que prochain message utilisateur (même pattern que les
+ * suggestions d'accueil sur thread vide).
+ */
+const OptionsChips = ({ options }: { options: string[] }) => {
+  // Une option courte (≤ 28 chars) tient sur une pill ; sinon on stack en
+  // lignes pleine largeur (lisibilité > densité).
+  const longest = Math.max(...options.map((o) => o.length));
+  const stacked = longest > 28 || options.length > 4;
+
   return (
     <div
       className={cn(
-        'text-[14px] leading-[1.7] text-foreground',
-        '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
-        '[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal',
-        '[&_li]:my-1 [&_li]:marker:text-muted-foreground',
-        '[&_strong]:font-semibold [&_strong]:text-foreground',
-        '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a]:cursor-pointer hover:[&_a]:text-primary/80',
-        '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-[12.5px] [&_code]:font-mono',
-        '[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
-        '[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1.5',
-        '[&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-1.5',
-        '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1',
-        '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2',
-        '[&_hr]:my-3 [&_hr]:border-border/60',
+        'flex',
+        stacked ? 'flex-col gap-1.5' : 'flex-wrap gap-1.5',
+        'mt-1',
       )}
     >
-      <ReactMarkdown
-        components={{
-          a: ({ href, children, ...props }) => {
-            const raw = String(href ?? '');
-            // Détermine si c'est un lien INTERNE app → navigation SPA. On gère :
-            //  - chemin relatif (/ats/scorecard/…)
-            //  - URL absolue same-origin
-            //  - URL absolue avec un domaine ≠ (ex. l'IA préfixe app.konekt.fr,
-            //    qui peut ne pas résoudre) MAIS dont le path est une route app
-            // → on navigue sur le PATH, jamais en pleine page vers un domaine mort.
-            const APP_ROUTE = /^\/(ats|pipeline|missions|qualification|dashboard|inbox|calendar|tasks|settings|prospection|candidates|marketplace|agents)(\/|$|\?)/;
-            let internalPath: string | null = null;
-            if (raw.startsWith('/')) {
-              internalPath = raw;
-            } else {
-              try {
-                const u = new URL(raw, window.location.origin);
-                if (u.origin === window.location.origin || APP_ROUTE.test(u.pathname)) {
-                  internalPath = u.pathname + u.search + u.hash;
-                }
-              } catch {
-                /* pas une URL → traité comme externe ci-dessous */
-              }
-            }
-            if (internalPath) {
-              const path = internalPath;
-              return (
-                <a
-                  href={path}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    closeAgent();
-                    navigate(path);
-                  }}
-                  {...props}
-                >
-                  {children}
-                </a>
-              );
-            }
-            return (
-              <a href={raw} target="_blank" rel="noopener noreferrer" {...props}>
-                {children}
-              </a>
-            );
-          },
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+      {options.map((opt, i) => (
+        <ThreadPrimitive.Suggestion
+          key={`${i}-${opt.slice(0, 24)}`}
+          prompt={opt}
+          send
+          className={cn(
+            'group flex items-center gap-2 rounded-2xl border border-border/70 bg-card/60 px-3 py-2 text-left',
+            'text-[13px] text-foreground/80 transition-all',
+            'hover:border-primary/40 hover:bg-accent hover:text-foreground',
+            'active:scale-[0.98]',
+            stacked ? 'w-full' : 'rounded-full text-xs px-3 py-1.5',
+          )}
+        >
+          <span className="flex-1 leading-snug">{opt}</span>
+          {stacked && (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+          )}
+        </ThreadPrimitive.Suggestion>
+      ))}
     </div>
   );
 };
