@@ -338,7 +338,6 @@ export function hasActiveFilters(filters: LinkedInFiltersState): boolean {
     filters.open_to_work === true ||
     filters.open_to.length > 0 ||
     filters.hiring_project !== null ||
-    filters.talent_pool !== null ||
     filters.spotlight !== null ||
     filters.past_company.length > 0 ||
     filters.past_job_title.length > 0 ||

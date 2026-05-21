@@ -505,7 +505,6 @@ export function buildSearchParams(
 
   // Recruiter specific
   if (filters.hiring_project) baseParams.hiring_project = filters.hiring_project;
-  if (filters.talent_pool) baseParams.talent_pool = filters.talent_pool;
 
   // Spotlights (Recruiter)
   if (filters.api === 'recruiter') {

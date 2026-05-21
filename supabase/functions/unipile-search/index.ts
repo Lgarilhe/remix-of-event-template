@@ -58,7 +58,6 @@ interface SearchParams {
   
   // Recruiter specific
   hiring_project?: string;
-  talent_pool?: string;
   // Unipile schema: `spotlights` is an array of strings (LinkedIn native filter)
   spotlights?: string[];
   // Backward compat (older frontend used singular)
@@ -103,7 +102,8 @@ interface SearchParams {
   spoken_languages?: Array<{ language: string; priority?: string; scope?: string }>;
   employment_type?: string[];
   graduation_year?: { min?: number; max?: number };
-  hide_previously_viewed?: boolean;
+  // Unipile schema: `{ timespan: number }` (days). Frontend sends the object directly.
+  hide_previously_viewed?: { timespan: number };
   recently_joined?: Array<{ min?: number; max?: number }>;
   // Direct pass-through variants (frontend may send these directly)
   tenure_in_company?: { min?: number; max?: number };
@@ -334,7 +334,6 @@ async function handleSearch(
     open_to_work,
     open_to,
     hiring_project,
-    talent_pool,
     spotlights,
     spotlight,
     degree,
@@ -789,16 +788,14 @@ async function handleSearch(
       searchBody.spotlights = mergedSpotlights;
       console.log('[Search] Applied spotlights:', mergedSpotlights);
     }
-
-    if (open_to?.length) {
-      searchBody.open_to = open_to;
-    }
+    // Note: Recruiter has no `open_to` field in the Unipile schema — "Open to Work"
+    // is exposed via `spotlights: ['OPEN_TO_WORK']` (merged above). The `open_to`
+    // values (proBono / boardMember) only exist on Classic.
   }
 
   // Recruiter specific filters
   if (api === 'recruiter') {
     if (hiring_project) searchBody.hiring_projects = { include: [hiring_project] };
-    if (talent_pool) searchBody.talent_pool = talent_pool;
     // NOTE: spotlights are handled above (merged from open_to_work + spotlight + spotlights)
     
     // Recruiting activity (messages, notes, tags, etc.)
@@ -835,10 +832,10 @@ async function handleSearch(
       console.log('[Search] Applied graduation_year:', JSON.stringify(graduation_year));
     }
 
-    // Hide previously viewed profiles
-    if (hide_previously_viewed === true) {
-      searchBody.hide_previously_viewed = true;
-      console.log('[Search] Applied hide_previously_viewed: true');
+    // Hide previously viewed profiles — Unipile schema: { timespan: number } (days)
+    if (hide_previously_viewed && typeof hide_previously_viewed.timespan === 'number' && hide_previously_viewed.timespan > 0) {
+      searchBody.hide_previously_viewed = hide_previously_viewed;
+      console.log('[Search] Applied hide_previously_viewed:', JSON.stringify(hide_previously_viewed));
     }
 
     // Recently joined LinkedIn

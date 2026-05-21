@@ -29,7 +29,6 @@ export type FilterKey =
   | 'open_to'
   | 'spotlight'
   | 'hiring_project'
-  | 'talent_pool'
   | 'company_headcount'
   | 'company_type'
   | 'company_location'
@@ -69,7 +68,6 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     open_to: { supported: true }, // Classic supports proBono, boardMember
     spotlight: { supported: false, tooltip: "Spotlight n'est disponible qu'en mode Recruiter. Utilisez les filtres de rôle et mots-clés pour cibler les profils" },
     hiring_project: { supported: false, tooltip: "Les projets de recrutement ne sont disponibles qu'en mode Recruiter" },
-    talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode Recruiter" },
     company_headcount: { supported: false, tooltip: "La taille d'entreprise n'est pas disponible en mode Classic" },
     company_type: { supported: false, tooltip: "Le type d'entreprise n'est pas disponible en mode Classic" },
     company_location: { supported: false, tooltip: "La localisation de l'entreprise n'est pas disponible en mode Classic" },
@@ -103,11 +101,10 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     years_of_experience: { supported: true },
     tenure_at_company: { supported: true },
     tenure_at_role: { supported: true },
-    open_to_work: { supported: true },
-    open_to: { supported: true },
+    open_to_work: { supported: true }, // Mapped to `spotlights: ['OPEN_TO_WORK']`
+    open_to: { supported: false, tooltip: "Les types 'Open to' (Pro Bono / Board Member) ne sont disponibles qu'en mode Classic. En mode Recruiter, utilisez Spotlight." },
     spotlight: { supported: true }, // Valid: OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES, INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
     hiring_project: { supported: true },
-    talent_pool: { supported: true },
     company_headcount: { supported: true },
     company_type: { supported: false, tooltip: "Le type d'entreprise n'est disponible qu'en Sales Navigator" },
     company_location: { supported: false, tooltip: "La localisation de l'entreprise n'est disponible qu'en Sales Navigator" },
@@ -144,7 +141,6 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     open_to: { supported: false, tooltip: "Open to n'est pas disponible en Sales Navigator" },
     spotlight: { supported: false, tooltip: "Spotlight n'est disponible qu'en mode Recruiter" },
     hiring_project: { supported: false, tooltip: "Les projets de recrutement ne sont disponibles qu'en mode Recruiter" },
-    talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode Recruiter" },
     company_headcount: { supported: true },
     company_type: { supported: true },
     company_location: { supported: true }, // With include/exclude
@@ -181,7 +177,6 @@ export const FILTER_API_SUPPORT: Record<LinkedInApiType, Record<FilterKey, Filte
     open_to: { supported: false, tooltip: "Open to est une donnée LinkedIn uniquement" },
     spotlight: { supported: false, tooltip: "Spotlight est une donnée LinkedIn uniquement" },
     hiring_project: { supported: false, tooltip: "Les projets de recrutement ne sont disponibles qu'en mode LinkedIn Recruiter" },
-    talent_pool: { supported: false, tooltip: "Les talent pools ne sont disponibles qu'en mode LinkedIn Recruiter" },
     company_headcount: { supported: true }, // organization_num_employees_ranges
     company_type: { supported: false, tooltip: "Le type d'entreprise n'est pas filtrable en Base Konekt" },
     company_location: { supported: true }, // organization_locations
