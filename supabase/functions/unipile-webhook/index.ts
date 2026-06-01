@@ -363,9 +363,8 @@ Deno.serve(async (req) => {
               metadata: { account_id: payload.account_id, reason, reason_text: reasonText },
             }));
 
-            await supabase.from('notifications').insert(notifications).catch((e: unknown) =>
-              console.warn('[unipile-webhook] Could not create notifications (table may not exist):', e)
-            );
+            const { error: notifError } = await supabase.from('notifications').insert(notifications);
+            if (notifError) console.warn('[unipile-webhook] Could not create notifications (table may not exist):', notifError);
           }
         } catch (e) {
           console.warn('[unipile-webhook] Error creating disconnect notifications:', e);

@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
           });
 
           // Log credit purchase
-          await adminClient.from("credit_purchases").insert({
+          const { error: creditPurchaseError } = await adminClient.from("credit_purchases").insert({
             organization_id: orgId,
             user_id: userId || null,
             pack_id: metadata.pack_id,
@@ -183,7 +183,8 @@ Deno.serve(async (req) => {
             currency: session.currency || "eur",
             stripe_session_id: session.id,
             stripe_payment_intent_id: session.payment_intent,
-          }).catch((e: unknown) => console.warn("[stripe-webhook] credit_purchases insert failed (table may not exist):", e));
+          });
+          if (creditPurchaseError) console.warn("[stripe-webhook] credit_purchases insert failed (table may not exist):", creditPurchaseError);
 
           console.log(`[stripe-webhook] Added ${credits} topup credits for org ${orgId}`);
         }
