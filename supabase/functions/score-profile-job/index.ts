@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth } from "../_shared/require-auth.ts";
+import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 
 
 const corsHeaders = {
@@ -2717,6 +2718,26 @@ async function maybeEnrichProfile(
     return false;
   }
 
+  // ─── Gate ledger unifié (VUE DE PROFIL) ──────────────────────────────
+  // Conformité #260513-007211 : l'enrichissement scoring EST une vue de
+  // profil. On la fait passer par le même plafond global (cap journalier
+  // profile_view + pause fournisseur). Avant ce correctif, ces vues partaient
+  // en direct, hors de tout plafond unifié et en burst → cause du flag
+  // LinkedIn ("consultations de profil anormalement élevées").
+  if (ctx.supabase) {
+    const gate = await enforceLinkedInAction(ctx.supabase as any, {
+      accountId: ctx.accountId,
+      actionType: 'profile_view',
+      userId: ctx.userId ?? null,
+      organizationId: ctx.organizationId ?? null,
+      source: 'scoring',
+    });
+    if (!gate.allowed) {
+      console.warn(`[enrichment] quota gate denied for ${profile.name}: ${gate.reason || gate.scope}`);
+      return false;
+    }
+  }
+
   // Random delay 2-4s
   const delay = Math.floor(
     Math.random() * (ENRICHMENT_MAX_DELAY_MS - ENRICHMENT_MIN_DELAY_MS) + ENRICHMENT_MIN_DELAY_MS,
@@ -2745,33 +2766,18 @@ async function maybeEnrichProfile(
       "languages", "volunteer_experience",
     ].map(s => `linkedin_sections=${encodeURIComponent(s)}`).join("&");
 
-    // ─── Sprint Backend-1 : 2 appels Unipile en parallèle ───────────────
-    // GET /users/{id}          → profil détaillé (toutes les sections)
-    // GET /users/{id}/posts    → 5 derniers posts récents
-    //
-    // Coût : 2 appels Unipile par enrichment (vs 1 avant). Le quota natif
-    // LinkedIn (~50/jour pour compte normal) consomme donc 2× plus vite.
-    // À surveiller pour les comptes light. Avec Recruiter/SalesNav, le quota
-    // est plus permissif.
-    //
-    // Promise.all : si l'un échoue, on continue avec ce qu'on a (fallback
-    // gracieux — meilleur que rien).
-    const [profileResp, postsResp] = await Promise.all([
-      fetchWithTimeout(
-        `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
-        { headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" } },
-      ).catch((err) => {
-        console.warn(`[enrichment] profile fetch error for ${profile.name}:`, err);
-        return null;
-      }),
-      fetchWithTimeout(
-        `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}/posts?account_id=${ctx.accountId}&limit=5`,
-        { headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" } },
-      ).catch((err) => {
-        console.warn(`[enrichment] posts fetch error for ${profile.name}:`, err);
-        return null;
-      }),
-    ]);
+    // ─── 1 SEUL appel Unipile (conformité #260513-007211) ───────────────
+    // GET /users/{id} → profil détaillé (toutes les sections demandées).
+    // L'appel /users/{id}/posts a été RETIRÉ : il DOUBLAIT l'empreinte de vues
+    // de profil par candidat. Le signal "posts récents" est sacrifié pour la
+    // sécurité du compte (le burst de vues était la cause du flag LinkedIn).
+    const profileResp = await fetchWithTimeout(
+      `${ctx.baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${ctx.accountId}&${sectionsParams}&notify=false`,
+      { headers: { "X-API-KEY": ctx.apiKey, Accept: "application/json" } },
+    ).catch((err) => {
+      console.warn(`[enrichment] profile fetch error for ${profile.name}:`, err);
+      return null;
+    });
 
     if (!profileResp || !profileResp.ok) {
       const status = profileResp?.status ?? 'no response';
@@ -2783,33 +2789,16 @@ async function maybeEnrichProfile(
       return false;
     }
 
-    // Parse posts en background — non bloquant (best effort)
-    if (postsResp && postsResp.ok) {
-      try {
-        const postsData = await postsResp.json();
-        // Format Unipile : { items: [{ text, title, date, reaction_counter, ... }] }
-        // Selon version peut être à plat
-        const items = Array.isArray(postsData?.items) ? postsData.items
-          : Array.isArray(postsData) ? postsData
-          : [];
-        if (items.length > 0) {
-          profile.recentPosts = items.slice(0, 5).map((p: any) => ({
-            text: (p.text || p.content || '').slice(0, 180),
-            title: (p.title || '').slice(0, 100) || undefined,
-            date: p.date || p.published_at || p.created_at,
-            reactions: p.reaction_counter ?? p.reactions ?? p.reaction_count,
-          })).filter((p: { text?: string; title?: string }) => (p.text && p.text.length > 10) || p.title);
-          console.info(`[enrichment] +${profile.recentPosts.length} posts récents pour ${profile.name}`);
-        }
-      } catch (err) {
-        console.warn(`[enrichment] posts parse error for ${profile.name}:`, err);
-      }
-    } else if (postsResp) {
-      console.warn(`[enrichment] HTTP ${postsResp.status} (posts) for ${profile.name}`);
-    }
+    // (Parsing des posts récents retiré — l'appel /users/{id}/posts a été
+    // supprimé pour halver l'empreinte de vues de profil. Cf. plus haut.)
 
     const response = profileResp;
     const data = await response.json();
+    // Capte le signal usage fournisseur (% de proximité avec la limite) → pause
+    // auto du compte à ≥90%.
+    if (ctx.supabase) {
+      await recordUsageSignal(ctx.supabase as any, ctx.accountId, parseUsagePct(data), undefined);
+    }
     const dataKeys = Object.keys(data).join(', ');
     const enrichedExp = (data.work_experience || data.positions || data.experiences || []).slice(0, 5);
     const hasSummaryData = !!(data.about || data.summary);
@@ -3164,7 +3153,9 @@ Deno.serve(async (req) => {
     // Avant cette refonte, c'était strictement séquentiel : sur 30 profils
     // avec 50% nécessitant un enrichment (~3s chacun), ça représentait ~45s
     // de pure attente — souvent cause #1 de timeout (limite Supabase 60s).
-    const ENRICHMENT_CONCURRENCY = 5;
+    // Conformité #260513-007211 : abaissé 5→2 pour réduire le burst de vues de
+    // profil (était ~10 vues/4s par vague → cause du flag LinkedIn).
+    const ENRICHMENT_CONCURRENCY = 2;
 
     // Étape A : cache check + hard filter en parallèle pour tous
     const stageA = await Promise.all(profilesToScore.map(async (p): Promise<PreScoredProfile> => {
@@ -3212,8 +3203,15 @@ Deno.serve(async (req) => {
 
     // Étape B : enrichment, par vagues de ENRICHMENT_CONCURRENCY parallèles
     if (enrichmentCtx && passing.length > 0) {
-      for (let i = 0; i < passing.length; i += ENRICHMENT_CONCURRENCY) {
-        const wave = passing.slice(i, i + ENRICHMENT_CONCURRENCY);
+      // Garde anti-timeout : borne le nombre d'enrichissements inline par run.
+      // Concurrence basse + ce plafond évitent À LA FOIS le burst LinkedIn ET le
+      // timeout 60s. Le reste sera enrichi de façon asynchrone par la file
+      // découplée (Phase 2). Le gate ledger (cap profile_view) reste le plafond
+      // global dur par-dessus.
+      const MAX_ENRICHMENTS_PER_RUN = 12;
+      const toEnrich = passing.slice(0, MAX_ENRICHMENTS_PER_RUN);
+      for (let i = 0; i < toEnrich.length; i += ENRICHMENT_CONCURRENCY) {
+        const wave = toEnrich.slice(i, i + ENRICHMENT_CONCURRENCY);
         const enriched = await Promise.all(wave.map(ps =>
           maybeEnrichProfile(ps.profile, enrichmentCtx!).catch((err) => {
             console.error(`[enrichment] error for ${ps.profile.name}:`, err);
@@ -3223,6 +3221,13 @@ Deno.serve(async (req) => {
         // maybeEnrichProfile ne touche pas au compteur → c'est au caller
         // de l'incrémenter pour chaque appel ayant réellement enrichi.
         for (const wasEnriched of enriched) if (wasEnriched) enrichmentCtx.dailyCount++;
+        // Espacement inter-vague (anti-burst) — petit délai aléatoire.
+        if (i + ENRICHMENT_CONCURRENCY < toEnrich.length) {
+          await sleep(1000 + Math.floor(Math.random() * 1500));
+        }
+      }
+      if (passing.length > MAX_ENRICHMENTS_PER_RUN) {
+        console.log(`[enrichment] capped at ${MAX_ENRICHMENTS_PER_RUN}/run (${passing.length - MAX_ENRICHMENTS_PER_RUN} profils scorés sans enrichissement inline — à enrichir via la file).`);
       }
     }
 
