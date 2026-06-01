@@ -12,7 +12,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleCredits } from "../_shared/settle-credits.ts";
-import { requireAuth } from "../_shared/require-auth.ts";
+import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
@@ -79,6 +79,17 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
     const admin = createClient(supabaseUrl, serviceKey);
+
+    // Verify the caller belongs to the org they want to bill — otherwise a user
+    // could drain another tenant's AI credits by passing a foreign organization_id.
+    if (body.organization_id && auth.userId) {
+      const isMember = await verifyOrgMembership(admin as any, auth.userId, body.organization_id);
+      if (!isMember) {
+        return new Response(JSON.stringify({ error: 'Forbidden — not a member of this organization' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     const userPrompt = [
       `Donne-moi les concurrents directs et adjacents de "${body.client_company_name}".`,

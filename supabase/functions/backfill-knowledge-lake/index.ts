@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { verifyOrgMembership } from "../_shared/require-auth.ts";
 import {
   adaptAirtableHistory,
   adaptCallData,
@@ -172,7 +173,9 @@ Deno.serve(async (req) => {
     // Validate JWT or service_role
     const token = authHeader.replace('Bearer ', '');
     const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-    if (token !== serviceKey) {
+    const isServiceCaller = token === serviceKey;
+    let callerUserId: string | null = null;
+    if (!isServiceCaller) {
       const _authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
         global: { headers: { Authorization: authHeader } },
       });
@@ -182,6 +185,7 @@ Deno.serve(async (req) => {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      callerUserId = claimsData.user.id;
     }
 
     const body = await req.json().catch(() => ({}));
@@ -204,6 +208,17 @@ Deno.serve(async (req) => {
     if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
 
     const svc = createClient(supabaseUrl2, serviceKey2);
+
+    // IDOR guard: only a service-role caller (admin/cron) may backfill an
+    // arbitrary org. A user-JWT caller must belong to the target organization.
+    if (!isServiceCaller) {
+      const ok = callerUserId && (await verifyOrgMembership(svc as any, callerUserId, organizationId));
+      if (!ok) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     // deno-lint-ignore no-explicit-any
     const stats: Record<string, any> = {};
 

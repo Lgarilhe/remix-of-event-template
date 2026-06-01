@@ -1,14 +1,14 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireAuth } from "../_shared/require-auth.ts";
+import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// No global integration credentials — always resolved from organization_integrations
-let calendlyApiKey: string | undefined;
+// No global integration credentials — resolved per-request into a local (never a
+// module global, so concurrent invocations cannot see each other's Calendly key).
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -19,7 +19,7 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
 }
 
-async function resolveOrgCredentials(orgId: string) {
+async function resolveOrgCredentials(orgId: string): Promise<string> {
   const { data } = await supabase
     .from('organization_integrations')
     .select('calendly_api_key, calendly_connected')
@@ -30,8 +30,8 @@ async function resolveOrgCredentials(orgId: string) {
     throw new Error('Intégration Calendly non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
 
-  calendlyApiKey = data.calendly_api_key;
   console.log('[setup-calendly-webhook] Using org-specific Calendly credentials');
+  return data.calendly_api_key as string;
 }
 
 Deno.serve(async (req) => {
@@ -54,7 +54,15 @@ Deno.serve(async (req) => {
     if (!body?.organization_id) {
       throw new Error('organization_id est requis');
     }
-    await resolveOrgCredentials(body.organization_id);
+    // Verify membership before using the org's Calendly credentials (prevents a
+    // user from configuring webhooks with another tenant's connected account).
+    if (auth.userId) {
+      const isMember = await verifyOrgMembership(supabase as any, auth.userId, body.organization_id);
+      if (!isMember) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
+    const calendlyApiKey = await resolveOrgCredentials(body.organization_id);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const webhookUrl = `${supabaseUrl}/functions/v1/calendly-webhook`;

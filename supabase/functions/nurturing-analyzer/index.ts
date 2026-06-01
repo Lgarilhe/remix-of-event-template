@@ -321,14 +321,18 @@ Deno.serve(async (req) => {
 
     // Action: Get pending opportunities for a user
     if (action === 'list') {
-      if (!user_id) {
+      // A JWT caller may only list THEIR OWN opportunities — never an arbitrary
+      // user_id from the body (that was a cross-user IDOR). Service-role callers
+      // fall back to the requested user_id.
+      const targetUserId = authUserId ?? user_id;
+      if (!targetUserId) {
         throw new Error("user_id is required");
       }
 
       const { data, error } = await supabase
         .from('nurturing_opportunities')
         .select('*')
-        .eq('created_by', user_id)
+        .eq('created_by', targetUserId)
         .eq('status', 'pending')
         .order('priority_score', { ascending: false })
         .limit(50);
@@ -428,10 +432,14 @@ Deno.serve(async (req) => {
         updateData.reviewed_at = new Date().toISOString();
       }
 
-      const { error } = await supabase
+      let updateQuery = supabase
         .from('nurturing_opportunities')
         .update(updateData)
         .eq('id', opportunity_id);
+      // A JWT caller may only mutate their own opportunities (prevents updating
+      // any opportunity by id). Service-role callers are trusted org-wide.
+      if (authUserId) updateQuery = updateQuery.eq('created_by', authUserId);
+      const { error } = await updateQuery;
 
       if (error) throw error;
 
@@ -449,11 +457,14 @@ Deno.serve(async (req) => {
         throw new Error("opportunity_id and ANTHROPIC_API_KEY are required");
       }
 
-      const { data: opportunity, error } = await supabase
+      let oppQuery = supabase
         .from('nurturing_opportunities')
         .select('*')
-        .eq('id', opportunity_id)
-        .single();
+        .eq('id', opportunity_id);
+      // A JWT caller may only generate messages for their own opportunities
+      // (prevents processing any opportunity by id and burning AI credits on it).
+      if (authUserId) oppQuery = oppQuery.eq('created_by', authUserId);
+      const { data: opportunity, error } = await oppQuery.single();
 
       if (error || !opportunity) {
         throw new Error("Opportunity not found");
@@ -461,14 +472,16 @@ Deno.serve(async (req) => {
 
       const message = await generateNurturingMessage(opportunity, ANTHROPIC_API_KEY);
 
-      // Update opportunity with generated message
-      await supabase
+      // Update opportunity with generated message (scoped to the same owner)
+      let msgUpdate = supabase
         .from('nurturing_opportunities')
         .update({
           suggested_message: message.message,
           suggested_subject: message.subject
         })
         .eq('id', opportunity_id);
+      if (authUserId) msgUpdate = msgUpdate.eq('created_by', authUserId);
+      await msgUpdate;
 
       // ── Settle AI credits (fire-and-forget) ──
       if (message._tokensIn + message._tokensOut > 0) {

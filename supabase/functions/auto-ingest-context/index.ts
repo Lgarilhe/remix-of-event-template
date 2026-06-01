@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { adaptLinkedInProfile, adaptSourcingProject, type Chunk } from "../_shared/rag-adapters.ts";
+import { verifyOrgMembership } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -257,7 +258,9 @@ Deno.serve(async (req) => {
     }
     const token = authHeader.replace('Bearer ', '');
     const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-    if (token !== serviceKey) {
+    const isServiceCaller = token === serviceKey;
+    let callerUserId: string | null = null;
+    if (!isServiceCaller) {
       // Not service_role — validate as JWT
       const _authClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
         global: { headers: { Authorization: authHeader } },
@@ -266,6 +269,7 @@ Deno.serve(async (req) => {
       if (claimsError || !claimsData?.user?.id) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
+      callerUserId = claimsData.user.id;
     }
 
     const payload: TriggerPayload = await req.json();
@@ -291,6 +295,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: true, reason: "Builder returned null" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // IDOR guard: the DB trigger calls with the service role and is trusted to
+    // set record.organization_id. A user-JWT caller may only ingest into an org
+    // they actually belong to — never an arbitrary org id from the payload.
+    if (!isServiceCaller) {
+      const adminClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!,
+      );
+      const ok = callerUserId && (await verifyOrgMembership(adminClient as any, callerUserId, result.organization_id));
+      if (!ok) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     // Call ingest-context edge function

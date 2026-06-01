@@ -128,9 +128,10 @@ Deno.serve(async (req) => {
     // Resolve org-specific Unipile credentials into request-scoped locals
     let unipileApiKey = ENV_UNIPILE_API_KEY;
     let unipileDsn = ENV_UNIPILE_DSN;
+    let orgId: string | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(user.id, supabase);
+      orgId = await resolveOrgIdFromUser(user.id, supabase);
       const creds = await resolveUnipileCredentials(orgId, supabase);
       if (creds) {
         unipileApiKey = creds.apiKey;
@@ -140,10 +141,17 @@ Deno.serve(async (req) => {
       console.warn('[check-invitation] Org credential resolution failed, using env:', e);
     }
 
-    // Get all active enrollments with pending_invite OR pending check
+    // An authenticated user may only sweep their OWN organization's enrollments.
+    // Without this scope the service-role query below would touch every tenant.
+    if (!orgId) {
+      return new Response(JSON.stringify({ error: 'No organization for this user' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Get all active enrollments with pending_invite OR pending check (scoped to the user's org)
     const { data: enrollments, error: enrollError } = await supabase
       .from('sequence_enrollments')
       .select('*')
+      .eq('organization_id', orgId)
       .eq('status', 'active')
       .in('connection_status', ['pending_invite', 'not_connected']);
 

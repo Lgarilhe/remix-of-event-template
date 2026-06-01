@@ -6,8 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// No global integration credentials — always resolved from organization_integrations
-let AIRTABLE_API_KEY: string | undefined;
+// No global integration credentials — resolved per-request into request-scoped
+// locals (never module globals, so concurrent invocations cannot see each
+// other's Airtable key or base ids).
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -36,13 +37,10 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-// Base configs — populated per-org only
-const BASES: Record<string, { baseId: string | undefined; label: string }> = {
-  konekt: { baseId: undefined, label: 'Konekt' },
-  prospect: { baseId: undefined, label: 'Konekt prospect' },
-};
+// Base configs — labels are static; base ids are resolved per-request from org credentials.
+type AirtableBases = Record<string, { baseId: string | undefined; label: string }>;
 
-async function resolveOrgAirtableCredentials(orgId: string) {
+async function resolveOrgAirtableCredentials(orgId: string): Promise<{ apiKey: string; bases: AirtableBases }> {
   const { data } = await supabase
     .from('organization_integrations')
     .select('airtable_api_key, airtable_base_id, airtable_base_id_2, airtable_connected')
@@ -53,10 +51,12 @@ async function resolveOrgAirtableCredentials(orgId: string) {
     throw new Error('Intégration Airtable non configurée pour votre organisation. Rendez-vous dans Settings > Intégrations.');
   }
 
-  AIRTABLE_API_KEY = data.airtable_api_key.trim();
-  if (data.airtable_base_id) BASES.konekt.baseId = data.airtable_base_id.trim();
-  if (data.airtable_base_id_2) BASES.prospect.baseId = data.airtable_base_id_2.trim();
+  const bases: AirtableBases = {
+    konekt: { baseId: data.airtable_base_id ? data.airtable_base_id.trim() : undefined, label: 'Konekt' },
+    prospect: { baseId: data.airtable_base_id_2 ? data.airtable_base_id_2.trim() : undefined, label: 'Konekt prospect' },
+  };
   console.log('[fetch-airtable] Using org-specific Airtable credentials');
+  return { apiKey: data.airtable_api_key.trim(), bases };
 }
 
 // Airtable table names per base (both bases share similar French table names)
@@ -84,7 +84,7 @@ interface AirtableRecord {
 // Fetch records from an Airtable table with pagination support
 // skipPages: number of 100-record pages to skip before starting collection
 // maxRecords: max records to collect after skipping
-async function fetchAirtableTable(baseId: string, tableName: string, skipPages = 0, maxRecords?: number): Promise<AirtableRecord[]> {
+async function fetchAirtableTable(apiKey: string, baseId: string, tableName: string, skipPages = 0, maxRecords?: number): Promise<AirtableRecord[]> {
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
   let pageCount = 0;
@@ -101,7 +101,7 @@ async function fetchAirtableTable(baseId: string, tableName: string, skipPages =
     if (pagesRead > 0) await sleep(220);
 
     const response = await fetchWithRetry(url.toString(), {
-      headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
 
     if (!response.ok) {
@@ -437,23 +437,23 @@ Deno.serve(async (req) => {
     if (!body?.organization_id) {
       throw new Error('organization_id est requis');
     }
-    await resolveOrgAirtableCredentials(body.organization_id);
+    const { apiKey: airtableApiKey, bases } = await resolveOrgAirtableCredentials(body.organization_id);
 
     const action = body.action || 'sync_all';
     const tables = body.tables || Object.keys(TABLE_MAP);
     // Which bases to sync: 'all', 'konekt', or 'prospect'
     const targetBases: string[] = body.base
       ? [body.base]
-      : Object.keys(BASES);
+      : Object.keys(bases);
 
     if (action === 'list_tables') {
       const baseKey = body.base || 'konekt';
-      const baseId = BASES[baseKey]?.baseId;
+      const baseId = bases[baseKey]?.baseId;
       if (!baseId) throw new Error(`Base ${baseKey} not configured`);
       
       const url = `https://api.airtable.com/v0/meta/bases/${baseId}/tables`;
       const response = await fetchWithRetry(url, {
-        headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
+        headers: { Authorization: `Bearer ${airtableApiKey}` },
       });
       if (!response.ok) {
         const error = await response.text();
@@ -468,7 +468,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'debug_airtable') {
-      const diagnosticBaseId = typeof body.base_id === 'string' ? body.base_id.trim() : BASES.konekt.baseId;
+      const diagnosticBaseId = typeof body.base_id === 'string' ? body.base_id.trim() : bases.konekt.baseId;
       const tableIdOrName = typeof body.table_id_or_name === 'string' ? body.table_id_or_name.trim() : null;
 
       const metaUrl = `https://api.airtable.com/v0/meta/bases/${diagnosticBaseId}/tables`;
@@ -477,8 +477,8 @@ Deno.serve(async (req) => {
         : null;
 
       const [metaResponse, tableResponse] = await Promise.all([
-        fetchWithRetry(metaUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }),
-        tableUrl ? fetchWithRetry(tableUrl, { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }) : Promise.resolve(null),
+        fetchWithRetry(metaUrl, { headers: { Authorization: `Bearer ${airtableApiKey}` } }),
+        tableUrl ? fetchWithRetry(tableUrl, { headers: { Authorization: `Bearer ${airtableApiKey}` } }) : Promise.resolve(null),
       ]);
 
       const [metaPayload, tablePayload] = await Promise.all([
@@ -489,9 +489,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         success: metaResponse.ok || !!tableResponse?.ok,
         debug: {
-          has_api_key: !!AIRTABLE_API_KEY,
-          token_prefix: AIRTABLE_API_KEY?.slice(0, 4) ?? null,
-          configured_bases: Object.fromEntries(Object.entries(BASES).map(([k, v]) => [k, { configured: !!v.baseId, masked: maskValue(v.baseId) }])),
+          has_api_key: !!airtableApiKey,
+          token_prefix: airtableApiKey?.slice(0, 4) ?? null,
+          configured_bases: Object.fromEntries(Object.entries(bases).map(([k, v]) => [k, { configured: !!v.baseId, masked: maskValue(v.baseId) }])),
           used_base_id_masked: maskValue(diagnosticBaseId),
           table_id_or_name: tableIdOrName,
           meta: { url: metaUrl, status: metaResponse.status, ok: metaResponse.ok, body: metaPayload },
@@ -588,7 +588,7 @@ Deno.serve(async (req) => {
       const maxRecords = body.max_records || 5000;
       const skipPages = body.skip_pages || 0;
 
-      const baseConfig = BASES[baseKey];
+      const baseConfig = bases[baseKey];
       if (!baseConfig?.baseId) throw new Error(`Base ${baseKey} not configured`);
 
       const airtableName = TABLE_MAP[tableKey];
@@ -599,7 +599,7 @@ Deno.serve(async (req) => {
       }
 
       console.log(`Chunked sync: ${baseConfig.label} > ${airtableName} (skip ${skipPages} pages, max ${maxRecords})...`);
-      const records = await fetchAirtableTable(baseConfig.baseId, airtableName, skipPages, maxRecords);
+      const records = await fetchAirtableTable(airtableApiKey, baseConfig.baseId, airtableName, skipPages, maxRecords);
       const transformed = records.map(r => transform(r, baseKey));
       const count = await upsertRecords(supabase, supabaseTable, transformed);
 
@@ -637,7 +637,7 @@ Deno.serve(async (req) => {
     const results: Record<string, Record<string, { count: number; status: string }>> = {};
 
     for (const baseKey of targetBases) {
-      const baseConfig = BASES[baseKey];
+      const baseConfig = bases[baseKey];
       if (!baseConfig?.baseId) {
         results[baseKey] = { _error: { count: 0, status: `Base ${baseKey} not configured` } };
         continue;
@@ -657,7 +657,7 @@ Deno.serve(async (req) => {
 
         try {
           console.log(`Syncing ${baseConfig.label} > ${airtableName}...`);
-          const records = await fetchAirtableTable(baseConfig.baseId, airtableName);
+          const records = await fetchAirtableTable(airtableApiKey, baseConfig.baseId, airtableName);
           const transformed = records.map(r => transform(r, baseKey));
           const count = await upsertRecords(supabase, supabaseTable, transformed);
 
