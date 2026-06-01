@@ -37,7 +37,7 @@ async function resolveCredsForAccount(accountId: string, supabase: SupabaseClien
     const { data: account } = await supabase
       .from('member_linkedin_accounts')
       .select('organization_id')
-      .eq('account_id', accountId)
+      .eq('linkedin_account_id', accountId)
       .maybeSingle();
 
     if (!account?.organization_id) return fallback;
