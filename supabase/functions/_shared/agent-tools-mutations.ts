@@ -1924,7 +1924,8 @@ const sendLinkedInMessage: AgentTool = {
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : null;
 
-    const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId);
+    // dryRun is a PREVIEW — do NOT log to the ledger (log:false). Only execute() reserves a slot.
+    const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId, isInmail ? 'inmail' : 'message', { organizationId: ctx.organizationId, source: 'agent_tool', log: false });
     const userQuotas = await getUserQuotas(ctx.adminClient, ctx.userId);
     // Si on est hors plage MAIS pas au-dessus du cap, on PLANIFIE pour la
     // prochaine ouverture de business hours (au lieu de refuser).
@@ -2013,8 +2014,11 @@ const sendLinkedInMessage: AgentTool = {
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : null;
 
-    // Re-check quota at execute-time (the dryRun might be stale by a few minutes)
-    const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId);
+    // Re-check quota at execute-time (the dryRun might be stale by a few minutes).
+    // This is the REAL send → logs the action to the unified ledger (source
+    // agent_tool). The downstream unipile-search call is internal (service-role)
+    // and is NOT re-gated there, so there is no double count.
+    const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId, isInmail ? 'inmail' : 'message', { organizationId: ctx.organizationId, source: 'agent_tool' });
     if (!quotaCheck.allowed) {
       return { success: false, error: quotaCheck.reason };
     }

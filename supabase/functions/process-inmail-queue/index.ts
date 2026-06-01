@@ -1,5 +1,6 @@
 ﻿// Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -398,6 +399,35 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // ─── Gate quota unifié (ledger partagé) ─────────────────────────
+        // Conformité #260513-007211 : les InMails/messages de la file autonome
+        // comptent désormais dans le MÊME plafond journalier que les séquences.
+        // Avant ce correctif, ce chemin ignorait totalement le cap → fuite.
+        {
+          const gate = await enforceLinkedInAction(supabase, {
+            accountId: item.account_id,
+            actionType: isFirstDegreeMsg ? 'message' : 'inmail',
+            userId: item.created_by,
+            source: 'inmail_queue',
+          });
+          if (!gate.allowed) {
+            // Limites "dures" (pause fournisseur / hebdo) → back-off plus long.
+            const backoffMs = (gate.scope === 'provider_pause' || gate.scope === 'weekly_invite')
+              ? 6 * 60 * 60 * 1000
+              : 60 * 60 * 1000;
+            await supabase
+              .from("inmail_queue")
+              .update({
+                status: "scheduled",
+                scheduled_at: new Date(Date.now() + backoffMs).toISOString(),
+                error_message: gate.reason || "Quota LinkedIn atteint",
+              })
+              .eq("id", item.id);
+            results.push({ id: item.id, success: false, error: gate.reason || "quota" });
+            continue;
+          }
+        }
+
         // Mark as sending
         await supabase
           .from("inmail_queue")
@@ -470,8 +500,20 @@ Deno.serve(async (req: Request) => {
 
           if (!response.ok) {
             const errorText = await response.text();
+            // Provider hard-limit signals → pause the account for the day so
+            // every send path backs off (conformité #260513-007211).
+            if (/too_many_requests|limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorText)) {
+              await recordUsageSignal(supabase, item.account_id, 100, item.user_timezone);
+            }
             throw new Error(`Unipile error: ${response.status} - ${errorText}`);
           }
+
+          // Capture the provider usage % (LinkedIn signals how close we are to
+          // its own limit) — proactively pauses the account at ≥90%.
+          try {
+            const okBody = await response.json();
+            await recordUsageSignal(supabase, item.account_id, parseUsagePct(okBody), item.user_timezone);
+          } catch { /* response body is optional */ }
 
           // Mark as sent
           await supabase
