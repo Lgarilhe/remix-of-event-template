@@ -2,7 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth } from "../_shared/require-auth.ts";
-import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
+import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 
 
 const corsHeaders = {
@@ -2509,6 +2509,9 @@ interface EnrichmentContext {
   supabase?: SupabaseClient;
   organizationId?: string | null;
   userId?: string | null;
+  // Phase 2 : id du job en cours, pour invalider match_scores après
+  // enrichissement asynchrone (re-score lazy).
+  jobId?: string | null;
 }
 
 const ENRICHMENT_MIN_DELAY_MS = 2000;
@@ -2653,6 +2656,38 @@ async function writeEnrichmentCache(
 }
 
 /**
+ * Phase 2 — met un profil dans la file d'enrichissement (profile_enrichment_queue).
+ * Idempotent via la clé de déduplication (account_id, dedup_key, job_id) : ré-enqueue
+ * = simple refresh. Le worker process-enrichment-queue fetch en fond (throttlé).
+ */
+// deno-lint-ignore no-explicit-any
+async function enqueueEnrichment(ctx: EnrichmentContext, profile: ProfileData, profileId: string): Promise<void> {
+  if (!ctx.supabase) return;
+  const providerId = profile.providerId || null;
+  const profileUrl = profile.profileUrl || null;
+  const dedupKey = providerId || profileUrl || profileId;
+  try {
+    await ctx.supabase.from('profile_enrichment_queue').upsert({
+      organization_id: ctx.organizationId ?? null,
+      account_id: ctx.accountId,
+      provider_id: providerId,
+      profile_url: profileUrl,
+      dedup_key: dedupKey,
+      candidate_id: (profile as any).id ?? null,
+      job_id: ctx.jobId ?? '',
+      user_id: ctx.userId ?? null,
+      status: 'pending',
+      scheduled_at: new Date().toISOString(),
+      attempts: 0,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'account_id,dedup_key,job_id' });
+    console.info(`[enrichment] enqueued ${profile.name} for async enrichment`);
+  } catch (err) {
+    console.warn(`[enrichment] enqueue failed for ${profile.name}:`, err);
+  }
+}
+
+/**
  * Enrich a profile via Unipile get_profile if it lacks descriptions.
  * Returns true if enrichment was performed (counts toward daily quota).
  */
@@ -2718,32 +2753,21 @@ async function maybeEnrichProfile(
     return false;
   }
 
-  // ─── Gate ledger unifié (VUE DE PROFIL) ──────────────────────────────
-  // Conformité #260513-007211 : l'enrichissement scoring EST une vue de
-  // profil. On la fait passer par le même plafond global (cap journalier
-  // profile_view + pause fournisseur). Avant ce correctif, ces vues partaient
-  // en direct, hors de tout plafond unifié et en burst → cause du flag
-  // LinkedIn ("consultations de profil anormalement élevées").
-  if (ctx.supabase) {
-    const gate = await enforceLinkedInAction(ctx.supabase as any, {
-      accountId: ctx.accountId,
-      actionType: 'profile_view',
-      userId: ctx.userId ?? null,
-      organizationId: ctx.organizationId ?? null,
-      source: 'scoring',
-    });
-    if (!gate.allowed) {
-      console.warn(`[enrichment] quota gate denied for ${profile.name}: ${gate.reason || gate.scope}`);
-      return false;
-    }
-  }
+  // ─── Phase 2 : ENQUEUE (le scoring ne fetch PLUS aucun profil en direct) ──
+  // Conformité #260513-007211. On met le profil dans profile_enrichment_queue ;
+  // le worker process-enrichment-queue l'enrichit en fond (throttlé, gated par
+  // le ledger profile_view), puis invalide le score → re-scoré lazy. On score
+  // MAINTENANT avec les données dispo (recherche + cache hydraté ci-dessus).
+  await enqueueEnrichment(ctx, profile, profileId);
+  return false;
+}
 
-  // Random delay 2-4s
-  const delay = Math.floor(
-    Math.random() * (ENRICHMENT_MAX_DELAY_MS - ENRICHMENT_MIN_DELAY_MS) + ENRICHMENT_MIN_DELAY_MS,
-  );
-  await sleep(delay);
-
+// ⚠️ Legacy (Phase 1) — enrichissement INLINE, DÉSORMAIS INUTILISÉ : remplacé
+// par la file process-enrichment-queue + _shared/profile-enrichment.ts. Conservé
+// hors du chemin d'appel (jamais invoqué) pour limiter la surface de ce diff ;
+// à supprimer dans une passe de cleanup dédiée.
+// deno-lint-ignore no-unused-vars
+async function _legacyInlineEnrich(profile: ProfileData, ctx: EnrichmentContext, profileId: string): Promise<boolean> {
   try {
     let resolvedId = profileId;
     if (resolvedId.includes("linkedin.com")) {
@@ -3120,6 +3144,7 @@ Deno.serve(async (req) => {
         supabase: supabase as any,
         organizationId: resolvedOrgId,
         userId,
+        jobId: job.id,
       };
       console.log(`[enrichment] Context initialized: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT} used today, cache=${resolvedOrgId ? 'enabled' : 'disabled (no org)'}`);
     }
@@ -3201,34 +3226,18 @@ Deno.serve(async (req) => {
 
     const passing = stageA.filter(ps => ps.needsLLM);
 
-    // Étape B : enrichment, par vagues de ENRICHMENT_CONCURRENCY parallèles
+    // Étape B : Phase 2 — hydratation cache + ENQUEUE (AUCUN fetch inline).
+    // maybeEnrichProfile lit le cache d'enrichissement (hydrate le profil si
+    // dispo) et, si le profil a encore besoin d'enrichissement, le met dans la
+    // file process-enrichment-queue. Plus aucune vue de profil en direct depuis
+    // le scoring → zéro burst. Opérations DB rapides → parallélisables sans cap.
     if (enrichmentCtx && passing.length > 0) {
-      // Garde anti-timeout : borne le nombre d'enrichissements inline par run.
-      // Concurrence basse + ce plafond évitent À LA FOIS le burst LinkedIn ET le
-      // timeout 60s. Le reste sera enrichi de façon asynchrone par la file
-      // découplée (Phase 2). Le gate ledger (cap profile_view) reste le plafond
-      // global dur par-dessus.
-      const MAX_ENRICHMENTS_PER_RUN = 12;
-      const toEnrich = passing.slice(0, MAX_ENRICHMENTS_PER_RUN);
-      for (let i = 0; i < toEnrich.length; i += ENRICHMENT_CONCURRENCY) {
-        const wave = toEnrich.slice(i, i + ENRICHMENT_CONCURRENCY);
-        const enriched = await Promise.all(wave.map(ps =>
-          maybeEnrichProfile(ps.profile, enrichmentCtx!).catch((err) => {
-            console.error(`[enrichment] error for ${ps.profile.name}:`, err);
-            return false;
-          })
-        ));
-        // maybeEnrichProfile ne touche pas au compteur → c'est au caller
-        // de l'incrémenter pour chaque appel ayant réellement enrichi.
-        for (const wasEnriched of enriched) if (wasEnriched) enrichmentCtx.dailyCount++;
-        // Espacement inter-vague (anti-burst) — petit délai aléatoire.
-        if (i + ENRICHMENT_CONCURRENCY < toEnrich.length) {
-          await sleep(1000 + Math.floor(Math.random() * 1500));
-        }
-      }
-      if (passing.length > MAX_ENRICHMENTS_PER_RUN) {
-        console.log(`[enrichment] capped at ${MAX_ENRICHMENTS_PER_RUN}/run (${passing.length - MAX_ENRICHMENTS_PER_RUN} profils scorés sans enrichissement inline — à enrichir via la file).`);
-      }
+      await Promise.all(passing.map(ps =>
+        maybeEnrichProfile(ps.profile, enrichmentCtx!).catch((err) => {
+          console.error(`[enrichment] cache/enqueue error for ${ps.profile.name}:`, err);
+          return false;
+        })
+      ));
     }
 
     // Étape C : weighted + semantic en parallèle
