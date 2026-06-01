@@ -18,6 +18,12 @@ export interface UserQuotaConfig {
   business_hours_end: number;
   max_actions_per_day: number;
   timezone: string;
+  /** Daily cap on profile views (get_profile). Unipile reco ≈100/j. */
+  max_profile_visits_per_day: number;
+  /** Daily cap on search calls. */
+  max_searches_per_day: number;
+  /** Daily cap on InMails. Unipile reco 30–50/j. */
+  max_inmails_per_day: number;
 }
 
 export const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
@@ -25,7 +31,28 @@ export const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
   business_hours_end: 19,
   max_actions_per_day: 80,
   timezone: 'Europe/Paris',
+  max_profile_visits_per_day: 100,
+  max_searches_per_day: 100,
+  max_inmails_per_day: 40,
 };
+
+/**
+ * Weekly invitation ceiling. LinkedIn's hard limit is ~200/week (Unipile docs);
+ * we stay deliberately conservative at 100. Shared so every send path agrees.
+ */
+export const WEEKLY_INVITE_LIMIT = 100;
+
+/** Provider `usage` percentage at which we proactively pause the account. */
+export const USAGE_PAUSE_THRESHOLD = 90;
+
+/** All LinkedIn action types tracked by the unified ledger. */
+export type LinkedInActionType =
+  | 'connection_request'
+  | 'message'
+  | 'inmail'
+  | 'smart_message'
+  | 'profile_view'
+  | 'search';
 
 /** Validate timezone, fallback to Europe/Paris if invalid (Intl.DateTimeFormat throws on bad IANA zone). */
 export function safeTimezone(candidate: string | null | undefined): string {
@@ -161,15 +188,19 @@ export async function getUserQuotas(
   try {
     const { data } = await admin
       .from('member_quotas')
-      .select('business_hours_start, business_hours_end, max_actions_per_day, timezone')
+      .select('business_hours_start, business_hours_end, max_actions_per_day, timezone, max_profile_visits_per_day, max_searches_per_day, max_inmails_per_day')
       .eq('user_id', userId)
       .maybeSingle();
     if (!data) return DEFAULT_USER_QUOTAS;
+    const row = data as Record<string, unknown>;
     return {
-      business_hours_start: (data as Record<string, unknown>).business_hours_start as number ?? DEFAULT_USER_QUOTAS.business_hours_start,
-      business_hours_end: (data as Record<string, unknown>).business_hours_end as number ?? DEFAULT_USER_QUOTAS.business_hours_end,
-      max_actions_per_day: (data as Record<string, unknown>).max_actions_per_day as number ?? DEFAULT_USER_QUOTAS.max_actions_per_day,
-      timezone: (data as Record<string, unknown>).timezone as string ?? DEFAULT_USER_QUOTAS.timezone,
+      business_hours_start: row.business_hours_start as number ?? DEFAULT_USER_QUOTAS.business_hours_start,
+      business_hours_end: row.business_hours_end as number ?? DEFAULT_USER_QUOTAS.business_hours_end,
+      max_actions_per_day: row.max_actions_per_day as number ?? DEFAULT_USER_QUOTAS.max_actions_per_day,
+      timezone: row.timezone as string ?? DEFAULT_USER_QUOTAS.timezone,
+      max_profile_visits_per_day: row.max_profile_visits_per_day as number ?? DEFAULT_USER_QUOTAS.max_profile_visits_per_day,
+      max_searches_per_day: row.max_searches_per_day as number ?? DEFAULT_USER_QUOTAS.max_searches_per_day,
+      max_inmails_per_day: row.max_inmails_per_day as number ?? DEFAULT_USER_QUOTAS.max_inmails_per_day,
     };
   } catch {
     return DEFAULT_USER_QUOTAS;
@@ -238,42 +269,217 @@ export interface QuotaCheckResult {
 
 /**
  * One-stop quota check for standalone LinkedIn mutating tools.
- * Returns allowed=false if either (a) outside business hours or (b) at/over cap.
+ * Business-hours gate (kept here) + unified ledger gate (delegated to
+ * enforceLinkedInAction, which is the single source of truth across ALL send
+ * paths). Logs the action optimistically when allowed.
  */
 export async function checkLinkedInQuota(
   admin: SupabaseClient,
   userId: string,
   accountId: string | null,
+  actionType: LinkedInActionType = 'message',
+  opts: { organizationId?: string | null; source?: string; log?: boolean } = {},
 ): Promise<QuotaCheckResult> {
   const quotas = await getUserQuotas(admin, userId);
   const inBh = isWithinBusinessHours(quotas.timezone, quotas.business_hours_start, quotas.business_hours_end);
-  const count = await countActionsToday(admin, userId, accountId);
 
   if (!inBh) {
     return {
       allowed: false,
       reason: `Hors plage horaire autorisée (${quotas.business_hours_start}h–${quotas.business_hours_end}h ${quotas.timezone}). Action différée.`,
-      count_today: count,
+      count_today: 0,
       max_per_day: quotas.max_actions_per_day,
       in_business_hours: false,
       timezone: quotas.timezone,
     };
   }
-  if (count >= quotas.max_actions_per_day) {
-    return {
-      allowed: false,
-      reason: `Cap journalier atteint (${count}/${quotas.max_actions_per_day} actions LinkedIn aujourd'hui).`,
-      count_today: count,
-      max_per_day: quotas.max_actions_per_day,
-      in_business_hours: true,
-      timezone: quotas.timezone,
-    };
-  }
+
+  const res = await enforceLinkedInAction(admin, {
+    accountId,
+    actionType,
+    userId,
+    organizationId: opts.organizationId ?? null,
+    source: opts.source ?? 'agent_tool',
+    quotas,
+    mode: 'auto',
+    log: opts.log ?? true,
+  });
+
   return {
-    allowed: true,
-    count_today: count,
+    allowed: res.allowed,
+    reason: res.reason,
+    count_today: res.count ?? 0,
     max_per_day: quotas.max_actions_per_day,
     in_business_hours: true,
     timezone: quotas.timezone,
   };
+}
+
+// ============================================================================
+// UNIFIED LEDGER GATE — single source of truth for ALL LinkedIn send paths
+// ============================================================================
+// process-sequences, process-inmail-queue, agent-tools-mutations and
+// unipile-search ALL funnel through enforceLinkedInAction so the daily/weekly
+// caps are a real ceiling per LinkedIn account, regardless of origin.
+// Conformité LinkedIn warning #260513-007211.
+
+export interface EnforceOpts {
+  accountId: string | null;
+  actionType: LinkedInActionType;
+  userId?: string | null;
+  organizationId?: string | null;
+  /** Provenance tag stored in the ledger: sequence | inmail_queue | agent_tool | manual_search | manual_inbox */
+  source?: string;
+  /** Pre-loaded quotas to avoid a re-query; loaded from member_quotas if omitted. */
+  quotas?: UserQuotaConfig;
+  /** 'manual' applies a 5% protective buffer (blocks near-limit, ~95%). 'auto' uses full caps. */
+  mode?: 'auto' | 'manual';
+  /** Whether to record the action in the ledger when allowed (default true). */
+  log?: boolean;
+}
+
+export interface EnforceResult {
+  allowed: boolean;
+  reason?: string;
+  /** weekly_invite | profile_view | search | inmail_daily | daily_visible | provider_pause | rpc_error */
+  scope?: string;
+  count?: number;
+  /** True when within the soft-warning band (≥75% of the headline cap) — for UI nudges. */
+  softWarn?: boolean;
+}
+
+/** Interpret Y-M-D H:M as wall-clock time in `tz`, return the UTC epoch ms. */
+function localWallTimeToUtcMs(tz: string, year: number, month: number, day: number, hour: number, minute = 0): number {
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  const str = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(new Date(asUtc));
+  const m = str.match(/(\d+)\/(\d+)\/(\d+),\s*(\d+):(\d+):(\d+)/);
+  if (!m) return asUtc;
+  const wallMs = Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2]), Number(m[4]), Number(m[5]), Number(m[6]), 0);
+  const offset = wallMs - asUtc;
+  return asUtc - offset;
+}
+
+/** UTC ISO timestamp for 00:00 local-time today in the given timezone. */
+export function startOfLocalDayUtc(timezone: string): string {
+  const tz = safeTimezone(timezone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return new Date(localWallTimeToUtcMs(tz, Number(get('year')), Number(get('month')), Number(get('day')), 0, 0)).toISOString();
+}
+
+/**
+ * UTC ISO timestamp to pause an account until. Coarse 16h window — guaranteed
+ * to skip the remainder of today's sending window; the business-hours gate
+ * enforces the precise morning resume time.
+ */
+export function quotaPauseUntilTomorrow(_timezone?: string): string {
+  return new Date(Date.now() + 16 * 3600 * 1000).toISOString();
+}
+
+/** Extract the provider `usage` percentage from a Unipile response body, if present. */
+export function parseUsagePct(body: unknown): number | null {
+  if (!body || typeof body !== 'object') return null;
+  const u = (body as Record<string, unknown>).usage;
+  return typeof u === 'number' && isFinite(u) ? u : null;
+}
+
+/**
+ * Record the provider `usage` signal. When usage ≥ USAGE_PAUSE_THRESHOLD,
+ * proactively pause the account (member_linkedin_accounts.quota_paused_until)
+ * so every send path backs off until tomorrow. Non-fatal on error.
+ */
+export async function recordUsageSignal(
+  admin: SupabaseClient,
+  accountId: string | null,
+  usagePct: number | null,
+  timezone?: string,
+): Promise<void> {
+  if (!accountId || usagePct === null) return;
+  try {
+    const update: Record<string, unknown> = { last_usage_pct: Math.round(usagePct) };
+    if (usagePct >= USAGE_PAUSE_THRESHOLD) {
+      update.quota_paused_until = quotaPauseUntilTomorrow(timezone);
+      console.warn(`[linkedin-quotas] usage ${usagePct}% ≥ ${USAGE_PAUSE_THRESHOLD}% — pausing account ${accountId} until ${update.quota_paused_until}`);
+    }
+    await admin.from('member_linkedin_accounts').update(update).eq('linkedin_account_id', accountId);
+  } catch (e) {
+    console.error('[linkedin-quotas] recordUsageSignal failed (non-fatal):', e);
+  }
+}
+
+/**
+ * The unified gate. Checks (atomically, via the check_linkedin_action_quota
+ * RPC): provider pause, weekly invite cap, per-type daily caps, and the
+ * cumulative visible daily cap — then optimistically logs the action.
+ *
+ * Fail behaviour on infra error:
+ *   - mode 'auto'   → fail-CLOSED (block; the caller reschedules). Protects the
+ *                     account from a silent over-send if the gate is down.
+ *   - mode 'manual' → fail-OPEN (allow). A single human-initiated action on a
+ *                     transient DB blip is negligible risk; blocking the user
+ *                     mid-session would be worse UX.
+ */
+export async function enforceLinkedInAction(
+  admin: SupabaseClient,
+  opts: EnforceOpts,
+): Promise<EnforceResult> {
+  const { accountId, actionType } = opts;
+  const manual = opts.mode === 'manual';
+
+  if (!accountId) {
+    // No account to key the ledger on — nothing to enforce (the caller will
+    // fail downstream without an account anyway).
+    return { allowed: true, count: 0 };
+  }
+
+  const quotas = opts.quotas ?? await getUserQuotas(admin, opts.userId ?? null);
+  const factor = manual ? 0.95 : 1;
+  const clamp = (n: number) => Math.max(1, Math.floor(n * factor));
+
+  const daySince = startOfLocalDayUtc(quotas.timezone);
+  const weekSince = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+
+  let headlineCap = quotas.max_actions_per_day;
+  if (actionType === 'profile_view') headlineCap = quotas.max_profile_visits_per_day;
+  else if (actionType === 'search') headlineCap = quotas.max_searches_per_day;
+
+  try {
+    const { data, error } = await admin.rpc('check_linkedin_action_quota', {
+      p_account_id: accountId,
+      p_action_type: actionType,
+      p_day_since: daySince,
+      p_week_since: weekSince,
+      p_daily_visible_cap: clamp(quotas.max_actions_per_day),
+      p_weekly_invite_cap: clamp(WEEKLY_INVITE_LIMIT),
+      p_profile_view_cap: clamp(quotas.max_profile_visits_per_day),
+      p_search_cap: clamp(quotas.max_searches_per_day),
+      p_inmail_daily_cap: clamp(quotas.max_inmails_per_day),
+      p_user_id: opts.userId ?? null,
+      p_organization_id: opts.organizationId ?? null,
+      p_source: opts.source ?? null,
+      p_log: opts.log ?? true,
+    });
+
+    if (error) {
+      console.error('[linkedin-quotas] check_linkedin_action_quota RPC error:', error.message);
+      return manual
+        ? { allowed: true, scope: 'rpc_error', count: 0 }
+        : { allowed: false, scope: 'rpc_error', reason: 'Contrôle de quota indisponible. Action différée.' };
+    }
+
+    const result = (data ?? {}) as { allowed?: boolean; reason?: string; scope?: string; count?: number };
+    const count = typeof result.count === 'number' ? result.count : 0;
+    const softWarn = result.allowed === true && headlineCap > 0 && (count + 1) >= Math.floor(headlineCap * 0.75);
+    return { allowed: result.allowed === true, reason: result.reason, scope: result.scope, count, softWarn };
+  } catch (e) {
+    console.error('[linkedin-quotas] enforceLinkedInAction failed:', e);
+    return manual
+      ? { allowed: true, scope: 'exception', count: 0 }
+      : { allowed: false, scope: 'exception', reason: 'Contrôle de quota en erreur. Action différée.' };
+  }
 }

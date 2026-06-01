@@ -2,6 +2,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
+import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from "../_shared/linkedin-quotas.ts";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
 const corsHeaders = {
@@ -447,7 +448,7 @@ async function handleProcess(supabase: any, force = false) {
           enrollment.account_id,
           uCreds.apiKey,
           uCreds.dsn,
-          userQuotas.max_actions_per_day,
+          senderUserId,
         );
         if (!quotaCheck.allowed) {
           await supabase.from('sequence_step_executions').update({
@@ -471,7 +472,7 @@ async function handleProcess(supabase: any, force = false) {
           const { data: accountStatus } = await supabase
             .from('member_linkedin_accounts')
             .select('account_status')
-            .eq('account_id', enrollment.account_id)
+            .eq('linkedin_account_id', enrollment.account_id)
             .maybeSingle();
 
           if (accountStatus && accountStatus.account_status !== 'OK') {
@@ -789,6 +790,14 @@ async function handleProcess(supabase: any, force = false) {
           // Error handling: differentiate rate limits, account disconnections, and other retryable errors
           const currentRetryCount = exec.retry_count || 0;
           const errorStr = executeResult.error || '';
+
+          // Signal de limite "dure" côté fournisseur (quota réellement atteint,
+          // pas un 429 transitoire) → on met TOUT le compte en pause jusqu'à
+          // demain, pas seulement ce step, pour que tous les chemins d'envoi
+          // reculent. Conformité #260513-007211.
+          if (enrollment.account_id && /limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorStr)) {
+            await recordUsageSignal(supabase, enrollment.account_id, 100, enrollment.user_timezone);
+          }
 
           if (isAccountDisconnectedError(errorStr)) {
             // Compte LinkedIn/email déconnecté : retry inutile. On pause
@@ -1725,45 +1734,37 @@ async function checkHasProspectReplied(accountId: string, profileId: string, api
 }
 
 // deno-lint-ignore no-explicit-any
-async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string, maxActionsPerDay?: number): Promise<{ allowed: boolean; reason?: string }> {
+async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string, userId?: string | null): Promise<{ allowed: boolean; reason?: string }> {
   const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
-    // ─── Cap global cumulé d'actions visibles par jour ─────────────────────
-    // Configurable par user via member_quotas.max_actions_per_day. Conformité
-    // LinkedIn warning #260513-007211 : si l'user partage son compte LinkedIn
-    // avec un autre outil, ce cap doit refléter le volume cumulé acceptable.
-    const VISIBLE_ACTIONS = new Set(['message', 'smart_message', 'inmail', 'connection_request']);
-    if (VISIBLE_ACTIONS.has(actionType) && typeof maxActionsPerDay === 'number' && maxActionsPerDay > 0) {
-      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-      const { data: todayActions } = await supabase
-        .from('sequence_step_executions')
-        .select('id, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(account_id)')
-        .eq('status', 'sent')
-        .eq('enrollment.account_id', accountId)
-        .in('step.action_type', Array.from(VISIBLE_ACTIONS))
-        .gte('executed_at', dayStart.toISOString());
-      const todayCount = todayActions?.length || 0;
-      if (todayCount >= maxActionsPerDay) {
-        return { allowed: false, reason: `Cap journalier atteint (${todayCount}/${maxActionsPerDay} actions visibles)` };
-      }
-    }
-
+    // 1. Solde InMail (Unipile) D'ABORD — fail-CLOSED, AVANT d'écrire au ledger
+    //    (un balance KO ne doit pas consommer un slot quota inutilement).
     if (actionType === 'inmail' || actionType === 'smart_message') {
       const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/linkedin/inmail_balance?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
-      // Fail-CLOSED : si Unipile balance check échoue, on bloque l'envoi.
-      // Préférable de retarder un envoi que de cramer le quota silencieusement.
       if (!r.ok) {
         return { allowed: false, reason: `Quota check unavailable (HTTP ${r.status})` };
       }
       const b = await r.json();
       const total = (b.recruiter || 0) + (b.premium || 0) + (b.sales_navigator || 0);
       if (total <= 0) return { allowed: false, reason: 'Quota InMail épuisé' };
-    } else if (actionType === 'connection_request') {
-      const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-      const { data } = await supabase.from('sequence_step_executions').select('id, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(account_id)').eq('status', 'sent').eq('step.action_type', 'connection_request').eq('enrollment.account_id', accountId).gte('executed_at', weekAgo.toISOString());
-      if ((data?.length || 0) >= WEEKLY_INVITE_LIMIT) return { allowed: false, reason: `Limite hebdo invitations (${WEEKLY_INVITE_LIMIT})` };
     }
+
+    // 2. Gate ledger unifié (pause fournisseur + cap hebdo invitations + cap
+    //    journalier cumulé + caps par type) — SOURCE DE VÉRITÉ partagée avec
+    //    process-inmail-queue / agent tools / actions manuelles. Log optimiste.
+    //    Conformité #260513-007211 : le cap est désormais un VRAI plafond par
+    //    compte LinkedIn, quelle que soit l'origine de l'action.
+    const gate = await enforceLinkedInAction(supabase, {
+      accountId,
+      actionType: actionType as LinkedInActionType,
+      userId: userId ?? null,
+      source: 'sequence',
+    });
+    if (!gate.allowed) {
+      return { allowed: false, reason: gate.reason || 'Quota LinkedIn atteint' };
+    }
+
     return { allowed: true };
   } catch (e) {
     console.error('[process] Quota check failed — blocking action for safety:', e);
@@ -2382,9 +2383,14 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         if (!r.ok) {
           const e = await r.text();
           console.error(`[executeStepAction] LinkedIn provider ${r.status}: ${e}`);
-          return { success: false, error: `linkedin_send_failed_${r.status}` };
+          // Garde le préfixe (classifiers existants) + ajoute le corps fournisseur
+          // pour que la détection de limite "dure" (limit_exceeded…) fonctionne.
+          return { success: false, error: `linkedin_send_failed_${r.status}: ${e}` };
         }
-        await r.json();
+        // Capte le signal usage fournisseur (% de proximité avec la limite LinkedIn)
+        // → pause proactive du compte à ≥90 %.
+        const sendBody = await r.json().catch(() => ({}));
+        await recordUsageSignal(supabase, accountId, parseUsagePct(sendBody), (enrollment as any).user_timezone);
         await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         return { success: true, message: msg, subject: needsInMail ? subj : undefined };
       }
@@ -2530,6 +2536,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         if (msg && msg.trim()) invitePayload.message = smartTruncate(msg, 300);
         const r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
         if (!r.ok) { const e = await r.text(); return { success: false, error: `Invite ${r.status}: ${e}` }; }
+        // L'endpoint invite renvoie le champ `usage` (% du quota provider) → pause à ≥90 %.
+        const inviteBody = await r.json().catch(() => ({}));
+        await recordUsageSignal(supabase, accountId, parseUsagePct(inviteBody), (enrollment as any).user_timezone);
         await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
         await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
         return { success: true };

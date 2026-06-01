@@ -111,6 +111,7 @@ interface SearchParams {
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -241,6 +242,41 @@ Deno.serve(async (req) => {
     }
 
     const baseUrl = `https://${dsn}/api/v1`;
+
+    // ─── Gate quota LinkedIn (actions manuelles user) ─────────────────────
+    // Conformité #260513-007211 : les vues de profil / recherches / envois
+    // déclenchés depuis l'app comptent désormais dans le MÊME plafond que
+    // l'automatique (avant : seulement 60 req/min génériques, aucun cap
+    // LinkedIn). Mode MANUAL = buffer 5 % (blocage uniquement near-limit) pour
+    // ne pas couper l'utilisateur en pleine session. Les appels internes
+    // (service-role, edge→edge) ne sont pas plafonnés (lecture serveur).
+    if (!isInternal) {
+      const gatedType: LinkedInActionType | undefined =
+        action === 'search' ? 'search'
+        : action === 'get_profile' ? 'profile_view'
+        : action === 'send_message' ? (params?.is_inmail ? 'inmail' : 'message')
+        : undefined;
+      if (gatedType) {
+        const sbGate = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
+        const gate = await enforceLinkedInAction(sbGate as any, {
+          accountId: account_id,
+          actionType: gatedType,
+          userId: userId || null,
+          organizationId: organization_id || null,
+          source: action === 'send_message' ? 'manual_inbox' : 'manual_search',
+          mode: 'manual',
+        });
+        if (!gate.allowed) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: gate.reason || 'Limite LinkedIn quotidienne atteinte. Réessayez demain.',
+            errorType: 'QUOTA',
+            scope: gate.scope,
+          }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      }
+    }
 
     switch (action) {
       case 'search': {
@@ -1668,9 +1704,17 @@ async function handleSendMessage(
 
   console.log('Message sent successfully:', data);
 
+  // Capture provider usage % (LinkedIn signals proximity to its own limit) and
+  // pause the account at ≥90%. accountId == member_linkedin_accounts.linkedin_account_id.
+  try {
+    const sbUsage = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
+    // cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
+    await recordUsageSignal(sbUsage as any, accountId, parseUsagePct(data), undefined);
+  } catch (_e) { /* non-fatal */ }
+
   return new Response(
-    JSON.stringify({ 
-      success: true, 
+    JSON.stringify({
+      success: true,
       message: data,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
