@@ -1,5 +1,6 @@
 ﻿// Deno.serve used directly
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
+import { requireOrgAccess } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -122,7 +123,17 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const action = (body as { action?: string }).action;
-    const organizationId = (body as { organization_id?: string }).organization_id;
+
+    // AUTH + org membership — this endpoint MANAGES an org's LinkedIn webhooks
+    // (it is NOT a webhook receiver). Previously it had no auth at all, so any
+    // caller could list/register/delete another org's webhooks by passing its id.
+    let organizationId: string;
+    try {
+      const access = await requireOrgAccess(req, body as Record<string, unknown>, corsHeaders);
+      organizationId = access.organizationId;
+    } catch (resp) {
+      return resp as Response;
+    }
 
     const credentials = await resolveUnipileCredentials(organizationId);
     if (!credentials) {

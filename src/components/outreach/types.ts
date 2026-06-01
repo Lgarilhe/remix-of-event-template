@@ -40,8 +40,9 @@ export type LinkedInApiType = 'classic' | 'recruiter' | 'sales_navigator' | 'dat
 // Search category
 export type SearchCategory = 'people' | 'companies' | 'jobs' | 'posts';
 
-// Open to work types
-export type OpenToType = 'all' | 'jobs' | 'hiring' | 'services' | 'providing' | 'proBono' | 'boardMember';
+// Open to work types — Unipile only supports these on `api: classic`
+// (`api: recruiter` exposes "Open to Work" via the `spotlights` enum instead).
+export type OpenToType = 'proBono' | 'boardMember';
 
 // Spotlight types for Recruiter (valid Unipile API values)
 export type SpotlightType = 
@@ -631,13 +632,6 @@ export const OPEN_TO_OPTIONS_CLASSIC = [
   { value: 'boardMember', label: 'Board Member' },
 ];
 
-export const OPEN_TO_OPTIONS_RECRUITER = [
-  { value: 'all', label: 'Tous (Open to Work)' },
-  { value: 'jobs', label: 'Ouvert aux opportunités' },
-  { value: 'hiring', label: 'En recrutement' },
-  { value: 'services', label: 'Services' },
-];
-
 // Degree options (Recruiter)
 export const DEGREE_OPTIONS = [
   { value: '1', label: 'Baccalauréat / High School' },
@@ -664,7 +658,6 @@ export const PARAMETER_TYPES = {
   DEPARTMENT: 'DEPARTMENT',
   // Recruiter specific
   HIRING_PROJECTS: 'HIRING_PROJECTS',
-  TALENT_POOLS: 'TALENT_POOLS',
   SAVED_SEARCHES: 'SAVED_SEARCHES',
   // Sales Navigator specific
   GROUPS: 'GROUPS',

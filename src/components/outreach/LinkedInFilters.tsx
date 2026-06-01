@@ -19,7 +19,6 @@ import {
   COMPANY_HEADCOUNT_OPTIONS,
   COMPANY_TYPE_OPTIONS,
   OPEN_TO_OPTIONS_CLASSIC,
-  OPEN_TO_OPTIONS_RECRUITER,
   ACTIVITY_MESSAGE_OPTIONS,
   ACTIVITY_NOTE_OPTIONS,
 } from './types';
@@ -51,7 +50,6 @@ import { toast } from 'sonner';
 import { BasicFiltersSection } from './filters/BasicFiltersSection';
 import { PositionFiltersSection } from './filters/PositionFiltersSection';
 import { RecruiterFiltersSection } from './filters/RecruiterFiltersSection';
-import { DatabaseFiltersSection } from './filters/DatabaseFiltersSection';
 
 interface LinkedInFiltersProps {
   filters: LinkedInFiltersState;
@@ -72,7 +70,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     company: false,
     past: false,
     recruiter: false,
-    database: false,
   });
 
   // Autocomplete states
@@ -324,7 +321,7 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
     (filters.tenure_at_role_min !== null ? 1 : 0) + (filters.tenure_at_role_max !== null ? 1 : 0);
   const countCompanyFilters = filters.company.length + filters.company_keywords.length + filters.industry.length + filters.company_headcount.length + filters.company_type.length + filters.company_location.length;
   const countPastFilters = filters.past_company.length + filters.past_job_title.length;
-  const countRecruiterFilters = (filters.spotlight ? 1 : 0) + (filters.hiring_project ? 1 : 0) + (filters.talent_pool ? 1 : 0) +
+  const countRecruiterFilters = (filters.spotlight ? 1 : 0) + (filters.hiring_project ? 1 : 0) +
     (filters.open_to_work === true ? 1 : 0) + filters.open_to.length +
     (filters.activity_messages ? 1 : 0) + (filters.activity_notes ? 1 : 0) + filters.tags.length;
 
@@ -375,14 +372,9 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
 
   const recruiterFiltersPreview = [
     ...(filters.open_to_work === true ? ['Open to Work'] : []),
-    ...(filters.open_to || []).map(o => {
-      const classicOpt = OPEN_TO_OPTIONS_CLASSIC.find(oo => oo.value === o);
-      const recruiterOpt = OPEN_TO_OPTIONS_RECRUITER.find(oo => oo.value === o);
-      return classicOpt?.label || recruiterOpt?.label || o;
-    }),
+    ...(filters.open_to || []).map(o => OPEN_TO_OPTIONS_CLASSIC.find(oo => oo.value === o)?.label || o),
     ...(filters.spotlight ? [SPOTLIGHT_OPTIONS.find(s => s.value === filters.spotlight)?.label || 'Spotlight'] : []),
     ...(filters.hiring_project ? ['Hiring Project'] : []),
-    ...(filters.talent_pool ? ['Talent Pool'] : []),
     ...(filters.activity_messages ? [
       `${ACTIVITY_MESSAGE_OPTIONS.find(a => a.value === filters.activity_messages)?.label || filters.activity_messages}${
         filters.activity_messages_days ? ` (${filters.activity_messages_days}j)` : ''
@@ -892,16 +884,6 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             onToggle={() => toggleSection('recruiter')}
             activeFiltersPreview={recruiterFiltersPreview}
             countRecruiterFilters={countRecruiterFilters}
-          />
-        )}
-
-        {/* ===== BASE KONEKT FILTERS (database only) ===== */}
-        {filters.api === 'database' && (
-          <DatabaseFiltersSection
-            filters={filters}
-            onChange={onChange}
-            isOpen={openSections.database}
-            onToggle={() => toggleSection('database')}
           />
         )}
       </div>

@@ -4,7 +4,6 @@ import {
   ActivityNoteType,
   SPOTLIGHT_OPTIONS,
   OPEN_TO_OPTIONS_CLASSIC,
-  OPEN_TO_OPTIONS_RECRUITER,
   ACTIVITY_MESSAGE_OPTIONS,
   ACTIVITY_NOTE_OPTIONS,
   ACTIVITY_DAYS_OPTIONS,
@@ -66,21 +65,21 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
         </div>
       </FilterGroup>
 
-      {/* Open to types */}
-      <FilterGroup
-        title="Open to (type)"
-        badge={filters.open_to.length}
-        unsupported={!isFilterSupported(filters.api, 'open_to')}
-        unsupportedTooltip={getFilterTooltip(filters.api, 'open_to')}
-      >
-        <MultiSelectDropdown
-          options={(filters.api === 'classic' ? OPEN_TO_OPTIONS_CLASSIC : OPEN_TO_OPTIONS_RECRUITER).map(o => ({ value: o.value, label: o.label }))}
-          selected={filters.open_to}
-          onChange={(selected) => onChange({ ...filters, open_to: selected as typeof filters.open_to })}
-          placeholder="Sélectionner les types..."
-          disabled={!isFilterSupported(filters.api, 'open_to')}
-        />
-      </FilterGroup>
+      {/* Open to types — LinkedIn Classic only (proBono / boardMember).
+          Recruiter exposes "Open to Work" via the `spotlights` filter above. */}
+      {filters.api === 'classic' && (
+        <FilterGroup
+          title="Open to (type)"
+          badge={filters.open_to.length}
+        >
+          <MultiSelectDropdown
+            options={OPEN_TO_OPTIONS_CLASSIC.map(o => ({ value: o.value, label: o.label }))}
+            selected={filters.open_to}
+            onChange={(selected) => onChange({ ...filters, open_to: selected as typeof filters.open_to })}
+            placeholder="Sélectionner les types..."
+          />
+        </FilterGroup>
+      )}
 
       {/* Spotlight */}
       <FilterGroup
@@ -118,21 +117,6 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
           placeholder="ID du projet de recrutement"
           className={`text-sm h-8 ${!isFilterSupported(filters.api, 'hiring_project') ? 'opacity-50' : ''}`}
           disabled={!isFilterSupported(filters.api, 'hiring_project')}
-        />
-      </FilterGroup>
-
-      {/* Talent Pool */}
-      <FilterGroup
-        title="Talent Pool (ID)"
-        unsupported={!isFilterSupported(filters.api, 'talent_pool')}
-        unsupportedTooltip={getFilterTooltip(filters.api, 'talent_pool')}
-      >
-        <Input
-          value={filters.talent_pool}
-          onChange={(e) => onChange({ ...filters, talent_pool: e.target.value })}
-          placeholder="ID du pool de talents"
-          className={`text-sm h-8 ${!isFilterSupported(filters.api, 'talent_pool') ? 'opacity-50' : ''}`}
-          disabled={!isFilterSupported(filters.api, 'talent_pool')}
         />
       </FilterGroup>
 

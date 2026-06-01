@@ -25,17 +25,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Only allow service role (scheduled) or admin calls
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
+    // Only allow service-role (scheduled/cron) calls. This purge performs
+    // cross-org destructive DELETEs, so it must never be reachable with a user
+    // JWT or the anon key — require the service-role key explicitly.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (!token || token !== serviceKey) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     const now = new Date();

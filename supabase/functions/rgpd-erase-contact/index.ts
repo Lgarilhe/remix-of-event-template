@@ -23,6 +23,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { recordGdprErasure, normalizeEmail, normalizeLinkedInUrl } from "../_shared/get-or-fetch-contact.ts";
+import { requireAuth } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,6 +84,18 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
 
+    // The public unsubscribe LINK is a GET (clicked from outreach emails) and
+    // stays open. Programmatic POST erasure must be authenticated (a logged-in
+    // Konekt user or the service role) — otherwise anyone could script this
+    // destructive endpoint to erase arbitrary contacts.
+    if (req.method === "POST") {
+      try {
+        await requireAuth(req, corsHeaders);
+      } catch (authResp) {
+        return authResp as Response;
+      }
+    }
+
     // Lecture des params : POST body OR query string
     let email: string | null = null;
     let linkedinUrl: string | null = null;
@@ -134,18 +147,24 @@ Deno.serve(async (req) => {
     );
 
     try {
-      const { data: rlAllowed } = await serviceClient.rpc("check_rate_limit", {
+      const { data: rlAllowed, error: rlError } = await serviceClient.rpc("check_rate_limit", {
         p_user_id: clientIp, // utilise l'IP comme clé
         p_action: "rgpd_erase",
         p_max_requests: 30,
         p_window_seconds: 3600,
       });
-      if (rlAllowed === false) {
+      // Fail CLOSED: the rate limit is the only abuse guard on the public GET
+      // path, so if it errors or denies we must reject — never silently allow.
+      if (rlError || rlAllowed === false) {
         const msg = "Trop de demandes. Réessayez dans 1 heure.";
         if (format === "html") return htmlResponse(renderPage({ title: "Limite atteinte", message: msg, success: false }), 429);
         return json({ success: false, error: msg }, 429);
       }
-    } catch { /* RPC indispo, on laisse passer */ }
+    } catch {
+      const msg = "Service temporairement indisponible. Réessayez dans quelques minutes.";
+      if (format === "html") return htmlResponse(renderPage({ title: "Indisponible", message: msg, success: false }), 503);
+      return json({ success: false, error: msg }, 503);
+    }
 
     // Enregistrement de la demande + DELETE en cascade
     const result = await recordGdprErasure(serviceClient, {

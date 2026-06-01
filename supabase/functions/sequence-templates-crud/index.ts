@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
           .from('sequence_steps')
           .select('step_order, action_type, condition_type, delay_days, delay_hours, delay_minutes, timeout_days, wait_for_event, preferred_hour_start, preferred_hour_end, subject_template, message_template, use_ai_personalization, ai_tone, step_channel, ai_personalization_source, ai_personalization_prompt, include_unsubscribe, parent_step_id, branch, cc_emails, bcc_emails')
           .eq('sequence_id', sequence_id)
+          .eq('organization_id', orgId)
           .order('step_order', { ascending: true });
 
         if (stepsError) throw stepsError;
