@@ -559,7 +559,7 @@ Deno.serve(async (req) => {
           } else if (response.status === 403) {
             errorMessage = 'Accès refusé par LinkedIn. Un captcha ou une vérification est peut-être requise.';
           } else if (response.status === 404 && isReconnect) {
-            errorMessage = 'Compte introuvable côté Unipile. Utilisez la connexion initiale au lieu du reconnect.';
+            errorMessage = 'Compte introuvable côté LinkedIn. Utilisez la connexion initiale au lieu de la reconnexion.';
           } else if (response.status === 409) {
             errorMessage = 'Ce compte LinkedIn est déjà connecté sous un autre identifiant.';
           }
@@ -858,7 +858,7 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             success: true, 
-            message: 'Multi-contract Recruiter n\'est pas encore supporté par l\'API Unipile. Contactez le support Unipile pour demander cette fonctionnalité.',
+            message: 'La gestion de plusieurs contrats Recruiter n\'est pas encore supportée. Contactez le support Konekt pour demander cette fonctionnalité.',
             recruiter_info: recruiterInfo,
             account: {
               id: accountData.id,
@@ -1021,7 +1021,7 @@ Deno.serve(async (req) => {
           return new Response(
             JSON.stringify({
               success: false,
-              error: `Aucun mapping trouvé pour ce compte dans votre organisation. Le proxy Unipile a bien été mis à jour, mais l'état n'a pas pu être persisté dans Konekt. account_id=${account_id} org=${organizationId}`,
+              error: `Aucun mapping trouvé pour ce compte dans votre organisation. Le proxy a bien été mis à jour côté LinkedIn, mais l'état n'a pas pu être enregistré dans Konekt. account_id=${account_id} org=${organizationId}`,
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
