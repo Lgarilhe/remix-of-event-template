@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
         // 1. account_ids mappés à l'ORG COURANTE (légitimes à voir)
         const { data: memberAccounts, error: memberAccountsError } = await adminClient
           .from('member_linkedin_accounts')
-          .select('linkedin_account_id')
+          .select('id, user_id, linkedin_account_id, linkedin_account_name')
           .eq('organization_id', organizationId);
 
         if (memberAccountsError) {
@@ -195,6 +195,65 @@ Deno.serve(async (req) => {
         });
 
         const data = await response.json();
+
+        // ====================================================================
+        // RÉCONCILIATION AUTO (anti-orphelin) — conformité reconnexion LinkedIn
+        // ====================================================================
+        // Quand un compte est reconnecté via « Connect » (NOUVEL account_id) au
+        // lieu de « Reconnect », l'ancienne ligne member_linkedin_accounts pointe
+        // vers un id mort et le compte fraîchement connecté devient orphelin →
+        // sourcing/proxy cassés (cf. warning #260513-007211). Ici on auto-repointe :
+        // pour une ligne de CETTE org dont l'id n'existe plus côté Unipile (morte),
+        // s'il existe EXACTEMENT UN compte LinkedIn live orphelin (mappé à aucune
+        // org) portant le MÊME nom → on repointe la ligne dessus. Strict 1:1 par
+        // nom + jamais toucher un compte mappé à une autre org (cross-tenant safe).
+        try {
+          const liveLinkedIn = ((data.items || []) as Array<{ type?: string; id?: string; name?: string }>)
+            .filter((a) => a?.type === 'LINKEDIN' && !!a?.id)
+            .map((a) => ({ id: a.id as string, name: String(a.name ?? '').trim() }));
+          const liveIds = new Set(liveLinkedIn.map((a) => a.id));
+
+          const orgRows = (memberAccounts ?? []) as Array<{ id: string; user_id: string; linkedin_account_id: string; linkedin_account_name: string | null }>;
+          const deadRows = orgRows.filter((r) => r.linkedin_account_id && !liveIds.has(r.linkedin_account_id));
+
+          if (deadRows.length > 0) {
+            // Comptes live mappés à une AUTRE org → interdits (cross-tenant), même
+            // sur clé Unipile partagée. On calcule toujours, indép. de includeOrgAccounts.
+            const { data: foreignRows } = await adminClient
+              .from('member_linkedin_accounts')
+              .select('linkedin_account_id')
+              .neq('organization_id', organizationId);
+            const foreignIds = new Set((foreignRows ?? []).map((r: { linkedin_account_id: string }) => r.linkedin_account_id).filter(Boolean));
+
+            // Orphelins = comptes LinkedIn live mappés à AUCUNE org.
+            const orphans = liveLinkedIn.filter((a) => !allowedAccountIds.has(a.id) && !foreignIds.has(a.id));
+            const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+            for (const row of deadRows) {
+              const target = norm(row.linkedin_account_name ?? '');
+              if (!target) continue; // nom vide/générique → on ne devine pas
+              const matchingOrphans = orphans.filter((o) => norm(o.name) === target);
+              const deadSameName = deadRows.filter((r) => norm(r.linkedin_account_name ?? '') === target);
+              // Strict 1:1 : un seul orphelin de ce nom ET un seul mort de ce nom.
+              if (matchingOrphans.length === 1 && deadSameName.length === 1) {
+                const newId = matchingOrphans[0].id;
+                const { error: repointErr } = await adminClient
+                  .from('member_linkedin_accounts')
+                  .update({ linkedin_account_id: newId, account_status: 'OK', failure_reason: null, last_checked_at: new Date().toISOString() })
+                  .eq('id', row.id);
+                if (!repointErr) {
+                  console.log(`[accounts:reconcile] Repointed row ${row.id} (${row.linkedin_account_id} → ${newId}) by name "${target}"`);
+                  allowedAccountIds.add(newId); // visible comme mappé dans la réponse
+                } else {
+                  console.warn(`[accounts:reconcile] Repoint failed for row ${row.id}:`, repointErr.message);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[accounts:reconcile] reconciliation skipped (non-fatal):', e);
+        }
+
         // Filter : type LINKEDIN + (mappé à mon org OR orphelin) + JAMAIS mappé à autre org
         const linkedinAccounts = await Promise.all((data.items || [])
           .filter((acc: { type: string; id: string }) => {
