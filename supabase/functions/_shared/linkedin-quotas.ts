@@ -36,11 +36,42 @@ export const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
   max_inmails_per_day: 40,
 };
 
+// ============================================================================
+// WARM-UP MODE — reprise douce après réinstauration d'un compte LinkedIn suspendu
+// ============================================================================
+// Le(s) compte(s) sortent d'une suspension (#260513-007211). Pendant la phase de
+// reprise on plafonne TOUTES les actions bien en dessous des caps normaux, puis
+// on remonte par paliers une fois le compte confirmé stable. Le clamp se fait par
+// Math.min → il ne RELÈVE jamais un cap déjà plus bas (quotas custom users safe).
+// 👉 ACTION : repasser WARMUP_MODE à false vers le 2026-06-16 (≈2 semaines), ou
+//    dès que le compte est stable, pour revenir aux caps normaux.
+export const WARMUP_MODE = true;
+export const WARMUP_CAPS = {
+  max_actions_per_day: 20,         // actions visibles/j (normal : 80)
+  max_profile_visits_per_day: 40,  // vues de profil/j (normal : 100)
+  max_searches_per_day: 50,        // recherches/j (normal : 100)
+  max_inmails_per_day: 15,         // InMails/j (normal : 40)
+  weekly_invite_limit: 30,         // invitations/semaine (normal : 100)
+};
+
+/** Clamp warm-up : applique les caps de reprise par Math.min (pure, ne mute pas). */
+function applyWarmupCaps(q: UserQuotaConfig): UserQuotaConfig {
+  if (!WARMUP_MODE) return q;
+  return {
+    ...q,
+    max_actions_per_day: Math.min(q.max_actions_per_day, WARMUP_CAPS.max_actions_per_day),
+    max_profile_visits_per_day: Math.min(q.max_profile_visits_per_day, WARMUP_CAPS.max_profile_visits_per_day),
+    max_searches_per_day: Math.min(q.max_searches_per_day, WARMUP_CAPS.max_searches_per_day),
+    max_inmails_per_day: Math.min(q.max_inmails_per_day, WARMUP_CAPS.max_inmails_per_day),
+  };
+}
+
 /**
  * Weekly invitation ceiling. LinkedIn's hard limit is ~200/week (Unipile docs);
- * we stay deliberately conservative at 100. Shared so every send path agrees.
+ * we stay deliberately conservative at 100 (ou la valeur warm-up en reprise).
+ * Shared so every send path agrees.
  */
-export const WEEKLY_INVITE_LIMIT = 100;
+export const WEEKLY_INVITE_LIMIT = WARMUP_MODE ? WARMUP_CAPS.weekly_invite_limit : 100;
 
 /** Provider `usage` percentage at which we proactively pause the account. */
 export const USAGE_PAUSE_THRESHOLD = 90;
@@ -193,7 +224,7 @@ export async function getUserQuotas(
       .maybeSingle();
     if (!data) return DEFAULT_USER_QUOTAS;
     const row = data as Record<string, unknown>;
-    return {
+    return applyWarmupCaps({
       business_hours_start: row.business_hours_start as number ?? DEFAULT_USER_QUOTAS.business_hours_start,
       business_hours_end: row.business_hours_end as number ?? DEFAULT_USER_QUOTAS.business_hours_end,
       max_actions_per_day: row.max_actions_per_day as number ?? DEFAULT_USER_QUOTAS.max_actions_per_day,
@@ -201,9 +232,9 @@ export async function getUserQuotas(
       max_profile_visits_per_day: row.max_profile_visits_per_day as number ?? DEFAULT_USER_QUOTAS.max_profile_visits_per_day,
       max_searches_per_day: row.max_searches_per_day as number ?? DEFAULT_USER_QUOTAS.max_searches_per_day,
       max_inmails_per_day: row.max_inmails_per_day as number ?? DEFAULT_USER_QUOTAS.max_inmails_per_day,
-    };
+    });
   } catch {
-    return DEFAULT_USER_QUOTAS;
+    return applyWarmupCaps(DEFAULT_USER_QUOTAS);
   }
 }
 
