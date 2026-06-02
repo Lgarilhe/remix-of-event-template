@@ -24,6 +24,14 @@ const MAX_PER_RUN = 3;          // peu d'items par run (cadence cron = 2 min →
 const INTER_ITEM_DELAY_MS = 12000;  // espacement anti micro-burst entre 2 items du même run
 const MAX_ATTEMPTS = 4;
 
+// ⏸️ PAUSE TEMPORAIRE (2026-06-02) — l'enrichissement de fond consommait la session
+// LinkedIn Recruiter EN MÊME TEMPS que les recherches manuelles de l'utilisateur →
+// « conflit de session » (multiple_sessions, sensible sur comptes Recruiter).
+// On suspend le worker le temps de brancher une sérialisation par compte
+// (ne jamais enrichir un compte utilisé interactivement récemment).
+// 👉 Repasser à false une fois la sérialisation en place pour réactiver l'enrichissement.
+const ENRICHMENT_PAUSED = true;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface QueueItem {
@@ -40,6 +48,14 @@ interface QueueItem {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Kill-switch : worker en pause → no-op (le cron continue de tirer mais ne fait
+  // AUCUN appel LinkedIn, donc plus aucune collision avec l'usage interactif).
+  if (ENRICHMENT_PAUSED) {
+    return new Response(JSON.stringify({ success: true, processed: 0, paused: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   // ── Auth : secret cron (Bearer) OU service-role key ──
   const authHeader = req.headers.get("Authorization") || "";
