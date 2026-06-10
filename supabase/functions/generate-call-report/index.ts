@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target
 import { requireAuth } from "../_shared/require-auth.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,6 +97,8 @@ Retourne UNIQUEMENT ce JSON :
       antiAiStyle: "full",
       aiContext,
     });
+
+    await settleClaudeUsage({ userId, organizationId: reportOrgId, aiAction: "call_report", usage: result.usage, modelId: result.model });
 
     const text = result.content || "{}";
     const jsonMatch = text.match(/\{[\s\S]*\}/);

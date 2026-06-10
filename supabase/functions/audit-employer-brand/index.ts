@@ -10,6 +10,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 import { callClaudeCompat, ClaudeCompatError } from '../_shared/call-claude.ts';
+import { settleClaudeUsage } from '../_shared/settle-usage.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -375,6 +376,8 @@ ${sourcesSummary}`;
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    await settleClaudeUsage({ userId: user.id, aiAction: "audit_employer_brand", usage: aiResult.usage, modelId: aiResult.model });
 
     if (!aiResult.toolCall) {
       return new Response(JSON.stringify({ success: false, error: 'AI returned no structured data' }), {

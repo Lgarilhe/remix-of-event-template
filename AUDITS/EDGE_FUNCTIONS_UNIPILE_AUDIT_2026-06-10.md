@@ -205,6 +205,22 @@ Calendly HMAC + tolérance 5 min, Svix, Aircall token, sequence-webhooks constan
 
 ---
 
+## Addendum — remédiations appliquées (2026-06-10, soir)
+
+- **P0.1 ✅** : `verify_jwt = false` ajouté à `config.toml` pour les 3 fonctions manquantes,
+  redéployées — le cron `process-scheduled-actions` est repassé de 401 à 200 (vérifié logs prod).
+- **P1.3 ✅** : nouveau helper `_shared/settle-usage.ts` (`settleClaudeUsage` : résolution org
+  depuis le user + `settleCredits`, erreurs avalées) branché sur les **14 fonctions** qui
+  appelaient Claude sans décompte — 21 call sites au total (enrich-company en avait 7, pas 4).
+- **P1.4 ✅** : `endorse_skill` gaté — type `endorse` ajouté à `LinkedInActionType`, mapping dans
+  unipile-search, et migration `20260610150000_endorse_in_visible_cap.sql` qui le compte dans le
+  cap journalier d'actions visibles.
+- **P1.6 ✅ (partiel)** : `WARMUP_MODE` est maintenant date-gaté (`Date.now() < 2026-06-16`) —
+  expiration automatique, plus de risque d'oubli. `ENRICHMENT_PAUSED` reste un flag manuel
+  (la reprise nécessite le fix de sérialisation par compte, décision à part).
+- **Restent ouverts** : cron InMail (P0.2, décision produit), vérification de propriété
+  `account_id`/`webhook_id` (P1.5), sanitizer erreurs Notion/Graph (P2).
+
 ## Plan d'action priorisé
 
 1. **`config.toml` + redeploy `process-scheduled-actions`** (P0.1 — one-liner, débloque les actions agent).

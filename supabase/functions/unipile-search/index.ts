@@ -255,6 +255,7 @@ Deno.serve(async (req) => {
         action === 'search' ? 'search'
         : action === 'get_profile' ? 'profile_view'
         : action === 'send_message' ? (params?.is_inmail ? 'inmail' : 'message')
+        : action === 'endorse_skill' ? 'endorse'
         : undefined;
       if (gatedType) {
         const sbGate = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);

@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -256,6 +257,7 @@ Retourne UNIQUEMENT le JSON, pas de texte autour.`;
     });
 
     const rawContent = aiResult.content || '{}';
+    await settleClaudeUsage({ userId, aiAction: "screen_candidate", usage: aiResult.usage, modelId: aiResult.model });
 
     // Parse AI response
     let analysis: any;

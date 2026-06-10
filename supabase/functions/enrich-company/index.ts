@@ -9,6 +9,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1190,6 +1191,7 @@ Deno.serve(async (req) => {
                 max_tokens: 1500,
                 timeoutMs: 12000,
               });
+              if (profileResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: profileResult.usage, modelId: profileResult.model });
 
               if (profileResult.toolCall?.input) {
                 const parsed = profileResult.toolCall.input as any;
@@ -1255,6 +1257,7 @@ Deno.serve(async (req) => {
               max_tokens: 3000,
               timeoutMs: 18000,
             }).catch((e) => { console.warn('[enrich] Careers AI failed:', e); return null; });
+            if (extractResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: extractResult.usage, modelId: extractResult.model });
 
             if (extractResult?.toolCall?.input) {
               const parsed = extractResult.toolCall.input as any;
@@ -1397,6 +1400,7 @@ Deno.serve(async (req) => {
             max_tokens: 3000,
             timeoutMs: 18000,
           }).catch((e) => { console.warn('[enrich] WTTJ AI call failed:', e); return null; });
+          if (extractResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: extractResult.usage, modelId: extractResult.model });
 
           if (extractResult?.toolCall?.input) {
             const parsed = extractResult.toolCall.input as any;
@@ -1534,6 +1538,7 @@ Deno.serve(async (req) => {
             max_tokens: 2500,
             timeoutMs: 10000,
           }).catch((e) => { console.warn('[enrich] Perplexity job AI call failed:', e); return null; });
+          if (extractResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: extractResult.usage, modelId: extractResult.model });
 
           if (extractResult?.toolCall?.input) {
             const parsed = extractResult.toolCall.input as any;
@@ -1668,6 +1673,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
             max_tokens: 2500,
             timeoutMs: 12000,
           }).catch((e) => { console.warn('[enrich] Perplexity insight AI call failed:', e); return null; });
+          if (extractResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: extractResult.usage, modelId: extractResult.model });
 
           if (extractResult?.toolCall?.input) {
             const parsed = extractResult.toolCall.input as any;
@@ -1743,6 +1749,7 @@ Sois factuel, ne spécule pas. Si une info n'est pas disponible, dis "non dispon
             max_tokens: 2000,
             timeoutMs: 12000,
           }).catch((e) => { console.warn('[enrich] News AI call failed:', e); return null; });
+          if (extractResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: extractResult.usage, modelId: extractResult.model });
 
           if (extractResult?.toolCall?.input) {
             const parsed = extractResult.toolCall.input as any;
@@ -1819,6 +1826,7 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
           max_tokens: 1500,
           timeoutMs: insightsTimeout,
         }).catch((e) => { console.warn('[enrich] AI insights call failed:', e); return null; });
+        if (aiResult) await settleClaudeUsage({ userId: user.id, aiAction: "enrich_company", usage: aiResult.usage, modelId: aiResult.model });
 
         if (aiResult?.toolCall?.input) {
           const parsed = aiResult.toolCall.input as any;

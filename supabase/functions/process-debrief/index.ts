@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -88,6 +89,7 @@ Réponds UNIQUEMENT en JSON valide.`;
         timeoutMs: 30000,
       });
       content = aiResult.content;
+      await settleClaudeUsage({ userId, aiAction: "debrief", usage: aiResult.usage, modelId: aiResult.model });
     } catch (e) {
       console.error("[process-debrief] Claude error:", e);
       throw new Error("Debrief analysis timeout or network error");

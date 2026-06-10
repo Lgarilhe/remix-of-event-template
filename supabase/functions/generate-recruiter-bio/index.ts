@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,6 +141,7 @@ CONSIGNES STRICTES :
     });
 
     const bio = aiResult.content.trim();
+    await settleClaudeUsage({ userId: user.id, aiAction: "recruiter_bio", usage: aiResult.usage, modelId: aiResult.model });
     if (!bio) throw new Error("Résumé vide généré");
 
     // Save bio + classifications to profile

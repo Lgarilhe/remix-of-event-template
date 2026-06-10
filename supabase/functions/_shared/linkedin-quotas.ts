@@ -43,9 +43,11 @@ export const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
 // reprise on plafonne TOUTES les actions bien en dessous des caps normaux, puis
 // on remonte par paliers une fois le compte confirmé stable. Le clamp se fait par
 // Math.min → il ne RELÈVE jamais un cap déjà plus bas (quotas custom users safe).
-// 👉 ACTION : repasser WARMUP_MODE à false vers le 2026-06-16 (≈2 semaines), ou
-//    dès que le compte est stable, pour revenir aux caps normaux.
-export const WARMUP_MODE = true;
+// Le mode expire AUTOMATIQUEMENT le 2026-06-16 (audit 2026-06-10 : le flag
+// hard-codé sans garde-fou risquait de rester actif indéfiniment — sourcing
+// à capacité réduite). Pour prolonger la reprise douce : repousser la date.
+export const WARMUP_UNTIL = Date.parse('2026-06-16T00:00:00+02:00');
+export const WARMUP_MODE = Date.now() < WARMUP_UNTIL;
 export const WARMUP_CAPS = {
   max_actions_per_day: 20,         // actions visibles/j (normal : 80)
   max_profile_visits_per_day: 40,  // vues de profil/j (normal : 100)
@@ -83,7 +85,8 @@ export type LinkedInActionType =
   | 'inmail'
   | 'smart_message'
   | 'profile_view'
-  | 'search';
+  | 'search'
+  | 'endorse';
 
 /** Validate timezone, fallback to Europe/Paris if invalid (Intl.DateTimeFormat throws on bad IANA zone). */
 export function safeTimezone(candidate: string | null | undefined): string {

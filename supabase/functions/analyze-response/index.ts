@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -423,6 +424,7 @@ Analyse cette conversation et retourne le JSON.`;
         antiAiStyle: "full", // les suggestions de réponse sont user-facing
       });
       content = result.content;
+      await settleClaudeUsage({ userId, aiAction: "analyze_response", usage: result.usage, modelId: result.model });
     } catch (e) {
       console.error("[analyze-response] Claude API error:", e);
       // Return fallback analysis instead of crashing

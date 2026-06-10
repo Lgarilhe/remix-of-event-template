@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
@@ -63,6 +64,8 @@ Deno.serve(async (req) => {
       maxRetries: 1,
       aiContext,
     });
+
+    await settleClaudeUsage({ userId, organizationId: orgId, aiAction: "ai_chat", usage: result.usage, modelId: result.model });
 
     return new Response(
       JSON.stringify({ success: true, response: result.content }),
