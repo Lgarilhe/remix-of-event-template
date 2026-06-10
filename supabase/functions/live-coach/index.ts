@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -79,6 +80,7 @@ Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase compl
           aiContext,
         });
         const intro = result.content.trim() || null;
+        await settleClaudeUsage({ userId, aiAction: "live_coaching", usage: result.usage, modelId: result.model });
         return new Response(JSON.stringify({ intro }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -211,6 +213,7 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
         timeoutMs: 20000,
         aiContext,
       });
+      await settleClaudeUsage({ userId, aiAction: "live_coaching", usage: aiResult.usage, modelId: aiResult.model });
     } catch (e) {
       console.error("[live-coach] Claude error:", e);
       throw new Error("Coach analysis timeout or network error");

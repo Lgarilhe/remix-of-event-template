@@ -2,6 +2,7 @@
 // Pin + target=deno to reduce cold-start flakiness / upstream bundle changes.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -133,7 +134,7 @@ async function extractSkillsWithAI(jobs: Array<{
   title: string;
   description: string;
   requirements: string;
-}>): Promise<Map<string, string[]>> {
+}>, settle?: { userId?: string | null; organizationId?: string | null }): Promise<Map<string, string[]>> {
   const skillsMap = new Map<string, string[]>();
   
   if (!HAS_AI_KEY) {
@@ -183,6 +184,8 @@ Règles:
       max_tokens: 2500,
       timeoutMs: 30000,
     });
+
+    await settleClaudeUsage({ userId: settle?.userId, organizationId: settle?.organizationId, aiAction: "notion_job_skills", usage: result.usage, modelId: result.model });
 
     const content = result.content;
     
@@ -873,7 +876,7 @@ Deno.serve(async (req) => {
     let aiSkillsMap = new Map<string, string[]>();
     if (jobsNeedingSkills.length > 0) {
       console.log(`Extracting skills for ${jobsNeedingSkills.length} jobs via AI...`);
-      aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills);
+      aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills, { userId: user.id, organizationId });
       
       // Cache the newly extracted skills
       if (aiSkillsMap.size > 0) {

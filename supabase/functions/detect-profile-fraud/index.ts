@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -137,6 +138,8 @@ Réponds UNIQUEMENT avec un JSON structuré, pas de texte autour.`;
       console.error("[detect-profile-fraud] Claude API error:", e);
       throw e;
     }
+
+    await settleClaudeUsage({ userId, aiAction: "detect_profile_fraud", usage: result.usage, modelId: result.model });
 
     if (result.toolCall?.input) {
       return new Response(JSON.stringify(result.toolCall.input), {

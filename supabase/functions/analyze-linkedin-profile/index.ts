@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,6 +100,7 @@ Règles:
         timeoutMs: 30000,
       });
       content = result.content;
+      await settleClaudeUsage({ userId, aiAction: "analyze_linkedin_profile", usage: result.usage, modelId: result.model });
     } catch (e) {
       if (e instanceof ClaudeCompatError && e.status === 429) {
         return new Response(JSON.stringify({ error: "Limite de requêtes atteinte, réessayez plus tard." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });

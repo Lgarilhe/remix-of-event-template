@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -55,7 +56,7 @@ async function fetchChatMessages(
   }
 }
 
-async function callAi(prompt: string): Promise<string> {
+async function callAi(prompt: string, settle?: { userId?: string | null }): Promise<string> {
   const result = await callClaudeCompat({
     messages: [
       {
@@ -87,6 +88,7 @@ Pas de texte avant ou après.`,
     timeoutMs: 30000,
     maxRetries: 2,
   });
+  await settleClaudeUsage({ userId: settle?.userId, aiAction: "auto_categorize_chats", usage: result.usage, modelId: result.model });
   return result.content;
 }
 
@@ -183,7 +185,8 @@ Deno.serve(async (req) => {
 
     try {
       const content = await callAi(
-        `Voici ${chats.length} conversations à catégoriser :\n\n${chatSummaries}`
+        `Voici ${chats.length} conversations à catégoriser :\n\n${chatSummaries}`,
+        { userId: user.id }
       );
       const jsonMatch = content.match(/\[[\s\S]*\]/);
 

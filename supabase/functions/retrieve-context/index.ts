@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -367,6 +368,7 @@ Deno.serve(async (req) => {
           max_tokens: 1500,
           timeoutMs: 12000,
         });
+        await settleClaudeUsage({ userId: auth.userId ?? null, organizationId, aiAction: "rag_rerank", usage: rerankResult.usage, modelId: rerankResult.model });
 
         const ranked = rerankResult.toolCall?.input as { scores?: Array<{ index: number; score: number }> } | null;
         if (ranked?.scores && Array.isArray(ranked.scores)) {
