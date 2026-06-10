@@ -177,6 +177,13 @@ Le sanitizer `src/lib/sequenceErrorMessages.ts` couvre les séquences mais pas c
   re-GRANT explicite ; default privileges corrigés (les futures fonctions ne seront plus
   exécutables par les clients sans GRANT explicite).
 
+**Complément post-déploiement** (`20260610140000_revoke_public_execute.sql`) : la vérification
+advisors après deploy montrait encore 46/52 warnings — PostgreSQL accorde EXECUTE à `PUBLIC` par
+défaut à la création de toute fonction, et le REVOKE des grants directs ne suffit pas (preuve :
+les 6 fonctions disparues avaient un `REVOKE FROM PUBLIC` d'origine). Fix : REVOKE FROM PUBLIC
+sur les 52 fonctions + default privileges. La surface client intentionnelle est inchangée
+(grants explicites conservés).
+
 **🔴 Nouveau finding P0 découvert pendant l'inventaire — vivier exposé cross-org :**
 les fonctions `get_vivier_contacts` / `get_vivier_companies` / `get_vivier_candidates` sont
 `SECURITY DEFINER` (bypass RLS sur les tables `airtable_*`) et **ne vérifient pas l'org de
