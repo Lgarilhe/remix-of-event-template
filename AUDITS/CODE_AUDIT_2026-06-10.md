@@ -184,10 +184,15 @@ l'appelant en interne**. Le gate « Prospection = agency-only » n'existe que c�
 (`featureGates.ts`). Conséquence : n'importe quel utilisateur authentifié d'une org cliente
 (enterprise/freelance) peut lire l'intégralité du CRM vivier Konekt via
 `POST /rest/v1/rpc/get_vivier_contacts`. La migration ci-dessus réduit la surface (anon révoqué,
-`get_vivier_candidates` entièrement révoquée) mais **le fix complet exige un garde interne**
-du type `EXISTS (SELECT 1 FROM organization_members m JOIN organizations o ... WHERE
-m.user_id = auth.uid() AND o.org_type = 'agency')` dans les deux fonctions restantes —
-à faire dans une migration dédiée en repartant des définitions exactes en prod.
+`get_vivier_candidates` entièrement révoquée).
+
+**✅ Fix complet appliqué** par `supabase/migrations/20260610130000_vivier_agency_guard.sql` :
+`get_vivier_contacts` et `get_vivier_companies` redéfinies (corps identique à la dernière
+version 20260409140625, vérifié par diff) avec un garde en tête : `service_role` passe
+(les agent-tools les appellent via adminClient, `auth.uid()` NULL dans ce cas), sinon
+l'appelant doit être membre d'une org `org_type = 'agency'`, sinon erreur 42501 avec
+message générique. Vérification post-déploiement : page Prospection OK pour une org agency,
+`POST /rest/v1/rpc/get_vivier_contacts` avec un JWT d'org enterprise → 403.
 
 ## Plan d'action suggéré (ordre)
 
