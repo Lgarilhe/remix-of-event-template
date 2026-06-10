@@ -166,6 +166,18 @@ verify_jwt = false
 [functions.process-sequences]
 verify_jwt = false
 
+# Sans cette entrée, verify_jwt vaut true par défaut : le gateway exige un JWT
+# et rejette le Bearer PROCESS_SEQUENCES_SECRET du cron en 401 avant le code
+# (cause du 401/minute observé en prod le 2026-06-10 — audit edge functions).
+[functions.process-scheduled-actions]
+verify_jwt = false
+
+[functions.refresh-pedigree-by-funding-stage]
+verify_jwt = false
+
+[functions.text-action]
+verify_jwt = false
+
 [functions.generate-client-competitors]
 verify_jwt = false
 
