@@ -1,3 +1,4 @@
+// Redeploy 2026-06-10 : prise en compte de verify_jwt=false (config.toml) — fix 401 gateway sur l'auth cron.
 // refresh-pedigree-by-funding-stage
 // ─────────────────────────────────────────────────────────────────────────────
 // Cron mensuel : peuple pedigree_company_directory avec des entreprises EU

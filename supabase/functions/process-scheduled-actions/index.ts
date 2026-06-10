@@ -1,3 +1,4 @@
+// Redeploy 2026-06-10 : prise en compte de verify_jwt=false (config.toml) — fix 401 gateway sur l'auth cron.
 // ============================================================================
 // process-scheduled-actions — exécute les actions IA queue
 // ============================================================================
