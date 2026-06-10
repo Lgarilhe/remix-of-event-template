@@ -162,6 +162,33 @@ Le sanitizer `src/lib/sequenceErrorMessages.ts` couvre les séquences mais pas c
 
 ---
 
+## Addendum 2026-06-10 (après-midi) — remédiation P0.1 + nouveau finding
+
+**P0.1 traité** par la migration `supabase/migrations/20260610120000_revoke_function_grants_hardening.sql` :
+- Cause racine identifiée : `20260421180000_grants_bootstrap_owner_uniques.sql` faisait
+  `GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated` + le même grant en
+  default privileges pour toutes les fonctions futures.
+- Inventaire vérifié : le frontend n'appelle que `get_vivier_contacts`, `get_vivier_companies`,
+  `get_email_signatures` et `get_portal_by_token` ; **tous** les `.rpc()` des edge functions
+  utilisent un client service_role (non impacté).
+- 42 fonctions internes révoquées pour `anon` + `authenticated` ; `get_vivier_contacts/_companies`
+  révoquées pour `anon` seulement ; helpers RLS (`has_role`, `is_org_member`, `get_user_org_id`…)
+  et fonctions token-scoped (`get_email_tracking_by_id`, `get_portal_by_token`) conservés avec
+  re-GRANT explicite ; default privileges corrigés (les futures fonctions ne seront plus
+  exécutables par les clients sans GRANT explicite).
+
+**🔴 Nouveau finding P0 découvert pendant l'inventaire — vivier exposé cross-org :**
+les fonctions `get_vivier_contacts` / `get_vivier_companies` / `get_vivier_candidates` sont
+`SECURITY DEFINER` (bypass RLS sur les tables `airtable_*`) et **ne vérifient pas l'org de
+l'appelant en interne**. Le gate « Prospection = agency-only » n'existe que côté client
+(`featureGates.ts`). Conséquence : n'importe quel utilisateur authentifié d'une org cliente
+(enterprise/freelance) peut lire l'intégralité du CRM vivier Konekt via
+`POST /rest/v1/rpc/get_vivier_contacts`. La migration ci-dessus réduit la surface (anon révoqué,
+`get_vivier_candidates` entièrement révoquée) mais **le fix complet exige un garde interne**
+du type `EXISTS (SELECT 1 FROM organization_members m JOIN organizations o ... WHERE
+m.user_id = auth.uid() AND o.org_type = 'agency')` dans les deux fonctions restantes —
+à faire dans une migration dédiée en repartant des définitions exactes en prod.
+
 ## Plan d'action suggéré (ordre)
 
 1. **Migration REVOKE EXECUTE** sur les SECURITY DEFINER (P0.1) — après inventaire des `.rpc()` frontend.
