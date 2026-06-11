@@ -269,6 +269,32 @@ fixtures et agents sont prêts et tourneront tels quels contre une base au bon s
 
 ---
 
+## ✅ Résultat final (2026-06-11, 15h15) — harness VERT en CI
+
+Run #19 : **16 passed / 1 skipped / 0 failed** (~16 s de tests). La suite `@critical|@smoke`
+tourne sur chaque PR : stack Supabase locale reconstruite depuis les migrations, front buildé,
+4 comptes personas provisionnés, tests navigateur + API.
+
+**Couverture active** : isolation multi-tenant (URL forge, RLS cross-org), fonctions SECURITY
+DEFINER révoquées (anon + authenticated), garde agency-only vivier, quota gate (cap visible,
+endorse, dry-run, pause fournisseur), smokes par rôle (agency/enterprise/freelance/mobile).
+
+**Findings sécurité déterrés par le harness lui-même** :
+1. 🔴 `get_vivier_contacts/companies` avaient **6-7 signatures empilées** (overloads jamais
+   DROPpées par les migrations historiques) — la garde agency-only de #207 ne protégeait que la
+   dernière. Une org enterprise pouvait lire le vivier via une vieille signature. Fix :
+   `20260611130000_drop_stale_vivier_overloads.sql` (drop dynamique de tout overload ≠ dernière
+   signature) + test de non-régression qui rejoue l'attaque par signature.
+2. ⚠️ La chaîne de migrations n'était pas rejouable sur base vierge (~15 commits de réparation :
+   policies 42710, contraintes 42704/42710, fonction 42P13, tables Lovable jamais capturées,
+   crons non tolérants, seeds data-dépendants). Désormais : **`supabase start` reconstruit la
+   base de zéro** — CI, onboarding dev et disaster recovery redevenus possibles.
+
+Limite connue du mode CI local : pas d'edge functions déployées (stack DB+Auth+REST) → les specs
+qui en dépendent restent en mode staging (`E2E_SUPABASE_URL` secrets) ou `@live`.
+
+---
+
 ### Sources (pratiques 2026)
 - Playwright Test Agents (officiel) : https://playwright.dev/docs/test-agents
 - Page Object Model : https://playwright.dev/docs/pom
