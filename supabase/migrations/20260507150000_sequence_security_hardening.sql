@@ -51,6 +51,7 @@ CREATE POLICY "Org members can delete sequence steps"
 
 DROP POLICY IF EXISTS "Org members can manage step executions" ON public.sequence_step_executions;
 
+DROP POLICY IF EXISTS "Org members can view step executions" ON public.sequence_step_executions;
 CREATE POLICY "Org members can view step executions"
   ON public.sequence_step_executions
   FOR SELECT

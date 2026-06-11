@@ -1,6 +1,6 @@
 
 -- Create sequence_snippets table
-CREATE TABLE public.sequence_snippets (
+CREATE TABLE IF NOT EXISTS public.sequence_snippets (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE NOT NULL,
   name TEXT NOT NULL,
@@ -21,7 +21,7 @@ CREATE POLICY "Org members can manage snippets"
   WITH CHECK (public.is_org_member(auth.uid(), organization_id));
 
 -- Create sequence_templates table
-CREATE TABLE public.sequence_templates (
+CREATE TABLE IF NOT EXISTS public.sequence_templates (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,

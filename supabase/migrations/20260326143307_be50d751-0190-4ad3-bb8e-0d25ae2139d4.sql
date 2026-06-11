@@ -38,6 +38,7 @@ ALTER TABLE public.mission_process_steps ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='mission_process_steps' AND policyname='Users can manage process steps for their org projects') THEN
+    DROP POLICY IF EXISTS "Users can manage process steps for their org projects" ON public.mission_process_steps;
     CREATE POLICY "Users can manage process steps for their org projects"
       ON public.mission_process_steps FOR ALL
       USING (organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid()));
@@ -61,6 +62,7 @@ ALTER TABLE public.mission_team ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='mission_team' AND policyname='Users can see team for their org projects') THEN
+    DROP POLICY IF EXISTS "Users can see team for their org projects" ON public.mission_team;
     CREATE POLICY "Users can see team for their org projects"
       ON public.mission_team FOR ALL
       USING (project_id IN (SELECT sp.id FROM public.sourcing_projects sp WHERE sp.organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid())));
@@ -85,6 +87,7 @@ ALTER TABLE public.process_templates ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='process_templates' AND policyname='Users can manage templates for their org') THEN
+    DROP POLICY IF EXISTS "Users can manage templates for their org" ON public.process_templates;
     CREATE POLICY "Users can manage templates for their org"
       ON public.process_templates FOR ALL
       USING (organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid()));
@@ -132,6 +135,7 @@ ALTER TABLE public.hunt_applications ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='hunt_applications' AND policyname='hunt_applications_policy') THEN
+    DROP POLICY IF EXISTS "hunt_applications_policy" ON public.hunt_applications;
     CREATE POLICY "hunt_applications_policy" ON public.hunt_applications
       FOR ALL USING (
         recruiter_user_id = auth.uid()
@@ -163,6 +167,7 @@ ALTER TABLE public.feature_activations ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='feature_activations' AND policyname='feature_activations_policy') THEN
+    DROP POLICY IF EXISTS "feature_activations_policy" ON public.feature_activations;
     CREATE POLICY "feature_activations_policy" ON public.feature_activations
       FOR ALL USING (organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid()));
   END IF;
@@ -211,9 +216,11 @@ CREATE INDEX IF NOT EXISTS idx_process_steps_project_order
 -- ═══════════════════════════════════════════════════════════
 DROP POLICY IF EXISTS "client_portal_tokens_policy" ON public.client_portal_tokens;
 
+DROP POLICY IF EXISTS "client_portal_tokens_read_by_token" ON public.client_portal_tokens;
 CREATE POLICY "client_portal_tokens_read_by_token" ON public.client_portal_tokens
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "client_portal_tokens_manage_by_org" ON public.client_portal_tokens;
 CREATE POLICY "client_portal_tokens_manage_by_org" ON public.client_portal_tokens
   FOR ALL USING (
     organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid())
@@ -224,18 +231,21 @@ CREATE POLICY "client_portal_tokens_manage_by_org" ON public.client_portal_token
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='sourcing_projects' AND policyname='sourcing_projects_public_portal_read') THEN
+    DROP POLICY IF EXISTS "sourcing_projects_public_portal_read" ON public.sourcing_projects;
     CREATE POLICY "sourcing_projects_public_portal_read" ON public.sourcing_projects FOR SELECT USING (true);
   END IF;
 END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='job_candidate_status' AND policyname='jcs_public_portal_read') THEN
+    DROP POLICY IF EXISTS "jcs_public_portal_read" ON public.job_candidate_status;
     CREATE POLICY "jcs_public_portal_read" ON public.job_candidate_status FOR SELECT USING (true);
   END IF;
 END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='organizations' AND policyname='organizations_public_portal_read') THEN
+    DROP POLICY IF EXISTS "organizations_public_portal_read" ON public.organizations;
     CREATE POLICY "organizations_public_portal_read" ON public.organizations FOR SELECT USING (true);
   END IF;
 END $$;

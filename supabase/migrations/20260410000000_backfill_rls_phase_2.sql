@@ -41,14 +41,17 @@ CREATE POLICY "Org members can view projects"
   ON public.sourcing_projects FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create projects" ON public.sourcing_projects;
 CREATE POLICY "Org members can create projects"
   ON public.sourcing_projects FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update projects" ON public.sourcing_projects;
 CREATE POLICY "Org members can update projects"
   ON public.sourcing_projects FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete projects" ON public.sourcing_projects;
 CREATE POLICY "Org members can delete projects"
   ON public.sourcing_projects FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -65,14 +68,17 @@ CREATE POLICY "Org members can view search history"
   ON public.search_history FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create search history" ON public.search_history;
 CREATE POLICY "Org members can create search history"
   ON public.search_history FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update search history" ON public.search_history;
 CREATE POLICY "Org members can update search history"
   ON public.search_history FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete search history" ON public.search_history;
 CREATE POLICY "Org members can delete search history"
   ON public.search_history FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -89,14 +95,17 @@ CREATE POLICY "Org members can view candidate statuses"
   ON public.job_candidate_status FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can insert candidate statuses" ON public.job_candidate_status;
 CREATE POLICY "Org members can insert candidate statuses"
   ON public.job_candidate_status FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update candidate statuses" ON public.job_candidate_status;
 CREATE POLICY "Org members can update candidate statuses"
   ON public.job_candidate_status FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete candidate statuses" ON public.job_candidate_status;
 CREATE POLICY "Org members can delete candidate statuses"
   ON public.job_candidate_status FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -113,14 +122,17 @@ CREATE POLICY "Org members can view sequences"
   ON public.outreach_sequences FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create sequences" ON public.outreach_sequences;
 CREATE POLICY "Org members can create sequences"
   ON public.outreach_sequences FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update sequences" ON public.outreach_sequences;
 CREATE POLICY "Org members can update sequences"
   ON public.outreach_sequences FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete sequences" ON public.outreach_sequences;
 CREATE POLICY "Org members can delete sequences"
   ON public.outreach_sequences FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -137,14 +149,17 @@ CREATE POLICY "Org members can view evaluations"
   ON public.candidate_evaluations FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create evaluations" ON public.candidate_evaluations;
 CREATE POLICY "Org members can create evaluations"
   ON public.candidate_evaluations FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update evaluations" ON public.candidate_evaluations;
 CREATE POLICY "Org members can update evaluations"
   ON public.candidate_evaluations FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete evaluations" ON public.candidate_evaluations;
 CREATE POLICY "Org members can delete evaluations"
   ON public.candidate_evaluations FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -161,14 +176,17 @@ CREATE POLICY "Org members can view coaching sessions"
   ON public.call_coaching_sessions FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create coaching sessions" ON public.call_coaching_sessions;
 CREATE POLICY "Org members can create coaching sessions"
   ON public.call_coaching_sessions FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update coaching sessions" ON public.call_coaching_sessions;
 CREATE POLICY "Org members can update coaching sessions"
   ON public.call_coaching_sessions FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete coaching sessions" ON public.call_coaching_sessions;
 CREATE POLICY "Org members can delete coaching sessions"
   ON public.call_coaching_sessions FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -185,14 +203,17 @@ CREATE POLICY "Org members can view portal tokens"
   ON public.candidate_portal_tokens FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create portal tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Org members can create portal tokens"
   ON public.candidate_portal_tokens FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update portal tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Org members can update portal tokens"
   ON public.candidate_portal_tokens FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete portal tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Org members can delete portal tokens"
   ON public.candidate_portal_tokens FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -209,14 +230,17 @@ CREATE POLICY "Org members can view candidate notes"
   ON public.candidate_notes FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create candidate notes" ON public.candidate_notes;
 CREATE POLICY "Org members can create candidate notes"
   ON public.candidate_notes FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update candidate notes" ON public.candidate_notes;
 CREATE POLICY "Org members can update candidate notes"
   ON public.candidate_notes FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete candidate notes" ON public.candidate_notes;
 CREATE POLICY "Org members can delete candidate notes"
   ON public.candidate_notes FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -229,18 +253,22 @@ DROP POLICY IF EXISTS "Org members can create nurturing opportunities" ON public
 DROP POLICY IF EXISTS "Org members can update nurturing opportunities" ON public.nurturing_opportunities;
 DROP POLICY IF EXISTS "Org members can delete nurturing opportunities" ON public.nurturing_opportunities;
 
+DROP POLICY IF EXISTS "Org members can view nurturing opportunities" ON public.nurturing_opportunities;
 CREATE POLICY "Org members can view nurturing opportunities"
   ON public.nurturing_opportunities FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create nurturing opportunities" ON public.nurturing_opportunities;
 CREATE POLICY "Org members can create nurturing opportunities"
   ON public.nurturing_opportunities FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update nurturing opportunities" ON public.nurturing_opportunities;
 CREATE POLICY "Org members can update nurturing opportunities"
   ON public.nurturing_opportunities FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete nurturing opportunities" ON public.nurturing_opportunities;
 CREATE POLICY "Org members can delete nurturing opportunities"
   ON public.nurturing_opportunities FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -257,14 +285,17 @@ CREATE POLICY "Org members can view chat categories"
   ON public.chat_categories FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create chat categories" ON public.chat_categories;
 CREATE POLICY "Org members can create chat categories"
   ON public.chat_categories FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update chat categories" ON public.chat_categories;
 CREATE POLICY "Org members can update chat categories"
   ON public.chat_categories FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete chat categories" ON public.chat_categories;
 CREATE POLICY "Org members can delete chat categories"
   ON public.chat_categories FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -284,6 +315,7 @@ CREATE POLICY "Org members can create enrollments"
   ON public.sequence_enrollments FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update enrollments" ON public.sequence_enrollments;
 CREATE POLICY "Org members can update enrollments"
   ON public.sequence_enrollments FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -300,14 +332,17 @@ CREATE POLICY "Org members can view candidate profiles"
   ON public.candidate_profiles FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create candidate profiles" ON public.candidate_profiles;
 CREATE POLICY "Org members can create candidate profiles"
   ON public.candidate_profiles FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update candidate profiles" ON public.candidate_profiles;
 CREATE POLICY "Org members can update candidate profiles"
   ON public.candidate_profiles FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete candidate profiles" ON public.candidate_profiles;
 CREATE POLICY "Org members can delete candidate profiles"
   ON public.candidate_profiles FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -324,14 +359,17 @@ CREATE POLICY "Org members can view match scores"
   ON public.match_scores FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can create match scores" ON public.match_scores;
 CREATE POLICY "Org members can create match scores"
   ON public.match_scores FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update match scores" ON public.match_scores;
 CREATE POLICY "Org members can update match scores"
   ON public.match_scores FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete match scores" ON public.match_scores;
 CREATE POLICY "Org members can delete match scores"
   ON public.match_scores FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
@@ -345,18 +383,22 @@ DROP POLICY IF EXISTS "Org members can update aircall calls" ON public.aircall_c
 DROP POLICY IF EXISTS "Org members can delete aircall calls" ON public.aircall_calls;
 DROP POLICY IF EXISTS "Org-scoped read calls" ON public.aircall_calls;
 
+DROP POLICY IF EXISTS "Org members can view aircall calls" ON public.aircall_calls;
 CREATE POLICY "Org members can view aircall calls"
   ON public.aircall_calls FOR SELECT TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can insert aircall calls" ON public.aircall_calls;
 CREATE POLICY "Org members can insert aircall calls"
   ON public.aircall_calls FOR INSERT TO authenticated
   WITH CHECK (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can update aircall calls" ON public.aircall_calls;
 CREATE POLICY "Org members can update aircall calls"
   ON public.aircall_calls FOR UPDATE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "Org members can delete aircall calls" ON public.aircall_calls;
 CREATE POLICY "Org members can delete aircall calls"
   ON public.aircall_calls FOR DELETE TO authenticated
   USING (organization_id = get_user_org_id(auth.uid()));
