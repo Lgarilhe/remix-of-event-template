@@ -9,6 +9,8 @@
 //   3. UI bandeau affiche dryRunResult → user clique Approve/Reject/Edit
 //   4. confirmToolExecution() passe à 'approved' puis appelle execute()
 //   5. Si execute() OK → 'executed', sinon → 'failed' avec error
+//   6. recordActionOutcomeMessage() trace le dénouement (exécuté/programmé/
+//      échoué) dans agent_messages → le modèle le voit dans son historique
 //
 // Les tools `requiresApproval: false` s'exécutent direct (read-only ou
 // faible impact). Pour les mutations user-facing, on garde toujours true.
@@ -217,6 +219,71 @@ export async function handleProposedToolCall(
 }
 
 /**
+ * Insère dans la conversation d'origine un message assistant qui trace le
+ * dénouement réel d'une action approuvée (exécutée / programmée / échouée).
+ *
+ * Sans cette trace, le modèle ne sait JAMAIS qu'une action approuvée via le
+ * bandeau a été exécutée : l'approbation passe par agent-tool-action, hors du
+ * fil agent_messages, et search-agent-chat devait appeler
+ * get_recent_agent_actions à chaque question « tu l'as fait ? ». Le rôle
+ * 'assistant' est sûr même si le dernier message du fil est déjà un
+ * assistant : la reconstruction d'historique de search-agent-chat merge les
+ * rôles consécutifs avant l'appel API.
+ *
+ * Best-effort : un échec d'insertion ne doit jamais faire échouer l'action
+ * elle-même (déjà exécutée côté DB) — on log et on continue.
+ */
+export async function recordActionOutcomeMessage(
+  // Typé via ToolContext pour ne pas répéter le TS2749 pré-existant
+  // (SupabaseClient importé en ?no-check n'expose pas de type).
+  adminClient: ToolContext['adminClient'],
+  execution: {
+    id: string;
+    conversationId: string | null;
+    toolName: string;
+    dryRunSummary?: string | null;
+  },
+  outcome: 'executed' | 'failed' | 'scheduled',
+  result: ExecuteResult,
+  scheduledForIso?: string,
+): Promise<void> {
+  if (!execution.conversationId) return;
+  try {
+    const summary = (execution.dryRunSummary ?? '').trim();
+    const resultMessage =
+      typeof result.data?.message === 'string' ? (result.data.message as string).trim() : '';
+    let content: string;
+    if (outcome === 'scheduled') {
+      const when = scheduledForIso
+        ? new Date(scheduledForIso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+        : 'plus tard';
+      content = `🕒 Action programmée : ${execution.toolName}${summary ? ` — ${summary}` : ''} (exécution prévue le ${when})`;
+    } else if (outcome === 'executed') {
+      content = `✅ Action exécutée : ${execution.toolName}${summary ? ` — ${summary}` : ''}${resultMessage ? ` → ${resultMessage}` : ''}`;
+    } else {
+      content = `❌ Action échouée : ${execution.toolName}${summary ? ` — ${summary}` : ''} → ${result.error || 'erreur inconnue'}`;
+    }
+    const { error } = await adminClient.from('agent_messages').insert({
+      conversation_id: execution.conversationId,
+      role: 'assistant',
+      content,
+      metadata: {
+        agent_action_result: {
+          execution_id: execution.id,
+          tool_name: execution.toolName,
+          status: outcome,
+        },
+      },
+    });
+    if (error) {
+      console.warn('[agent-tools] recordActionOutcomeMessage insert error:', error.message);
+    }
+  } catch (err) {
+    console.warn('[agent-tools] recordActionOutcomeMessage failed:', err);
+  }
+}
+
+/**
  * Appelé depuis l'UI quand l'user clique "Approve" sur un bandeau.
  * Récupère la row, vérifie qu'elle est en 'proposed' ou 'approved', exécute, met à jour.
  *
@@ -272,23 +339,36 @@ export async function confirmToolExecution(
     const scheduledMs = Date.parse(scheduledForRaw);
     if (!Number.isNaN(scheduledMs) && scheduledMs > Date.now() + 30_000) {
       // > 30s in the future → queue, don't execute
+      const scheduledIso = new Date(scheduledMs).toISOString();
       await ctx.adminClient
         .from('agent_tool_executions')
         .update({
           status: 'approved',
           approved_at: new Date().toISOString(),
-          scheduled_for: new Date(scheduledMs).toISOString(),
+          scheduled_for: scheduledIso,
         })
         .eq('id', executionId);
-      return {
+      const scheduledResult: ExecuteResult = {
         success: true,
         data: {
           scheduled: true,
-          scheduled_for: new Date(scheduledMs).toISOString(),
+          scheduled_for: scheduledIso,
           message: `Action programmée pour ${new Date(scheduledMs).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}.`,
         },
-        executionId,
       };
+      await recordActionOutcomeMessage(
+        ctx.adminClient,
+        {
+          id: executionId,
+          conversationId: row.conversation_id ?? null,
+          toolName: row.tool_name,
+          dryRunSummary: (dryRunDetails.summary as string | undefined) ?? null,
+        },
+        'scheduled',
+        scheduledResult,
+        scheduledIso,
+      );
+      return { ...scheduledResult, executionId };
     }
   }
 
@@ -316,6 +396,20 @@ export async function confirmToolExecution(
       executed_at: new Date().toISOString(),
     })
     .eq('id', executionId);
+
+  // Trace le dénouement dans la conversation d'origine pour que le modèle
+  // le voie dans son historique au prochain message.
+  await recordActionOutcomeMessage(
+    ctx.adminClient,
+    {
+      id: executionId,
+      conversationId: row.conversation_id ?? null,
+      toolName: row.tool_name,
+      dryRunSummary: (dryRunDetails.summary as string | undefined) ?? null,
+    },
+    result.success ? 'executed' : 'failed',
+    result,
+  );
 
   return { ...result, executionId };
 }
@@ -346,6 +440,9 @@ export async function executeScheduledAction(
     return { success: false, error: 'Already executed', executionId };
   }
 
+  const dryRunSummary =
+    (((row.dry_run_result as Record<string, unknown> | null) ?? {}).summary as string | undefined) ?? null;
+
   const tool = getTool(row.tool_name);
   if (!tool) {
     await ctx.adminClient
@@ -356,6 +453,12 @@ export async function executeScheduledAction(
         executed_at: new Date().toISOString(),
       })
       .eq('id', executionId);
+    await recordActionOutcomeMessage(
+      ctx.adminClient,
+      { id: executionId, conversationId: row.conversation_id ?? null, toolName: row.tool_name, dryRunSummary },
+      'failed',
+      { success: false, error: `Tool ${row.tool_name} not registered` },
+    );
     return { success: false, error: `Tool ${row.tool_name} not registered`, executionId };
   }
 
@@ -385,6 +488,16 @@ export async function executeScheduledAction(
       executed_at: new Date().toISOString(),
     })
     .eq('id', executionId);
+
+  // Trace le dénouement dans la conversation d'origine — l'action différée
+  // s'exécute des heures après l'approbation, sans ça le modèle n'apprend
+  // jamais que l'envoi programmé est parti (ou a échoué).
+  await recordActionOutcomeMessage(
+    ctx.adminClient,
+    { id: executionId, conversationId: row.conversation_id ?? null, toolName: row.tool_name, dryRunSummary },
+    result.success ? 'executed' : 'failed',
+    result,
+  );
 
   return { ...result, executionId };
 }
