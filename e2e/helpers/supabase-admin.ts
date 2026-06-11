@@ -127,12 +127,14 @@ export async function seedLinkedInAccount(
   accountId = `acc_${rand()}`,
   status: 'OK' | 'CREDENTIALS' = 'OK',
 ): Promise<string> {
-  await admin().from('member_linkedin_accounts').insert({
+  const { error } = await admin().from('member_linkedin_accounts').insert({
     organization_id: orgId,
     user_id: userId,
+    linked_by: userId, // NOT NULL
     linkedin_account_id: accountId,
     account_status: status,
   });
+  if (error) throw new Error(`seedLinkedInAccount: ${error.message}`);
   return accountId;
 }
 
