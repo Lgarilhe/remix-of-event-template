@@ -24,8 +24,11 @@ BEGIN
 END;
 $$;
 
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-sequences-wait-events',
   '*/15 * * * *',
   $$SELECT public.invoke_process_sequences('check_wait_events', false);$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;

@@ -29,9 +29,15 @@ END;
 $$;
 
 -- Update the main cron to pass force=true
-SELECT cron.unschedule('process-sequences-main');
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.unschedule('process-sequences-main');
+EXCEPTION WHEN OTHERS THEN NULL;
+END $do$;
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-sequences-main',
   '* * * * *',
   $$SELECT public.invoke_process_sequences('process', true);$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;

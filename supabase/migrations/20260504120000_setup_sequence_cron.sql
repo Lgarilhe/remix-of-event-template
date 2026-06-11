@@ -133,36 +133,51 @@ END;
 $$;
 
 -- Cron 1 : process-sequences action='process' toutes les minutes (force=true bypass lock pour debug)
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-sequences-main',
   '* * * * *',
   $$SELECT public.invoke_process_sequences('process', false);$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;
 
 -- Cron 2 : check_replies toutes les 5 min (poll Unipile pour les nouvelles réponses)
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-sequences-replies',
   '*/5 * * * *',
   $$SELECT public.invoke_process_sequences('check_replies', false);$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;
 
 -- Cron 3 : check_timeouts toutes les 10 min (gère les enrollments stuck)
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-sequences-timeouts',
   '*/10 * * * *',
   $$SELECT public.invoke_process_sequences('check_timeouts', false);$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;
 
 -- Cron 4 : process-email-queue toutes les 2 min
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-email-queue',
   '*/2 * * * *',
   $$SELECT public.invoke_process_email_queue();$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;
 
 -- Cron 5 : process-inmail-queue toutes les 3 min
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-inmail-queue',
   '*/3 * * * *',
   $$SELECT public.invoke_process_inmail_queue();$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;

@@ -72,8 +72,11 @@ BEGIN
 END;
 $$;
 
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-scheduled-actions',
   '*/2 * * * *',
   $$SELECT public.invoke_process_scheduled_actions();$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;

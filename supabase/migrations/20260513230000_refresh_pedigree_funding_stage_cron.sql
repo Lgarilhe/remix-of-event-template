@@ -46,11 +46,14 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- 1er du mois à 3h UTC (1h avant resolve-pedigree-directory à 4h UTC).
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'refresh-pedigree-by-funding-stage-monthly',
   '0 3 1 * *',
   $$SELECT public.invoke_refresh_pedigree_by_funding_stage();$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;
 
 COMMENT ON FUNCTION public.invoke_refresh_pedigree_by_funding_stage IS
   'Cron mensuel : invoque l''edge fn refresh-pedigree-by-funding-stage qui peuple pedigree_company_directory via Apollo. Précède le cron resolve-pedigree-directory (4h UTC).';
