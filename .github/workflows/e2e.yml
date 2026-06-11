@@ -58,7 +58,16 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: 2.90.0
-      - run: supabase start
+      # Stack minimale pour l'e2e : DB + Auth + PostgREST suffisent (les edge
+      # functions sont mockées dans les tests). On exclut les services lourds
+      # (analytics/vector/studio/edge-runtime…) qui font hang `supabase start`
+      # sur les runners CI. --ignore-health-check : ne bloque pas si un service
+      # optionnel met du temps à devenir healthy.
+      - name: Start Supabase
+        run: |
+          supabase start \
+            -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,realtime,storage-api,mailpit \
+            --ignore-health-check
       - name: Export local Supabase credentials
         run: |
           echo "E2E_SUPABASE_URL=$(supabase status -o env | grep API_URL | cut -d= -f2 | tr -d '\"')" >> "$GITHUB_ENV"
