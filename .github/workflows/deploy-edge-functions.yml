@@ -31,8 +31,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Need the previous commit to diff which functions changed
-          fetch-depth: 2
+          # Full history: the diff range is github.event.before..sha — on a
+          # multi-commit push, `before` is NOT in a shallow depth-2 clone, the
+          # diff fails silently (|| true) and NOTHING deploys (bug 2026-06-11).
+          fetch-depth: 0
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -69,7 +71,15 @@ jobs:
           else
             # push event — diff against the previous commit
             BEFORE="${{ github.event.before }}"
-            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" || true)
+            # Garde-fou : si le commit `before` est introuvable (force-push,
+            # branche neuve, clone incomplet), on redéploie TOUT plutôt que
+            # de ne rien déployer silencieusement.
+            if ! git cat-file -e "$BEFORE" 2>/dev/null; then
+              echo "[auto] before commit unavailable → redeploying ALL edge functions"
+              CHANGED="supabase/functions/_shared/forced-full-deploy"
+            else
+              CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" || true)
+            fi
 
             if echo "$CHANGED" | grep -q '^supabase/functions/_shared/'; then
               echo "[auto] _shared/ modified → redeploying ALL edge functions"
