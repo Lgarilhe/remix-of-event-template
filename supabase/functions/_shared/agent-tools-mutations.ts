@@ -14,6 +14,13 @@ import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 
+// ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 // ─── Tool 1 — update_candidate_stage ────────────────────────────────────────
 // MVP : seul tool implémenté pour valider la mécanique end-to-end.
 //
@@ -782,6 +789,67 @@ const enrichCandidateContact: AgentTool = {
     return { allowed: true };
   },
 
+  async dryRun(params, ctx) {
+    const linkedinUrl = String(params.linkedin_url).trim();
+    const withEmail = params.with_email !== false; // default true (même logique qu'execute)
+    const withPhone = params.with_phone === true;  // default false
+
+    // Slug du profil — sert aussi de candidate_id pour les profils sourcés
+    const slugMatch = linkedinUrl.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    const slug = slugMatch ? decodeURIComponent(slugMatch[1]).replace(/\/+$/, '') : null;
+
+    // Label candidat : params explicites d'abord, sinon lookup pipeline, sinon slug
+    const paramName = [params.first_name, params.last_name]
+      .map((v) => (v ? String(v).trim() : ''))
+      .filter(Boolean)
+      .join(' ');
+    let candidateLabel = paramName || slug || linkedinUrl;
+    let isInPipeline = false;
+    if (slug) {
+      const { data: candidate } = await ctx.adminClient
+        .from('job_candidate_status')
+        .select('candidate_name')
+        .eq('candidate_id', slug)
+        .eq('organization_id', ctx.organizationId)
+        .limit(1)
+        .maybeSingle();
+      if (candidate) {
+        isInPipeline = true;
+        if (!paramName && candidate.candidate_name) candidateLabel = candidate.candidate_name;
+      }
+    }
+
+    // Coûts alignés sur ai-config.ts : enrich_contact_email floor=1, enrich_contact_phone floor=10
+    const maxCredits = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
+    const requested = [withEmail ? 'email pro' : null, withPhone ? 'téléphone mobile' : null]
+      .filter(Boolean)
+      .join(' + ');
+
+    return {
+      summary: requested
+        ? `Enrichir ${candidateLabel} — ${requested} (max ${maxCredits} crédit${maxCredits > 1 ? 's' : ''} si trouvé)`
+        : `Enrichir ${candidateLabel} — aucun type de contact demandé`,
+      details: {
+        linkedin_url: linkedinUrl,
+        candidate_label: candidateLabel,
+        is_in_pipeline: isInPipeline,
+        with_email: withEmail,
+        with_phone: withPhone,
+        company: params.company ? String(params.company) : null,
+        cost_email_credits: withEmail ? 1 : 0,
+        cost_phone_credits: withPhone ? 10 : 0,
+        estimated_max_credits: maxCredits,
+        billing_note:
+          "Cascade gratuite testée d'abord (Unipile / cache 30j / ATS). Crédits débités uniquement si le contact est trouvé via fournisseur payant — 0 crédit si introuvable ou déjà en cache.",
+      },
+      warning: !withEmail && !withPhone
+        ? "Ni email ni téléphone demandé — l'exécution échouera (with_email ou with_phone doit être true)."
+        : withPhone
+        ? 'La recherche de téléphone mobile coûte 10 crédits si trouvée (10× le coût email).'
+        : undefined,
+    };
+  },
+
   async execute(params, ctx) {
     const linkedinUrl = String(params.linkedin_url);
     const withEmail = params.with_email !== false; // default true
@@ -797,7 +865,8 @@ const enrichCandidateContact: AgentTool = {
     if (!supabaseUrl) return { success: false, error: 'SUPABASE_URL not configured' };
 
     try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/enrich-candidate-contact`, {
+      // 30s : la cascade interne peut chaîner Unipile + Better Contact (15s chacun)
+      const response = await fetchWithTimeout(`${supabaseUrl}/functions/v1/enrich-candidate-contact`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -813,7 +882,7 @@ const enrichCandidateContact: AgentTool = {
           with_phone: withPhone,
           organization_id: ctx.organizationId, // explicite (auth bypass)
         }),
-      });
+      }, 30_000);
 
       const data = await response.json();
 
