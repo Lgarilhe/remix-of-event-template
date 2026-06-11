@@ -348,6 +348,57 @@ async function executeTool(
   }
 }
 
+// Génère un titre court (IA) pour la conversation si elle n'en a pas encore.
+// Appelé fire-and-forget après la persistance du message assistant — ne doit
+// JAMAIS bloquer le [DONE] ni faire échouer la requête (fail-soft).
+async function maybeGenerateTitle(
+  supabase: any,
+  conversationId: string,
+  userMessage: string,
+  assistantResponse: string,
+): Promise<void> {
+  try {
+    const { data: conv } = await supabase
+      .from("agent_conversations")
+      .select("title")
+      .eq("id", conversationId)
+      .single();
+    if (!conv || conv.title) return;
+
+    const { callClaudeCompat } = await import("../_shared/call-claude.ts");
+    const res = await callClaudeCompat({
+      model: "claude-haiku-4-5-20251001",
+      temperature: 0,
+      max_tokens: 30,
+      antiAiStyle: "none",
+      timeoutMs: 8000,
+      maxRetries: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Génère un titre court (3-6 mots, français, sans guillemets ni ponctuation finale) résumant le sujet de cette conversation de recrutement. Réponds UNIQUEMENT le titre.",
+        },
+        {
+          role: "user",
+          content: `Message utilisateur: ${String(userMessage).slice(0, 500)}\n\nDébut de la réponse: ${String(assistantResponse).slice(0, 300)}`,
+        },
+      ],
+    });
+    const title = (res.content || "").trim().slice(0, 80);
+    if (!title) return;
+    // AND title IS NULL — évite d'écraser un titre posé entre-temps (course
+    // entre le chemin tool loop et le chemin streaming, ou double requête).
+    await supabase
+      .from("agent_conversations")
+      .update({ title })
+      .eq("id", conversationId)
+      .is("title", null);
+  } catch (e) {
+    console.warn("[search-agent-chat] title generation failed:", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -781,9 +832,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `utilisateur : ses missions/postes, candidats, pipeline, scores, process ` +
         `d'entretien, séquences, statistiques, ET le détail d'un candidat ` +
         `(parcours/skills/scoring/évaluations/notes via get_candidate_detail), ` +
-        `les entretiens à venir (get_upcoming_interviews), et l'historique de ` +
+        `les entretiens à venir (get_upcoming_interviews), l'historique de ` +
         `prospection d'un candidat (get_candidate_outreach : déjà contacté ? a ` +
-        `répondu ?). Pour les questions OUVERTES / texte libre utilise ` +
+        `répondu ?), et le BRIEF COMPLET d'une mission — salaire, remote, ` +
+        `skills must/should/nice, critères d'évaluation, description — via ` +
+        `get_mission_brief (toute question sur le contenu ou les exigences ` +
+        `d'un poste). Pour les questions OUVERTES / texte libre utilise ` +
         `search_knowledge (recherche sémantique : notes, commentaires, ` +
         `comptes-rendus d'appel, évaluations, échanges). Sur UN candidat précis ` +
         `(« qu'a-t-on dit sur X », « nos réserves sur X ») passe son nom à ` +
@@ -1119,6 +1173,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 metadata: Object.keys(metadata).length > 0 ? metadata : {},
               });
 
+              // Titre auto de la conversation — fire-and-forget, ne bloque pas le [DONE].
+              const titlePromise = maybeGenerateTitle(supabase, conversation_id, message, fullResponse);
+              try { (globalThis as any).EdgeRuntime?.waitUntil?.(titlePromise); } catch { /* no-op */ }
+              titlePromise.catch(() => {});
+
               if (metadata.search_plan) {
                 const enrichedConfig = {
                   ...(metadata.search_plan as Record<string, unknown>),
@@ -1271,6 +1330,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 content: fullResponse,
                 metadata: Object.keys(metadata).length > 0 ? metadata : {},
               });
+
+              // Titre auto de la conversation — fire-and-forget, ne bloque pas le [DONE].
+              const titlePromise = maybeGenerateTitle(supabase, conversation_id, message, fullResponse);
+              try { (globalThis as any).EdgeRuntime?.waitUntil?.(titlePromise); } catch { /* no-op */ }
+              titlePromise.catch(() => {});
 
               // Update conversation status if action detected
               if (metadata.search_plan) {

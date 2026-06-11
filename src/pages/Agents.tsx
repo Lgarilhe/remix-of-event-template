@@ -132,7 +132,7 @@ function AgentCard({ agent, onOpen }: { agent: any; onOpen: (jobId?: string) => 
   const results = agent.results_summary || {};
   const goCount = results.go_count || 0;
   const totalScanned = results.total_scanned || 0;
-  const title = agent.job_title || agent.search_config?.summary || 'Agent sans titre';
+  const title = agent.title || agent.job_title || agent.search_config?.summary || 'Agent sans titre';
   const updatedAt = agent.updated_at ? new Date(agent.updated_at) : null;
 
   return (

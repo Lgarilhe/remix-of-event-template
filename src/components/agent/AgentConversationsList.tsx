@@ -101,7 +101,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate text-foreground/80 group-hover:text-foreground transition-colors">
-                  {conv.job_title || 'Conversation'}
+                  {conv.title || conv.job_title || 'Conversation'}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
                   {/* Status */}

@@ -18,6 +18,7 @@ export interface AgentConversation {
   created_by: string;
   job_id: string | null;
   job_title: string | null;
+  title: string | null;
   project_id: string | null;
   status: string;
   search_config: Record<string, unknown>;

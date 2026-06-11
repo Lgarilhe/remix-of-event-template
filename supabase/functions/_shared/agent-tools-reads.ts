@@ -416,6 +416,131 @@ const getMissionProcess: AgentTool = {
   },
 };
 
+// ─── Tool — get_mission_brief ──────────────────────────────────────────────
+const getMissionBrief: AgentTool = {
+  name: 'get_mission_brief',
+  description:
+    "Get the FULL structured brief of ONE mission (the job itself): salary range, remote policy, location, " +
+    "contract type, seniority & experience, must-have / should-have / nice-to-have skills, languages, " +
+    "evaluation criteria, mission description & context, plus a compact summary of the saved search filters. " +
+    "Use for ANY question about the content or requirements of a role: 'quel est le salaire', 'c'est du remote ?', " +
+    "'quels sont les must-have', 'décris-moi le poste', 'quels critères d'évaluation'. " +
+    "Pass mission_id (UUID) if you have it, OR mission_name (exact name/title) — if you only know the mission " +
+    "name from earlier in the conversation, pass mission_name.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      mission_id: { type: 'string', description: 'sourcing_projects UUID (si tu le connais).' },
+      mission_name: { type: 'string', description: "Nom ou intitulé EXACT de la mission (ex: « Lead Developer Go ») — utilise-le si tu n'as pas l'UUID (cas fréquent entre deux tours de conversation)." },
+    },
+    required: [],
+  },
+  verifyAccess: (params, ctx) => getMissionOverview.verifyAccess(params, ctx),
+  dryRun: trivialDryRun('Lecture : brief de la mission'),
+  async execute(params, ctx) {
+    const resolved = await resolveMissionRef(ctx, params);
+    if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
+    const { data, error } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, name, job_title, client_name, status, job_details, filters_snapshot, created_at, updated_at')
+      .eq('id', resolved.id)
+      .maybeSingle();
+    if (error) return { success: false, error: error.message };
+    if (!data) return { success: false, error: 'Mission introuvable.' };
+    const row = data as Record<string, unknown>;
+    // job_details = JSONB libre (type JobDetails côté front, src/types/jobDetails.ts).
+    // Tolérance totale aux clés absentes + troncatures (budget tokens) — ne jamais crasher.
+    const jd = (row.job_details ?? {}) as Record<string, any>;
+    const client = (jd.client ?? {}) as Record<string, any>;
+    const txt = (v: unknown, n: number): string | null => {
+      const s = String(v ?? '').trim();
+      return s ? s.slice(0, n) : null;
+    };
+    const strArr = (v: unknown, n: number): string[] =>
+      Array.isArray(v) ? v.slice(0, n).map((x) => String(x)) : [];
+    const brief = {
+      title: txt(jd.title, 200) ?? row.job_title ?? row.name,
+      contract_type: jd.contract_type ?? null,
+      urgency: jd.urgency ?? null,
+      client: {
+        name: client?.name ?? row.client_name ?? null,
+        sector: client?.sector ?? null,
+        size: client?.size ?? null,
+      },
+      location: txt(jd.location, 120),
+      remote_policy: jd.remote_policy ?? null,
+      remote_days: jd.remote_days ?? null,
+      seniority: txt(jd.seniority, 80),
+      experience_min: jd.experience_min ?? null,
+      experience_max: jd.experience_max ?? null,
+      salary_min: jd.salary_min ?? null,
+      salary_max: jd.salary_max ?? null,
+      salary_currency: jd.salary_currency ?? null,
+      salary_type: jd.salary_type ?? null,
+      skills_must_have: strArr(jd.skills_must_have, 15),
+      skills_should_have: strArr(jd.skills_should_have, 15),
+      skills_nice_to_have: strArr(jd.skills_nice_to_have, 15),
+      skills_to_avoid: strArr(jd.skills_to_avoid, 15),
+      languages: Array.isArray(jd.languages)
+        ? jd.languages.slice(0, 8).map((l: any) => ({
+            language: String(l?.language ?? ''),
+            level: String(l?.level ?? ''),
+          }))
+        : [],
+      mission_description: txt(jd.mission_description, 800),
+      context: txt(jd.context, 600),
+      evaluation_criteria: Array.isArray(jd.evaluation_criteria)
+        ? jd.evaluation_criteria.slice(0, 10).map((c: any) => ({
+            label: txt(c?.label, 120),
+            description: txt(c?.description, 200),
+            category: c?.category ?? null,
+            weight: c?.weight ?? null,
+            deal_breaker: !!c?.deal_breaker,
+          }))
+        : [],
+    };
+    // Résumé COMPACT du filters_snapshot (clés + comptes d'éléments) — jamais le
+    // JSON brut complet, trop volumineux pour le budget tokens de la conversation.
+    const fs = row.filters_snapshot as Record<string, unknown> | null;
+    let filtersSummary: Record<string, unknown> | null = null;
+    if (fs && typeof fs === 'object' && !Array.isArray(fs)) {
+      filtersSummary = {};
+      for (const [k, v] of Object.entries(fs)) {
+        if (v == null) continue;
+        if (Array.isArray(v)) {
+          filtersSummary[k] = v.length <= 6
+            ? v.map((x) =>
+                typeof x === 'object' && x !== null
+                  ? String((x as any).name ?? (x as any).title ?? (x as any).keywords ?? '[obj]').slice(0, 60)
+                  : String(x).slice(0, 60))
+            : `${v.length} éléments`;
+        } else if (typeof v === 'object') {
+          filtersSummary[k] = `{${Object.keys(v as object).slice(0, 6).join(', ')}}`;
+        } else {
+          filtersSummary[k] = typeof v === 'string' ? v.slice(0, 120) : v;
+        }
+      }
+    }
+    return {
+      success: true,
+      data: {
+        mission: {
+          id: row.id,
+          name: row.name,
+          status: row.status,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        },
+        brief,
+        filters_summary: filtersSummary,
+        mission_path: `/missions/${row.id}`,
+      },
+    };
+  },
+};
+
 // ─── Tool — get_sequences_status ───────────────────────────────────────────
 const getSequencesStatus: AgentTool = {
   name: 'get_sequences_status',
@@ -2060,6 +2185,7 @@ export function registerReadTools(): void {
   registerTool(getMissionOverview);
   registerTool(getMissionCandidates);
   registerTool(getMissionProcess);
+  registerTool(getMissionBrief);
   registerTool(getSequencesStatus);
   registerTool(getCandidateDetail);
   registerTool(getUpcomingInterviews);
