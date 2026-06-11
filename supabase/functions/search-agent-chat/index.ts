@@ -405,7 +405,7 @@ Deno.serve(async (req) => {
     // Verify user belongs to the conversation's organization
     const { data: conv } = await supabase
       .from("agent_conversations")
-      .select("organization_id")
+      .select("organization_id, created_by")
       .eq("id", conversation_id)
       .single();
 
@@ -435,6 +435,12 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    } else if (conv.created_by !== user.id) {
+      // Conversation sans organisation : seul son créateur peut y accéder
+      // (le client service-role bypasse la RLS, le check doit être explicite).
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Save user message (after auth validation)
@@ -444,13 +450,18 @@ Deno.serve(async (req) => {
       content: message,
     });
 
-    // Fetch conversation history (limit to 24 messages to control token costs)
-    const { data: history } = await supabase
+    // Fetch conversation history (limit to 24 messages to control token costs).
+    // IMPORTANT : on prend les 24 plus RÉCENTS (desc) puis on remet en ordre
+    // chronologique — ascending+limit renverrait les 24 plus ANCIENS et le
+    // message courant disparaîtrait du contexte dès que la conversation
+    // dépasse 24 messages.
+    const { data: historyDesc } = await supabase
       .from("agent_messages")
       .select("role, content, metadata")
       .eq("conversation_id", conversation_id)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(24);
+    const history = (historyDesc || []).slice().reverse();
 
     // Build messages for AI
     const messages: any[] = [];
@@ -595,32 +606,35 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       activeSystemPrompt = freeSystemPrompt;
     }
 
+    // Pré-LLM parallélisé : insights mémoire, contexte IA org/user et
+    // classifieur B.2 sont indépendants — les attendre en série coûtait
+    // ~0,5-1s de latence avant le premier octet sur CHAQUE message.
     // Sprint 3 — Mémoire cross-session : injection des user_insights
     // pertinents en début de system prompt (juste sous le rôle).
-    try {
-      const insights = await getRelevantInsights(supabase, {
-        userId: user.id,
-        organizationId: orgId,
-        limit: 8,
-      });
-      if (insights.length > 0) {
-        activeSystemPrompt = activeSystemPrompt + formatInsightsForPrompt(insights);
-        // Fire-and-forget bump (ne bloque pas la conv)
-        bumpInsightUsage(supabase, insights.map((i) => i.id)).catch(() => {});
+    const insightsPromise = (async () => {
+      try {
+        return await getRelevantInsights(supabase, {
+          userId: user.id,
+          organizationId: orgId,
+          limit: 8,
+        });
+      } catch (e) {
+        console.warn('[search-agent-chat] user-memory injection skipped:', e);
+        return [];
       }
-    } catch (e) {
-      console.warn('[search-agent-chat] user-memory injection skipped:', e);
-    }
+    })();
 
     // Contexte IA user/org (Settings → Contexte IA) — injecté en bloc system
     // séparé, AVANT le prompt opérationnel. Fail-soft : "" si rien configuré.
-    let aiContextBlock = "";
-    try {
-      const { loadAndBuildAiContext } = await import("../_shared/ai-context.ts");
-      aiContextBlock = await loadAndBuildAiContext(supabase, { orgId, userId: user.id });
-    } catch (e) {
-      console.warn("[search-agent-chat] aiContext load skipped:", e);
-    }
+    const aiContextPromise = (async () => {
+      try {
+        const { loadAndBuildAiContext } = await import("../_shared/ai-context.ts");
+        return await loadAndBuildAiContext(supabase, { orgId, userId: user.id });
+      } catch (e) {
+        console.warn("[search-agent-chat] aiContext load skipped:", e);
+        return "";
+      }
+    })();
 
     // Contexte applicatif passif : où se trouve l'utilisateur dans l'app.
     // Bloc dynamique (change à chaque message) → placé en QUEUE du system,
@@ -658,9 +672,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     //   CHAT   → tout le reste → chemin streaming + Réflexion INCHANGÉ.
     // DATA et ACTION nécessitent les tools (read + mutating) → tools loop.
     // Fail-soft : toute erreur/timeout → CHAT (zéro régression sur le chat normal).
-    let classifiedDATA = false;
-    let classifiedACTION = false;
-    if (isFreeMode) {
+    const classifierPromise = (async (): Promise<{ data: boolean; action: boolean }> => {
+      if (!isFreeMode) return { data: false, action: false };
       try {
         // Fil récent (derniers tours) → un suivi court ("et leur nom ?",
         // "lesquelles ?", "détaille") hérite du sujet du tour précédent et
@@ -719,13 +732,27 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
           ],
         });
         const raw = (clf.content || "").trim();
-        classifiedDATA = /\bDATA\b/i.test(raw);
-        classifiedACTION = /\bACTION\b/i.test(raw);
-        console.log(`[search-agent-chat] B.2 classifier raw="${raw}" → DATA=${classifiedDATA} ACTION=${classifiedACTION}`);
+        const data = /\bDATA\b/i.test(raw);
+        const action = /\bACTION\b/i.test(raw);
+        console.log(`[search-agent-chat] B.2 classifier raw="${raw}" → DATA=${data} ACTION=${action}`);
+        return { data, action };
       } catch (e) {
         console.warn("[search-agent-chat] B.2 classifier skipped (→ CHAT):", e);
+        return { data: false, action: false };
       }
+    })();
+
+    // Jointure des trois chargements parallèles.
+    const [insights, aiContextBlock, clfResult] = await Promise.all([
+      insightsPromise, aiContextPromise, classifierPromise,
+    ]);
+    if (insights.length > 0) {
+      activeSystemPrompt = activeSystemPrompt + formatInsightsForPrompt(insights);
+      // Fire-and-forget bump (ne bloque pas la conv)
+      bumpInsightUsage(supabase, insights.map((i) => i.id)).catch(() => {});
     }
+    let classifiedDATA = clfResult.data;
+    let classifiedACTION = clfResult.action;
     // Fallback déterministe : si Haiku rate et classe en CHAT, on rattrape les
     // verbes/intentions d'action évidentes via regex sur le message courant.
     // Faux positifs acceptés (ex. "envoie de tristesse" → ACTION false-pos →
@@ -925,22 +952,28 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
           try {
             let currentMessages = [...messages];
             let maxToolRounds = 5;
+            let apiErrored = false;
+            let awaitingApprovalCount = 0;
+
+            // Combine read-only sourcing tools (hardcoded) + registry mutating tools
+            // (dynamically registered via registerMutatingTools()). Constant
+            // across rounds — computed once, outside the loop.
+            const registryTools = getAnthropicToolDefinitions();
+            const allTools = [...sourcingTools, ...registryTools];
 
             // Tool-calling loop
             while (maxToolRounds > 0) {
               console.log(`[search-agent-chat] Tool loop round ${6 - maxToolRounds}, messages: ${currentMessages.length}`);
-
-              // Combine read-only sourcing tools (hardcoded) + registry mutating tools
-              // (dynamically registered via registerMutatingTools()).
-              const registryTools = getAnthropicToolDefinitions();
-              const allTools = [...sourcingTools, ...registryTools];
 
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
                 system: [
                   ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
-                  { type: "text", text: activeSystemPrompt },
+                  // Breakpoint cache sur le prompt opérationnel : cache TOUT le
+                  // préfixe (tools + blocs system précédents) → les rounds 2..5
+                  // et les messages suivants relisent ce préfixe au tarif cache.
+                  { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
                   ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
                 ],
                 messages: currentMessages,
@@ -964,7 +997,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               if (!loopResponse.ok) {
                 const errorText = await loopResponse.text();
                 console.error("[search-agent-chat] AI error in tool loop:", loopResponse.status, errorText);
-                const errChunk = { choices: [{ delta: { content: "Erreur de communication avec l'IA. Reessayez." }, index: 0 }] };
+                apiErrored = true;
+                // Message honnête, accumulé dans fullResponse pour être persisté
+                // tel quel (avant ce fix, le fallback « J'ai préparé une ou
+                // plusieurs actions » mentait après une erreur API).
+                const errMsg = "Je n'ai pas pu terminer ma réponse (erreur de communication avec l'IA). Réessaie dans un instant.";
+                fullResponse += (fullResponse ? "\n\n" : "") + errMsg;
+                const errChunk = { choices: [{ delta: { content: errMsg }, index: 0 }] };
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(errChunk)}\n\n`));
                 break;
               }
@@ -1011,6 +1050,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       adminClient: supabase,
                     };
                     const handled = await handleProposedToolCall(tc.name, tc.input, ctx);
+                    if (handled.outcome === 'awaiting_approval') awaitingApprovalCount++;
                     // Serialize for Claude — include executionId so the model can
                     // mention it in its reply ("J'ai préparé l'action #abc, valide via le bandeau")
                     const resultForClaude = JSON.stringify({
@@ -1044,11 +1084,17 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
             // Fallback : si la boucle s'est terminée sans aucun texte (cas où
             // Claude n'a généré que des tool_use sans narration, ou a épuisé
-            // les 5 tours en chaînant des mutations). On émet une narration
-            // pour éviter que l'UI affiche "..." perpétuel (bug Laurent 2026-05-20).
-            if (!fullResponse.trim()) {
-              console.warn('[search-agent-chat] Tool loop ended with empty response — emitting fallback narration');
-              const fallback = "J'ai préparé une ou plusieurs actions. Consulte le bandeau d'approbation au-dessus du chat pour les valider, puis dis-moi ce que tu veux faire ensuite.";
+            // les 5 tours). On émet une narration pour éviter que l'UI affiche
+            // "..." perpétuel (bug Laurent 2026-05-20) — mais une narration
+            // HONNÊTE : on ne parle du bandeau d'approbation QUE si au moins
+            // une action attend réellement une approbation ce tour-ci.
+            if (!fullResponse.trim() && !apiErrored) {
+              console.warn(`[search-agent-chat] Tool loop ended with empty response — fallback narration (awaiting=${awaitingApprovalCount})`);
+              const fallback = awaitingApprovalCount > 0
+                ? (awaitingApprovalCount > 1
+                  ? `J'ai préparé ${awaitingApprovalCount} actions. Consulte le bandeau d'approbation au-dessus du chat pour les valider, puis dis-moi ce que tu veux faire ensuite.`
+                  : "J'ai préparé une action. Consulte le bandeau d'approbation au-dessus du chat pour la valider, puis dis-moi ce que tu veux faire ensuite.")
+                : "Je n'ai pas réussi à formuler une réponse complète. Reformule ta demande ou précise ce que tu attends.";
               fullResponse = fallback;
               const chunk = { choices: [{ delta: { content: fallback }, index: 0 }] };
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
@@ -1159,7 +1205,6 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       headers: {
         "x-api-key": ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1199,6 +1244,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       async start(controller) {
         let buffer = "";
 
+        // try/catch global : une erreur réseau mid-stream (reader.read() qui
+        // throw) laissait le stream sans [DONE] (UI bloquée sur "…"), sans
+        // persistance du partiel et sans settle des crédits.
+        try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
@@ -1305,6 +1354,30 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               } catch {}
             }
           }
+        }
+        } catch (err) {
+          console.error("[search-agent-chat] Streaming path mid-stream error:", err);
+          // Persister le partiel pour ne pas perdre la réponse côté historique.
+          try {
+            if (fullResponse.trim()) {
+              await supabase.from("agent_messages").insert({
+                conversation_id,
+                role: "assistant",
+                content: fullResponse,
+                metadata: { interrupted: true },
+              });
+            }
+          } catch (persistErr) {
+            console.error("[search-agent-chat] partial persist failed:", persistErr);
+          }
+          // Débloquer l'UI proprement : message visible + [DONE].
+          try {
+            const chunk = { choices: [{ delta: { content: "\n\n(Connexion interrompue — réponse incomplète. Réessaie.)" }, index: 0 }] };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          } catch { /* controller déjà fermé */ }
         }
       },
     });

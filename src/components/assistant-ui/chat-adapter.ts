@@ -65,16 +65,24 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
 
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
       let accumulated = '';
       let thinkingAccumulated = '';
       let isThinking = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n')) {
+        // Line buffering: an SSE event can be split across two network reads,
+        // so keep the trailing partial line in `buffer` between reads (same
+        // pattern as the backend proxy in search-agent-chat). On the final
+        // read, flush the decoder and process any last non-newline-terminated
+        // `data: ` line instead of dropping it.
+        buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = done ? '' : lines.pop() || '';
+
+        for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6).trim();
           if (data === '[DONE]') continue;
@@ -109,6 +117,8 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
             // Ignore parse errors
           }
         }
+
+        if (done) break;
       }
 
       const finalParts: any[] = [];
