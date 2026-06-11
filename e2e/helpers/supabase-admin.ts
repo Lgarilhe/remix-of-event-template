@@ -57,7 +57,12 @@ export async function createOrg(orgType: OrgType, namePrefix = 'E2E Org'): Promi
   const owner = await createConfirmedUser('owner');
   const { data: org, error } = await admin()
     .from('organizations')
-    .insert({ name: `${namePrefix} ${rand()}`, org_type: orgType, created_by: owner.userId })
+    .insert({
+      name: `${namePrefix} ${rand()}`,
+      slug: `e2e-${orgType}-${rand()}`,
+      org_type: orgType,
+      created_by: owner.userId,
+    })
     .select('id')
     .single();
   if (error || !org) throw new Error(`createOrg: ${error?.message}`);
