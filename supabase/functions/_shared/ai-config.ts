@@ -33,18 +33,6 @@ export interface AIModel {
 }
 
 export const MODEL_CATALOG: Record<string, AIModel> = {
-  "gemini-2.5-flash": {
-    id: "gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "google",
-    tier: "budget",
-    inputPricePerMTok: 0.30,
-    outputPricePerMTok: 2.50,
-    multiplier: 0.15,
-    contextWindow: 1_000_000,
-    supportsThinking: true,
-    description: "Ultra rapide, économique",
-  },
   "claude-haiku-4-5": {
     id: "claude-haiku-4-5",
     name: "Claude Haiku 4.5",
@@ -56,18 +44,6 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     contextWindow: 200_000,
     supportsThinking: true,
     description: "Rapide, bon marché",
-  },
-  "gemini-2.5-pro": {
-    id: "gemini-2.5-pro",
-    name: "Gemini 2.5 Pro",
-    provider: "google",
-    tier: "balanced",
-    inputPricePerMTok: 1.25,
-    outputPricePerMTok: 10.00,
-    multiplier: 0.55,
-    contextWindow: 1_000_000,
-    supportsThinking: true,
-    description: "Bon raisonnement, compétitif",
   },
   "claude-sonnet-4-5": {
     id: "claude-sonnet-4-5",
@@ -367,7 +343,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
 const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
   fast: "claude-haiku-4-5",
   default: "claude-sonnet-4-6",
-  thinking: "claude-sonnet-4-5",
+  thinking: "claude-sonnet-4-6",
 };
 
 // ─── Credit Calculation ─────────────────────────────────────────────────────
@@ -470,6 +446,14 @@ export function getModel(
  * Translates our internal IDs to Anthropic's expected format.
  */
 export function getAnthropicModelId(modelId: string): string {
+  // Ids non-Claude (ex: choix "gemini-*" persisté côté client/org avant la
+  // purge des modèles Google du catalogue) → fallback explicite vers le
+  // défaut Claude. getModel() ne retourne plus jamais ces ids (guard
+  // MODEL_CATALOG), ceci est une ceinture de sécurité pour les call sites
+  // qui passeraient un id brut.
+  if (!modelId.startsWith("claude-")) {
+    return ROUTING_DEFAULTS.default;
+  }
   const mapping: Record<string, string> = {
     "claude-haiku-4-5": "claude-haiku-4-5-20251001",
     "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",

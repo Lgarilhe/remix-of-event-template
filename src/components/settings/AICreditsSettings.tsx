@@ -246,7 +246,7 @@ export const AICreditsSettings = () => {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {Object.entries(AI_CREDIT_COSTS).map(([key, action]) => {
-              const minCost = estimateCredits(key, 'gemini-2.5-flash');
+              const minCost = estimateCredits(key, 'claude-haiku-4-5');
               const defaultCost = estimateCredits(key, 'claude-sonnet-4-6');
               const maxCost = estimateCredits(key, 'claude-opus-4-6');
               return (

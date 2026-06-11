@@ -19,9 +19,9 @@ import {
 
 describe('estimateCredits', () => {
   it('returns floor when tokens are very low', () => {
-    // Gemini Flash with 4000 typical tokens: ceil(4000/1000 * 0.15) = ceil(0.6) = 1
-    // Floor for scoring is 2, so max(2, 1) = 2
-    const cost = estimateCredits('scoring', 'gemini-2.5-flash');
+    // Haiku 4.5 with 4000 typical tokens: ceil(4000/1000 * 0.35) = ceil(1.4) = 2
+    // Floor for scoring is 2, so max(2, 2) = 2
+    const cost = estimateCredits('scoring', 'claude-haiku-4-5');
     expect(cost).toBe(2);
   });
 
@@ -84,7 +84,7 @@ describe('resolveModel', () => {
 
   it('returns thinking model for thinking tier', () => {
     const model = resolveModel('thinking');
-    expect(model).toBe('claude-sonnet-4-5');
+    expect(model).toBe('claude-sonnet-4-6');
   });
 
   it('user override takes priority over everything', () => {
@@ -131,8 +131,8 @@ describe('resolveModel', () => {
 // ─── MODEL_CATALOG ──────────────────────────────────────────────────────────
 
 describe('MODEL_CATALOG', () => {
-  it('has all 6 models', () => {
-    expect(Object.keys(MODEL_CATALOG).length).toBe(6);
+  it('has all 4 models', () => {
+    expect(Object.keys(MODEL_CATALOG).length).toBe(4);
   });
 
   it('all models have required fields', () => {
@@ -162,10 +162,10 @@ describe('MODEL_CATALOG', () => {
     );
   });
 
-  it('Gemini Flash is the cheapest', () => {
-    const flash = MODEL_CATALOG['gemini-2.5-flash'].multiplier;
+  it('Haiku is the cheapest', () => {
+    const haiku = MODEL_CATALOG['claude-haiku-4-5'].multiplier;
     for (const model of Object.values(MODEL_CATALOG)) {
-      expect(flash).toBeLessThanOrEqual(model.multiplier);
+      expect(haiku).toBeLessThanOrEqual(model.multiplier);
     }
   });
 });

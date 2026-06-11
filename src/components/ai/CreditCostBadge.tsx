@@ -46,7 +46,7 @@ export const CreditCostBadge = ({ actionId, modelId, className }: CreditCostBadg
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs max-w-[220px]">
           <p>
-            Estimation : ~{cost} crédit{cost > 1 ? 's' : ''} avec {resolvedModel.replace('claude-', '').replace('gemini-', '')}
+            Estimation : ~{cost} crédit{cost > 1 ? 's' : ''} avec {resolvedModel.replace('claude-', '')}
           </p>
           <p className="text-muted-foreground mt-0.5">
             Coût réel basé sur les tokens consommés.

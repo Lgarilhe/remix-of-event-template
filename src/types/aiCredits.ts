@@ -25,16 +25,6 @@ export interface AIModel {
 // ─── Model Catalog (frontend mirror) ────────────────────────────────────────
 
 export const MODEL_CATALOG: Record<string, AIModel> = {
-  "gemini-2.5-flash": {
-    id: "gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "google",
-    tier: "budget",
-    multiplier: 0.15,
-    contextWindow: 1_000_000,
-    supportsThinking: true,
-    description: "Ultra rapide, économique",
-  },
   "claude-haiku-4-5": {
     id: "claude-haiku-4-5",
     name: "Claude Haiku 4.5",
@@ -44,16 +34,6 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     contextWindow: 200_000,
     supportsThinking: true,
     description: "Rapide, bon marché",
-  },
-  "gemini-2.5-pro": {
-    id: "gemini-2.5-pro",
-    name: "Gemini 2.5 Pro",
-    provider: "google",
-    tier: "balanced",
-    multiplier: 0.55,
-    contextWindow: 1_000_000,
-    supportsThinking: true,
-    description: "Bon raisonnement, compétitif",
   },
   "claude-sonnet-4-5": {
     id: "claude-sonnet-4-5",
@@ -157,7 +137,7 @@ export function estimateCredits(actionId: string, modelId: string): number {
 const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
   fast: "claude-haiku-4-5",
   default: "claude-sonnet-4-6",
-  thinking: "claude-sonnet-4-5",
+  thinking: "claude-sonnet-4-6",
 };
 
 export function getDefaultModel(routingTier: RoutingTier): string {
