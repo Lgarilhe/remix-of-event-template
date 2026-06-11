@@ -7,8 +7,16 @@
  * Les tests d'intégration réels vivent dans la suite @live (non mockée).
  */
 import { test as base, type Page } from '@playwright/test';
-import unipileSearch from '../mocks/unipile/search.json';
-import unipileProfile from '../mocks/unipile/get_profile.json';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Lecture runtime plutôt qu'import JSON : les import attributes ESM ("with
+// { type: 'json' }") varient selon la version Node — readFileSync est portable.
+const MOCKS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'mocks');
+const loadMock = (rel: string) => JSON.parse(fs.readFileSync(path.join(MOCKS_DIR, rel), 'utf8'));
+const unipileSearch = loadMock('unipile/search.json');
+const unipileProfile = loadMock('unipile/get_profile.json');
 
 export interface NetworkFixtures {
   /** Active les mocks vendors sur la page courante. */

@@ -1,6 +1,9 @@
 /** Accès au registre des rôles produit par global.setup.ts. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface RoleEntry {
   file: string;
