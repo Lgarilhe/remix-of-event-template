@@ -88,52 +88,68 @@ ALTER TABLE public.sequence_enrollments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sequence_step_executions ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for outreach_sequences
+DROP POLICY IF EXISTS "Users can view their own sequences" ON public.outreach_sequences;
 CREATE POLICY "Users can view their own sequences" ON public.outreach_sequences
   FOR SELECT USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can create their own sequences" ON public.outreach_sequences;
 CREATE POLICY "Users can create their own sequences" ON public.outreach_sequences
   FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their own sequences" ON public.outreach_sequences;
 CREATE POLICY "Users can update their own sequences" ON public.outreach_sequences
   FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can delete their own sequences" ON public.outreach_sequences;
 CREATE POLICY "Users can delete their own sequences" ON public.outreach_sequences
   FOR DELETE USING (auth.uid() = created_by);
 
 -- RLS Policies for sequence_steps
+DROP POLICY IF EXISTS "Users can view steps of their sequences" ON public.sequence_steps;
 CREATE POLICY "Users can view steps of their sequences" ON public.sequence_steps
   FOR SELECT USING (EXISTS (
     SELECT 1 FROM public.outreach_sequences WHERE id = sequence_id AND created_by = auth.uid()
   ));
+DROP POLICY IF EXISTS "Users can manage steps of their sequences" ON public.sequence_steps;
 CREATE POLICY "Users can manage steps of their sequences" ON public.sequence_steps
   FOR ALL USING (EXISTS (
     SELECT 1 FROM public.outreach_sequences WHERE id = sequence_id AND created_by = auth.uid()
   ));
 
 -- RLS Policies for sequence_enrollments
+DROP POLICY IF EXISTS "Users can view their enrollments" ON public.sequence_enrollments;
 CREATE POLICY "Users can view their enrollments" ON public.sequence_enrollments
   FOR SELECT USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can create their enrollments" ON public.sequence_enrollments;
 CREATE POLICY "Users can create their enrollments" ON public.sequence_enrollments
   FOR INSERT WITH CHECK (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can update their enrollments" ON public.sequence_enrollments;
 CREATE POLICY "Users can update their enrollments" ON public.sequence_enrollments
   FOR UPDATE USING (auth.uid() = created_by);
+DROP POLICY IF EXISTS "Users can delete their enrollments" ON public.sequence_enrollments;
 CREATE POLICY "Users can delete their enrollments" ON public.sequence_enrollments
   FOR DELETE USING (auth.uid() = created_by);
 
 -- RLS Policies for sequence_step_executions
+DROP POLICY IF EXISTS "Users can view their step executions" ON public.sequence_step_executions;
 CREATE POLICY "Users can view their step executions" ON public.sequence_step_executions
   FOR SELECT USING (EXISTS (
     SELECT 1 FROM public.sequence_enrollments WHERE id = enrollment_id AND created_by = auth.uid()
   ));
+DROP POLICY IF EXISTS "Users can manage their step executions" ON public.sequence_step_executions;
 CREATE POLICY "Users can manage their step executions" ON public.sequence_step_executions
   FOR ALL USING (EXISTS (
     SELECT 1 FROM public.sequence_enrollments WHERE id = enrollment_id AND created_by = auth.uid()
   ));
 
 -- Service role access for edge functions
+DROP POLICY IF EXISTS "Service role can manage all sequences" ON public.outreach_sequences;
 CREATE POLICY "Service role can manage all sequences" ON public.outreach_sequences
   FOR ALL USING (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "Service role can manage all steps" ON public.sequence_steps;
 CREATE POLICY "Service role can manage all steps" ON public.sequence_steps
   FOR ALL USING (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "Service role can manage all enrollments" ON public.sequence_enrollments;
 CREATE POLICY "Service role can manage all enrollments" ON public.sequence_enrollments
   FOR ALL USING (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "Service role can manage all executions" ON public.sequence_step_executions;
 CREATE POLICY "Service role can manage all executions" ON public.sequence_step_executions
   FOR ALL USING (auth.role() = 'service_role');
 

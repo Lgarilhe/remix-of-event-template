@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.mission_invitations (
 ALTER TABLE public.mission_invitations ENABLE ROW LEVEL SECURITY;
 
 -- Org members can manage invitations for their projects
+DROP POLICY IF EXISTS "mission_invitations_manage" ON public.mission_invitations;
 CREATE POLICY "mission_invitations_manage" ON public.mission_invitations
   FOR ALL USING (
     organization_id IN (
@@ -30,5 +31,6 @@ CREATE POLICY "mission_invitations_manage" ON public.mission_invitations
   );
 
 -- Anyone can read their own invitation (by email lookup via token)
+DROP POLICY IF EXISTS "mission_invitations_read_by_token" ON public.mission_invitations;
 CREATE POLICY "mission_invitations_read_by_token" ON public.mission_invitations
   FOR SELECT USING (true);

@@ -5,10 +5,12 @@
 DROP POLICY IF EXISTS "client_portal_tokens_policy" ON public.client_portal_tokens;
 
 -- Anonymous read: anyone with a valid token can look it up
+DROP POLICY IF EXISTS "client_portal_tokens_read_by_token" ON public.client_portal_tokens;
 CREATE POLICY "client_portal_tokens_read_by_token" ON public.client_portal_tokens
   FOR SELECT USING (true);
 
 -- Authenticated write: only org members can create/update/delete
+DROP POLICY IF EXISTS "client_portal_tokens_manage_by_org" ON public.client_portal_tokens;
 CREATE POLICY "client_portal_tokens_manage_by_org" ON public.client_portal_tokens
   FOR ALL USING (
     organization_id IN (
@@ -29,13 +31,16 @@ CREATE POLICY "client_portal_tokens_manage_by_org" ON public.client_portal_token
 
 -- Allow anonymous SELECT on sourcing_projects for portal access
 -- (only id, name, status — no sensitive data)
+DROP POLICY IF EXISTS "sourcing_projects_public_portal_read" ON public.sourcing_projects;
 CREATE POLICY "sourcing_projects_public_portal_read" ON public.sourcing_projects
   FOR SELECT USING (true);
 
 -- Allow anonymous SELECT on job_candidate_status for portal access
+DROP POLICY IF EXISTS "jcs_public_portal_read" ON public.job_candidate_status;
 CREATE POLICY "jcs_public_portal_read" ON public.job_candidate_status
   FOR SELECT USING (true);
 
 -- Allow anonymous SELECT on organizations for portal branding
+DROP POLICY IF EXISTS "organizations_public_portal_read" ON public.organizations;
 CREATE POLICY "organizations_public_portal_read" ON public.organizations
   FOR SELECT USING (true);

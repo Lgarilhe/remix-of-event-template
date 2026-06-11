@@ -46,7 +46,9 @@ CREATE TABLE public.airtable_appointments (
   UNIQUE(airtable_id, source_base)
 );
 ALTER TABLE public.airtable_appointments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can read appointments" ON public.airtable_appointments;
 CREATE POLICY "Authenticated users can read appointments" ON public.airtable_appointments FOR SELECT USING (auth.role() = 'authenticated'::text);
+DROP POLICY IF EXISTS "Service role can manage appointments" ON public.airtable_appointments;
 CREATE POLICY "Service role can manage appointments" ON public.airtable_appointments FOR ALL USING (auth.role() = 'service_role'::text);
 
 -- Tâches
@@ -70,7 +72,9 @@ CREATE TABLE public.airtable_tasks (
   UNIQUE(airtable_id, source_base)
 );
 ALTER TABLE public.airtable_tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can read tasks" ON public.airtable_tasks;
 CREATE POLICY "Authenticated users can read tasks" ON public.airtable_tasks FOR SELECT USING (auth.role() = 'authenticated'::text);
+DROP POLICY IF EXISTS "Service role can manage tasks" ON public.airtable_tasks;
 CREATE POLICY "Service role can manage tasks" ON public.airtable_tasks FOR ALL USING (auth.role() = 'service_role'::text);
 
 -- Shortlists cumulées
@@ -88,7 +92,9 @@ CREATE TABLE public.airtable_shortlists_cumulated (
   UNIQUE(airtable_id, source_base)
 );
 ALTER TABLE public.airtable_shortlists_cumulated ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can read shortlists cumulated" ON public.airtable_shortlists_cumulated;
 CREATE POLICY "Authenticated users can read shortlists cumulated" ON public.airtable_shortlists_cumulated FOR SELECT USING (auth.role() = 'authenticated'::text);
+DROP POLICY IF EXISTS "Service role can manage shortlists cumulated" ON public.airtable_shortlists_cumulated;
 CREATE POLICY "Service role can manage shortlists cumulated" ON public.airtable_shortlists_cumulated FOR ALL USING (auth.role() = 'service_role'::text);
 
 -- Glossaire tech
@@ -105,7 +111,9 @@ CREATE TABLE public.airtable_glossary (
   UNIQUE(airtable_id, source_base)
 );
 ALTER TABLE public.airtable_glossary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can read glossary" ON public.airtable_glossary;
 CREATE POLICY "Authenticated users can read glossary" ON public.airtable_glossary FOR SELECT USING (auth.role() = 'authenticated'::text);
+DROP POLICY IF EXISTS "Service role can manage glossary" ON public.airtable_glossary;
 CREATE POLICY "Service role can manage glossary" ON public.airtable_glossary FOR ALL USING (auth.role() = 'service_role'::text);
 
 -- KPI
@@ -123,7 +131,9 @@ CREATE TABLE public.airtable_kpi (
   UNIQUE(airtable_id, source_base)
 );
 ALTER TABLE public.airtable_kpi ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can read KPI" ON public.airtable_kpi;
 CREATE POLICY "Authenticated users can read KPI" ON public.airtable_kpi FOR SELECT USING (auth.role() = 'authenticated'::text);
+DROP POLICY IF EXISTS "Service role can manage KPI" ON public.airtable_kpi;
 CREATE POLICY "Service role can manage KPI" ON public.airtable_kpi FOR ALL USING (auth.role() = 'service_role'::text);
 
 -- Update sync_meta

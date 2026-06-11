@@ -9,6 +9,7 @@ DROP POLICY IF EXISTS "mission_team_insert_candidates" ON public.job_candidate_s
 DROP POLICY IF EXISTS "mission_team_update_candidates" ON public.job_candidate_status;
 
 -- Recreate mission_team policy using org membership directly (no join to sourcing_projects)
+DROP POLICY IF EXISTS "mission_team_policy" ON public.mission_team;
 CREATE POLICY "mission_team_policy" ON public.mission_team FOR ALL
 USING (
   user_id = auth.uid()
@@ -35,6 +36,7 @@ AS $$
   )
 $$;
 
+DROP POLICY IF EXISTS "mission_team_view_projects" ON public.sourcing_projects;
 CREATE POLICY "mission_team_view_projects" ON public.sourcing_projects FOR SELECT
 USING (public.is_mission_team_member(auth.uid(), id));
 
@@ -52,11 +54,14 @@ AS $$
   )
 $$;
 
+DROP POLICY IF EXISTS "mission_team_view_candidates" ON public.job_candidate_status;
 CREATE POLICY "mission_team_view_candidates" ON public.job_candidate_status FOR SELECT
 USING (public.is_mission_team_member_for_project(auth.uid(), project_id));
 
+DROP POLICY IF EXISTS "mission_team_insert_candidates" ON public.job_candidate_status;
 CREATE POLICY "mission_team_insert_candidates" ON public.job_candidate_status FOR INSERT
 WITH CHECK (public.is_mission_team_member_for_project(auth.uid(), project_id));
 
+DROP POLICY IF EXISTS "mission_team_update_candidates" ON public.job_candidate_status;
 CREATE POLICY "mission_team_update_candidates" ON public.job_candidate_status FOR UPDATE
 USING (public.is_mission_team_member_for_project(auth.uid(), project_id));

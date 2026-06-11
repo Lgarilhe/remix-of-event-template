@@ -19,18 +19,23 @@ CREATE TABLE public.candidate_portal_tokens (
 ALTER TABLE public.candidate_portal_tokens ENABLE ROW LEVEL SECURITY;
 
 -- Authenticated users can manage their own tokens
+DROP POLICY IF EXISTS "Users can create portal tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Users can create portal tokens" ON public.candidate_portal_tokens
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = created_by);
 
+DROP POLICY IF EXISTS "Users can view their own tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Users can view their own tokens" ON public.candidate_portal_tokens
   FOR SELECT TO authenticated USING (auth.uid() = created_by);
 
+DROP POLICY IF EXISTS "Users can update their own tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Users can update their own tokens" ON public.candidate_portal_tokens
   FOR UPDATE TO authenticated USING (auth.uid() = created_by);
 
+DROP POLICY IF EXISTS "Users can delete their own tokens" ON public.candidate_portal_tokens;
 CREATE POLICY "Users can delete their own tokens" ON public.candidate_portal_tokens
   FOR DELETE TO authenticated USING (auth.uid() = created_by);
 
 -- Public access by token (for the portal page — anon role)
+DROP POLICY IF EXISTS "Anyone can view active tokens by token value" ON public.candidate_portal_tokens;
 CREATE POLICY "Anyone can view active tokens by token value" ON public.candidate_portal_tokens
   FOR SELECT TO anon USING (is_active = true AND (expires_at IS NULL OR expires_at > now()));

@@ -1,5 +1,5 @@
 -- Drop the old constraint and create a new one with all action types
-ALTER TABLE sequence_steps DROP CONSTRAINT sequence_steps_action_type_check;
+ALTER TABLE sequence_steps DROP CONSTRAINT IF EXISTS sequence_steps_action_type_check;
 
 ALTER TABLE sequence_steps ADD CONSTRAINT sequence_steps_action_type_check 
 CHECK (action_type = ANY (ARRAY[

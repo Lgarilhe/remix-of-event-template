@@ -1,3 +1,22 @@
+-- Fix replayability 2026-06-11 : l'ON CONFLICT (job_id, candidate_id, created_by)
+-- plus bas exige une UNIQUE qui n'est (re)créée que par le grants bootstrap du
+-- 2026-04-21 (le schéma Lovable avait perdu les UNIQUE). On la crée ici de
+-- façon idempotente — le bootstrap (gardé par colonnes) la détecte et skip.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint con
+    JOIN pg_class t ON t.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'public' AND t.relname = 'job_candidate_status' AND con.contype = 'u'
+  ) THEN
+    ALTER TABLE public.job_candidate_status
+      ADD CONSTRAINT job_candidate_status_job_candidate_creator_key
+      UNIQUE (job_id, candidate_id, created_by);
+  END IF;
+END $$;
+
 
 DO $$
 DECLARE
@@ -23,7 +42,13 @@ DECLARE
 BEGIN
   SELECT id INTO v_org_id FROM organizations LIMIT 1;
   SELECT user_id INTO v_user_id FROM organization_members WHERE organization_id = v_org_id LIMIT 1;
-  IF v_org_id IS NULL THEN RAISE EXCEPTION 'No organization found'; END IF;
+  -- Fix replayability 2026-06-11 : cette migration seed des données de TEST et
+  -- suppose une org/un user existants (vrai en prod à l'époque, faux sur une
+  -- base vierge). On skip proprement au lieu d'échouer — le schéma n'en dépend pas.
+  IF v_org_id IS NULL OR v_user_id IS NULL THEN
+    RAISE NOTICE 'Seed de test sauté (aucune org/user existant — base vierge)';
+    RETURN;
+  END IF;
 
   RAISE NOTICE '=== TEST EXHAUSTIF SÉQUENCES ===';
   RAISE NOTICE 'Org: %, User: %', v_org_id, v_user_id;

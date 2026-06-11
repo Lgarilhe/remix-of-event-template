@@ -25,8 +25,11 @@ BEGIN
 END;
 $$;
 
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'process-sequences-main',
   '*/5 * * * *',  -- toutes les 5 min (au lieu de toutes les minutes)
   $$SELECT public.invoke_process_sequences('process', false);$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;

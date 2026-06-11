@@ -91,8 +91,11 @@ EXCEPTION WHEN OTHERS THEN
   NULL;
 END $$;
 
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'cleanup-webhook-event-log',
   '0 3 * * *',
   $$SELECT public.cleanup_old_webhook_events();$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;

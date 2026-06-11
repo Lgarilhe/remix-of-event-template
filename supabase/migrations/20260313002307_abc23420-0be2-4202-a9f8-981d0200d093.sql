@@ -56,6 +56,7 @@ CREATE POLICY "Org members can view sequence steps"
 -- ====================================================================
 DROP POLICY IF EXISTS "Anyone can view sequence analytics" ON public.sequence_analytics;
 
+DROP POLICY IF EXISTS "Org members can view sequence analytics" ON public.sequence_analytics;
 CREATE POLICY "Org members can view sequence analytics"
   ON public.sequence_analytics FOR SELECT
   TO authenticated
@@ -97,6 +98,7 @@ CREATE POLICY "Org members can view step executions"
     ))
   );
 
+DROP POLICY IF EXISTS "Org members can manage step executions" ON public.sequence_step_executions;
 CREATE POLICY "Org members can manage step executions"
   ON public.sequence_step_executions FOR ALL
   TO authenticated

@@ -340,11 +340,14 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- 1er du mois à 4h du matin UTC
-SELECT cron.schedule(
+DO $do$ BEGIN
+  PERFORM cron.schedule(
   'resolve-pedigree-directory-monthly',
   '0 4 1 * *',
   $$SELECT public.invoke_resolve_pedigree_directory();$$
 );
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'cron skip: %', SQLERRM;
+END $do$;
 
 COMMENT ON TABLE public.pedigree_school_directory IS
   'Annuaire global des écoles avec leur ID LinkedIn pré-résolu (refresh cron mensuel). Permet d''injecter directement les IDs dans les filtres Unipile.';

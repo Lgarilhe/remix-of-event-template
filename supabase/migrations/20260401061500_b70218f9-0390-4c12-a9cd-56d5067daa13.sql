@@ -13,17 +13,22 @@ CREATE INDEX IF NOT EXISTS idx_email_signatures_org ON email_signatures(organiza
 
 ALTER TABLE email_signatures ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "email_signatures_select" ON email_signatures;
 CREATE POLICY "email_signatures_select" ON email_signatures
   FOR SELECT USING (organization_id = public.get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "email_signatures_insert" ON email_signatures;
 CREATE POLICY "email_signatures_insert" ON email_signatures
   FOR INSERT WITH CHECK (organization_id = public.get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "email_signatures_update" ON email_signatures;
 CREATE POLICY "email_signatures_update" ON email_signatures
   FOR UPDATE USING (organization_id = public.get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "email_signatures_delete" ON email_signatures;
 CREATE POLICY "email_signatures_delete" ON email_signatures
   FOR DELETE USING (organization_id = public.get_user_org_id(auth.uid()));
 
+DROP POLICY IF EXISTS "email_signatures_service_role" ON email_signatures;
 CREATE POLICY "email_signatures_service_role" ON email_signatures
   FOR ALL USING (auth.role() = 'service_role');

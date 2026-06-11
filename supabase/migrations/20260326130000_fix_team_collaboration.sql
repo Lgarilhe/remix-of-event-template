@@ -56,6 +56,7 @@ CREATE POLICY "Mission team can update project candidates"
 -- 3. Fix mission_invitations RLS — too permissive (was SELECT USING true)
 DROP POLICY IF EXISTS "mission_invitations_read_by_token" ON public.mission_invitations;
 
+DROP POLICY IF EXISTS "mission_invitations_read_own" ON public.mission_invitations;
 CREATE POLICY "mission_invitations_read_own" ON public.mission_invitations
   FOR SELECT USING (
     -- Org members can see invitations for their org's projects

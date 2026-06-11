@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS public.hunt_applications (
 ALTER TABLE public.hunt_applications ENABLE ROW LEVEL SECURITY;
 
 -- Recruiters can see their own applications + project owners can see applications to their projects
+DROP POLICY IF EXISTS "hunt_applications_policy" ON public.hunt_applications;
 CREATE POLICY "hunt_applications_policy" ON public.hunt_applications
   FOR ALL USING (
     recruiter_user_id = auth.uid()
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS public.feature_activations (
 
 ALTER TABLE public.feature_activations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "feature_activations_policy" ON public.feature_activations;
 CREATE POLICY "feature_activations_policy" ON public.feature_activations
   FOR ALL USING (
     organization_id IN (
@@ -90,6 +92,7 @@ CREATE TABLE IF NOT EXISTS public.client_portal_tokens (
 
 ALTER TABLE public.client_portal_tokens ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "client_portal_tokens_policy" ON public.client_portal_tokens;
 CREATE POLICY "client_portal_tokens_policy" ON public.client_portal_tokens
   FOR ALL USING (
     organization_id IN (

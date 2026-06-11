@@ -2,6 +2,50 @@
 -- Phase 5: Connector Framework — sync engine infrastructure
 -- ═══════════════════════════════════════════════════════════
 
+-- 0. Tables de base (fix replayability 2026-06-11) ───────────────────────────
+-- connector_registry et connector_instances font partie du schéma importé
+-- depuis Lovable et n'avaient JAMAIS été capturées en migration — la chaîne
+-- n'était donc pas rejouable sur une base vierge (FK plus bas → 42P01).
+-- Définitions reconstituées depuis la prod (types.ts généré + contraintes
+-- observées : connector_instances.id est uuid (cible des FK), registry.id est
+-- un slug texte matché à connector_id, l'UNIQUE(org,connector) est ajouté par
+-- 20260421180000). IF NOT EXISTS → no-op partout où elles existent déjà.
+-- NB types déduits du seed plus bas : l'INSERT ne fournit pas d'id (→ uuid à
+-- DEFAULT) et fait ON CONFLICT (name) (→ UNIQUE sur name).
+CREATE TABLE IF NOT EXISTS public.connector_registry (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  category text NOT NULL,
+  description text,
+  icon_url text,
+  config_schema jsonb,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.connector_registry ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_registry_read" ON public.connector_registry;
+CREATE POLICY "connector_registry_read" ON public.connector_registry
+  FOR SELECT TO authenticated USING (true);
+
+CREATE TABLE IF NOT EXISTS public.connector_instances (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  connector_id uuid NOT NULL,
+  config jsonb,
+  status text NOT NULL DEFAULT 'inactive',
+  error_message text,
+  last_sync_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.connector_instances ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_instances_policy" ON public.connector_instances;
+CREATE POLICY "connector_instances_policy" ON public.connector_instances
+  FOR ALL TO authenticated
+  USING (organization_id = get_user_org_id(auth.uid()))
+  WITH CHECK (organization_id = get_user_org_id(auth.uid()));
+CREATE INDEX IF NOT EXISTS idx_connector_instances_org ON public.connector_instances(organization_id);
+
 -- 1. Sync run history / audit trail
 CREATE TABLE IF NOT EXISTS public.connector_sync_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -22,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.connector_sync_runs (
 );
 
 ALTER TABLE public.connector_sync_runs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_sync_runs_policy" ON public.connector_sync_runs;
 CREATE POLICY "connector_sync_runs_policy" ON public.connector_sync_runs
   FOR ALL USING (
     organization_id IN (
@@ -47,6 +92,7 @@ CREATE TABLE IF NOT EXISTS public.connector_entity_mappings (
 );
 
 ALTER TABLE public.connector_entity_mappings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_entity_mappings_policy" ON public.connector_entity_mappings;
 CREATE POLICY "connector_entity_mappings_policy" ON public.connector_entity_mappings
   FOR ALL USING (
     connector_instance_id IN (
@@ -73,6 +119,7 @@ CREATE TABLE IF NOT EXISTS public.connector_field_mappings (
 );
 
 ALTER TABLE public.connector_field_mappings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_field_mappings_policy" ON public.connector_field_mappings;
 CREATE POLICY "connector_field_mappings_policy" ON public.connector_field_mappings
   FOR ALL USING (
     connector_instance_id IN (

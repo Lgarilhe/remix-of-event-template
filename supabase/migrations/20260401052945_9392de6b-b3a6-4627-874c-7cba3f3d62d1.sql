@@ -35,6 +35,13 @@ BEGIN
   SELECT id INTO v_org_id FROM organizations LIMIT 1;
   SELECT user_id INTO v_user_id FROM organization_members WHERE organization_id = v_org_id LIMIT 1;
 
+  -- Fix replayability 2026-06-11 : seed de DONNÉES DE TEST — suppose une org/un
+  -- user existants. Skip propre sur base vierge (le schéma n'en dépend pas).
+  IF v_org_id IS NULL OR v_user_id IS NULL THEN
+    RAISE NOTICE 'Seed de test (partie 2) sauté — base vierge';
+    RETURN;
+  END IF;
+
   RAISE NOTICE '=== TEST COMPLET PARTIE 2 ===';
 
   -- T2-10: WEBHOOK — LinkedIn reply

@@ -1,0 +1,137 @@
+name: E2E (Playwright)
+
+# QA e2e Konekt. Tourne contre une stack Supabase de TEST — JAMAIS la prod.
+#
+# Deux modes :
+#  - PR / push : suite @critical + @smoke (bloquant) contre `supabase start` local.
+#  - Nightly   : suite complète (+ @live si secrets vendors fournis).
+#
+# Secrets requis (Settings → Secrets → Actions) — environnement de TEST :
+#   (rien d'obligatoire pour le mode local `supabase start` : les clés sont
+#    déterministes et injectées par la CLI. Pour cibler un staging distant,
+#    fournir E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY / E2E_SUPABASE_SERVICE_ROLE_KEY.)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'e2e/**'
+      - 'supabase/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: 'Filtre de tags (ex: "@critical", "@smoke"). Vide = critical+smoke.'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 3 * * *' # nightly 03:00 UTC — suite complète
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_ALLOW_SEEDING: '1'
+      E2E_BASE_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      # ── Cible Supabase ──────────────────────────────────────────────────
+      # Deux modes :
+      #  A) STAGING (recommandé) : si le secret E2E_SUPABASE_URL est fourni, on
+      #     tape un projet Supabase de test qui a déjà le schéma complet. C'est
+      #     le mode fiable — le dossier supabase/migrations/ ne contient PAS le
+      #     schéma de base importé depuis Lovable (ex: table connector_instances
+      #     référencée mais jamais créée par une migration), donc `supabase start`
+      #     ne peut pas reconstruire la base à neuf à partir des seules migrations.
+      #  B) LOCAL : fallback `supabase start` (tant que le schéma de base n'est
+      #     pas baseliné — voir AUDITS/QA_PLAYWRIGHT_PLAN §3.3 ; échouera sur les
+      #     dépendances manquantes jusqu'à ce qu'un baseline soit commité).
+      - name: Resolve Supabase target (staging secret OR local)
+        id: target
+        env:
+          STAGING_URL: ${{ secrets.E2E_SUPABASE_URL }}
+        run: |
+          if [ -n "$STAGING_URL" ]; then
+            echo "mode=staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=local" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Use staging Supabase credentials
+        if: steps.target.outputs.mode == 'staging'
+        run: |
+          echo "E2E_SUPABASE_URL=${{ secrets.E2E_SUPABASE_URL }}" >> "$GITHUB_ENV"
+          echo "E2E_SUPABASE_ANON_KEY=${{ secrets.E2E_SUPABASE_ANON_KEY }}" >> "$GITHUB_ENV"
+          echo "E2E_SUPABASE_SERVICE_ROLE_KEY=${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}" >> "$GITHUB_ENV"
+
+      - name: Setup Supabase CLI (local mode)
+        if: steps.target.outputs.mode == 'local'
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.90.0
+      - name: Start Supabase (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          supabase start \
+            -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,realtime,storage-api,mailpit \
+            --ignore-health-check
+          echo "E2E_SUPABASE_URL=$(supabase status -o env | grep API_URL | cut -d= -f2 | tr -d '\"')" >> "$GITHUB_ENV"
+          echo "E2E_SUPABASE_ANON_KEY=$(supabase status -o env | grep ANON_KEY | cut -d= -f2 | tr -d '\"')" >> "$GITHUB_ENV"
+          echo "E2E_SUPABASE_SERVICE_ROLE_KEY=$(supabase status -o env | grep SERVICE_ROLE_KEY | cut -d= -f2 | tr -d '\"')" >> "$GITHUB_ENV"
+
+      - name: Build front
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
+
+      - name: Serve front
+        run: npx vite preview --port 8080 &
+        env:
+          VITE_SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
+
+      - name: Determine grep
+        id: grep
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "value=" >> "$GITHUB_OUTPUT"   # suite complète
+          elif [ -n "${{ inputs.grep }}" ]; then
+            echo "value=${{ inputs.grep }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=@critical|@smoke" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Playwright
+        run: |
+          if [ -n "${{ steps.grep.outputs.value }}" ]; then
+            npx playwright test --grep "${{ steps.grep.outputs.value }}"
+          else
+            npx playwright test
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

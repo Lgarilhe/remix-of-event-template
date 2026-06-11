@@ -38,3 +38,7 @@ dist-ssr
 .claude/settings.local.json
 .claude/worktrees/
 supabase/.temp/
+
+# Playwright e2e auth states (sessions — ne jamais committer)
+/e2e/.auth/
+/e2e/specs/

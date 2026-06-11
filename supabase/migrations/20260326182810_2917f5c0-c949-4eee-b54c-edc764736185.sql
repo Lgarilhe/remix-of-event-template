@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS public.hunt_applications (
 ALTER TABLE public.hunt_applications ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'hunt_applications_policy' AND tablename = 'hunt_applications') THEN
+    DROP POLICY IF EXISTS "hunt_applications_policy" ON public.hunt_applications;
     CREATE POLICY "hunt_applications_policy" ON public.hunt_applications FOR ALL USING (recruiter_user_id = auth.uid() OR project_id IN (SELECT sp.id FROM public.sourcing_projects sp WHERE sp.organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid())));
   END IF;
 END $$;
@@ -125,6 +126,7 @@ CREATE TABLE IF NOT EXISTS public.feature_activations (
 ALTER TABLE public.feature_activations ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'feature_activations_policy' AND tablename = 'feature_activations') THEN
+    DROP POLICY IF EXISTS "feature_activations_policy" ON public.feature_activations;
     CREATE POLICY "feature_activations_policy" ON public.feature_activations FOR ALL USING (organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid()));
   END IF;
 END $$;
@@ -177,6 +179,7 @@ CREATE TABLE IF NOT EXISTS public.mission_invitations (
 ALTER TABLE public.mission_invitations ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'mission_invitations_manage' AND tablename = 'mission_invitations') THEN
+    DROP POLICY IF EXISTS "mission_invitations_manage" ON public.mission_invitations;
     CREATE POLICY "mission_invitations_manage" ON public.mission_invitations FOR ALL USING (organization_id IN (SELECT om.organization_id FROM public.organization_members om WHERE om.user_id = auth.uid()));
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'mission_invitations_read' AND tablename = 'mission_invitations') THEN

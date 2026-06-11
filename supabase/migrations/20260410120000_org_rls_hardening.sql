@@ -5,6 +5,7 @@
 
 DROP POLICY IF EXISTS "Authenticated users can read glossary" ON public.airtable_glossary;
 
+DROP POLICY IF EXISTS "Users can read own org glossary" ON public.airtable_glossary;
 CREATE POLICY "Users can read own org glossary" ON public.airtable_glossary
   FOR SELECT USING (
     organization_id IN (
@@ -21,6 +22,7 @@ ALTER TABLE public.airtable_sync_meta
 
 DROP POLICY IF EXISTS "Authenticated users can read sync meta" ON public.airtable_sync_meta;
 
+DROP POLICY IF EXISTS "Users can read own org sync meta" ON public.airtable_sync_meta;
 CREATE POLICY "Users can read own org sync meta" ON public.airtable_sync_meta
   FOR SELECT USING (
     organization_id IN (

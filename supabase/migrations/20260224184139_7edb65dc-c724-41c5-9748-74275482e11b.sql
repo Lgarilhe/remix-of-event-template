@@ -135,25 +135,39 @@ ALTER TABLE public.airtable_placements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.airtable_notes ENABLE ROW LEVEL SECURITY;
 
 -- RLS: Authenticated users can read all Airtable data (read-only integration)
+DROP POLICY IF EXISTS "Authenticated users can read companies" ON public.airtable_companies;
 CREATE POLICY "Authenticated users can read companies" ON public.airtable_companies FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage companies" ON public.airtable_companies;
 CREATE POLICY "Service role can manage companies" ON public.airtable_companies FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read contacts" ON public.airtable_contacts;
 CREATE POLICY "Authenticated users can read contacts" ON public.airtable_contacts FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage contacts" ON public.airtable_contacts;
 CREATE POLICY "Service role can manage contacts" ON public.airtable_contacts FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read jobs" ON public.airtable_jobs;
 CREATE POLICY "Authenticated users can read jobs" ON public.airtable_jobs FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage jobs" ON public.airtable_jobs;
 CREATE POLICY "Service role can manage jobs" ON public.airtable_jobs FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read candidates" ON public.airtable_candidates;
 CREATE POLICY "Authenticated users can read candidates" ON public.airtable_candidates FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage candidates" ON public.airtable_candidates;
 CREATE POLICY "Service role can manage candidates" ON public.airtable_candidates FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read shortlists" ON public.airtable_shortlists;
 CREATE POLICY "Authenticated users can read shortlists" ON public.airtable_shortlists FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage shortlists" ON public.airtable_shortlists;
 CREATE POLICY "Service role can manage shortlists" ON public.airtable_shortlists FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read placements" ON public.airtable_placements;
 CREATE POLICY "Authenticated users can read placements" ON public.airtable_placements FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage placements" ON public.airtable_placements;
 CREATE POLICY "Service role can manage placements" ON public.airtable_placements FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read notes" ON public.airtable_notes;
 CREATE POLICY "Authenticated users can read notes" ON public.airtable_notes FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage notes" ON public.airtable_notes;
 CREATE POLICY "Service role can manage notes" ON public.airtable_notes FOR ALL USING (auth.role() = 'service_role');
 
 -- Sync metadata table to track last sync time
@@ -165,5 +179,7 @@ CREATE TABLE public.airtable_sync_meta (
   status text DEFAULT 'idle'
 );
 ALTER TABLE public.airtable_sync_meta ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Authenticated users can read sync meta" ON public.airtable_sync_meta;
 CREATE POLICY "Authenticated users can read sync meta" ON public.airtable_sync_meta FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Service role can manage sync meta" ON public.airtable_sync_meta;
 CREATE POLICY "Service role can manage sync meta" ON public.airtable_sync_meta FOR ALL USING (auth.role() = 'service_role');

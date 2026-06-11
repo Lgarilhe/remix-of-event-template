@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "results": [
+    {
+      "id": "p1",
+      "name": "Alex Martin",
+      "first_name": "Alex",
+      "last_name": "Martin",
+      "headline": "Senior Backend Engineer @ ScaleUp",
+      "location": "Paris, France",
+      "profile_url": "https://www.linkedin.com/in/alex-martin-e2e",
+      "network_distance": "SECOND_DEGREE",
+      "current_positions": [{ "company": "ScaleUp", "title": "Senior Backend Engineer" }]
+    },
+    {
+      "id": "p2",
+      "name": "Sam Dubois",
+      "first_name": "Sam",
+      "last_name": "Dubois",
+      "headline": "Staff Engineer (Go, Postgres)",
+      "location": "Lyon, France",
+      "profile_url": "https://www.linkedin.com/in/sam-dubois-e2e",
+      "network_distance": "THIRD_DEGREE",
+      "current_positions": [{ "company": "FinTechCo", "title": "Staff Engineer" }]
+    }
+  ],
+  "cursor": null,
+  "total": 2
+}

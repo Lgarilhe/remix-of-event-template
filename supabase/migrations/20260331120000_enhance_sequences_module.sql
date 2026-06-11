@@ -157,63 +157,75 @@ CREATE INDEX IF NOT EXISTS idx_sequence_email_tracking_message_id
 -- sequence_templates
 ALTER TABLE sequence_templates ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sequence_templates_select" ON sequence_templates;
 CREATE POLICY "sequence_templates_select" ON sequence_templates
   FOR SELECT USING (
     organization_id = public.get_user_org_id(auth.uid())
     OR is_system = true
   );
 
+DROP POLICY IF EXISTS "sequence_templates_insert" ON sequence_templates;
 CREATE POLICY "sequence_templates_insert" ON sequence_templates
   FOR INSERT WITH CHECK (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "sequence_templates_update" ON sequence_templates;
 CREATE POLICY "sequence_templates_update" ON sequence_templates
   FOR UPDATE USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "sequence_templates_delete" ON sequence_templates;
 CREATE POLICY "sequence_templates_delete" ON sequence_templates
   FOR DELETE USING (
     organization_id = public.get_user_org_id(auth.uid())
     AND is_system = false
   );
 
+DROP POLICY IF EXISTS "sequence_templates_service_role" ON sequence_templates;
 CREATE POLICY "sequence_templates_service_role" ON sequence_templates
   FOR ALL USING (auth.role() = 'service_role');
 
 -- sequence_snippets
 ALTER TABLE sequence_snippets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sequence_snippets_select" ON sequence_snippets;
 CREATE POLICY "sequence_snippets_select" ON sequence_snippets
   FOR SELECT USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "sequence_snippets_insert" ON sequence_snippets;
 CREATE POLICY "sequence_snippets_insert" ON sequence_snippets
   FOR INSERT WITH CHECK (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "sequence_snippets_update" ON sequence_snippets;
 CREATE POLICY "sequence_snippets_update" ON sequence_snippets
   FOR UPDATE USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "sequence_snippets_delete" ON sequence_snippets;
 CREATE POLICY "sequence_snippets_delete" ON sequence_snippets
   FOR DELETE USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "sequence_snippets_service_role" ON sequence_snippets;
 CREATE POLICY "sequence_snippets_service_role" ON sequence_snippets
   FOR ALL USING (auth.role() = 'service_role');
 
 -- sequence_email_tracking (service_role only — accessed via edge functions)
 ALTER TABLE sequence_email_tracking ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sequence_email_tracking_service_role" ON sequence_email_tracking;
 CREATE POLICY "sequence_email_tracking_service_role" ON sequence_email_tracking
   FOR ALL USING (auth.role() = 'service_role');
 
 -- Allow anon access for the tracking pixel/redirect endpoint (no auth)
+DROP POLICY IF EXISTS "sequence_email_tracking_anon_select" ON sequence_email_tracking;
 CREATE POLICY "sequence_email_tracking_anon_select" ON sequence_email_tracking
   FOR SELECT USING (true);

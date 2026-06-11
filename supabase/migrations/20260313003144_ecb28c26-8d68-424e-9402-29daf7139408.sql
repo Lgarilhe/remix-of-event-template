@@ -5,9 +5,11 @@ DROP POLICY IF EXISTS "Only system can update subscriptions" ON organization_sub
 DROP POLICY IF EXISTS "service_role_insert_subscriptions" ON organization_subscriptions;
 DROP POLICY IF EXISTS "service_role_update_subscriptions" ON organization_subscriptions;
 
+DROP POLICY IF EXISTS "service_role_insert_subscriptions" ON organization_subscriptions;
 CREATE POLICY "service_role_insert_subscriptions" ON organization_subscriptions
   FOR INSERT TO service_role WITH CHECK (true);
 
+DROP POLICY IF EXISTS "service_role_update_subscriptions" ON organization_subscriptions;
 CREATE POLICY "service_role_update_subscriptions" ON organization_subscriptions
   FOR UPDATE TO service_role USING (true) WITH CHECK (true);
 
