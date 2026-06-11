@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "profile": {
+    "id": "p1",
+    "name": "Alex Martin",
+    "first_name": "Alex",
+    "last_name": "Martin",
+    "headline": "Senior Backend Engineer @ ScaleUp",
+    "location": "Paris, France",
+    "summary": "8 ans en backend distribué. Go, Postgres, Kafka.",
+    "network_distance": "SECOND_DEGREE",
+    "work_experience": [
+      { "company": "ScaleUp", "title": "Senior Backend Engineer", "start": "2021", "end": null },
+      { "company": "BigCorp", "title": "Backend Engineer", "start": "2017", "end": "2021" }
+    ],
+    "education": [{ "school": "INSA Lyon", "degree": "Ingénieur informatique" }],
+    "skills": ["Go", "Postgres", "Kafka", "Kubernetes"]
+  }
+}
