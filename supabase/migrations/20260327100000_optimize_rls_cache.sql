@@ -2,7 +2,7 @@
 -- The current function queries profiles table on EVERY row check
 -- This version uses set_config/current_setting for per-transaction caching
 
-CREATE OR REPLACE FUNCTION public.get_user_org_id(p_user_id uuid)
+CREATE OR REPLACE FUNCTION public.get_user_org_id(_user_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -13,7 +13,7 @@ DECLARE
   v_cache_key text;
 BEGIN
   -- Check transaction-level cache first
-  v_cache_key := 'app.user_org_' || p_user_id::text;
+  v_cache_key := 'app.user_org_' || _user_id::text;
   BEGIN
     v_org_id := current_setting(v_cache_key, true)::uuid;
     IF v_org_id IS NOT NULL THEN
@@ -27,7 +27,7 @@ BEGIN
   -- Lookup from profiles table
   SELECT active_organization_id INTO v_org_id
   FROM public.profiles
-  WHERE user_id = p_user_id
+  WHERE user_id = _user_id
   LIMIT 1;
 
   -- Cache for this transaction
