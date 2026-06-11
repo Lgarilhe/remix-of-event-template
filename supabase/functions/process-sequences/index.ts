@@ -247,12 +247,16 @@ async function handleProcess(supabase: any, force = false) {
   try {
     const now = new Date().toISOString();
 
+    // Actions qui ne laissent AUCUNE trace visible côté candidat — retry
+    // toujours sans risque. Utilisé par le janitor ci-dessous ET le batching.
+    const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection', 'wait_connection']);
+
     // Recovery: unstick executions stuck in 'sending' for more than 5 minutes
     // This happens when sequence-send-email times out or crashes mid-execution
     const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const { data: stuckExecs } = await supabase
       .from('sequence_step_executions')
-      .select('id, retry_count')
+      .select('id, retry_count, step:sequence_steps(action_type)')
       .eq('status', 'sending')
       .lt('updated_at', stuckCutoff)
       .limit(20);
@@ -272,6 +276,23 @@ async function handleProcess(supabase: any, force = false) {
             channel: 'email',
           }).eq('id', stuck.id);
           console.log(`[process] Recovered stuck email ${stuck.id} — already sent (tracking exists)`);
+          continue;
+        }
+
+        // Anti double-envoi (audit 2026-06-10) : pour une action VISIBLE
+        // (message LinkedIn, InMail, invitation, WhatsApp…), impossible de
+        // savoir si l'envoi est parti avant le crash — contrairement aux
+        // emails (vérifiés via le tracking ci-dessus). Re-planifier
+        // risquerait un doublon vers le candidat → failed, relance manuelle.
+        const stuckActionType = (stuck as { step?: { action_type?: string } }).step?.action_type || '';
+        const isRetrySafe = stuckActionType === 'email' || INVISIBLE_ACTIONS.has(stuckActionType);
+        if (!isRetrySafe) {
+          await supabase.from('sequence_step_executions').update({
+            status: 'failed',
+            error_message: `Interrompu pendant l'envoi (${stuckActionType || 'action inconnue'}) — relance auto désactivée pour éviter un double envoi au candidat.`,
+            executed_at: new Date().toISOString(),
+          }).eq('id', stuck.id);
+          console.warn(`[process] Stuck visible action ${stuck.id} (${stuckActionType}) → failed (anti double-send, no auto-retry)`);
           continue;
         }
 
@@ -304,7 +325,6 @@ async function handleProcess(supabase: any, force = false) {
     // (et plus PAR batch). Cron passe en parallèle à */5 min — débit final
     // 3 visibles × 12 cycles/h × 8h ouvrées ≈ 288/jour max, dans les limites
     // Unipile (80-100 invitations + ~100 InMails recommandés).
-    const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection', 'wait_connection']);
     const MAX_INVISIBLE_PER_CYCLE = 15;
     const MAX_VISIBLE_PER_CYCLE = 3;
     const FETCH_LIMIT = 25; // Overfetch to compensate for dedup, skips, quota blocks
