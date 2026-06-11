@@ -70,6 +70,19 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
       let thinkingAccumulated = '';
       let isThinking = false;
 
+      // Parts ordonnées : le texte s'accumule dans la DERNIÈRE part text ;
+      // un event tool_status "running" (boucle d'outils backend) insère une
+      // part tool-call (rendue par les tool UIs enregistrées ou le Fallback
+      // de thread.tsx) et rouvre une nouvelle part text pour la suite.
+      const orderedParts: any[] = [];
+      let lastTextPart: { type: 'text'; text: string } | null = null;
+      const snapshot = () => {
+        const parts: any[] = [];
+        if (thinkingAccumulated) parts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
+        parts.push(...orderedParts);
+        return parts;
+      };
+
       while (true) {
         const { done, value } = await reader.read();
 
@@ -90,15 +103,33 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
             const parsed = JSON.parse(data);
             if (parsed.done === true) continue;
 
+            // Progression des outils (boucle backend) : chip inline dans le fil
+            const ts = parsed.tool_status;
+            if (ts && ts.id) {
+              if (ts.state === 'running') {
+                orderedParts.push({
+                  type: 'tool-call' as const,
+                  toolCallId: ts.id,
+                  toolName: ts.name || 'tool',
+                  args: {},
+                  argsText: '{}',
+                });
+                lastTextPart = null;
+              } else if (ts.state === 'done') {
+                const part = orderedParts.find(
+                  (p) => p.type === 'tool-call' && p.toolCallId === ts.id
+                );
+                if (part) part.result = { outcome: ts.outcome ?? 'ok' };
+              }
+              yield { content: snapshot() };
+              continue;
+            }
+
             const thinkingText = parsed.choices?.[0]?.delta?.thinking;
             if (thinkingText) {
               thinkingAccumulated += thinkingText;
               isThinking = true;
-              yield {
-                content: [
-                  { type: 'reasoning' as const, text: thinkingAccumulated },
-                ],
-              };
+              yield { content: snapshot() };
               continue;
             }
 
@@ -106,12 +137,12 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
             if (text) {
               if (isThinking) isThinking = false;
               accumulated += text;
-              const parts: any[] = [];
-              if (thinkingAccumulated) {
-                parts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
+              if (!lastTextPart) {
+                lastTextPart = { type: 'text' as const, text: '' };
+                orderedParts.push(lastTextPart);
               }
-              parts.push({ type: 'text' as const, text: accumulated });
-              yield { content: parts };
+              lastTextPart.text += text;
+              yield { content: snapshot() };
             }
           } catch {
             // Ignore parse errors
@@ -121,16 +152,10 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
         if (done) break;
       }
 
-      const finalParts: any[] = [];
-      if (thinkingAccumulated) {
-        finalParts.push({ type: 'reasoning' as const, text: thinkingAccumulated });
-      }
-      if (accumulated) {
-        finalParts.push({ type: 'text' as const, text: accumulated });
-      } else if (!thinkingAccumulated) {
-        // Stream s'est fermé sans aucun texte ni reasoning : cas où l'agent
-        // a uniquement appelé une mutation (awaiting_approval) sans narration,
-        // ou s'est bloqué dans une boucle de tool_use. Avant 2026-05-20 ce
+      const finalParts: any[] = snapshot();
+      if (!accumulated && !thinkingAccumulated && orderedParts.length === 0) {
+        // Stream s'est fermé sans aucun texte, reasoning ni tool : cas où
+        // l'agent s'est bloqué sans rien produire. Avant 2026-05-20 ce
         // fallback était le caractère "…" brut, qui s'affichait littéralement
         // comme bulle vide perdue (cf. bug remonté par Laurent).
         finalParts.push({

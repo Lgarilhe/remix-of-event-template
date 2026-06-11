@@ -1032,13 +1032,22 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 ],
                 messages: currentMessages,
                 tools: allTools,
+                // Streaming par round : l'user voit le texte arriver au fil de
+                // l'eau au lieu de fixer "…" pendant toute la génération.
+                stream: true,
               };
 
               // tool_choice: "auto" (default) lets the model decide.
 
               console.log(`[search-agent-chat] Sending to Anthropic: ${currentMessages.length} messages, ${allTools.length} tools (${sourcingTools.length} read-only + ${registryTools.length} registry), model: ${resolvedModel}`);
 
-              const loopResponse = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+              // Deadline globale du round (headers + stream) : avec stream:true,
+              // le timer de fetchWithTimeout serait désarmé dès les headers
+              // (~1s) et plus rien ne bornerait un stream figé. L'abort fait
+              // rejeter reader.read() → catch global → [DONE] propre.
+              const roundAbort = new AbortController();
+              const roundTimer = setTimeout(() => roundAbort.abort(), 120000);
+              const loopResponse = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: {
                   "x-api-key": ANTHROPIC_API_KEY,
@@ -1046,9 +1055,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify(apiBody),
-              }, 90000);
+                signal: roundAbort.signal,
+              });
 
               if (!loopResponse.ok) {
+                clearTimeout(roundTimer);
                 const errorText = await loopResponse.text();
                 console.error("[search-agent-chat] AI error in tool loop:", loopResponse.status, errorText);
                 apiErrored = true;
@@ -1062,27 +1073,99 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 break;
               }
 
-              const data = await loopResponse.json();
-              _tokensIn += data.usage?.input_tokens || 0;
-              _tokensOut += data.usage?.output_tokens || 0;
-
-              console.log(`[search-agent-chat] API response: stop_reason=${data.stop_reason}, content_types=${(data.content || []).map((b: any) => b.type).join(',')}, tokens=${data.usage?.input_tokens}in+${data.usage?.output_tokens}out`);
-
-              if (data.stop_reason === 'tool_use') {
-                const toolUseBlocks = (data.content || []).filter((b: any) => b.type === 'tool_use');
-                const textBlocks = (data.content || []).filter((b: any) => b.type === 'text');
-
-                // Stream any text that came before the tool call
-                for (const tb of textBlocks) {
-                  if (tb.text) {
-                    fullResponse += tb.text;
-                    const chunk = { choices: [{ delta: { content: tb.text }, index: 0 }] };
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+              // Parse du flux SSE Anthropic de CE round : relais des
+              // text_delta en live + reconstruction des blocs content
+              // (text + tool_use) pour la suite de la boucle.
+              const roundBlocks: any[] = [];
+              let stopReason: string | null = null;
+              let roundTokensOut = 0;
+              {
+                const loopReader = loopResponse.body!.getReader();
+                const loopDecoder = new TextDecoder();
+                let loopBuffer = "";
+                const partials = new Map<number, any>();
+                while (true) {
+                  const { done, value } = await loopReader.read();
+                  if (done) break;
+                  loopBuffer += loopDecoder.decode(value, { stream: true });
+                  const loopLines = loopBuffer.split("\n");
+                  loopBuffer = loopLines.pop() || "";
+                  for (const rawLine of loopLines) {
+                    if (!rawLine.startsWith("data: ")) continue;
+                    const jsonStr = rawLine.slice(6).trim();
+                    if (!jsonStr || jsonStr === "[DONE]") continue;
+                    let event: any;
+                    try { event = JSON.parse(jsonStr); } catch { continue; }
+                    if (event.type === "message_start") {
+                      _tokensIn += event.message?.usage?.input_tokens || 0;
+                    } else if (event.type === "content_block_start") {
+                      const cb = event.content_block || {};
+                      if (cb.type === "tool_use") {
+                        partials.set(event.index, { type: "tool_use", id: cb.id, name: cb.name, _json: "" });
+                      } else {
+                        partials.set(event.index, { type: "text", text: "" });
+                      }
+                    } else if (event.type === "content_block_delta") {
+                      const p = partials.get(event.index);
+                      if (!p) continue;
+                      if (event.delta?.type === "text_delta" && event.delta.text) {
+                        p.text += event.delta.text;
+                        fullResponse += event.delta.text;
+                        const chunk = { choices: [{ delta: { content: event.delta.text }, index: 0 }] };
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                      } else if (event.delta?.type === "input_json_delta" && typeof event.delta.partial_json === "string") {
+                        p._json += event.delta.partial_json;
+                      }
+                    } else if (event.type === "content_block_stop") {
+                      const p = partials.get(event.index);
+                      if (!p) continue;
+                      if (p.type === "tool_use") {
+                        try { p.input = p._json ? JSON.parse(p._json) : {}; } catch { p.input = {}; }
+                        delete p._json;
+                      }
+                      roundBlocks[event.index] = p;
+                      partials.delete(event.index);
+                    } else if (event.type === "message_delta") {
+                      if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
+                      // output_tokens est CUMULATIF au sein d'un message → on
+                      // garde la dernière valeur, ajoutée une fois le round fini.
+                      if (event.usage?.output_tokens) roundTokensOut = event.usage.output_tokens;
+                    } else if (event.type === "error") {
+                      // Erreur DANS le flux (ex. overloaded_error, équivalent
+                      // mid-stream d'un 529) : HTTP 200 donc !ok ne la voit pas.
+                      console.error("[search-agent-chat] Anthropic in-stream error:", JSON.stringify(event.error || event).slice(0, 500));
+                      apiErrored = true;
+                      const errMsg = "Je n'ai pas pu terminer ma réponse (service IA momentanément surchargé). Réessaie dans un instant.";
+                      fullResponse += (fullResponse ? "\n\n" : "") + errMsg;
+                      const errChunk = { choices: [{ delta: { content: errMsg }, index: 0 }] };
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify(errChunk)}\n\n`));
+                    }
                   }
                 }
+              }
+              // Round terminé : on désarme la deadline. (Sur throw mid-parse, le
+              // timer orphelin abort un stream déjà mort — no-op inoffensif.)
+              clearTimeout(roundTimer);
+              _tokensOut += roundTokensOut;
+              // Filtre les text blocks vides (possibles en streaming autour des
+              // tool_use) : l'API rejette un message assistant avec text:"" (400).
+              const roundContent = roundBlocks.filter((b: any) => b && (b.type === 'tool_use' || (b.type === 'text' && b.text)));
+
+              console.log(`[search-agent-chat] Round streamed: stop_reason=${stopReason}, content_types=${roundContent.map((b: any) => b.type).join(',')}, +${roundTokensOut} out tokens`);
+
+              // Erreur in-stream → on sort honnêtement (message déjà émis + persisté via fullResponse).
+              if (apiErrored) break;
+
+              if (stopReason === 'tool_use') {
+                const toolUseBlocks = roundContent.filter((b: any) => b.type === 'tool_use');
+                // (le texte pré-tool a déjà été relayé en live pendant le parse)
+
+                // Garde-fou : stop_reason tool_use sans bloc tool_use complet
+                // (stream coupé) → on sort proprement, le fallback narratif gère.
+                if (toolUseBlocks.length === 0) break;
 
                 // Add the assistant message with tool_use blocks to the conversation
-                currentMessages.push({ role: 'assistant', content: data.content });
+                currentMessages.push({ role: 'assistant', content: roundContent });
 
                 // Execute each tool and add results.
                 // Dispatch:
@@ -1093,6 +1176,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 for (const tc of toolUseBlocks) {
                   console.log(`[search-agent-chat] Tool call: ${tc.name}(${JSON.stringify(tc.input).slice(0, 200)})`);
 
+                  // Progression visible côté UI : chip « outil en cours » dans
+                  // le fil (adapter → part tool-call → tool UIs / Fallback).
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: tc.id, name: tc.name, state: "running" } })}\n\n`));
+
+                  let outcomeForUi = "ok";
                   const registryTool = getRegistryTool(tc.name);
                   if (registryTool) {
                     // Mutation via registry — propose, don't execute
@@ -1105,6 +1193,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                     };
                     const handled = await handleProposedToolCall(tc.name, tc.input, ctx);
                     if (handled.outcome === 'awaiting_approval') awaitingApprovalCount++;
+                    outcomeForUi = handled.outcome || "ok";
                     // Serialize for Claude — include executionId so the model can
                     // mention it in its reply ("J'ai préparé l'action #abc, valide via le bandeau")
                     const resultForClaude = JSON.stringify({
@@ -1116,8 +1205,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   } else {
                     // Hardcoded read-only sourcing tool
                     const result = await executeTool(tc.name, tc.input, supabaseUrl, authHeader, anonKey, orgId);
+                    try { outcomeForUi = JSON.parse(result)?.error ? "error" : "ok"; } catch { outcomeForUi = "ok"; }
                     toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
                   }
+
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: tc.id, name: tc.name, state: "done", outcome: outcomeForUi } })}\n\n`));
                 }
                 currentMessages.push({ role: 'user', content: toolResults });
 
@@ -1125,14 +1217,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 continue;
               }
 
-              // Final response (end_turn) — stream it
-              for (const block of (data.content || [])) {
-                if (block.type === 'text' && block.text) {
-                  fullResponse += block.text;
-                  const chunk = { choices: [{ delta: { content: block.text }, index: 0 }] };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-                }
-              }
+              // Réponse finale (end_turn) : le texte a déjà été streamé en live.
               break;
             }
 

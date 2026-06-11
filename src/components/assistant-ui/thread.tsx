@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
 import { useAgent } from '@/contexts/AgentContext';
+import { ToolFallbackChip } from './tool-uis';
 import { FileUpload, FileUploadTrigger, FileUploadContent } from '@/components/prompt-kit/file-upload';
 
 interface SkalrThreadProps {
@@ -658,9 +659,14 @@ const AssistantMessage = () => {
   const hasReasoning = useMessage((s) =>
     s.content?.some((part: any) => part.type === 'reasoning' && part.text?.trim())
   );
+  const hasToolCalls = useMessage((s) =>
+    s.content?.some((part: any) => part.type === 'tool-call')
+  );
 
-  // Nothing streamed yet at all → single shimmer line (no double indicator)
-  if (isRunning && !hasText && !hasReasoning) {
+  // Nothing streamed yet at all → single shimmer line (no double indicator).
+  // Les chips de tools comptent comme du contenu : on les montre dès qu'un
+  // outil démarre au lieu de rester sur le shimmer.
+  if (isRunning && !hasText && !hasReasoning && !hasToolCalls) {
     return <ShimmerThinking />;
   }
 
@@ -674,6 +680,9 @@ const AssistantMessage = () => {
           components={{
             Text: ({ text }) => <MarkdownText text={text} />,
             Reasoning: ({ text }) => <ReasoningBlock text={text} />,
+            // Chips de progression des tools de la boucle backend — les tool
+            // UIs enregistrées par nom (tool-uis.tsx) gardent la priorité.
+            tools: { Fallback: ToolFallbackChip as any },
           }}
         />
         {isRunning && hasText && (
