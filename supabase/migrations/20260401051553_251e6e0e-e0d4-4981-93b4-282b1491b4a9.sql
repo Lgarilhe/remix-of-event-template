@@ -1,3 +1,22 @@
+-- Fix replayability 2026-06-11 : l'ON CONFLICT (job_id, candidate_id, created_by)
+-- plus bas exige une UNIQUE qui n'est (re)créée que par le grants bootstrap du
+-- 2026-04-21 (le schéma Lovable avait perdu les UNIQUE). On la crée ici de
+-- façon idempotente — le bootstrap (gardé par colonnes) la détecte et skip.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint con
+    JOIN pg_class t ON t.oid = con.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'public' AND t.relname = 'job_candidate_status' AND con.contype = 'u'
+  ) THEN
+    ALTER TABLE public.job_candidate_status
+      ADD CONSTRAINT job_candidate_status_job_candidate_creator_key
+      UNIQUE (job_id, candidate_id, created_by);
+  END IF;
+END $$;
+
 
 DO $$
 DECLARE

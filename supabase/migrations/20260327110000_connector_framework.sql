@@ -10,9 +10,11 @@
 -- observées : connector_instances.id est uuid (cible des FK), registry.id est
 -- un slug texte matché à connector_id, l'UNIQUE(org,connector) est ajouté par
 -- 20260421180000). IF NOT EXISTS → no-op partout où elles existent déjà.
+-- NB types déduits du seed plus bas : l'INSERT ne fournit pas d'id (→ uuid à
+-- DEFAULT) et fait ON CONFLICT (name) (→ UNIQUE sur name).
 CREATE TABLE IF NOT EXISTS public.connector_registry (
-  id text PRIMARY KEY,
-  name text NOT NULL,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
   category text NOT NULL,
   description text,
   icon_url text,
@@ -28,7 +30,7 @@ CREATE POLICY "connector_registry_read" ON public.connector_registry
 CREATE TABLE IF NOT EXISTS public.connector_instances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-  connector_id text NOT NULL,
+  connector_id uuid NOT NULL,
   config jsonb,
   status text NOT NULL DEFAULT 'inactive',
   error_message text,
