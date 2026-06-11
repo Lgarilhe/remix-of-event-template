@@ -21,9 +21,11 @@ CREATE INDEX idx_match_scores_created ON match_scores(created_at);
 ALTER TABLE match_scores ENABLE ROW LEVEL SECURITY;
 
 -- Service role (Edge Functions) : accès complet
+DROP POLICY IF EXISTS "Service role full access" ON match_scores;
 CREATE POLICY "Service role full access" ON match_scores
   FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
 -- Authenticated users : lecture seule
+DROP POLICY IF EXISTS "Authenticated users can read scores" ON match_scores;
 CREATE POLICY "Authenticated users can read scores" ON match_scores
   FOR SELECT USING (auth.role() = 'authenticated');

@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.connector_sync_runs (
 );
 
 ALTER TABLE public.connector_sync_runs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_sync_runs_policy" ON public.connector_sync_runs;
 CREATE POLICY "connector_sync_runs_policy" ON public.connector_sync_runs
   FOR ALL USING (
     organization_id IN (
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS public.connector_entity_mappings (
 );
 
 ALTER TABLE public.connector_entity_mappings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_entity_mappings_policy" ON public.connector_entity_mappings;
 CREATE POLICY "connector_entity_mappings_policy" ON public.connector_entity_mappings
   FOR ALL USING (
     connector_instance_id IN (
@@ -117,6 +119,7 @@ CREATE TABLE IF NOT EXISTS public.connector_field_mappings (
 );
 
 ALTER TABLE public.connector_field_mappings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "connector_field_mappings_policy" ON public.connector_field_mappings;
 CREATE POLICY "connector_field_mappings_policy" ON public.connector_field_mappings
   FOR ALL USING (
     connector_instance_id IN (

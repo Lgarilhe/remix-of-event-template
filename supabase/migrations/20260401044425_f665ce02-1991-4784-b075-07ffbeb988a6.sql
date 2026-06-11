@@ -16,25 +16,30 @@ CREATE INDEX IF NOT EXISTS idx_member_email_accounts_user ON member_email_accoun
 
 ALTER TABLE member_email_accounts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "member_email_accounts_select" ON member_email_accounts;
 CREATE POLICY "member_email_accounts_select" ON member_email_accounts
   FOR SELECT USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "member_email_accounts_insert" ON member_email_accounts;
 CREATE POLICY "member_email_accounts_insert" ON member_email_accounts
   FOR INSERT WITH CHECK (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "member_email_accounts_update" ON member_email_accounts;
 CREATE POLICY "member_email_accounts_update" ON member_email_accounts
   FOR UPDATE USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "member_email_accounts_delete" ON member_email_accounts;
 CREATE POLICY "member_email_accounts_delete" ON member_email_accounts
   FOR DELETE USING (
     organization_id = public.get_user_org_id(auth.uid())
   );
 
+DROP POLICY IF EXISTS "member_email_accounts_service_role" ON member_email_accounts;
 CREATE POLICY "member_email_accounts_service_role" ON member_email_accounts
   FOR ALL USING (auth.role() = 'service_role');

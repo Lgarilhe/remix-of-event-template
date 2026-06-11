@@ -20,9 +20,11 @@ CREATE INDEX idx_candidate_profiles_embedding ON candidate_profiles USING ivffla
 
 ALTER TABLE candidate_profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Service role full access" ON candidate_profiles;
 CREATE POLICY "Service role full access" ON candidate_profiles
   FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read" ON candidate_profiles;
 CREATE POLICY "Authenticated users can read" ON candidate_profiles
   FOR SELECT USING (auth.role() = 'authenticated');
 
@@ -44,9 +46,11 @@ CREATE INDEX idx_job_profiles_embedding ON job_profiles USING ivfflat (embedding
 
 ALTER TABLE job_profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Service role full access" ON job_profiles;
 CREATE POLICY "Service role full access" ON job_profiles
   FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "Authenticated users can read" ON job_profiles;
 CREATE POLICY "Authenticated users can read" ON job_profiles
   FOR SELECT USING (auth.role() = 'authenticated');
 

@@ -37,8 +37,10 @@ CREATE INDEX IF NOT EXISTS idx_sequence_email_tracking_message_id
 -- RLS for sequence_email_tracking
 ALTER TABLE sequence_email_tracking ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sequence_email_tracking_service_role" ON sequence_email_tracking;
 CREATE POLICY "sequence_email_tracking_service_role" ON sequence_email_tracking
   FOR ALL USING (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "sequence_email_tracking_anon_select" ON sequence_email_tracking;
 CREATE POLICY "sequence_email_tracking_anon_select" ON sequence_email_tracking
   FOR SELECT USING (true);
