@@ -75,10 +75,19 @@ test.describe('@critical Quota gate LinkedIn', () => {
   });
 
   test('un compte en pause fournisseur est bloqué', async () => {
-    await admin()
+    const pausedUntil = new Date(Date.now() + 3600 * 1000).toISOString();
+    const { error: upErr } = await admin()
       .from('member_linkedin_accounts')
-      .update({ quota_paused_until: new Date(Date.now() + 3600 * 1000).toISOString() })
+      .update({ quota_paused_until: pausedUntil })
       .eq('linkedin_account_id', accountId);
+    expect(upErr, 'update quota_paused_until').toBeNull();
+    // Vérifie que le flag est bien persisté (diagnostic : sinon le test pointe l'update, pas la fn).
+    const { data: row } = await admin()
+      .from('member_linkedin_accounts')
+      .select('quota_paused_until')
+      .eq('linkedin_account_id', accountId)
+      .single();
+    expect(row?.quota_paused_until, 'flag pause persisté').toBeTruthy();
     const r = await checkQuota('message', 100, false);
     expect(r.allowed).toBe(false);
     expect(r.scope).toBe('provider_pause');

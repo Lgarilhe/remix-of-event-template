@@ -65,7 +65,7 @@ test.describe('@critical RLS — fonctions SECURITY DEFINER révoquées', () => 
     const session = await signIn(r.email, r.password);
     const status = await callRpc(session.access_token, E2E.anonKey, 'has_role', {
       _user_id: r.userId,
-      _role: 'owner',
+      _role: 'admin',
     });
     // Doit s'exécuter (200) — pas révoqué.
     expect(status).toBe(200);
