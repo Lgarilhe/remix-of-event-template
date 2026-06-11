@@ -30,11 +30,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-interface Message {
-  role: "user" | "assistant" | "system";
-  content: string;
-}
-
 const sourcingSystemPrompt = `Tu es un agent de sourcing IA senior chez Konekt, cabinet de recrutement tech.
 
 === STYLE ===
@@ -235,7 +230,6 @@ Sequence de relance :
 - J+14 : Breakup (court, respectueux, pas d'insistance)
 
 Timing : mardi/mercredi/jeudi, 8h-10h ou 18h-20h
-| Full remote | Pas de filtre geo |
 `;
 
 const sourcingTools = [

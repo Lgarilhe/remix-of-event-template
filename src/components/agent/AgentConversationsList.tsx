@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Bot, ChevronRight, Target } from 'lucide-react';
-import { AgentConversation } from '@/hooks/useAgentChat';
+import { AgentConversation } from '@/types/agentChat';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';

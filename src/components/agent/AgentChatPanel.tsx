@@ -11,7 +11,7 @@ import { useLocalRuntime, AssistantRuntimeProvider, type ChatModelAdapter, type 
 import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
 import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
-import type { AgentConversation } from '@/hooks/useAgentChat';
+import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 
 interface AgentChatPanelProps {
