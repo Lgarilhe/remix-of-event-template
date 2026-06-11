@@ -2335,9 +2335,12 @@ const resumeSequence: AgentTool = {
 };
 
 // ─── Tool 16 — invite_team_member ───────────────────────────────────────────
-// Crée une invitation dans organization_invitations (email + role + token).
-// Note : l'envoi de l'email d'invitation est géré séparément (frontend / trigger
-// post-insert). Ce tool insère uniquement la row d'invitation.
+// Crée une invitation dans organization_invitations (email + role + token) PUIS
+// envoie l'email d'invitation via send-transactional-email (service-role) —
+// même pipeline que l'edge send-team-invitation utilisée par Settings → Team.
+// send-team-invitation n'est pas appelable en Mode B (elle exige un JWT user
+// via auth.getUser()), d'où la réplication de son envoi ici. Si une invitation
+// pending existe déjà pour l'email, elle est réutilisée et l'email renvoyé.
 
 const ALLOWED_INVITE_ROLES = ['admin', 'collaborator'] as const;
 type InviteRole = (typeof ALLOWED_INVITE_ROLES)[number];
@@ -2347,7 +2350,8 @@ const inviteTeamMember: AgentTool = {
   description:
     "Invite a new member to the user's organization by email. " +
     "Use this when the user says 'invite x@y.fr en collaborateur', 'ajoute Marie à mon équipe'. " +
-    "Creates an invitation row (expires in 7 days). The actual invitation email is sent by the org's existing notification pipeline (frontend trigger or post-insert hook). " +
+    "Creates an invitation row (expires in 7 days) and immediately sends the invitation email (same pipeline as Settings → Team). " +
+    "If a pending invitation already exists for this email, it is reused (original role kept) and the email is re-sent. " +
     "Only `admin` and `collaborator` roles allowed via the copilot — to grant `owner`, use the Settings → Team UI. " +
     "The caller must be admin or owner of the org. " +
     "Always proposes the change for user approval — never executes silently.",
@@ -2433,18 +2437,21 @@ const inviteTeamMember: AgentTool = {
       .maybeSingle();
 
     return {
-      summary: `Inviter ${email} dans "${org?.name || 'votre organisation'}" en tant que ${role}`,
+      summary: pending
+        ? `Renvoyer l'email d'invitation à ${email} pour "${org?.name || 'votre organisation'}" (invitation en attente existante)`
+        : `Inviter ${email} dans "${org?.name || 'votre organisation'}" en tant que ${role} — l'email d'invitation partira immédiatement`,
       details: {
         email,
         role,
         organization_id: ctx.organizationId,
         organization_name: org?.name ?? null,
+        sends_email: true,
         has_pending_invitation: !!pending,
         existing_invitation_id: pending?.id ?? null,
         existing_expires_at: pending?.expires_at ?? null,
       },
       warning: pending
-        ? `Une invitation pending existe déjà pour cet email (créée le ${pending.created_at}). Confirmer en créera une nouvelle (la précédente reste valide jusqu'à expiration).`
+        ? `Une invitation pending existe déjà pour cet email (créée le ${pending.created_at}). Confirmer renverra l'email pour cette invitation existante (son rôle d'origine est conservé, pas de doublon créé).`
         : undefined,
     };
   },
@@ -2453,34 +2460,130 @@ const inviteTeamMember: AgentTool = {
     const email = String(params.email).trim().toLowerCase();
     const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
 
-    // Generate a token + expiration (+7d)
-    const token = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return { success: false, error: 'Supabase env not configured' };
 
-    const { data, error } = await ctx.adminClient
+    // Réutilise l'invitation pending existante (même comportement que
+    // send-team-invitation) — évite le doublon et le 23505 sur l'unique index.
+    const { data: existing } = await ctx.adminClient
       .from('organization_invitations')
-      .insert({
-        organization_id: ctx.organizationId,
-        email,
-        role,
-        token,
-        status: 'pending',
-        invited_by: ctx.userId,
-        expires_at: expiresAt,
-      })
-      .select('id, email, role, token, expires_at')
-      .single();
-    if (error) return { success: false, error: error.message };
+      .select('id, expires_at')
+      .eq('organization_id', ctx.organizationId)
+      .eq('email', email)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    let invitationId = existing?.id as string | undefined;
+    let expiresAt = (existing?.expires_at as string | undefined) ?? null;
+    const isResend = !!existing;
+
+    if (!invitationId) {
+      // Token hex 64 chars (256 bits) — même format que send-team-invitation
+      const tokenBytes = new Uint8Array(32);
+      crypto.getRandomValues(tokenBytes);
+      const token = Array.from(tokenBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { data, error } = await ctx.adminClient
+        .from('organization_invitations')
+        .insert({
+          organization_id: ctx.organizationId,
+          email,
+          role,
+          token,
+          status: 'pending',
+          invited_by: ctx.userId,
+          expires_at: newExpiresAt,
+        })
+        .select('id, expires_at')
+        .single();
+      if (error) {
+        if (error.code === '23505') {
+          return { success: false, error: `Une invitation est déjà en cours pour ${email}.` };
+        }
+        return { success: false, error: error.message };
+      }
+      invitationId = data.id;
+      expiresAt = data.expires_at;
+    }
+
+    // Envoi de l'email — réplique du pipeline send-team-invitation (non
+    // appelable en Mode B : elle exige un JWT user). send-transactional-email,
+    // elle, accepte la service-role (c'est déjà ainsi qu'elle est appelée).
+    const { data: org } = await ctx.adminClient
+      .from('organizations')
+      .select('name')
+      .eq('id', ctx.organizationId)
+      .maybeSingle();
+    const { data: inviterProfile } = await ctx.adminClient
+      .from('profiles')
+      .select('display_name, email')
+      .eq('user_id', ctx.userId)
+      .maybeSingle();
+
+    const appOrigin = Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app';
+    const orgNameParam = org?.name ? `&org=${encodeURIComponent(org.name)}` : '';
+    const inviteUrl = `${appOrigin}/auth?invitation=${invitationId}&email=${encodeURIComponent(email)}${orgNameParam}`;
+    // Sur une invitation réutilisée, la clé "team-invite-{id}" a déjà été
+    // consommée par l'envoi initial → clé resend unique pour que l'email reparte.
+    const idempotencyKey = isResend
+      ? `team-invite-resend-${invitationId}-${Date.now()}`
+      : `team-invite-${invitationId}`;
+
+    let emailError: string | null = null;
+    try {
+      const emailResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/send-transactional-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+          'apikey': serviceKey,
+        },
+        body: JSON.stringify({
+          templateName: 'team-invitation',
+          recipientEmail: email,
+          idempotencyKey,
+          templateData: {
+            organizationName: org?.name || 'votre équipe',
+            inviterName: inviterProfile?.display_name || inviterProfile?.email || 'Un membre de votre équipe',
+            role,
+            inviteUrl,
+          },
+        }),
+      });
+      if (!emailResponse.ok) {
+        emailError = `HTTP ${emailResponse.status}`;
+        try {
+          const payload = await emailResponse.json();
+          const baseErr = payload?.error || payload?.message || emailError;
+          emailError = payload?.details ? `${baseErr} (${payload.details})` : String(baseErr);
+        } catch { /* body non-JSON — on garde le status HTTP */ }
+      }
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : 'erreur réseau';
+    }
+
+    if (emailError) {
+      return {
+        success: false,
+        error: `Invitation créée (visible dans Settings → Équipe) mais l'email n'est pas parti : ${emailError}. Renvoyez-la depuis Settings → Équipe.`,
+      };
+    }
 
     return {
       success: true,
       data: {
-        invitation_id: data.id,
-        email: data.email,
-        role: data.role,
-        token: data.token,
-        expires_at: data.expires_at,
-        message: "Invitation créée. L'email partira selon le pipeline de notifications standard. Si l'invité n'a pas reçu d'email sous 5 min, vérifiez Settings → Équipe (l'invitation est visible et le lien réutilisable).",
+        invitation_id: invitationId,
+        email,
+        role,
+        expires_at: expiresAt,
+        resent: isResend,
+        message: isResend
+          ? `Email d'invitation renvoyé à ${email} (invitation pending existante réutilisée, rôle d'origine conservé).`
+          : `Invitation créée et email envoyé à ${email}. Elle expire dans 7 jours et reste visible dans Settings → Équipe.`,
       },
     };
   },
