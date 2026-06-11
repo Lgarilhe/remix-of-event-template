@@ -45,7 +45,8 @@ BEGIN
     RAISE WARNING 'Found % rows with invalid action_type values — CHECK not added', invalid_count;
     RETURN;
   END IF;
-  -- Ajouter le CHECK final
+  -- Ajouter le CHECK final (drop d'abord : la contrainte est créée plus tôt → 42710 sur replay)
+  EXECUTE 'ALTER TABLE public.sequence_steps DROP CONSTRAINT IF EXISTS sequence_steps_action_type_check';
   EXECUTE 'ALTER TABLE public.sequence_steps ADD CONSTRAINT sequence_steps_action_type_check
     CHECK (action_type IN (
       ''inmail'', ''connection_request'', ''profile_visit'', ''message'',
