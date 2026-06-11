@@ -205,6 +205,28 @@ Calendly HMAC + tolérance 5 min, Svix, Aircall token, sequence-webhooks constan
 
 ---
 
+## Addendum 2 — vérification approfondie séquences/quotas (2026-06-10, soir)
+
+Passe de re-vérification manuelle suite aux questions « tout est bien branché ? » :
+
+- **Quotas — 4 chemins d'envoi, 1 seul gate, vérifié ligne par ligne** : séquences
+  (`process-sequences:1758`), InMail queue (`:407`), actions manuelles (`unipile-search:263`,
+  skip si `isInternal` = comparaison stricte au service_role key), outil agent
+  (`checkLinkedInQuota` + ledger source `agent_tool` ; le call interne unipile-search n'est
+  pas re-gaté → pas de double comptage). `executeScheduledAction` re-exécute le tool complet
+  → les actions différées re-passent le gate à l'exécution. `scan-recruiter-linkedin` ne lit
+  que `/users/me` (pas d'action visible, pas de gate nécessaire). Faux positifs agents
+  confirmés : le « bypass send_message » et l'« IDOR account_id » n'existent pas
+  (`resolveSendingAccount` vérifie user+org, agent-tools-mutations:1789).
+
+- **Séquences — claim atomique déjà en place** (CAS `scheduled→sending` + lock 10 min +
+  re-check enrollment post-envoi). **Bug réel trouvé et corrigé** : le janitor de recovery
+  des steps bloqués en `sending` re-planifiait aveuglément les actions **LinkedIn visibles**
+  (3 retries) alors qu'il vérifie les emails via le tracking — un message Unipile parti
+  juste avant un crash était re-envoyé au candidat. Fix : une action visible bloquée passe
+  en `failed` avec raison explicite (relance manuelle), seules les actions invisibles
+  (profile_visit, check_connection, wait_connection) et les emails restent retryables.
+
 ## Addendum — remédiations appliquées (2026-06-10, soir)
 
 - **P0.1 ✅** : `verify_jwt = false` ajouté à `config.toml` pour les 3 fonctions manquantes,
