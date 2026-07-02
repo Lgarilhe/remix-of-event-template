@@ -978,14 +978,10 @@ export function useLinkedInSearchActions(
       // NEVER auto-retry on session conflicts
       if (isMultipleSessionsError) {
         toast.error(
-          "Conflit de session LinkedIn. Utilisez l'onglet « Base de données » pour continuer à sourcer, ou attendez 2-3 minutes.",
+          "LinkedIn n'autorise qu'une seule session Recruiter à la fois : vous utilisez probablement LinkedIn dans un autre onglet ou appareil. Fermez-le et attendez 2-3 minutes, ou continuez via l'onglet « Base de données ». Votre compte reste connecté.",
           {
             id: 'search-error',
             duration: 15000,
-            action: {
-              label: 'Reconnecter',
-              onClick: () => window.location.href = '/settings?tab=account',
-            },
           }
         );
       } else if (
