@@ -55,6 +55,10 @@ interface CandidateDetailModalProps {
   /** Si true, auto-trigger la génération de scorecard à l'ouverture
    *  (utile pour le CTA "Préparer l'entretien" depuis le calendrier). */
   autoGenerateScorecard?: boolean;
+  /** Étapes proposées dans le sélecteur de stage. Défaut : ATS_STAGES.
+   *  Le pipeline mission passe ses colonnes (Sourcé/Contacté/steps/Embauché)
+   *  pour que le changement d'étape reste cohérent avec son kanban. */
+  stageOptions?: { key: string; label: string }[];
 }
 
 interface Note {
@@ -74,7 +78,7 @@ interface Reminder {
 
 export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   candidate, onClose, onStageChange, onTagsChange, onRefresh,
-  initialTab, autoGenerateScorecard,
+  initialTab, autoGenerateScorecard, stageOptions,
 }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -446,7 +450,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       airtableMatch={fullProfile.airtableMatch}
       pipelineMeta={{
         stage: candidate.stage,
-        stageOptions: ATS_STAGES.map(s => ({ key: s.key, label: s.label })),
+        stageOptions: stageOptions ?? ATS_STAGES.map(s => ({ key: s.key, label: s.label })),
         onStageChange: (newStage) => onStageChange(candidate.id, newStage),
         score: candidate.score,
         onScoreClick: () => {

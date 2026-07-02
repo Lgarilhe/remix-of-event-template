@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, useSensor, useSensors, useDroppable, useDraggable,
@@ -9,9 +10,11 @@ import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjec
 import { useProjectStats } from '@/hooks/useProjectStats';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { ProjectCandidatesTableEnhanced } from '@/components/outreach/projects/ProjectCandidatesTableEnhanced';
+import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { ATSCandidate } from '@/hooks/useATSData';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
-import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users } from 'lucide-react';
+import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -21,6 +24,7 @@ interface MissionPipelineProps {
 
 interface ProjectCandidate {
   id: string;
+  job_id?: string;
   candidate_id: string;
   candidate_name: string | null;
   candidate_headline: string | null;
@@ -177,7 +181,7 @@ KanbanCard.displayName = 'KanbanCard';
 
 // ── Draggable Card ──
 
-const DraggableKanbanCard = React.memo(({ candidate, columnId, dimmed }: { candidate: ProjectCandidate; columnId: string; dimmed?: boolean }) => {
+const DraggableKanbanCard = React.memo(({ candidate, columnId, dimmed, onOpen }: { candidate: ProjectCandidate; columnId: string; dimmed?: boolean; onOpen?: (c: ProjectCandidate) => void }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: candidate.id,
     data: { type: 'card', columnId },
@@ -188,6 +192,7 @@ const DraggableKanbanCard = React.memo(({ candidate, columnId, dimmed }: { candi
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      onClick={() => onOpen?.(candidate)}
       className={cn("[content-visibility:auto] [contain-intrinsic-size:auto_72px]", isDragging && "opacity-30")}
     >
       <KanbanCard candidate={candidate} dimmed={dimmed} />
@@ -198,11 +203,13 @@ DraggableKanbanCard.displayName = 'DraggableKanbanCard';
 
 // ── Kanban Column ──
 
-const KanbanColumn = ({ column, candidates, isDismissed, innerRef }: {
+const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoOutreach }: {
   column: PipelineColumn;
   candidates: ProjectCandidate[];
   isDismissed?: boolean;
   innerRef?: (el: HTMLDivElement | null) => void;
+  onOpen?: (c: ProjectCandidate) => void;
+  onGoOutreach?: () => void;
 }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: column.key,
@@ -214,8 +221,10 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef }: {
     <div
       ref={(node) => { setNodeRef(node); innerRef?.(node); }}
       className={cn(
-        "flex flex-col flex-shrink-0 rounded-xl bg-muted/20 transition-colors",
-        isDismissed ? "w-[216px]" : "w-[264px]",
+        "flex flex-col rounded-xl bg-muted/20 transition-colors",
+        // Colonnes fluides : remplissent la largeur dispo, bornées pour rester
+        // lisibles — fini la moitié d'écran vide à 3-4 colonnes
+        isDismissed ? "flex-none w-[216px]" : "flex-1 min-w-[248px] max-w-[340px]",
         isOver && cn("bg-muted/40 ring-1 ring-inset", column.theme.ring)
       )}
     >
@@ -237,16 +246,29 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef }: {
           </span>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto overscroll-contain px-1.5 pb-1.5 space-y-1.5">
+      <div className="flex-1 overflow-y-auto overscroll-contain thin-scrollbar px-1.5 pb-1.5 space-y-1.5">
         {candidates.map(c => (
-          <DraggableKanbanCard key={c.id} candidate={c} columnId={column.key} dimmed={isDismissed} />
+          <DraggableKanbanCard key={c.id} candidate={c} columnId={column.key} dimmed={isDismissed} onOpen={onOpen} />
         ))}
         {candidates.length === 0 && (
           <div className={cn(
             "mx-0.5 mt-0.5 rounded-lg border border-dashed py-8 text-center transition-colors",
             isOver ? "border-foreground/30 bg-muted/30" : "border-border"
           )}>
-            <p className="text-2xs text-muted-foreground/50">{isOver ? 'Déposer ici' : (EMPTY_COPY[column.key] ?? 'Aucun candidat')}</p>
+            {!isOver && column.key === 'messaged' && onGoOutreach ? (
+              <div className="space-y-2">
+                <p className="text-2xs text-muted-foreground/50">{EMPTY_COPY.messaged}</p>
+                <button
+                  type="button"
+                  onClick={onGoOutreach}
+                  className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-foreground text-background text-2xs font-semibold transition-transform active:scale-[0.97]"
+                >
+                  <Send className="w-3 h-3" /> Contacter les candidats
+                </button>
+              </div>
+            ) : (
+              <p className="text-2xs text-muted-foreground/50">{isOver ? 'Déposer ici' : (EMPTY_COPY[column.key] ?? 'Aucun candidat')}</p>
+            )}
           </div>
         )}
       </div>
@@ -259,8 +281,26 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef }: {
 export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
   const [draggedCandidate, setDraggedCandidate] = useState<ProjectCandidate | null>(null);
+  const [detailCandidate, setDetailCandidate] = useState<ProjectCandidate | null>(null);
   const queryClient = useQueryClient();
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Après un drag, le navigateur émet un click sur la carte déposée — ne pas
+  // ouvrir la fiche détail dans ce cas
+  const dragHappenedRef = useRef(false);
+  const [, setSearchParams] = useSearchParams();
+
+  const goToOutreach = () => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'outreach');
+      return next;
+    }, { replace: true });
+  };
+
+  const openCandidateDetail = (c: ProjectCandidate) => {
+    if (dragHappenedRef.current) return;
+    setDetailCandidate(c);
+  };
 
   const { data: candidates = [], isLoading } = useProjectCandidates(project.id);
   const { data: stats } = useProjectStats(project.id);
@@ -354,11 +394,14 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
+    dragHappenedRef.current = true;
     const c = (candidates as ProjectCandidate[]).find(c => c.id === event.active.id);
     setDraggedCandidate(c || null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    // Relâche la garde après le click fantôme émis à la fin du drag
+    setTimeout(() => { dragHappenedRef.current = false; }, 0);
     setDraggedCandidate(null);
     const { active, over } = event;
     if (!over) return;
@@ -516,13 +559,15 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <div className="flex gap-2 overflow-x-auto pb-2 h-[calc(100dvh-340px)] min-h-[480px] items-stretch konekt-fade-up">
+              <div className="flex gap-2 overflow-x-auto thin-scrollbar pb-2 h-[calc(100dvh-340px)] min-h-[480px] items-stretch konekt-fade-up">
                 {columns.map(column => (
                   <KanbanColumn
                     key={column.key}
                     column={column}
                     candidates={candidatesByColumn[column.key] || []}
                     innerRef={(el) => { columnRefs.current[column.key] = el; }}
+                    onOpen={openCandidateDetail}
+                    onGoOutreach={column.key === 'messaged' ? goToOutreach : undefined}
                   />
                 ))}
                 {/* Dismissed column — always last, transversal */}
@@ -531,6 +576,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                   candidates={candidatesByColumn['dismissed'] || []}
                   isDismissed
                   innerRef={(el) => { columnRefs.current['dismissed'] = el; }}
+                  onOpen={openCandidateDetail}
                 />
               </div>
               <DragOverlay dropAnimation={null}>
@@ -539,6 +585,46 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             </DndContext>
           )}
         </>
+      )}
+
+      {/* Fiche candidat complète (profil, messages, notes, rappels) —
+          réutilise le modal ATS en lui passant les étapes de CE pipeline */}
+      {detailCandidate && (
+        <CandidateDetailModal
+          candidate={{
+            id: detailCandidate.id,
+            candidateId: detailCandidate.candidate_id,
+            name: detailCandidate.candidate_name || 'Candidat inconnu',
+            email: null,
+            phone: null,
+            linkedin: detailCandidate.linkedin_profile_url,
+            headline: detailCandidate.candidate_headline,
+            expertise: [],
+            stage: detailCandidate.pipeline_stage || detailCandidate.status,
+            entity: null,
+            source: 'local',
+            sourceId: detailCandidate.id,
+            jobId: detailCandidate.job_id ?? null,
+            jobTitle: project.job_title || project.name,
+            lastActivity: detailCandidate.updated_at,
+            createdAt: detailCandidate.created_at,
+            score: detailCandidate.score,
+            recommendation: detailCandidate.recommendation,
+            tags: (detailCandidate as ProjectCandidate & { tags?: string[] }).tags || [],
+            notionShortlistId: (detailCandidate as ProjectCandidate & { notion_shortlist_id?: string | null }).notion_shortlist_id ?? null,
+            linkedinProfileData: (detailCandidate as ProjectCandidate & { linkedin_profile_data?: unknown }).linkedin_profile_data,
+          } as ATSCandidate}
+          onClose={() => setDetailCandidate(null)}
+          onStageChange={(rowId, newStage) => {
+            updateStage(rowId, newStage);
+            setDetailCandidate(null);
+          }}
+          onRefresh={() => {
+            queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
+            queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
+          }}
+          stageOptions={[...columns.map(c => ({ key: c.key, label: c.label })), { key: 'dismissed', label: 'Écarté' }]}
+        />
       )}
     </div>
   );
