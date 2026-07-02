@@ -59,7 +59,7 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known';
   treatedCount: number;
   dismissedCount: number;
   
@@ -99,7 +99,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known') => void;
   onSetSortByScore: (v: boolean) => void;
   scoredSortBy: ScoredSortBy;
   onSetScoredSortBy: (v: ScoredSortBy) => void;
@@ -342,7 +342,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
   // Count by status for filter badges — based on renderable profiles only
   const statusCounts = React.useMemo(() => {
-    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_investigate: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, dismissed: 0, untreated: 0, known: 0 };
+    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_investigate: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, shortlisted: 0, open_to_work: 0, dismissed: 0, untreated: 0, known: 0 };
     const renderableIds = new Set(mergedResults.map((r) => r.id));
 
     // Count only candidates we can actually render in the current view universe
@@ -372,11 +372,15 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           if (jobScores[candidateId]?.investigationNeeded === true) counts.scored_investigate++;
         }
       }
+      else if (s.status === 'shortlisted') counts.shortlisted++;
       else if (s.status === 'dismissed') counts.dismissed++;
     }
 
-    // Count "known" from renderable profiles
+    // Count "known" + "open to work" from renderable profiles
     for (const r of mergedResults) {
+      if (r.open_to_work === true || r.is_open_to_work === true) {
+        counts.open_to_work++;
+      }
       const profileUrl = getCanonicalProfileUrl(r);
       const notionMatch = getNotionMatch({
         url: profileUrl,
@@ -449,12 +453,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {/* Status filter pills with explicit labels */}
           <div className="flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-full border border-border shrink-0">
             {([
-              { value: 'all' as const,        label: 'Tous',         icon: '👥', count: mergedResults.length, tooltip: 'Tous les candidats' },
-              { value: 'untreated' as const,  label: 'Non traités',  icon: '👁',  count: statusCounts.untreated, tooltip: 'Candidats pas encore évalués' },
-              { value: 'scored' as const,     label: 'Scorés',       icon: '🎯', count: statusCounts.scored,    tooltip: 'Candidats déjà scorés par l\'IA' },
-              { value: 'messaged' as const,   label: 'Contactés',    icon: '✉️', count: statusCounts.messaged,  tooltip: 'Candidats déjà contactés' },
-              { value: 'known' as const,      label: 'Déjà connus',  icon: '📋', count: statusCounts.known,     tooltip: 'Candidats présents dans ton vivier' },
-              { value: 'dismissed' as const,  label: 'Archivés',     icon: '📦', count: statusCounts.dismissed, tooltip: 'Candidats archivés / écartés' },
+              { value: 'all' as const,          label: 'Tous',         icon: '👥', count: mergedResults.length, tooltip: 'Tous les candidats' },
+              { value: 'untreated' as const,    label: 'Non traités',  icon: '👁',  count: statusCounts.untreated, tooltip: 'Candidats pas encore évalués' },
+              { value: 'open_to_work' as const, label: 'À l\'écoute',  icon: '🟢', count: statusCounts.open_to_work, tooltip: 'Profils ouverts aux opportunités (Open to Work)' },
+              { value: 'scored' as const,       label: 'Scorés',       icon: '🎯', count: statusCounts.scored,    tooltip: 'Candidats déjà scorés par l\'IA' },
+              { value: 'messaged' as const,     label: 'Contactés',    icon: '✉️', count: statusCounts.messaged,  tooltip: 'Candidats déjà contactés' },
+              { value: 'shortlisted' as const,  label: 'Shortlist',    icon: '⭐', count: statusCounts.shortlisted, tooltip: 'Candidats ajoutés à la shortlist' },
+              { value: 'known' as const,        label: 'Déjà connus',  icon: '📋', count: statusCounts.known,     tooltip: 'Candidats présents dans ton vivier' },
+              { value: 'dismissed' as const,    label: 'Archivés',     icon: '📦', count: statusCounts.dismissed, tooltip: 'Candidats archivés / écartés' },
             ]).map(({ value, label, icon, count, tooltip }) => {
               const isActive = statusFilter === value ||
                 (value === 'scored' && (statusFilter === 'scored_go' || statusFilter === 'scored_maybe' || statusFilter === 'scored_not_contacted'));

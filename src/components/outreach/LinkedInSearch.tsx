@@ -39,7 +39,7 @@ interface LinkedInSearchProps {
   onOpenSearchAgent?: () => void;
 }
 
-type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_not_contacted' | 'messaged' | 'dismissed' | 'known';
+type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known';
 
 interface MissionSearchCacheEntry {
   filters: typeof INITIAL_FILTERS;

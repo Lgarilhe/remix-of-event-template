@@ -83,6 +83,14 @@ export function useJobCandidateStatus(jobId: string | null) {
 
     setLoading(true);
     try {
+      // Les statuts d'une mission synthétique existent sous 2 formes de job_id :
+      // "project:{uuid}" (écrit par le sourcing) et "{uuid}" nu (écrit par
+      // l'inscription en séquence qui normalise pour le cron). On lit les 2
+      // formes pour que les candidats contactés via séquence restent visibles.
+      const jobIdForms = jobId.startsWith('project:')
+        ? [jobId, jobId.slice('project:'.length)]
+        : [jobId];
+
       // Phase 1: lightweight fetch (no linkedin_profile_data)
       const LIGHT_COLUMNS = 'id,job_id,candidate_id,linkedin_profile_url,candidate_name,candidate_headline,status,score,recommendation,skip_reason,created_by,created_at,updated_at,scoring_details,tags,pipeline_stage,project_id,notion_candidate_id,notion_shortlist_id,notion_synced_at,organization_id';
       const allData: any[] = [];
@@ -94,7 +102,7 @@ export function useJobCandidateStatus(jobId: string | null) {
         const { data, error } = await supabase
           .from('job_candidate_status')
           .select(LIGHT_COLUMNS)
-          .eq('job_id', jobId)
+          .in('job_id', jobIdForms)
           .eq('created_by', user.id)
           .range(offset, offset + PAGE_SIZE - 1);
 
@@ -112,14 +120,35 @@ export function useJobCandidateStatus(jobId: string | null) {
       const statusMap = new Map<string, JobCandidateStatus>();
       const dismissed = new Set<string>();
       const treated = new Set<string>();
-      
+
       allData.forEach((s: any) => {
-        statusMap.set(s.candidate_id, s as JobCandidateStatus);
-        if (s.status === 'dismissed') {
-          dismissed.add(s.candidate_id);
+        const existing = statusMap.get(s.candidate_id);
+        if (!existing) {
+          statusMap.set(s.candidate_id, s as JobCandidateStatus);
+          return;
         }
-        treated.add(s.candidate_id);
+        // Même candidat sous les 2 formes de job_id → base = ligne la plus
+        // récente, complétée par les champs que l'autre ligne est seule à porter
+        const [base, other] = (s.updated_at || '') > (existing.updated_at || '')
+          ? [s, existing as any]
+          : [existing as any, s];
+        statusMap.set(s.candidate_id, {
+          ...base,
+          score: base.score ?? other.score,
+          recommendation: base.recommendation ?? other.recommendation,
+          scoring_details: base.scoring_details ?? other.scoring_details,
+          candidate_name: base.candidate_name ?? other.candidate_name,
+          candidate_headline: base.candidate_headline ?? other.candidate_headline,
+          linkedin_profile_url: base.linkedin_profile_url ?? other.linkedin_profile_url,
+        });
       });
+
+      for (const [candidateId, s] of statusMap) {
+        if (s.status === 'dismissed') {
+          dismissed.add(candidateId);
+        }
+        treated.add(candidateId);
+      }
 
       // Single state update (1 re-render instead of 3)
       setStatusState({ statuses: statusMap, dismissedIds: dismissed, treatedIds: treated });
@@ -138,7 +167,7 @@ export function useJobCandidateStatus(jobId: string | null) {
             const { data: profileData } = await supabase
               .from('job_candidate_status')
               .select('candidate_id,linkedin_profile_data')
-              .eq('job_id', jobId)
+              .in('job_id', jobIdForms)
               .eq('created_by', user.id)
               .in('candidate_id', candidateIds)
               .not('linkedin_profile_data', 'is', null);
