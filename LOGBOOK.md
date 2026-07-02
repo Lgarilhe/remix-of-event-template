@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-02 — SHIP — Filtres sourcing (À l'écoute/Shortlist), visibilité contactés, déblocage Pipeline
+
+**Contexte** : UX sourcing dégradée — impossible de filtrer les profils à l'écoute, de retrouver ses shortlistés/contactés ; phase Pipeline grisée malgré l'activité réelle.
+**Décision / Fait** : (1) pills Shortlist + toggle « À l'écoute » (spotlight OPEN_TO_WORK serveur — l'API search ne renvoie JAMAIS le flag par profil, vérifié 0/1213 en base) ; (2) useJobCandidateStatus lit les 2 formes de job_id (`project:{uuid}` et nu — l'inscription séquence normalise, le sourcing préfixait → contactés invisibles) ; (3) pills DB embarquent le pool même en vue Résultats ; (4) trigger SQL sync stats_* mission + backfill (colonnes jamais mises à jour → readiness verrouillait Pipeline à vie) ; (5) add-to-shortlist écrit enfin job_candidate_status (upsert par candidate_id, match URL par slug ; avant : UPDATE par URL stricte = 0 match, et rien du tout si Notion absent) ; pill Shortlist matche aussi la shortlist Notion par nom.
+**Impact** : useLinkedInSearch, useFilteredResults, useJobCandidateStatus, useLinkedInSearchActions, LinkedInSearch, SearchResultsPanel, edge add-to-shortlist, migration 20260702121429.
+**QA** : préflight tsc+build OK ; persona Guillaume (sourcing) couvert par harnais Playwright (app réelle, Supabase intercepté, 16+22 checks PASS) ; migration validée par dry-run transactionnel sur schéma prod (rollback).
+**Reste à faire** :
+- [ ] `supabase functions deploy add-to-shortlist` après merge
+- [ ] Vérifier le workflow deploy-migrations sur le push main (backfill → Pipeline débloqué)
+- [ ] Générer le spec e2e sourcing live (test.fixme du socle QA)
+**Refs** : 9f71dff, 08aa113, 0de9097, 7a1298e (branche claude/sourcing-filters-visibility-r0zsr8)
+
+---
+
 ## 2026-04-27 — SECURITY — QA 4 personas sur feature enrichment, fix sécurité multi-tenant
 
 **Contexte** : Sprint 1+2+3 enrichment (cascade lookup + bulk + permissions + RGPD + analytics) déployés en prod sans avoir lancé `/qa` 4 personas — manquement à la skill `qa.md` "Obligatoire avant tout deploy en prod". Laurent m'a recadré → audit rétroactif lancé.
