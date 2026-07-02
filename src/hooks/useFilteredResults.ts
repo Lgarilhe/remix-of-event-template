@@ -15,7 +15,7 @@ interface FilteredResultsOptions {
   selectedJob: Job | null;
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
   candidateStatus: {
     treatedIds: Set<string>;
     dismissedIds: Set<string>;
@@ -219,10 +219,9 @@ export function useFilteredResults({
           case 'messaged':
             return status?.status === 'messaged' || status?.status === 'replied';
           case 'shortlisted':
+            // Le match shortlist Notion est appliqué en aval (SearchResultsPanel,
+            // displayResults) — même mécanique que le filtre 'known'.
             return status?.status === 'shortlisted';
-          case 'open_to_work':
-            // Signal profil (flag LinkedIn), pas un statut DB
-            return p.open_to_work === true || p.is_open_to_work === true;
           case 'dismissed':
             return status?.status === 'dismissed';
           default:

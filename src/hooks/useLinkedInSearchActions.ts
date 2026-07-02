@@ -810,7 +810,14 @@ export function useLinkedInSearchActions(
           throw apiError;
         }
 
-        const batch: LinkedInProfile[] = (data.results as LinkedInProfile[]) || [];
+        let batch: LinkedInProfile[] = (data.results as LinkedInProfile[]) || [];
+        // Recherche spotlight OPEN_TO_WORK : l'API ne renvoie pas le flag par
+        // profil dans les résultats de recherche, mais tous les profils d'une
+        // recherche filtrée OTW le sont par construction → on tague pour que
+        // le badge s'affiche et que le flag soit persisté dans le pool.
+        if (currentFilters.open_to_work === true && currentFilters.api === 'recruiter') {
+          batch = batch.map(p => ({ ...p, open_to_work: true }));
+        }
         const batchCursor: string | null = (data.cursor as string) || null;
         const fetchedTotal: number | null = (data.total as number) || null;
 

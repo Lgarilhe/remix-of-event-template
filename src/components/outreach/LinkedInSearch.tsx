@@ -39,7 +39,7 @@ interface LinkedInSearchProps {
   onOpenSearchAgent?: () => void;
 }
 
-type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known';
+type SearchStatusFilter = 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
 
 interface MissionSearchCacheEntry {
   filters: typeof INITIAL_FILTERS;
@@ -855,6 +855,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     queueMicrotask(() => handleSearch(false));
   }, [refineAdjustments, search.setFilters, search.setResults, search.setCursor, search.setHasMoreResults, search.setHasSearched, search.setTotal, arrayFields, handleSearch]);
 
+  // ── Toggle « À l'écoute » (spotlight OPEN_TO_WORK, Recruiter only) ──
+  // LinkedIn ne renvoie PAS le flag open_to_work par profil dans les résultats
+  // de recherche (vérifié : absent du schéma API + 0/1213 profils stockés).
+  // Le seul moyen fiable de voir les profils à l'écoute est le filtre de
+  // recherche serveur : la pill toggle open_to_work et relance la recherche.
+  const openToWorkActive = search.filters.open_to_work === true;
+  const openToWorkSupported = search.filters.api === 'recruiter';
+  const handleToggleOpenToWork = useCallback(() => {
+    const next = search.filtersRef.current.open_to_work === true ? null : true;
+    search.setFilters(f => ({ ...f, open_to_work: f.open_to_work === true ? null : true }));
+    // handleSearch lit filtersRef.current — la sync par effect arrive après le
+    // microtask, on met la ref à jour explicitement pour éviter un état stale.
+    search.filtersRef.current = { ...search.filtersRef.current, open_to_work: next };
+    queueMicrotask(() => handleSearch(false));
+  }, [search.setFilters, search.filtersRef, handleSearch]);
+
   // No auto-infinite scroll — batch workflow uses manual "Lot suivant" button
   // The loadMoreTriggerRef is kept for the button placement in SearchResultsPanel
 
@@ -1023,6 +1039,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           results={search.results}
           mergedResults={mergedResults}
           filteredResults={filteredAndSortedResults}
+          openToWorkActive={openToWorkActive}
+          openToWorkSupported={openToWorkSupported}
+          onToggleOpenToWork={handleToggleOpenToWork}
           loading={search.loading}
           loadingMore={search.loadingMore}
           hasSearched={search.hasSearched}

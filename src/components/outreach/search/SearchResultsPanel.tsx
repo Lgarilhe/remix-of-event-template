@@ -59,8 +59,13 @@ interface SearchResultsPanelProps {
   // Status
   autoHideTreated: boolean;
   showDismissed: boolean;
-  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known';
+  statusFilter: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known';
   treatedCount: number;
+  // Toggle « À l'écoute » : filtre de recherche serveur (spotlight Recruiter),
+  // pas un filtre client — LinkedIn ne renvoie pas le flag par profil en search.
+  openToWorkActive?: boolean;
+  openToWorkSupported?: boolean;
+  onToggleOpenToWork?: () => void;
   dismissedCount: number;
   
   // Account
@@ -99,7 +104,7 @@ interface SearchResultsPanelProps {
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
   onSetShowDismissed: (v: boolean) => void;
-  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'open_to_work' | 'dismissed' | 'known') => void;
+  onSetStatusFilter: (v: 'all' | 'untreated' | 'scored' | 'scored_go' | 'scored_maybe' | 'scored_investigate' | 'scored_not_contacted' | 'messaged' | 'shortlisted' | 'dismissed' | 'known') => void;
   onSetSortByScore: (v: boolean) => void;
   scoredSortBy: ScoredSortBy;
   onSetScoredSortBy: (v: ScoredSortBy) => void;
@@ -132,6 +137,16 @@ const getCanonicalProfileUrl = (p: Pick<LinkedInProfile, 'profile_url' | 'public
 
 const getProfileDisplayName = (p: Pick<LinkedInProfile, 'name' | 'first_name' | 'last_name'>) =>
   p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || undefined;
+
+// Même normalisation que le matching Notion des cartes (LinkedInResultCard)
+const normalizeName = (value?: string | null) =>
+  (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   results,
@@ -199,6 +214,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onScoringModelChange,
   scrollAreaRef,
   loadMoreTriggerRef,
+  openToWorkActive = false,
+  openToWorkSupported = false,
+  onToggleOpenToWork,
 }) => {
   // Profile detail sheet state
   const [detailProfile, setDetailProfile] = useState<LinkedInProfile | null>(null);
@@ -333,8 +351,27 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     [results]
   );
   const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
-  // Pre-fetch Notion shortlist data so it's available in ProfileDetailSheet & LinkedInResultCard
-  useNotionShortlist();
+  // Notion shortlist : pré-fetch pour ProfileDetailSheet & LinkedInResultCard,
+  // et matching par nom pour la pill « Shortlist » — les shortlists historiques
+  // vivent dans Notion sans statut Konekt (le sync edge ne matchait jamais).
+  const { data: notionShortlistData } = useNotionShortlist();
+  const notionShortlistNames = React.useMemo(() => {
+    if (!notionShortlistData) return [] as string[];
+    const names = new Set<string>();
+    for (const s of notionShortlistData as any[]) {
+      const n = normalizeName(s?.candidate?.name);
+      if (n) names.add(n);
+    }
+    return Array.from(names);
+  }, [notionShortlistData]);
+  const matchesNotionShortlistName = React.useCallback((rawName?: string | null) => {
+    if (notionShortlistNames.length === 0) return false;
+    const profileName = normalizeName(rawName);
+    if (!profileName) return false;
+    return notionShortlistNames.some(
+      (n) => n === profileName || n.includes(profileName) || profileName.includes(n)
+    );
+  }, [notionShortlistNames]);
   // Enrollments existants pour cette mission → permet d'afficher un badge
   // "En séquence X · Étape N" sur les cards. L'user voit immédiatement
   // qu'un candidat est déjà en séquence avant d'agir dessus.
@@ -346,7 +383,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   // embarquent le pool même quand la vue Pool est désactivée (POOL_BACKED_FILTERS).
   // Untreated/open_to_work/known : sur les profils du view universe courant.
   const statusCounts = React.useMemo(() => {
-    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_investigate: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, shortlisted: 0, open_to_work: 0, dismissed: 0, untreated: 0, known: 0 };
+    const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_investigate: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0, known: 0 };
     const renderableIds = new Set(mergedResults.map((r) => r.id));
 
     // Profils du view universe sans statut DB → non traités
@@ -359,6 +396,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     // que son compteur)
     for (const [candidateId, s] of treatedCandidates) {
       if (!renderableIds.has(candidateId) && !canRehydrate(s)) continue;
+      // Shortlist Notion (historique sans statut Konekt) — dédupliqué du statut
+      // DB, et AVANT le skip 'discovered' (les résultats de recherche sont
+      // auto-persistés en discovered)
+      if (s.status !== 'shortlisted' && matchesNotionShortlistName(s.candidate_name)) {
+        counts.shortlisted++;
+      }
       if (s.status === 'discovered') continue;
       if (s.status === 'scored') {
         counts.scored++;
@@ -387,10 +430,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       else if (s.status === 'dismissed') counts.dismissed++;
     }
 
-    // Count "known" + "open to work" from renderable profiles
+    // Count "known" + shortlists Notion des profils de recherche sans ligne DB
     for (const r of mergedResults) {
-      if (r.open_to_work === true || r.is_open_to_work === true) {
-        counts.open_to_work++;
+      if (!treatedCandidates.has(r.id) && matchesNotionShortlistName(getProfileDisplayName(r))) {
+        counts.shortlisted++;
       }
       const profileUrl = getCanonicalProfileUrl(r);
       const notionMatch = getNotionMatch({
@@ -403,19 +446,30 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     }
 
     return counts;
-  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch]);
+  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
 
-  // Apply "known" filter to filteredResults
+  // Apply "known" filter to filteredResults + élargit "shortlisted" au match Notion
   const displayResults = React.useMemo(() => {
-    if (statusFilter !== 'known') return filteredResults;
-    return filteredResults.filter(r => {
-      const profileUrl = getCanonicalProfileUrl(r);
-      return !!(
-        getAirtableMatch(profileUrl) ||
-        getNotionMatch({ url: profileUrl, name: getProfileDisplayName(r) })
+    if (statusFilter === 'known') {
+      return filteredResults.filter(r => {
+        const profileUrl = getCanonicalProfileUrl(r);
+        return !!(
+          getAirtableMatch(profileUrl) ||
+          getNotionMatch({ url: profileUrl, name: getProfileDisplayName(r) })
+        );
+      });
+    }
+    if (statusFilter === 'shortlisted') {
+      // filteredResults = statut DB 'shortlisted' (useFilteredResults) ;
+      // on y ajoute les profils matchés dans la shortlist Notion (historique)
+      const included = new Set(filteredResults.map(r => r.id));
+      const notionExtra = mergedResults.filter(
+        r => !included.has(r.id) && matchesNotionShortlistName(getProfileDisplayName(r))
       );
-    });
-  }, [filteredResults, statusFilter, getAirtableMatch, getNotionMatch]);
+      return [...filteredResults, ...notionExtra];
+    }
+    return filteredResults;
+  }, [filteredResults, mergedResults, statusFilter, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
 
   return (
     <div className="bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
@@ -454,7 +508,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       )}
 
       {/* TOOLBAR: Status filters + actions — single compact row */}
-      {selectedJob && hasSearched && displayResults.length > 0 && (
+      {/* openToWorkActive garde le toolbar visible même à 0 résultat, sinon
+          impossible de désactiver le toggle « À l'écoute » */}
+      {selectedJob && hasSearched && (displayResults.length > 0 || openToWorkActive) && (
         <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
           {/* Eyebrow label */}
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden md:inline">
@@ -466,7 +522,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {([
               { value: 'all' as const,          label: 'Tous',         icon: '👥', count: mergedResults.length, tooltip: 'Tous les candidats' },
               { value: 'untreated' as const,    label: 'Non traités',  icon: '👁',  count: statusCounts.untreated, tooltip: 'Candidats pas encore évalués' },
-              { value: 'open_to_work' as const, label: 'À l\'écoute',  icon: '🟢', count: statusCounts.open_to_work, tooltip: 'Profils ouverts aux opportunités (Open to Work)' },
               { value: 'scored' as const,       label: 'Scorés',       icon: '🎯', count: statusCounts.scored,    tooltip: 'Candidats déjà scorés par l\'IA' },
               { value: 'messaged' as const,     label: 'Contactés',    icon: '✉️', count: statusCounts.messaged,  tooltip: 'Candidats déjà contactés' },
               { value: 'shortlisted' as const,  label: 'Shortlist',    icon: '⭐', count: statusCounts.shortlisted, tooltip: 'Candidats ajoutés à la shortlist' },
@@ -496,6 +551,27 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 </button>
               );
             })}
+
+            {/* Toggle « À l'écoute » — filtre de RECHERCHE serveur (spotlight
+                Recruiter), pas un filtre client : relance la recherche limitée
+                aux profils Open to Work. Recruiter uniquement. */}
+            {openToWorkSupported && onToggleOpenToWork && (
+              <button
+                onClick={onToggleOpenToWork}
+                disabled={loading}
+                title={openToWorkActive
+                  ? 'Recherche limitée aux profils à l\'écoute — cliquer pour désactiver et relancer'
+                  : 'Relancer la recherche limitée aux profils à l\'écoute (Open to Work)'}
+                className={`inline-flex items-center gap-1 h-6 px-2 text-[11.5px] rounded-full transition-colors shrink-0 ${
+                  openToWorkActive
+                    ? 'bg-success text-success-foreground font-semibold'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                }`}
+              >
+                <span className="text-[11px]">🟢</span>
+                <span className="hidden lg:inline">À l'écoute</span>
+              </button>
+            )}
           </div>
 
           {/* Separator */}

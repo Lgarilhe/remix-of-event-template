@@ -147,6 +147,96 @@ async function updateNotionPage(pageId: string, notionApiKey: string, properties
   return response.ok;
 }
 
+// ── job_candidate_status sync ───────────────────────────────────────
+// Écrit le statut Konekt indépendamment de Notion. Historiquement c'était un
+// UPDATE par égalité stricte d'URL qui ne matchait jamais (formats d'URL
+// différents entre le stockage et le payload) → 0 ligne 'shortlisted' en base
+// et la pill Shortlist du sourcing restait vide.
+interface JcsSyncInput {
+  organizationId: string;
+  userId: string;
+  jobId?: string;
+  linkedinId?: string;
+  linkedinUrl?: string;
+  name?: string;
+  headline?: string;
+  etape?: string;
+  notionShortlistId?: string | null;
+  notionCandidateId?: string | null;
+}
+
+async function syncCandidateStatus(input: JcsSyncInput): Promise<void> {
+  try {
+    // Le flux "message envoyé" (etape Contacté) ne doit PAS marquer shortlisted
+    // — il sync seulement Notion. Le statut messaged est posé par ailleurs.
+    const isShortlistIntent = input.etape !== 'Contacté';
+
+    const notionFields: Record<string, unknown> = {};
+    if (input.notionShortlistId) notionFields.notion_shortlist_id = input.notionShortlistId;
+    if (input.notionCandidateId) notionFields.notion_candidate_id = input.notionCandidateId;
+    if (input.notionShortlistId || input.notionCandidateId) {
+      notionFields.notion_synced_at = new Date().toISOString();
+    }
+
+    // 1. Voie fiable : upsert par (job_id, candidate_id, created_by).
+    //    job_id normalisé sans préfixe "project:" (même convention que
+    //    l'inscription en séquence ; le sourcing lit les 2 formes).
+    if (isShortlistIntent && input.jobId && input.linkedinId) {
+      const normalizedJobId = input.jobId.startsWith('project:')
+        ? input.jobId.slice('project:'.length)
+        : input.jobId;
+      const { error } = await supabase
+        .from('job_candidate_status')
+        .upsert({
+          job_id: normalizedJobId,
+          candidate_id: input.linkedinId,
+          created_by: input.userId,
+          organization_id: input.organizationId,
+          status: 'shortlisted',
+          pipeline_stage: input.etape || 'Pressenti',
+          ...(input.name ? { candidate_name: input.name } : {}),
+          ...(input.headline ? { candidate_headline: input.headline } : {}),
+          ...(input.linkedinUrl ? { linkedin_profile_url: input.linkedinUrl } : {}),
+          ...notionFields,
+        }, { onConflict: 'job_id,candidate_id,created_by' });
+      if (error) {
+        console.warn('[add-to-shortlist] jcs upsert failed:', error.message);
+      } else {
+        console.log('[add-to-shortlist] jcs upserted (candidate_id match)');
+        return;
+      }
+    }
+
+    // 2. Fallback : update des lignes existantes par slug LinkedIn (les URLs
+    //    varient — www/locale/trailing slash — l'égalité stricte ne matche pas).
+    if (!input.linkedinUrl) return;
+    const slug = input.linkedinUrl.match(/\/in\/([^/?#]+)/i)?.[1];
+    const updatePayload: Record<string, unknown> = {
+      ...(isShortlistIntent ? { status: 'shortlisted' } : {}),
+      pipeline_stage: input.etape || 'Pressenti',
+      ...notionFields,
+    };
+    let query = supabase
+      .from('job_candidate_status')
+      .update(updatePayload)
+      .eq('organization_id', input.organizationId);
+    if (slug && !/[%_]/.test(slug)) {
+      query = query.ilike('linkedin_profile_url', `%/in/${slug}%`);
+    } else {
+      query = query.eq('linkedin_profile_url', input.linkedinUrl);
+    }
+    const { data: updated, error: updErr } = await query.select('id');
+    if (updErr) {
+      console.warn('[add-to-shortlist] jcs update failed:', updErr.message);
+    } else {
+      console.log(`[add-to-shortlist] jcs updated ${updated?.length || 0} rows (url match)`);
+    }
+  } catch (syncErr) {
+    // Best-effort, non bloquant
+    console.warn('[add-to-shortlist] jcs sync error (non-blocking):', syncErr);
+  }
+}
+
 // ── Search helpers ──────────────────────────────────────────────────
 
 async function searchCandidateByLinkedIn(linkedinUrl: string, creds: NotionCreds): Promise<string | null> {
@@ -226,6 +316,18 @@ Deno.serve(async (req) => {
     const creds = await resolveOrgCredentials(data.organization_id);
 
     if (!creds) {
+      // Notion absent ≠ shortlist perdue : le statut Konekt doit être posé
+      // quand même, sinon la pill Shortlist du sourcing ne voit jamais rien.
+      await syncCandidateStatus({
+        organizationId: data.organization_id,
+        userId: user.id,
+        jobId: data.jobId,
+        linkedinId: data.linkedinId,
+        linkedinUrl: data.linkedinUrl,
+        name: data.name,
+        headline: data.headline,
+        etape: data.etape,
+      });
       return new Response(
         JSON.stringify({ success: true, skipped_notion: true, reason: 'notion_not_configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
@@ -349,23 +451,18 @@ Deno.serve(async (req) => {
       }
 
       // Sync vers job_candidate_status même en cas de doublon
-      if (data.linkedinUrl && data.organization_id) {
-        try {
-          await supabase
-            .from('job_candidate_status')
-            .update({
-              notion_shortlist_id: existingShortlistId,
-              notion_candidate_id: candidateId,
-              notion_synced_at: new Date().toISOString(),
-              status: 'shortlisted',
-              pipeline_stage: data.etape || 'Pressenti',
-            })
-            .eq('organization_id', data.organization_id)
-            .eq('linkedin_profile_url', data.linkedinUrl);
-        } catch (syncErr) {
-          console.warn('[add-to-shortlist] sync error on existing (non-blocking):', syncErr);
-        }
-      }
+      await syncCandidateStatus({
+        organizationId: data.organization_id,
+        userId: user.id,
+        jobId: data.jobId,
+        linkedinId: data.linkedinId,
+        linkedinUrl: data.linkedinUrl,
+        name: data.name,
+        headline: data.headline,
+        etape: data.etape,
+        notionShortlistId: existingShortlistId,
+        notionCandidateId: candidateId,
+      });
 
       return new Response(
         JSON.stringify({
@@ -429,32 +526,18 @@ Deno.serve(async (req) => {
     // On stocke notion_shortlist_id + notion_candidate_id + notion_synced_at
     // pour que le dashboard / portail client voient un état cohérent et
     // pour permettre la synchro bidirectionnelle Notion ↔ Konekt.
-    if (data.linkedinUrl && data.organization_id) {
-      try {
-        const updatePayload = {
-          notion_shortlist_id: shortlistResult.id,
-          notion_candidate_id: candidateId,
-          notion_synced_at: new Date().toISOString(),
-          status: 'shortlisted',
-          pipeline_stage: data.etape || 'Pressenti',
-        };
-        // Try update by (organization_id, linkedin_profile_url) — most precise
-        const { data: updated, error: updErr } = await supabase
-          .from('job_candidate_status')
-          .update(updatePayload)
-          .eq('organization_id', data.organization_id)
-          .eq('linkedin_profile_url', data.linkedinUrl)
-          .select('id');
-        if (updErr) {
-          console.warn('[add-to-shortlist] sync to job_candidate_status failed:', updErr.message);
-        } else {
-          console.log(`[add-to-shortlist] Synced ${updated?.length || 0} job_candidate_status rows`);
-        }
-      } catch (syncErr) {
-        // Non-blocking — log seulement
-        console.warn('[add-to-shortlist] sync error (non-blocking):', syncErr);
-      }
-    }
+    await syncCandidateStatus({
+      organizationId: data.organization_id,
+      userId: user.id,
+      jobId: data.jobId,
+      linkedinId: data.linkedinId,
+      linkedinUrl: data.linkedinUrl,
+      name: data.name,
+      headline: data.headline,
+      etape: data.etape,
+      notionShortlistId: shortlistResult.id,
+      notionCandidateId: candidateId,
+    });
 
     return new Response(
       JSON.stringify({
