@@ -49,6 +49,12 @@ interface OutreachMessageModalProps {
 
 type Tone = 'professional' | 'casual' | 'enthusiastic';
 
+// network_distance arrive sous 3 formats selon la source : 'DISTANCE_1'
+// (items de recherche), 'FIRST_DEGREE' (get_profile brut, normalement
+// normalisé côté edge mais pas garanti), ou un nombre (profils enrichis).
+const isFirstDegreeDistance = (dist: unknown): boolean =>
+  dist === 'DISTANCE_1' || dist === 'FIRST_DEGREE' || dist === 1;
+
 export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   open,
   onOpenChange,
@@ -259,7 +265,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
     try {
       // Determine if this is a 1st degree connection (free message) or 2nd/3rd (InMail)
       const networkDist = profile.network_distance || profileAny.specifics?.network_distance;
-      const isFirstDegree = networkDist === 'DISTANCE_1' || networkDist === 1;
+      const isFirstDegree = isFirstDegreeDistance(networkDist);
       
       const { data } = await invokeUnipile({
         body: {
@@ -408,8 +414,13 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   // Determine network distance for UI display
   const profileAny = profile as any;
   const networkDistance = profile.network_distance || profileAny.specifics?.network_distance;
-  const isFirstDegree = networkDistance === 'DISTANCE_1' || networkDistance === 1;
-  const canSendDirectly = selectedAccount && (isFirstDegree || profile.can_send_inmail !== false);
+  const isFirstDegree = isFirstDegreeDistance(networkDistance);
+  // Le bouton d'envoi reste visible dès qu'un compte est sélectionné.
+  // can_send_inmail=false (donnée de recherche, absente ou fausse selon
+  // l'API Classic/Recruiter/Sales Nav) n'empêche pas un InMail via l'API
+  // Recruiter — masquer le bouton laissait l'user sans aucune action
+  // d'envoi. En cas de refus réel, l'erreur API est remontée par toast.
+  const canSendDirectly = !!selectedAccount;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
