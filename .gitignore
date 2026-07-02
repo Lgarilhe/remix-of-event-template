@@ -42,3 +42,7 @@ supabase/.temp/
 # Playwright e2e auth states (sessions — ne jamais committer)
 /e2e/.auth/
 /e2e/specs/
+
+# Harnais de vérification jetables des sessions Claude (app réelle + Supabase
+# intercepté) — recréés à la demande, jamais committés
+/.verify-*.mjs
