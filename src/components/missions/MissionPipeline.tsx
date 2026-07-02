@@ -11,7 +11,7 @@ import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { ProjectCandidatesTableEnhanced } from '@/components/outreach/projects/ProjectCandidatesTableEnhanced';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
-import { List, LayoutGrid, ExternalLink, Clock } from 'lucide-react';
+import { List, LayoutGrid, ExternalLink, Clock, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -52,6 +52,11 @@ const STATIC_COLUMNS: PipelineColumn[] = [
 
 const DISMISSED_COLUMN: PipelineColumn = { key: 'dismissed', label: 'Écarté' };
 
+// Palette des colonnes (barre de progression + dots des headers) — une seule
+// source de vérité, indexée par position de colonne
+const COLUMN_COLORS = ['bg-muted-foreground/40', 'bg-info', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-brand-purple', 'bg-emerald-400'];
+const colColor = (i: number) => COLUMN_COLORS[i % COLUMN_COLORS.length];
+
 // ── Kanban Card ──
 
 const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; isDragging?: boolean }) => {
@@ -61,24 +66,24 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
 
   return (
     <div className={cn(
-      "bg-background border border-border p-2.5 cursor-grab transition-all",
-      "hover:border-border hover:shadow-sm",
-      isDragging && "shadow-sm border-border"
+      "bg-card border border-border rounded-lg p-2.5 cursor-grab active:cursor-grabbing transition-all",
+      "hover:border-foreground/30 hover:shadow-sm hover:-translate-y-px",
+      isDragging && "shadow-md border-foreground/30"
     )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-foreground truncate">
+          <p className="text-[12.5px] font-medium text-foreground truncate">
             {candidate.candidate_name || 'Candidat inconnu'}
           </p>
           {candidate.candidate_headline && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">
+            <p className="text-[11px] text-muted-foreground truncate mt-0.5">
               {candidate.candidate_headline}
             </p>
           )}
         </div>
         {candidate.score != null && (
           <span className={cn(
-            "text-xs font-bold px-1.5 py-0.5 shrink-0",
+            "text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded-full shrink-0",
             candidate.score >= 70 ? "bg-success/10 text-success" :
             candidate.score >= 40 ? "bg-warning/10 text-warning" :
             "bg-destructive/10 text-destructive"
@@ -87,21 +92,26 @@ const KanbanCard = ({ candidate, isDragging }: { candidate: ProjectCandidate; is
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2 mt-1.5">
+      <div className="flex items-center gap-2 mt-2">
         {candidate.linkedin_profile_url && (
           <a
             href={candidate.linkedin_profile_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+            className="text-[10.5px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 transition-colors"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <ExternalLink className="w-3 h-3" /> LinkedIn
           </a>
         )}
+        {candidate.status === 'replied' && (
+          <span className="inline-flex items-center gap-1 text-[10.5px] text-success">
+            <MessageSquare className="w-3 h-3" /> A répondu
+          </span>
+        )}
         {timeInStage && (
-          <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5 ml-auto">
+          <span className="text-[10.5px] text-muted-foreground/70 inline-flex items-center gap-0.5 ml-auto tabular-nums">
             <Clock className="w-3 h-3" /> {timeInStage}
           </span>
         )}
@@ -127,9 +137,10 @@ const DraggableKanbanCard = ({ candidate, columnId }: { candidate: ProjectCandid
 
 // ── Kanban Column ──
 
-const KanbanColumn = ({ column, candidates, isDismissed }: {
+const KanbanColumn = ({ column, candidates, colorClass, isDismissed }: {
   column: PipelineColumn;
   candidates: ProjectCandidate[];
+  colorClass?: string;
   isDismissed?: boolean;
 }) => {
   const { setNodeRef, isOver } = useDroppable({
@@ -141,33 +152,36 @@ const KanbanColumn = ({ column, candidates, isDismissed }: {
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-shrink-0 border border-border bg-background transition-all",
+        "flex-shrink-0 rounded-xl border border-border bg-card/50 transition-all",
         isDismissed ? "w-[200px]" : "w-[260px]",
-        isOver && "border-border shadow-sm"
+        isOver && "border-foreground/40 bg-muted/30"
       )}
     >
-      <div className={cn(
-        "p-3 border-b border-border",
-        isDismissed ? "bg-destructive/10" : "bg-accent/50"
-      )}>
-        <div className="flex items-center justify-between">
+      <div className="px-3 py-2 border-b border-border">
+        <div className="flex items-center gap-1.5">
+          <span className={cn(
+            "w-2 h-2 rounded-full shrink-0",
+            isDismissed ? "bg-destructive/60" : colorClass
+          )} />
           <h3 className={cn(
-            "font-medium text-xs uppercase tracking-wider",
-            isDismissed && "text-destructive"
+            "text-[11.5px] font-semibold truncate",
+            isDismissed ? "text-destructive" : "text-foreground"
           )}>
             {column.label}
           </h3>
-          <span className="text-xs bg-foreground/10 px-2 py-0.5 font-bold">
+          <span className="ml-auto text-[11px] tabular-nums text-muted-foreground bg-muted/60 rounded-full px-1.5 py-0.5 font-medium">
             {candidates.length}
           </span>
         </div>
       </div>
-      <div className="p-2 space-y-2 min-h-[100px] max-h-[500px] overflow-y-auto">
+      <div className="p-1.5 space-y-1.5 min-h-[110px] max-h-[58vh] overflow-y-auto">
         {candidates.map(c => (
           <DraggableKanbanCard key={c.id} candidate={c} columnId={column.key} />
         ))}
         {candidates.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-4">Aucun candidat</p>
+          <div className="m-1 py-6 rounded-lg border border-dashed border-border text-center">
+            <p className="text-[11px] text-muted-foreground/60">Déposer ici</p>
+          </div>
         )}
       </div>
     </div>
@@ -185,11 +199,14 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const { data: stats } = useProjectStats(project.id);
   const { steps, loadingSteps } = useMissionProcess(project.id);
 
-  // Build dynamic columns from process steps
+  // Build dynamic columns from process steps.
+  // 'Contacté' est présent aussi en mode dynamique : les candidats touchés par
+  // l'outreach (messaged/replied) restaient sinon noyés dans « Sourcé ».
   const columns = useMemo<PipelineColumn[]>(() => {
     if (steps.length === 0) return STATIC_COLUMNS;
     return [
       { key: 'sourced', label: 'Sourcé' },
+      { key: 'messaged', label: 'Contacté' },
       ...steps.map(s => ({ key: s.id, label: s.name, isProcessStep: true })),
       { key: 'hired', label: 'Embauché' },
     ];
@@ -203,6 +220,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     // Map back to status for backward compatibility
     const statusMap: Record<string, string> = {
       sourced: 'untreated', untreated: 'untreated',
+      messaged: 'messaged',
       dismissed: 'dismissed',
       hired: 'shortlisted',
     };
@@ -228,7 +246,8 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     grouped['dismissed'] = [];
 
     (candidates as ProjectCandidate[]).forEach(c => {
-      const stage = c.pipeline_stage || c.status;
+      // 'replied' n'est pas une colonne : il vit dans « Contacté »
+      const stage = c.pipeline_stage || (c.status === 'replied' ? 'messaged' : c.status);
       if (stage === 'dismissed') {
         grouped['dismissed'].push(c);
       } else if (grouped[stage]) {
@@ -274,83 +293,90 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   }
 
   const totalCandidates = stats?.total || candidates.length;
+  const dismissedCount = candidatesByColumn['dismissed']?.length || 0;
 
   return (
-    <div className="bg-background border border-border p-4 sm:p-6">
-      {/* Stats bar */}
+    <div className="space-y-3">
+      {/* Barre de répartition + légende */}
       {totalCandidates > 0 && (
-        <div className="mb-4">
-          <div className="flex h-2 w-full overflow-hidden border border-border">
+        <div className="bg-card border border-border rounded-xl px-4 py-3">
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/40">
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
-              if (count === 0 || totalCandidates === 0) return null;
-              const colors = ['bg-muted-foreground/30', 'bg-info', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-brand-purple', 'bg-emerald-400'];
+              if (count === 0) return null;
               return (
                 <div
                   key={col.key}
-                  className={cn("h-full", colors[i % colors.length])}
+                  className={cn("h-full", colColor(i))}
                   style={{ width: `${(count / totalCandidates) * 100}%` }}
                   title={`${count} ${col.label}`}
                 />
               );
             })}
-            {(candidatesByColumn['dismissed']?.length || 0) > 0 && (
+            {dismissedCount > 0 && (
               <div
-                className="bg-destructive/40 h-full"
-                style={{ width: `${((candidatesByColumn['dismissed']?.length || 0) / totalCandidates) * 100}%` }}
-                title={`${candidatesByColumn['dismissed']?.length || 0} écartés`}
+                className="bg-destructive/50 h-full"
+                style={{ width: `${(dismissedCount / totalCandidates) * 100}%` }}
+                title={`${dismissedCount} écartés`}
               />
             )}
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5">
             {columns.map((col, i) => {
               const count = candidatesByColumn[col.key]?.length || 0;
-              const colors = ['bg-muted-foreground/30', 'bg-info', 'bg-cyan-400', 'bg-teal-400', 'bg-indigo-400', 'bg-brand-purple', 'bg-emerald-400'];
               return (
-                <span key={col.key} className="text-xs text-muted-foreground uppercase tracking-wider">
-                  <span className={cn("inline-block w-2 h-2 mr-1", colors[i % colors.length])} />
-                  {count} {col.label}
+                <span key={col.key} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className={cn("w-2 h-2 rounded-full", colColor(i))} />
+                  <span className="tabular-nums font-medium text-foreground">{count}</span> {col.label}
                 </span>
               );
             })}
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">
-              <span className="inline-block w-2 h-2 bg-destructive/40 mr-1" />
-              {candidatesByColumn['dismissed']?.length || 0} écartés
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-destructive/50" />
+              <span className="tabular-nums font-medium text-foreground">{dismissedCount}</span> écartés
             </span>
-            <span className="text-xs font-bold text-foreground uppercase tracking-wider ml-auto">
-              {totalCandidates} total
+            <span className="ml-auto flex items-baseline gap-1 text-[12px]">
+              <span className="font-display font-bold tabular-nums text-foreground">{totalCandidates}</span>
+              <span className="text-muted-foreground">total</span>
             </span>
           </div>
         </div>
       )}
 
-      {/* View toggle + dynamic info */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">
-            {totalCandidates} candidat{totalCandidates > 1 ? 's' : ''}
-          </span>
+      {/* Compteur + toggle de vue */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-baseline gap-1.5 text-[12.5px]">
+          <span className="font-display font-bold tabular-nums text-foreground">{totalCandidates}</span>
+          <span className="text-muted-foreground">candidat{totalCandidates > 1 ? 's' : ''}</span>
           {steps.length > 0 && (
-            <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">
-              • {steps.length} étapes de process
-            </span>
+            <span className="text-muted-foreground/60">· {steps.length} étapes de process</span>
           )}
         </div>
-        <div className="flex gap-0">
+        <div className="flex-1" />
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold hidden lg:inline">
+          Affichage
+        </span>
+        <div className="flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-full border border-border" role="group">
           <button
             onClick={() => setViewMode('table')}
+            aria-pressed={viewMode === 'table'}
             className={cn(
-              "flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border group",
-              viewMode === 'table' ? "bg-foreground text-background" : "bg-background text-foreground"
+              "inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors",
+              viewMode === 'table'
+                ? "bg-foreground text-background font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
             )}
           >
             <List className="w-3 h-3" /> Table
           </button>
           <button
             onClick={() => setViewMode('kanban')}
+            aria-pressed={viewMode === 'kanban'}
             className={cn(
-              "flex items-center gap-1 h-8 px-3 text-xs font-medium uppercase tracking-wider border border-border border-l-0 group",
-              viewMode === 'kanban' ? "bg-foreground text-background" : "bg-background text-foreground"
+              "inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors",
+              viewMode === 'kanban'
+                ? "bg-foreground text-background font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
             )}
           >
             <LayoutGrid className="w-3 h-3" /> Kanban
@@ -360,10 +386,10 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
 
       {/* Content */}
       {totalCandidates === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="bg-card border border-border rounded-xl flex flex-col items-center justify-center py-16 text-center">
           <span className="text-3xl mb-3">📊</span>
-          <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Pipeline vide</h3>
-          <p className="text-xs text-muted-foreground max-w-sm">
+          <h3 className="font-display text-[14px] font-bold mb-1">Pipeline vide</h3>
+          <p className="text-[12px] text-muted-foreground max-w-sm">
             Lancez une recherche dans l'onglet Sourcing pour ajouter des candidats à cette mission.
           </p>
         </div>
@@ -385,11 +411,12 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               onDragEnd={handleDragEnd}
             >
               <div className="flex gap-3 overflow-x-auto pb-4">
-                {columns.map(column => (
+                {columns.map((column, i) => (
                   <KanbanColumn
                     key={column.key}
                     column={column}
                     candidates={candidatesByColumn[column.key] || []}
+                    colorClass={colColor(i)}
                   />
                 ))}
                 {/* Dismissed column — always last, transversal */}

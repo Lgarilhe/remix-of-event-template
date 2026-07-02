@@ -83,7 +83,10 @@ interface ProjectCandidatesTableEnhancedProps {
 
 const statusConfig = {
   untreated: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
+  discovered: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
+  scored: { label: 'Scoré', className: 'bg-info/10 text-info' },
   messaged: { label: 'Contacté', className: 'bg-success/10 text-success-foreground' },
+  replied: { label: 'A répondu', className: 'bg-success/10 text-success' },
   dismissed: { label: 'Écarté', className: 'bg-destructive/10 text-destructive' },
   shortlisted: { label: 'Shortlisté', className: 'bg-brand-purple/10 text-brand-purple' },
 };
@@ -417,8 +420,9 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
         </div>
       )}
 
-      {/* Table */}
-      <ScrollArea className="h-[350px]">
+      {/* Table — hauteur adaptée au viewport : 350px fixes gâchaient la vue
+          pleine page du workspace V2 (4 candidats visibles sur 400+) */}
+      <ScrollArea className="h-[calc(100vh-400px)] min-h-[350px]">
         <Table>
           <TableHeader>
             <TableRow>
@@ -463,7 +467,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                               href={candidate.linkedin_profile_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-muted-foreground hover:text-linkedin transition-colors flex-shrink-0"
+                              className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />

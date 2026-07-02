@@ -32,6 +32,18 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-02 — SHIP — Vue Pipeline mission : données réparées (project_id, RPCs) + refonte DA v2
+
+**Contexte** : Pipeline débloqué le même jour → l'user découvre une vue quasi vide et restée en DA brutaliste.
+**Décision / Fait** : (1) job_candidate_status.project_id NULL sur 1352/1398 lignes (le sourcing ne le remplissait jamais) alors que useProjectCandidates filtre dessus → trigger BEFORE auto-résolution depuis job_id + backfill + index partiel ; (2) les 3 RPCs de 20260309170900 (get_project_stats…) n'existaient PAS en prod — jamais rejouées après le repair tracking-only de la désynchro migrations → re-créées avec fix (untreated='discovered', pas 'untreated') et gardes org (SECURITY DEFINER non borné = fuite cross-tenant) ; (3) refonte MissionPipeline en DA v2 (pills segmentées, colonnes/cartes arrondies, casse normale, suppression du double cadre) + colonne « Contacté » dans le kanban dynamique (les messaged/replied étaient noyés dans « Sourcé ») + table : hauteur viewport (350px fixes), statuts replied/scored/discovered affichés, token mort hover:text-linkedin.
+**QA** : dry-run transactionnel prod (rollback) : backfill 46→1398, pipeline f0bf=434 candidats, trigger OK ; harnais Playwright avant/après PASS ; tsc+build OK.
+**Reste à faire** :
+- [ ] Persister viewMode kanban/table (localStorage) si demandé
+- [ ] Insights : vérifier ce qu'il affiche maintenant que project-candidates remonte des données
+**Refs** : migration 20260702164207, MissionPipeline.tsx, ProjectCandidatesTableEnhanced.tsx
+
+---
+
 ## 2026-07-02 — SHIP — Filtres sourcing (À l'écoute/Shortlist), visibilité contactés, déblocage Pipeline
 
 **Contexte** : UX sourcing dégradée — impossible de filtrer les profils à l'écoute, de retrouver ses shortlistés/contactés ; phase Pipeline grisée malgré l'activité réelle.
