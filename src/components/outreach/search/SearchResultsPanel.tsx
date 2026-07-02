@@ -14,7 +14,7 @@ import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDet
 import { JobMatchResult, BatchScoringStats as BatchScoringStatsType } from '@/components/outreach/JobScoreDisplay';
 import { BatchScoringReport, BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
-import { ScoredSortBy } from '@/hooks/useFilteredResults';
+import { ScoredSortBy, canRehydrate } from '@/hooks/useFilteredResults';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
@@ -340,15 +340,26 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   // qu'un candidat est déjà en séquence avant d'agir dessus.
   const enrollmentJobId = activeProject?.job_id || activeProject?.id || null;
   const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
-  // Count by status for filter badges — based on renderable profiles only
+  // Count by status for filter badges.
+  // Statuts DB (scorés/contactés/shortlist/archivés) : comptés sur TOUS les
+  // candidats connus du job rehydratables — les pills correspondantes
+  // embarquent le pool même quand la vue Pool est désactivée (POOL_BACKED_FILTERS).
+  // Untreated/open_to_work/known : sur les profils du view universe courant.
   const statusCounts = React.useMemo(() => {
     const counts = { scored: 0, scored_go: 0, scored_maybe: 0, scored_investigate: 0, scored_contacted: 0, scored_not_contacted: 0, messaged: 0, shortlisted: 0, open_to_work: 0, dismissed: 0, untreated: 0, known: 0 };
     const renderableIds = new Set(mergedResults.map((r) => r.id));
 
-    // Count only candidates we can actually render in the current view universe
+    // Profils du view universe sans statut DB → non traités
     for (const candidateId of renderableIds) {
       const s = treatedCandidates.get(candidateId);
-      if (!s || s.status === 'discovered') { counts.untreated++; continue; }
+      if (!s || s.status === 'discovered') counts.untreated++;
+    }
+
+    // Statuts DB : pool inclus (si rehydratable, sinon la pill listerait moins
+    // que son compteur)
+    for (const [candidateId, s] of treatedCandidates) {
+      if (!renderableIds.has(candidateId) && !canRehydrate(s)) continue;
+      if (s.status === 'discovered') continue;
       if (s.status === 'scored') {
         counts.scored++;
         counts.scored_not_contacted++;

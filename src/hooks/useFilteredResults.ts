@@ -57,9 +57,17 @@ function rehydrateProfile(status: JobCandidateStatus): LinkedInProfile & { _from
 }
 
 // Check if a status has enough data to be rehydrated into a visible profile
-function canRehydrate(status: JobCandidateStatus): boolean {
+export function canRehydrate(status: JobCandidateStatus): boolean {
   return !!(status.linkedin_profile_data || status.candidate_name || status.linkedin_profile_url);
 }
+
+// Filtres adossés aux statuts DB : cliquer « Contactés »/« Shortlist »/… doit
+// montrer les candidats du pool même quand la vue Pool est désactivée, sinon
+// la pill renvoie une liste vide après une recherche fraîche.
+export const POOL_BACKED_FILTERS = new Set([
+  'scored', 'scored_go', 'scored_maybe', 'scored_investigate', 'scored_not_contacted',
+  'messaged', 'shortlisted', 'dismissed',
+]);
 
 export function useFilteredResults({
   results,
@@ -80,8 +88,10 @@ export function useFilteredResults({
   // Cap pool profiles to avoid freezing the main thread with large candidate pools
   const MAX_POOL_PROFILES = 500;
 
+  const includePool = showPoolView || POOL_BACKED_FILTERS.has(statusFilter);
+
   const mergedResults = useMemo(() => {
-    if (!showPoolView || !statuses || statuses.size === 0) return results;
+    if (!includePool || !statuses || statuses.size === 0) return results;
 
     // Index current search results by ID
     const byId = new Map<string, LinkedInProfile>();
@@ -102,7 +112,7 @@ export function useFilteredResults({
     }
 
     return Array.from(byId.values());
-  }, [results, statuses, showPoolView]);
+  }, [results, statuses, includePool]);
 
   // Deferred pre-scoring: calculate pre-scores in chunks to avoid freezing the main thread
   const [preScores, setPreScores] = useState<Map<string, any>>(new Map());
