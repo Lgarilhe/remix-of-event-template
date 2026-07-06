@@ -1072,7 +1072,23 @@ async function handleSearch(
   if (invalidBody || !response!.ok) {
     console.error('Search error:', JSON.stringify(data, null, 2));
     console.error('Request body was:', JSON.stringify(searchBody, null, 2));
-    
+
+    // Boîte noire : persiste l'échec (payload exact + erreur provider brute)
+    // pour diagnostic SQL — les logs console edge ne sont pas requêtables.
+    try {
+      const sbDiag = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+      );
+      await sbDiag.from('search_failure_log').insert({
+        account_id: accountId,
+        http_status: response!.status,
+        error_type: String(data.type ?? ''),
+        error_detail: String(data.detail ?? data.message ?? '').slice(0, 1000),
+        search_body: searchBody,
+      });
+    } catch (_e) { /* diagnostic non bloquant */ }
+
     // Handle content_too_large (400) - payload rejected by LinkedIn
     if (response!.status === 400 && data.type?.toString().includes('content_too_large')) {
       return new Response(
