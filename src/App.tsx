@@ -10,7 +10,9 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
-import { AgentDrawer } from "@/components/agent";
+// Import direct (pas le barrel components/agent) pour ne pas tirer
+// AgentChatPanel/AgentConversationsList dans le bundle initial.
+import { AgentDrawer } from "@/components/agent/AgentDrawer";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";

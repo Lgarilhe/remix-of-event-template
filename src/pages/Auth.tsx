@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,11 @@ import { useToast } from '@/hooks/use-toast';
 import { SEOHead } from '@/components/SEOHead';
 import { KonektLogo } from '@/components/KonektLogo';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { CollaboratorWelcome } from '@/components/onboarding/CollaboratorWelcome';
+// Lazy : CollaboratorWelcome est le seul module de l'entrée qui tire framer-motion
+// (~400 kB minifié) — chargé uniquement quand un collaborateur accepte une invitation.
+const CollaboratorWelcome = lazy(() =>
+  import('@/components/onboarding/CollaboratorWelcome').then((m) => ({ default: m.CollaboratorWelcome }))
+);
 import { markWelcomePending } from '@/components/onboarding/WelcomeOnboardingModal';
 import { getValidatedSession } from '@/lib/authSession';
 import { withPreviewAccessToken } from '@/lib/previewToken';
@@ -268,11 +272,19 @@ const Auth = () => {
   // Show collaborator welcome screen
   if (collaboratorWelcome) {
     return (
-      <CollaboratorWelcome
-        orgName={collaboratorWelcome.orgName}
-        onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding'), { replace: true })}
-        onSkip={() => navigate(withPreviewAccessToken('/dashboard'), { replace: true })}
-      />
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-background flex items-center justify-center">
+            <div className="w-9 h-9 rounded-full border border-border border-t-foreground animate-spin" />
+          </div>
+        }
+      >
+        <CollaboratorWelcome
+          orgName={collaboratorWelcome.orgName}
+          onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding'), { replace: true })}
+          onSkip={() => navigate(withPreviewAccessToken('/dashboard'), { replace: true })}
+        />
+      </Suspense>
     );
   }
 
