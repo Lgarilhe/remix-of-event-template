@@ -540,6 +540,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               title="Le pipeline en 30 secondes"
               description="Funnel, kanban et fiches candidat : l'essentiel en vidéo."
               videoSrc="/tutos/pipeline-tour.webm"
+              autoOpenKey="pipeline"
               points={[
                 'Cliquez sur une étape du funnel pour ouvrir le board à cet endroit',
                 'Glissez une carte pour faire avancer un candidat dans le process',

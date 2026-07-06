@@ -6,10 +6,11 @@
  * points clés). Les vidéos vivent dans public/tutos/ (webm, tournées via
  * le harnais Playwright — voir LOGBOOK 2026-07-02).
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { CircleHelp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -19,17 +20,49 @@ interface TutorialVideoDialogProps {
   videoSrc: string;
   /** Points clés listés sous la vidéo. */
   points?: string[];
+  /**
+   * Clé d'ouverture automatique : si fournie, le tuto s'ouvre tout seul à la
+   * PREMIÈRE visite de l'écran, avec une case « ne plus afficher » (cochée
+   * par défaut → une seule ouverture auto, sauf si l'user la décoche).
+   * Persisté en localStorage sous konekt:tuto:seen:{clé}.
+   */
+  autoOpenKey?: string;
   className?: string;
 }
+
+const seenStorageKey = (key: string) => `konekt:tuto:seen:${key}`;
 
 export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
   title,
   description,
   videoSrc,
   points,
+  autoOpenKey,
   className,
 }) => {
   const [open, setOpen] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(true);
+  const autoOpenFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!autoOpenKey || autoOpenFiredRef.current) return;
+    try {
+      if (localStorage.getItem(seenStorageKey(autoOpenKey)) === '1') return;
+    } catch { /* localStorage indisponible → pas d'auto-open */ return; }
+    // Petit délai pour laisser l'écran se peindre derrière avant le popup
+    const t = setTimeout(() => {
+      autoOpenFiredRef.current = true;
+      setOpen(true);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [autoOpenKey]);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next && autoOpenKey && dontShowAgain) {
+      try { localStorage.setItem(seenStorageKey(autoOpenKey), '1'); } catch { /* noop */ }
+    }
+  };
 
   return (
     <>
@@ -45,7 +78,7 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
       >
         <CircleHelp className="w-3.5 h-3.5" />
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-2xl p-0 overflow-hidden gap-0">
           <DialogHeader className="px-5 pt-4 pb-3">
             <DialogTitle className="font-display text-[16px]">{title}</DialogTitle>
@@ -77,6 +110,24 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
               ))}
             </ul>
           ) : null}
+          {autoOpenKey && (
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border">
+              <label className="flex items-center gap-2 text-2xs text-muted-foreground cursor-pointer select-none">
+                <Checkbox
+                  checked={dontShowAgain}
+                  onCheckedChange={(v) => setDontShowAgain(v === true)}
+                />
+                Ne plus afficher automatiquement
+              </label>
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className="shrink-0 h-7 px-3 rounded-full bg-foreground text-background text-2xs font-semibold hover:bg-foreground/90 transition-colors"
+              >
+                C'est compris
+              </button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>
