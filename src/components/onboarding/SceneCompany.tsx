@@ -152,6 +152,10 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
         linkedinUrl: company.linkedinUrl,
         careersUrl: null,
         apolloId: matchedApolloId,
+        industry: company.industry,
+        size: company.size,
+        location: company.location,
+        description: company.description,
       }, orgId);
     } catch (err: any) {
       const msg = err?.message || '';

@@ -11,6 +11,7 @@ import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneCompany } from '@/components/onboarding/SceneCompany';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
+import { SceneExpressSettings } from '@/components/onboarding/SceneExpressSettings';
 
 /**
  * Onboarding — refonte 06/07/2026 : 3 écrans max, < 2 minutes.
@@ -32,16 +33,22 @@ export interface OnboardingCompanyData {
   /** Choix de désambiguïsation fait à l'écran société (id Apollo ou '__none__') —
    *  propagé au run d'enrichissement complet en arrière-plan. */
   apolloId?: string | null;
+  /** Infos du quick match, utilisées par l'écran « Réglages express »
+   *  (brouillon de contexte IA) sans attendre l'enrichissement complet. */
+  industry?: string | null;
+  size?: string | null;
+  location?: string | null;
+  description?: string | null;
 }
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-type SceneKey = 'orgtype' | 'company' | 'integrations';
+type SceneKey = 'orgtype' | 'company' | 'integrations' | 'express';
 
 const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'company', 'integrations'],
-  agency:     ['orgtype', 'company', 'integrations'],
-  freelance:  ['orgtype', 'integrations'],
+  enterprise: ['orgtype', 'company', 'integrations', 'express'],
+  agency:     ['orgtype', 'company', 'integrations', 'express'],
+  freelance:  ['orgtype', 'integrations', 'express'],
 };
 
 const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -57,6 +64,9 @@ const Onboarding = () => {
   // Verrou anti double-soumission : createdOrgId (state) n'est posé qu'après
   // la fin de la création — un double-clic verrait deux fois null.
   const creatingOrgRef = useRef(false);
+  // Fiche société du quick match (écran 2) — nourrit les brouillons de
+  // l'écran « Réglages express » sans attendre l'enrichissement complet.
+  const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -72,6 +82,11 @@ const Onboarding = () => {
     setDirection(-1);
     setStep((s) => Math.max(0, s - 1));
   }, []);
+
+  const goNext = useCallback(() => {
+    setDirection(1);
+    setStep((s) => Math.min(s + 1, stepCount - 1));
+  }, [stepCount]);
 
   // Écran 1 : type de profil (+ découverte optionnelle).
   // Freelance : l'org est créée automatiquement ici, direction LinkedIn.
@@ -124,6 +139,7 @@ const Onboarding = () => {
   // (carte « postes détectés » + brouillons IA du dashboard).
   const handleCompanyCreated = useCallback(async (data: OnboardingCompanyData, newOrgId: string | null) => {
     if (newOrgId) setCreatedOrgId(newOrgId);
+    setCompanyData(data);
     const companyIndex = flow.indexOf('company');
 
     if (newOrgId && orgType) {
@@ -223,7 +239,17 @@ const Onboarding = () => {
               <SceneCompany onComplete={handleCompanyCreated} onBack={goBack} createdOrgId={createdOrgId} />
             )}
             {currentScene === 'integrations' && (
-              <SceneIntegrations onNext={handleFinish} onBack={goBack} stepLabel={String(step + 1).padStart(2, '0')} />
+              <SceneIntegrations onNext={goNext} onBack={goBack} stepLabel={String(step + 1).padStart(2, '0')} />
+            )}
+            {currentScene === 'express' && (
+              <SceneExpressSettings
+                orgId={createdOrgId}
+                orgName={companyData?.name || organization?.name || null}
+                companyData={companyData}
+                onFinish={handleFinish}
+                onBack={goBack}
+                stepLabel={String(step + 1).padStart(2, '0')}
+              />
             )}
           </motion.div>
         </AnimatePresence>
