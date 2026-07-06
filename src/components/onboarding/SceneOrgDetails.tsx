@@ -13,6 +13,7 @@ export interface OrgDetailsData {
   discoverySource: string;
   freelanceMode?: string;
   tjm?: string;
+  annualHires?: string;
 }
 
 interface Props {
@@ -22,10 +23,18 @@ interface Props {
 }
 
 const TEAM_SIZES = [
+  { value: '1', label: 'Juste moi' },
   { value: '2-5', label: '2 – 5 personnes' },
   { value: '6-20', label: '6 – 20 personnes' },
   { value: '21-50', label: '21 – 50 personnes' },
   { value: '50+', label: '50+' },
+];
+
+const ANNUAL_HIRES = [
+  { value: '1-5', label: '1 – 5 recrutements' },
+  { value: '6-15', label: '6 – 15 recrutements' },
+  { value: '16-40', label: '16 – 40 recrutements' },
+  { value: '40+', label: 'Plus de 40 recrutements' },
 ];
 
 const SPECIALIZATIONS = [
@@ -71,6 +80,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   
   const [freelanceMode, setFreelanceMode] = useState('');
   const [tjm, setTjm] = useState<[number, number]>([400, 700]);
+  const [annualHires, setAnnualHires] = useState('');
 
   const toggleSpec = (value: string) => {
     setSpecializations(prev =>
@@ -212,6 +222,26 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           </div>
         )}
 
+        {/* Volume de recrutement prévu (12 mois) */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            {isFreelance ? 'Recrutements visés sur 12 mois' : 'Recrutements prévus sur 12 mois'}
+          </label>
+          <Select value={annualHires} onValueChange={setAnnualHires}>
+            <SelectTrigger className="border border-border h-10 text-sm">
+              <SelectValue placeholder="Sélectionnez" />
+            </SelectTrigger>
+            <SelectContent>
+              {ANNUAL_HIRES.map(s => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Sert à dimensionner vos quotas et vos suggestions de missions.
+          </p>
+        </div>
+
 
       </motion.div>
 
@@ -230,7 +260,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource: '', freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource: '', freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined, annualHires: annualHires || undefined })}
           disabled={!canSubmit}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
         >

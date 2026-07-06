@@ -6,6 +6,8 @@ const STORAGE_KEY = 'konekt_onboarding_progress_v2';
 export interface PersistedProgress {
   step: number;
   orgType: OrgType | null;
+  goal?: string;
+  stack?: string[];
   orgDetails: OrgDetailsData | null;
   discoverySource: string;
   specializations: string[];

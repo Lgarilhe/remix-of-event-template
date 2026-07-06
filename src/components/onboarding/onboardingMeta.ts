@@ -5,7 +5,9 @@ export type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 export type SceneKey =
   | 'orgtype'
+  | 'goal'
   | 'orgdetails'
+  | 'stack'
   | 'discovery'
   | 'specializations'
   | 'org'
@@ -13,13 +15,14 @@ export type SceneKey =
   | 'profile'
   | 'aitone'
   | 'integrations'
+  | 'quotas'
   | 'team'
   | 'launch';
 
 export const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'orgdetails', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'team', 'launch'],
-  agency:     ['orgtype', 'orgdetails', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'orgdetails', 'discovery', 'specializations', 'profile', 'aitone', 'integrations', 'launch'],
+  enterprise: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'launch'],
+  agency:     ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'launch'],
+  freelance:  ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'profile', 'aitone', 'integrations', 'quotas', 'launch'],
 };
 
 export const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -39,7 +42,7 @@ export const CHAPTERS: ChapterDef[] = [
     title: 'Votre activité',
     tagline: 'Quelques questions pour adapter Konekt à votre métier.',
     icon: Compass,
-    scenes: ['orgtype', 'orgdetails', 'discovery', 'specializations'],
+    scenes: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations'],
   },
   {
     id: 'company',
@@ -58,9 +61,9 @@ export const CHAPTERS: ChapterDef[] = [
   {
     id: 'tools',
     title: 'Vos outils',
-    tagline: 'Connectez vos canaux : c’est le moteur de Konekt.',
+    tagline: 'Connectez vos canaux et réglez votre rythme de prospection.',
     icon: PlugZap,
-    scenes: ['integrations'],
+    scenes: ['integrations', 'quotas'],
   },
   {
     id: 'team',
@@ -74,8 +77,8 @@ export const CHAPTERS: ChapterDef[] = [
 export interface StepMeta {
   /** Libellé court affiché dans le rail latéral */
   railLabel: string;
-  /** Durée estimée, affichée dans l'en-tête d'étape */
-  duration: string;
+  /** Durée estimée en secondes (affichage + calcul du temps restant) */
+  durationSec: number;
   /** Pourquoi cette étape existe — argumentaire affiché à chaque écran */
   why: string;
   /** Ce que l'étape débloque concrètement (chips) */
@@ -87,68 +90,101 @@ export interface StepMeta {
 export const STEP_META: Record<Exclude<SceneKey, 'launch'>, StepMeta> = {
   orgtype: {
     railLabel: 'Votre métier',
-    duration: '10 sec',
+    durationSec: 10,
     why: 'Konekt s’adapte à votre métier : les écrans, les fonctionnalités et les conseils ne sont pas les mêmes pour une entreprise, un cabinet ou un indépendant.',
     unlocks: ['Expérience sur mesure', 'Fonctionnalités adaptées'],
   },
+  goal: {
+    railLabel: 'Votre objectif',
+    durationSec: 10,
+    why: 'Votre objectif prioritaire oriente ce que Konekt met en avant : le dashboard, les conseils du copilote et les prochaines étapes suggérées.',
+    unlocks: ['Priorités claires', 'Conseils ciblés'],
+  },
   orgdetails: {
     railLabel: 'Votre structure',
-    duration: '15 sec',
-    why: 'La taille de votre équipe et votre mode d’intervention calibrent les quotas d’envoi, les rôles et les recommandations de l’IA Konekt.',
+    durationSec: 20,
+    why: 'La taille de votre équipe et votre volume de recrutement calibrent les quotas d’envoi, les rôles et les recommandations de l’IA Konekt.',
     unlocks: ['Quotas adaptés', 'Recommandations pertinentes'],
+  },
+  stack: {
+    railLabel: 'Vos outils actuels',
+    durationSec: 15,
+    why: 'Savoir avec quoi vous travaillez (LinkedIn Recruiter, ATS, jobboards…) permet d’adapter les filtres de recherche disponibles et de préparer les bons connecteurs.',
+    unlocks: ['Filtres adaptés à votre licence', 'Connecteurs suggérés'],
   },
   discovery: {
     railLabel: 'Découverte',
-    duration: '5 sec',
+    durationSec: 5,
     why: 'Savoir où vous nous avez découvert nous aide à améliorer Konekt pour les prochains recruteurs. Promis, ça reste entre nous.',
     unlocks: ['Un produit qui s’améliore'],
     skippable: true,
   },
   specializations: {
     railLabel: 'Vos secteurs',
-    duration: '20 sec',
+    durationSec: 20,
     why: 'Vos secteurs alimentent l’IA Konekt : suggestions de briefs, scoring des candidats et filtres de sourcing pré-remplis avec le bon vocabulaire.',
     unlocks: ['Scoring IA affûté', 'Filtres pré-remplis'],
   },
   org: {
     railLabel: 'Votre entreprise',
-    duration: '45 sec',
+    durationSec: 45,
     why: 'Donnez-nous le nom de votre société : on récupère automatiquement logo, description et postes ouverts. Votre espace est prêt sans saisie manuelle, et vos premières missions se créent en un clic.',
     unlocks: ['Espace à vos couleurs', 'Missions pré-créées'],
   },
   audit: {
     railLabel: 'Image employeur',
-    duration: '1 min',
+    durationSec: 60,
     why: 'Votre image employeur influence directement vos taux de réponse. On analyse votre présence en ligne pour identifier vos forces avant votre premier message.',
     unlocks: ['Diagnostic complet', 'Meilleur taux de réponse'],
   },
   profile: {
     railLabel: 'Votre identité',
-    duration: '1 min',
+    durationSec: 60,
     why: 'Votre profil est votre vitrine : il signe vos messages, alimente votre page publique de recruteur et permet à l’IA Konekt de générer une bio qui vous ressemble.',
     unlocks: ['Bio générée par l’IA', 'Vitrine recruteur'],
   },
   aitone: {
     railLabel: 'Votre ton',
-    duration: '30 sec',
-    why: 'L’IA Konekt rédige des messages en votre nom. Réglez le ton une seule fois : chaque message d’approche sonnera comme vous, pas comme un robot.',
+    durationSec: 40,
+    why: 'L’IA Konekt rédige des messages en votre nom. Réglez le ton et vos consignes une seule fois : chaque message d’approche sonnera comme vous, pas comme un robot.',
     unlocks: ['Messages à votre image', 'Zéro réécriture'],
     skippable: true,
   },
   integrations: {
     railLabel: 'Connexions',
-    duration: '2 min',
+    durationSec: 120,
     why: 'LinkedIn est le moteur du sourcing : sans compte connecté, pas de recherche ni de messages. L’email et WhatsApp démultiplient la portée de vos séquences.',
     unlocks: ['Sourcing LinkedIn', 'Séquences multicanales'],
   },
+  quotas: {
+    railLabel: 'Rythme & sécurité',
+    durationSec: 20,
+    why: 'LinkedIn limite l’activité des comptes trop pressés. Un rythme d’envoi maîtrisé protège votre compte et améliore vos taux de réponse — on applique ces plafonds automatiquement.',
+    unlocks: ['Compte LinkedIn protégé', 'Envois automatisés sereins'],
+  },
   team: {
     railLabel: 'Invitations',
-    duration: '1 min',
+    durationSec: 60,
     why: 'Le recrutement est un sport d’équipe : invitez vos collègues pour partager missions, candidats et statistiques dans un seul espace.',
     unlocks: ['Missions partagées', 'Stats consolidées'],
     skippable: true,
   },
 };
+
+/** Durée estimée formatée pour une étape (ex. « 30 sec », « 2 min »). */
+export function formatDuration(sec: number): string {
+  if (sec < 60) return `${sec} sec`;
+  const min = Math.round(sec / 60);
+  return `${min} min`;
+}
+
+/** Temps restant estimé (en secondes) à partir d'un index d'étape. */
+export function remainingSeconds(flow: SceneKey[], stepIndex: number): number {
+  return flow
+    .slice(stepIndex)
+    .filter((s): s is Exclude<SceneKey, 'launch'> => s !== 'launch')
+    .reduce((sum, s) => sum + STEP_META[s].durationSec, 0);
+}
 
 /** Chapitres présents dans un flow donné (scènes filtrées, chapitres vides retirés). */
 export function chaptersForFlow(flow: SceneKey[]): ChapterDef[] {

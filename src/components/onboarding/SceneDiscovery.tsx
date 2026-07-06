@@ -34,6 +34,14 @@ interface Props {
 
 export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, savedValue }) => {
   const [selected, setSelected] = useState(savedValue || '');
+  const firedRef = React.useRef(false);
+
+  const handlePick = (value: string) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    setSelected(value);
+    setTimeout(() => onSubmit(value), 380);
+  };
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -57,12 +65,12 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, save
           <Badge
             key={s.value}
             variant={selected === s.value ? 'default' : 'outline'}
-            className={`cursor-pointer text-xs px-3 py-1.5 transition-all ${
+            className={`cursor-pointer text-xs px-3 py-1.5 rounded-full transition-all ${
               selected === s.value
-                ? 'bg-foreground text-background border-border'
-                : 'border-border hover:border-border'
+                ? 'bg-foreground text-background border-foreground'
+                : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
             }`}
-            onClick={() => setSelected(s.value)}
+            onClick={() => handlePick(s.value)}
           >
             {s.label}
           </Badge>
@@ -83,18 +91,9 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, save
         >
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={onSkip} className="text-sm text-muted-foreground">
-            Passer
-          </Button>
-          <Button
-            onClick={() => selected && onSubmit(selected)}
-            disabled={!selected}
-            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          >
-            Suivant <ArrowRight className="w-4 h-4" />
-          </Button>
-        </div>
+        <Button variant="ghost" onClick={onSkip} className="text-sm text-muted-foreground">
+          Passer <ArrowRight className="w-3.5 h-3.5 ml-1" />
+        </Button>
       </motion.div>
     </div>
   );
