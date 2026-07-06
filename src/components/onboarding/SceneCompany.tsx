@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Building2, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Check, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -181,7 +181,7 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Votre société</p>
         <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Créez votre espace</h2>
         <p className="text-muted-foreground text-sm">
-          Entrez le nom de votre société — on s'occupe du reste en arrière-plan.
+          Entrez le nom de votre société, on s'occupe du reste.
         </p>
       </div>
 
@@ -263,8 +263,9 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="space-y-3"
+            className="space-y-2.5"
           >
+            <p className="text-sm font-semibold text-center">C'est bien votre société ?</p>
             <div className="rounded-xl border border-foreground/30 bg-card shadow-sm p-4 flex items-center gap-3">
               {(company.logoUrl || company.domain) ? (
                 <img
@@ -282,10 +283,21 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
                 <p className="text-sm font-bold truncate">{company.officialName || company.name}</p>
                 {companyMeta && <p className="text-xs text-muted-foreground truncate">{companyMeta}</p>}
               </div>
+              <span
+                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: 'hsl(var(--skalr-green) / 0.15)', color: 'hsl(var(--skalr-green))' }}
+              >
+                <Check className="w-3.5 h-3.5" />
+              </span>
             </div>
-            <p className="text-xs text-muted-foreground pl-1">
-              L'analyse complète (postes ouverts, insights société) continue en arrière-plan —
-              vous la retrouverez sur votre tableau de bord.
+            <button
+              onClick={() => setPhase('idle')}
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              Non, ce n'est pas la bonne — modifier la recherche
+            </button>
+            <p className="text-xs text-muted-foreground text-center">
+              Votre logo et les infos société seront récupérés automatiquement.
             </p>
           </motion.div>
         )}

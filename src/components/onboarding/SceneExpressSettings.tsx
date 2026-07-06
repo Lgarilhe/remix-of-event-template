@@ -224,16 +224,16 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
     <div className="w-full max-w-lg mx-auto flex flex-col gap-4">
       {/* Header */}
       <div className="text-center space-y-1.5">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Réglages express</p>
-        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Prêt à l'emploi dès aujourd'hui</h2>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Dernière étape</p>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Vos messages, prêts à partir</h2>
         <p className="text-muted-foreground text-sm">
-          30 secondes pour que vos messages partent avec votre voix, votre signature et votre email.
+          Konekt contacte des candidats en votre nom — vérifiez ces 4 points, tout est modifiable plus tard.
         </p>
       </div>
 
       {/* 1. Identité */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Vous</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Vos coordonnées</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <Input
             value={fullName}
@@ -248,7 +248,7 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
             className="text-sm h-10 rounded-xl"
           />
         </div>
-        <p className="text-[11px] text-muted-foreground">Utilisés dans vos signatures et messages ({'{{mon_poste}}'}).</p>
+        <p className="text-[11px] text-muted-foreground">C'est ce que verront les candidats qui reçoivent vos messages.</p>
       </motion.div>
 
       {/* 2. Email d'envoi */}
@@ -271,7 +271,7 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
                 {emailConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} Outlook
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground">Sans lui, les étapes email de vos séquences ne peuvent pas partir. Détection automatique après connexion.</p>
+            <p className="text-[11px] text-muted-foreground">L'adresse depuis laquelle Konekt enverra vos emails aux candidats. Connexion en 1 clic — détectée automatiquement.</p>
           </>
         )}
       </motion.div>
@@ -280,7 +280,7 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" /> Signature email — pré-rédigée
+            <Sparkles className="w-3 h-3" /> Votre signature email
           </p>
           <Switch checked={includeSignature} onCheckedChange={setIncludeSignature} />
         </div>
@@ -290,17 +290,23 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
             dangerouslySetInnerHTML={{ __html: signatureHtml }}
           />
         )}
-        <p className="text-[11px] text-muted-foreground">Ajoutée à la fin de vos emails de séquence — ajustable dans Réglages.</p>
+        <p className="text-[11px] text-muted-foreground">
+          On l'a préparée avec vos infos — elle sera ajoutée au bas de vos emails. Désactivez l'interrupteur pour la créer vous-même plus tard.
+        </p>
       </motion.div>
 
       {/* 4. Contexte IA pré-rédigé */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" /> Votre voix de marque — pré-rédigée
+            <Sparkles className="w-3 h-3" /> Briefez votre assistant
           </p>
           <Switch checked={includeAiContext} onCheckedChange={setIncludeAiContext} />
         </div>
+        <p className="text-xs text-muted-foreground">
+          Konekt rédige des messages à votre place (premiers contacts, relances, réponses).
+          Décrivez-lui votre société et le ton à adopter — il suivra ces consignes à chaque message.
+        </p>
         {includeAiContext && (
           <Textarea
             value={aiContextText}
@@ -309,7 +315,6 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
             className="text-sm rounded-xl"
           />
         )}
-        <p className="text-[11px] text-muted-foreground">Guide tous les messages générés par l'IA (approches, réponses, relances).</p>
       </motion.div>
 
       {/* Navigation */}

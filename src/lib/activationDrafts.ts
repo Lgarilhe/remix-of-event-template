@@ -45,7 +45,7 @@ export function buildAiContextDraft(
   const name = snapshot?.name || orgName;
 
   const identity: string[] = [];
-  if (name) identity.push(`Nous recrutons pour ${name}`);
+  if (name) identity.push(`Nous sommes ${name}`);
   if (snapshot?.industry) identity.push(snapshot.industry);
   if (snapshot?.size) identity.push(`${snapshot.size} collaborateurs`);
   if (snapshot?.location) identity.push(snapshot.location);
@@ -55,11 +55,11 @@ export function buildAiContextDraft(
   if (snapshot?.funding) parts.push(`Financement : ${snapshot.funding}.`);
   if (snapshot?.techStack?.length) parts.push(`Stack technique : ${snapshot.techStack.slice(0, 8).join(', ')}.`);
 
-  parts.push('Ton des messages : professionnel, direct et chaleureux — jamais de superlatifs creux.');
+  parts.push('Ton souhaité : professionnel, direct et chaleureux, sans superlatifs.');
   parts.push(
     snapshot?.industry
-      ? `À mettre en avant : notre expertise ${snapshot.industry}, la qualité de nos process et la transparence avec les candidats.`
-      : 'À mettre en avant : vos points forts, votre process de recrutement, ce qui vous différencie (complétez librement).',
+      ? `Points à mettre en avant : notre expertise ${snapshot.industry}, notre process et notre transparence avec les candidats.`
+      : 'Points à mettre en avant : … (complétez avec vos mots : votre expertise, votre process, ce qui vous différencie).',
   );
 
   return {
