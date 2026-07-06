@@ -39,7 +39,7 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Note annexe** : `process-inmail-queue` répond 400 à CHAQUE cron (toutes les 3 min) : la branche `action=process` appelle `validateUser()` (scopée user, `.eq("created_by", user.id)`) alors que le cron s'authentifie avec le secret → throw → 400. Les InMails planifiés ne partent donc JAMAIS via le cron (seulement quand un user déclenche depuis l'app). Bug séparé, à corriger (mode cron multi-users).
 **Impact** : search_failure_log (nouvelle table diagnostic, purge 14 j), useLinkedInSearchActions (toast remède).
 **Reste à faire** :
-- [ ] Laurent reconnecte le compte en méthode cookie → confirmer zéro nouvelle ligne search_failure_log sur ses recherches
+- [x] Laurent reconnecte le compte en méthode cookie → CONFIRMÉ le 06/07 22:43 UTC : reconnexion avec cookies frais (li_at + li_a — il était DÉJÀ en méthode cookie, mais import du 02/06 devenu obsolète après rotation de session navigateur) → 5 recherches OK d'affilée, 45 profils trouvés, zéro ligne search_failure_log. Règle opérationnelle : ré-importer les cookies après chaque re-login navigateur ; piste produit : bannière « compte à reconnecter » quand la boîte noire voit ≥2 multiple_sessions
 - [ ] Fix process-inmail-queue mode cron (itérer les users au lieu de validateUser)
 - [ ] Décision réactivation enrichissement (sérialisation prête)
 
