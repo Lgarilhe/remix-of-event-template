@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-06 — INSIGHT — Verdict conflits de session : compte Recruiter mono-session, reconnexion en méthode cookie requise
+
+**Contexte** : après extinction du worker enrichissement (innocenté pour la journée — le ledger ne montre QUE des actions manuelles sur le compte), les échecs persistaient même onglets LinkedIn fermés. La boîte noire `search_failure_log` a capturé l'erreur exacte à 16:53 UTC.
+**Décision / Fait** : 401 `errors/multiple_sessions` avec le message provider complet : « LinkedIn limits the use of multiple sessions on certain Recruiter accounts. […] causing a popup to appear in the user's browser, prompting them to choose a session […] **To avoid this error, use the cookie connection method.** » → le compte Recruiter de Laurent est soumis à la politique mono-session LinkedIn ; connecté au provider en **credentials** → session dédiée côté provider → conflit structurel avec toute session navigateur (+ popup LinkedIn côté user pouvant déconnecter le compte). **Remède : reconnecter le compte en méthode cookie (li_at)** — le provider réutilise alors la session du navigateur, plus de deuxième session. Toast conflit mis à jour avec ce remède (CTA → Réglages → Connecteurs).
+**Note annexe** : `process-inmail-queue` répond 400 à CHAQUE cron (toutes les 3 min) : la branche `action=process` appelle `validateUser()` (scopée user, `.eq("created_by", user.id)`) alors que le cron s'authentifie avec le secret → throw → 400. Les InMails planifiés ne partent donc JAMAIS via le cron (seulement quand un user déclenche depuis l'app). Bug séparé, à corriger (mode cron multi-users).
+**Impact** : search_failure_log (nouvelle table diagnostic, purge 14 j), useLinkedInSearchActions (toast remède).
+**Reste à faire** :
+- [ ] Laurent reconnecte le compte en méthode cookie → confirmer zéro nouvelle ligne search_failure_log sur ses recherches
+- [ ] Fix process-inmail-queue mode cron (itérer les users au lieu de validateUser)
+- [ ] Décision réactivation enrichissement (sérialisation prête)
+
+---
+
 ## 2026-07-06 — BUG — Vrais conflits de session : le worker enrichissement jamais mis en pause en prod (suspicion forte)
 
 **Contexte** : après le fix de classification, Laurent relance → le VRAI toast conflit de session s'affiche (multiple_sessions authentique). Quelque chose utilise son compte LinkedIn en parallèle des recherches manuelles.
