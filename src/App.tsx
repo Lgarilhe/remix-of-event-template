@@ -10,7 +10,9 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OrganizationGuard } from "@/components/OrganizationGuard";
 import { LinkedInAccountsProvider } from "@/contexts/LinkedInAccountsContext";
 import { AgentProvider } from "@/contexts/AgentContext";
-import { AgentDrawer } from "@/components/agent";
+// Import direct (pas le barrel components/agent) pour ne pas tirer
+// AgentChatPanel/AgentConversationsList dans le bundle initial.
+import { AgentDrawer } from "@/components/agent/AgentDrawer";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
@@ -18,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
 import { loadAnalytics } from "@/lib/analytics";
+import { isPublicRoute } from "@/lib/publicRoutes";
 import Auth from "./pages/Auth";
 
 import NotFound from "./pages/NotFound";
@@ -48,7 +51,6 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 const AgentsPage = lazy(() => import("./pages/Agents"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
-const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -97,11 +99,7 @@ const AppContent = () => {
         Sentry.setUser(null);
 
         const currentPath = locationRef.current;
-        const isPublicRoute = PUBLIC_ROUTES.some(route =>
-          currentPath === route || currentPath.startsWith(route + '/')
-        );
-
-        if (!isPublicRoute && currentPath !== '/auth') {
+        if (!isPublicRoute(currentPath) && currentPath !== '/auth') {
           setSessionExpired(true);
         }
       } else if (event === 'SIGNED_IN' || (event === 'TOKEN_REFRESHED' && session)) {

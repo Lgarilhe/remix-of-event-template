@@ -33,6 +33,9 @@ import { useDashboardLayout, type DashboardSectionKey } from '@/hooks/useDashboa
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
+import { ActivationChecklist } from '@/components/dashboard/ActivationChecklist';
+import { DetectedRolesCard } from '@/components/dashboard/DetectedRolesCard';
+import { EmployerBrandCard } from '@/components/dashboard/EmployerBrandCard';
 import { DashboardFocusPanel } from '@/components/dashboard/DashboardFocusPanel';
 import { DashboardConnections } from '@/components/dashboard/DashboardConnections';
 import { DashboardMissionsPanel } from '@/components/dashboard/DashboardMissionsPanel';
@@ -179,6 +182,13 @@ export default function Dashboard() {
         activeCandidatesCount={activeCandidatesCount}
         activeMissionsCount={activeMissionsCount}
       />
+
+      {/* 1bis. Zone d'activation (refonte onboarding 06/07) — checklist
+          « Bien démarrer » + postes détectés + audit marque employeur.
+          Chaque carte se masque seule (dismiss / tout coché / rien à montrer). */}
+      <ActivationChecklist connections={connections} projectsCount={projects.length} />
+      <DetectedRolesCard />
+      <EmployerBrandCard />
 
       {/* 2. Sections sortables — drag handle visible au hover */}
       <Reorder.Group

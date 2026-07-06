@@ -7,7 +7,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
-import { requireAuth } from "../_shared/require-auth.ts";
+import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
@@ -598,6 +598,71 @@ function buildSignals(apolloOrg: any, result: any): Array<{ type: string; label:
   return signals;
 }
 
+/**
+ * Recopie le résultat d'enrichissement sur l'organisation demandeuse
+ * (refonte onboarding 06/07) : snapshot condensé pour la carte « postes
+ * détectés » et les brouillons IA du dashboard, + logo/site si vides.
+ * Appelé uniquement quand write_snapshot=true (membership vérifié en amont).
+ */
+async function writeOrgSnapshot(serviceClient: any, orgId: string, res: Record<string, any>): Promise<void> {
+  try {
+    // Dédup des postes par titre : enrich-company déduplique par titre+ville,
+    // donc un même poste multi-villes apparaîtrait N fois — et créerait N
+    // missions dupliquées depuis la carte « postes détectés ».
+    const seenTitles = new Set<string>();
+    const openRoles = (res.openRoles || []).filter((r: any) => {
+      const key = String(r?.title || '').toLowerCase().trim();
+      if (!key || seenTitles.has(key)) return false;
+      seenTitles.add(key);
+      return true;
+    }).slice(0, 20);
+
+    const snapshot = {
+      enriched_at: new Date().toISOString(),
+      name: res.officialName || res.name,
+      domain: res.domain,
+      industry: res.industry,
+      size: res.size,
+      location: res.location,
+      funding: res.funding,
+      description: res.description,
+      linkedinUrl: res.linkedinUrl,
+      websiteUrl: res.websiteUrl,
+      logoUrl: res.logoUrl,
+      careersUrl: res.careersUrl,
+      techStack: res.techStack,
+      keywords: res.keywords,
+      openRoles,
+      structuredInsights: res.structuredInsights,
+    };
+    const { data: orgRow } = await serviceClient
+      .from('organizations')
+      .select('logo_url, website')
+      .eq('id', orgId)
+      .maybeSingle();
+    const orgUpdate: Record<string, unknown> = { enrichment_snapshot: snapshot };
+    if (orgRow && !orgRow.logo_url && (res.logoUrl || res.domain)) {
+      orgUpdate.logo_url = res.logoUrl || `https://logo.clearbit.com/${res.domain}`;
+    }
+    if (orgRow && !orgRow.website && (res.websiteUrl || res.domain)) {
+      orgUpdate.website = res.websiteUrl || `https://${res.domain}`;
+    }
+    const { error: orgErr } = await serviceClient.from('organizations').update(orgUpdate).eq('id', orgId);
+    if (orgErr) console.warn('[enrich] Org snapshot write failed:', orgErr.message);
+    else console.log('[enrich] Org enrichment_snapshot written');
+  } catch (e) {
+    console.warn('[enrich] Org write-back failed:', e);
+  }
+}
+
+/** Exécute l'écriture du snapshot hors du chemin critique de la réponse
+ *  (EdgeRuntime.waitUntil si dispo, sinon fire-and-forget). */
+function deferSnapshotWrite(p: Promise<void>): void {
+  const runtime = (globalThis as any).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(p);
+  else p.catch((e) => console.warn('[enrich] Deferred snapshot write failed:', e));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -631,9 +696,29 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { country, force_refresh, selected_apollo_id, mode, website_url, careers_url } = body;
+    const { country, force_refresh, selected_apollo_id, mode, website_url, careers_url, organization_id, write_snapshot } = body;
     let company_name = body.company_name;
     const jobsOnly = mode === 'jobs_only';
+    // quick_match : matching société express (Apollo seul) pour l'onboarding —
+    // identité de base sans lancer le pipeline complet.
+    const quickMatch = mode === 'quick_match';
+
+    // Recopie du résultat sur l'org (enrichment_snapshot + logo/website si
+    // vides) UNIQUEMENT sur opt-in explicite write_snapshot=true (onboarding).
+    // ⚠️ Ne jamais conditionner au seul organization_id : invokeEdgeFunction
+    // l'auto-injecte dans TOUS les appels frontend — sans ce flag, le scan
+    // d'une société CLIENTE (CreateProjectModal) écraserait le snapshot de
+    // l'org du recruteur avec les données du client.
+    const writeSnapshot = write_snapshot === true && !!organization_id;
+    if (writeSnapshot) {
+      const isMember = await verifyOrgMembership(serviceClient, user.id, organization_id);
+      if (!isMember) {
+        return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // If careers_url is provided but no company_name, try to extract it from the URL
     if ((!company_name || company_name.trim().length < 2) && careers_url) {
@@ -659,9 +744,14 @@ Deno.serve(async (req) => {
 
     if (jobsOnly) console.log('[enrich] jobs_only mode — skipping insights, decision makers, news');
 
-    // In-DB cache: return cached result if enriched within last 24h (unless force_refresh)
+    // In-DB cache: return cached result if enriched within last 24h.
+    // Bypassé si : force_refresh ; quick_match (le cache est global par NOM —
+    // une société homonyme scannée par une autre org servirait la mauvaise
+    // fiche sans passer par la désambiguïsation, pour économiser 1 seul appel) ;
+    // ou selected_apollo_id (le choix explicite de l'utilisateur doit primer
+    // sur un résultat caché potentiellement différent).
     const cacheKey = company_name.trim().toLowerCase().replace(/\s+/g, ' ');
-    if (!force_refresh) {
+    if (!force_refresh && !quickMatch && !selected_apollo_id) {
       const { data: cached } = await serviceClient
         .from('enrichment_cache')
         .select('result')
@@ -671,11 +761,16 @@ Deno.serve(async (req) => {
 
       if (cached?.result) {
         console.log(`[enrich] Cache hit for "${cacheKey}"`);
+        // Le run en arrière-plan de l'onboarding doit recopier le snapshot
+        // même en cas de cache hit — hors du chemin critique de la réponse.
+        if (writeSnapshot) {
+          deferSnapshotWrite(writeOrgSnapshot(serviceClient, organization_id, cached.result));
+        }
         return new Response(JSON.stringify({ success: true, company: cached.result, cached: true }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-    } else {
+    } else if (force_refresh) {
       console.log(`[enrich] Force refresh for "${cacheKey}" — skipping cache`);
     }
 
@@ -850,6 +945,16 @@ Deno.serve(async (req) => {
       result.annualRevenue = apolloOrg.annual_revenue_printed || null;
       result.keywords = (apolloOrg.linkedin_specialties || apolloOrg.keywords || []).slice(0, 10);
       result.jobPostingsCount = apolloOrg.job_postings_count || null;
+    }
+
+    // quick_match : on s'arrête à l'identité de base (1 appel Apollo, ~1-2 s).
+    // La désambiguïsation ci-dessus s'applique aussi à ce mode. Le pipeline
+    // complet sera relancé en arrière-plan avec organization_id.
+    if (quickMatch) {
+      console.log(`[enrich] quick_match done in ${Date.now() - startTime}ms. Domain: ${result.domain}`);
+      return new Response(JSON.stringify({ success: true, company: result, quick: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!result.domain && PERPLEXITY_API_KEY) {
@@ -1853,6 +1958,10 @@ NE PAS décrire l'entreprise. Être direct, actionnable, utile pour un cabinet d
       result,
       created_at: new Date().toISOString(),
     }).then(() => console.log('[enrich] Cached')).catch((e: any) => console.warn('[enrich] Cache write failed:', e));
+
+    if (writeSnapshot) {
+      await writeOrgSnapshot(serviceClient, organization_id, result);
+    }
 
     return new Response(JSON.stringify({ success: true, company: result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

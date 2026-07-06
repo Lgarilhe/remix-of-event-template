@@ -11,6 +11,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
 import { callClaudeCompat, ClaudeCompatError } from '../_shared/call-claude.ts';
 import { settleClaudeUsage } from '../_shared/settle-usage.ts';
+import { verifyOrgMembership } from '../_shared/require-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -109,11 +110,47 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { company_name, domain, linkedin_url, careers_url } = await req.json();
+    const { company_name, domain, linkedin_url, careers_url, organization_id, force } = await req.json();
     if (!company_name) {
       return new Response(JSON.stringify({ success: false, error: 'company_name required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // organization_id : l'audit devient une feature persistée (refonte
+    // onboarding 06/07). Résultat stocké dans employer_brand_audits, avec
+    // garde-fou : un audit < 7 jours est renvoyé tel quel (sauf force=true).
+    const serviceClient = organization_id
+      ? createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!)
+      : null;
+    if (organization_id && serviceClient) {
+      const isMember = await verifyOrgMembership(serviceClient, user.id, organization_id);
+      if (!isMember) {
+        return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (!force) {
+        const { data: recent } = await serviceClient
+          .from('employer_brand_audits')
+          .select('score, categories, quick_wins, created_at')
+          .eq('organization_id', organization_id)
+          .gt('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (recent) {
+          console.log('[audit] Recent audit exists — returning persisted result');
+          return new Response(JSON.stringify({
+            success: true,
+            overall_score: recent.score,
+            categories: recent.categories || [],
+            quick_wins: recent.quick_wins || [],
+            cached: true,
+            created_at: recent.created_at,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      }
     }
 
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
@@ -403,6 +440,20 @@ ${sourcesSummary}`;
     }));
 
     console.log('[audit] Done. Score:', auditResult.overall_score);
+
+    // Persistance : le score n'est plus jeté à la fermeture de l'écran.
+    if (organization_id && serviceClient) {
+      const { error: insertErr } = await serviceClient.from('employer_brand_audits').insert({
+        organization_id,
+        created_by: user.id,
+        company_name,
+        score: auditResult.overall_score,
+        categories,
+        quick_wins: auditResult.quick_wins || [],
+      });
+      if (insertErr) console.warn('[audit] Persist failed:', insertErr.message);
+      else console.log('[audit] Persisted to employer_brand_audits');
+    }
 
     return new Response(JSON.stringify({
       success: true,

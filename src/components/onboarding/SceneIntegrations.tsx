@@ -14,6 +14,8 @@ import linkedinLogo from '@/assets/linkedin-logo.webp';
 interface Props {
   onNext: () => void;
   onBack: () => void;
+  /** Numéro d'étape affiché (dépend du flow : 03 enterprise/agency, 02 freelance). */
+  stepLabel?: string;
 }
 
 interface IntegrationDef {
@@ -45,7 +47,7 @@ const INTEGRATIONS: IntegrationDef[] = [
   },
 ];
 
-export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
+export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack, stepLabel = '03' }) => {
   const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
   const { organization } = useOrganization();
 
@@ -103,14 +105,9 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          04 — Vos outils
-        </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos comptes</h2>
+      <div className="text-center space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Vos outils</p>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Connectez vos comptes</h2>
         <p className="text-muted-foreground text-sm">
           LinkedIn est essentiel pour le sourcing. WhatsApp permet d'enrichir vos séquences multicanales.
         </p>
@@ -139,7 +136,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
-              className="border border-border overflow-hidden"
+              className="rounded-xl border border-border bg-card overflow-hidden"
             >
               <div className="flex items-center gap-3 p-3">
                 <img src={def.logo} alt={def.name} className="w-8 h-8 object-contain shrink-0" />
@@ -147,10 +144,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">{def.name}</span>
                     {def.essential && (
-                      <span
-                        className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 border border-border"
-                        style={{ background: 'hsl(var(--landing-accent-yellow))' }}
-                      >
+                      <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-foreground/10 text-foreground">
                         Essentiel
                       </span>
                     )}
@@ -167,11 +161,11 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                 ) : def.hostedAuth ? (
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Button
+                      variant="primary"
                       size="sm"
                       onClick={() => handleHostedConnect(def.id === 'whatsapp' ? 'WHATSAPP' : 'LINKEDIN')}
                       disabled={isLoading}
-                      className="text-xs uppercase tracking-wider font-bold border border-border bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
-                      style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
+                      className="text-xs h-8 px-3"
                     >
                       {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 mr-1" />}
                       Connecter
@@ -188,10 +182,10 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   </div>
                 ) : (
                   <Button
+                    variant="primary"
                     size="sm"
                     onClick={() => setExpandedId(isExpanded ? null : def.id)}
-                    className="text-xs uppercase tracking-wider font-bold border border-border bg-foreground text-background hover:bg-foreground/90 h-8 px-3 shrink-0"
-                    style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
+                    className="text-xs h-8 px-3 shrink-0"
                   >
                     Connecter
                   </Button>
@@ -205,14 +199,10 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
 
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
+        <Button variant="outline" onClick={onBack} className="gap-2">
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
-        <Button
-          onClick={onNext}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
-        >
+        <Button variant="primary" onClick={onNext} className="gap-2 px-6">
           <ArrowRight className="w-4 h-4" />
           {totalConnected > 0 ? 'Continuer' : 'Passer'}
         </Button>

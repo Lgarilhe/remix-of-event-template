@@ -22,6 +22,9 @@ export interface CurrentProfile {
   display_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  job_title: string | null;
+  recruiter_bio: string | null;
+  linkedin_url: string | null;
 }
 
 /**
@@ -72,7 +75,7 @@ export function useCurrentProfile() {
       if (!user) return null;
       const { data, error } = await supabase
         .from('profiles')
-        .select('user_id, display_name, email, avatar_url')
+        .select('user_id, display_name, email, avatar_url, job_title, recruiter_bio, linkedin_url')
         .eq('user_id', user.id)
         .maybeSingle();
       if (error) {

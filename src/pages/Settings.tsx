@@ -25,6 +25,7 @@ import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { EmailSignatures } from '@/components/settings/EmailSignatures';
+import { MyRecruiterProfile } from '@/components/settings/MyRecruiterProfile';
 import { BillingSettings } from '@/components/settings/BillingSettings';
 import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
 import { MessageTemplatesSettings } from '@/components/settings/MessageTemplatesSettings';
@@ -374,6 +375,7 @@ const Settings = () => {
 
             {activeTab === 'account' && (
               <div className="space-y-6">
+                <MyRecruiterProfile />
                 <MyLinkedInAccount />
                 <ExtensionTokens />
                 <MyEmailAccount />

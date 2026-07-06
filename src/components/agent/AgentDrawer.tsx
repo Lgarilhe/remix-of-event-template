@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -6,12 +6,25 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
-import { AgentChatPanel } from './AgentChatPanel';
 import { useAgent } from '@/contexts/AgentContext';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { isPublicRoute } from '@/lib/publicRoutes';
 
-const HIDDEN_FAB_ROUTES = ['/auth', '/onboarding', '/portal'];
+// Lazy : AgentChatPanel tire @assistant-ui/react + react-markdown (~2 200 lignes).
+// Le chunk n'est chargé qu'à la première ouverture du drawer, pas dans le bundle initial.
+const AgentChatPanel = lazy(() =>
+  import('./AgentChatPanel').then((m) => ({ default: m.AgentChatPanel }))
+);
+
+// Sur toute route publique (source de vérité : lib/publicRoutes), l'agent est
+// totalement désactivé (FAB + raccourci clavier) — les visiteurs et clients
+// finaux ne doivent jamais voir l'assistant interne.
+// Routes internes où seul le FAB est masqué (Cmd+K reste actif) :
+const HIDDEN_FAB_ROUTES = ['/onboarding'];
+
+const matchesRoute = (pathname: string, routes: string[]) =>
+  routes.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
 const AgentFAB: React.FC = () => {
   const { toggleAgent, isOpen, unreadCount } = useAgent();
@@ -21,9 +34,7 @@ const AgentFAB: React.FC = () => {
   const isMac = useMemo(() => typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
   const shortcutLabel = isMac ? '⌘K' : 'Ctrl+K';
 
-  const isHidden = isOpen || HIDDEN_FAB_ROUTES.some(r =>
-    location.pathname === r || location.pathname.startsWith('/portal/')
-  );
+  const isHidden = isOpen || matchesRoute(location.pathname, HIDDEN_FAB_ROUTES);
 
   if (isHidden) return null;
 
@@ -60,9 +71,12 @@ const AgentFAB: React.FC = () => {
 
 export const AgentDrawer: React.FC = () => {
   const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob, projectId, accountId } = useAgent();
+  const location = useLocation();
+  const isBlocked = isPublicRoute(location.pathname);
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
+    if (isBlocked) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -71,7 +85,9 @@ export const AgentDrawer: React.FC = () => {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [toggleAgent]);
+  }, [toggleAgent, isBlocked]);
+
+  if (isBlocked) return null;
 
   return (
     <>
@@ -85,15 +101,23 @@ export const AgentDrawer: React.FC = () => {
           <SheetDescription className="sr-only">
             Conversation contextuelle avec l'assistant recrutement.
           </SheetDescription>
-          <AgentChatPanel
-            onClose={closeAgent}
-            contextMode={contextMode}
-            briefContext={briefContext}
-            initialMessage={initialMessage}
-            autoJob={autoJob}
-            projectId={projectId}
-            accountId={accountId}
-          />
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border border-border border-t-foreground animate-spin" />
+              </div>
+            }
+          >
+            <AgentChatPanel
+              onClose={closeAgent}
+              contextMode={contextMode}
+              briefContext={briefContext}
+              initialMessage={initialMessage}
+              autoJob={autoJob}
+              projectId={projectId}
+              accountId={accountId}
+            />
+          </Suspense>
         </SheetContent>
       </Sheet>
     </>
