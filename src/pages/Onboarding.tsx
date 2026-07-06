@@ -12,6 +12,9 @@ import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneCompany } from '@/components/onboarding/SceneCompany';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneExpressSettings } from '@/components/onboarding/SceneExpressSettings';
+import { SceneIcp } from '@/components/onboarding/SceneIcp';
+import { SceneTemplates } from '@/components/onboarding/SceneTemplates';
+import { Check } from 'lucide-react';
 
 /**
  * Onboarding — refonte 06/07/2026 : 3 écrans max, < 2 minutes.
@@ -43,12 +46,12 @@ export interface OnboardingCompanyData {
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
-type SceneKey = 'orgtype' | 'company' | 'integrations' | 'express';
+type SceneKey = 'orgtype' | 'company' | 'integrations' | 'express' | 'icp' | 'templates';
 
 const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'company', 'integrations', 'express'],
-  agency:     ['orgtype', 'company', 'integrations', 'express'],
-  freelance:  ['orgtype', 'integrations', 'express'],
+  enterprise: ['orgtype', 'company', 'integrations', 'express', 'icp', 'templates'],
+  agency:     ['orgtype', 'company', 'integrations', 'express', 'icp', 'templates'],
+  freelance:  ['orgtype', 'integrations', 'express', 'icp', 'templates'],
 };
 
 const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -167,10 +170,13 @@ const Onboarding = () => {
     setStep((companyIndex >= 0 ? companyIndex : 1) + 1);
   }, [flow, orgType, discoverySource]);
 
+  // Moment de fin : overlay animé « Votre espace est prêt » puis dashboard.
+  const [finishing, setFinishing] = useState(false);
   const handleFinish = useCallback(async () => {
+    setFinishing(true);
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
-    navigate('/dashboard', { replace: true });
+    setTimeout(() => navigate('/dashboard', { replace: true }), 1500);
   }, [navigate, queryClient]);
 
   // Barrière de chargement : tant que l'état org n'est pas résolu, AUCUNE
@@ -246,14 +252,56 @@ const Onboarding = () => {
                 orgId={createdOrgId}
                 orgName={companyData?.name || organization?.name || null}
                 companyData={companyData}
-                onFinish={handleFinish}
+                onFinish={goNext}
                 onBack={goBack}
                 stepLabel={String(step + 1).padStart(2, '0')}
               />
             )}
+            {currentScene === 'icp' && (
+              <SceneIcp orgId={createdOrgId} onNext={goNext} onBack={goBack} />
+            )}
+            {currentScene === 'templates' && (
+              <SceneTemplates orgId={createdOrgId} onFinish={handleFinish} onBack={goBack} />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Finale — succès animé avant l'arrivée sur le dashboard */}
+      <AnimatePresence>
+        {finishing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center gap-4"
+          >
+            <motion.div
+              initial={{ scale: 0, rotate: -20 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 16, delay: 0.1 }}
+              className="w-20 h-20 rounded-full bg-foreground text-background flex items-center justify-center"
+            >
+              <Check className="w-10 h-10" strokeWidth={3} />
+            </motion.div>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="font-display text-2xl font-bold tracking-tight"
+            >
+              Votre espace est prêt.
+            </motion.p>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.55 }}
+              className="text-sm text-muted-foreground"
+            >
+              Bienvenue sur Konekt 👋
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </OnboardingLayout>
   );
 };

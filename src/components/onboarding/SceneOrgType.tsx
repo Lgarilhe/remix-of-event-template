@@ -98,6 +98,8 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
               onClick={() => setSelected(option.value)}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
               transition={{ delay: 0.1 + index * 0.08, duration: 0.35 }}
               className={`
                 w-full text-left p-3.5 rounded-xl border transition-all duration-200

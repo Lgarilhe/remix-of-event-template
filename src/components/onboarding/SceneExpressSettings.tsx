@@ -325,11 +325,11 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
           </Button>
           <Button variant="primary" onClick={handleValidate} disabled={saving} className="gap-2 px-6">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-            {saving ? 'Enregistrement…' : 'Tout valider et entrer dans Konekt'}
+            {saving ? 'Enregistrement…' : 'Valider et continuer'}
           </Button>
         </div>
         <button onClick={onFinish} className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
-          Plus tard — tout reste accessible depuis la checklist du tableau de bord
+          Passer — tout reste accessible depuis la checklist du tableau de bord
         </button>
       </div>
     </div>

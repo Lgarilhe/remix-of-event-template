@@ -31,13 +31,17 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
     // bg-background (même fond que le reste de l'app) — l'ancien voile
     // landing-sky-gradient posé à 50 % d'opacité grisait tout l'écran.
     <div className="min-h-screen flex flex-col relative overflow-hidden bg-background text-foreground">
-      <div
+      <motion.div
         className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.08) 0%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.09) 0%, transparent 70%)' }}
+        animate={{ x: [0, -40, 0], y: [0, 30, 0] }}
+        transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
       />
-      <div
+      <motion.div
         className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-blue) / 0.07) 0%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-blue) / 0.08) 0%, transparent 70%)' }}
+        animate={{ x: [0, 40, 0], y: [0, -25, 0] }}
+        transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       {/* Progress bar */}
