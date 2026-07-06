@@ -2,13 +2,37 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Building2, Users, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 interface Props {
-  onSelect: (orgType: OrgType) => void;
+  onSelect: (orgType: OrgType, discoverySource: string) => void;
   onBack: () => void;
 }
+
+// Question marketing facultative (décision refonte 06/07 : gardée en
+// optionnel, non bloquante — persistée dans organizations.discovery_source).
+const DISCOVERY_SOURCES = [
+  { value: 'linkedin', label: 'LinkedIn (post / pub)' },
+  { value: 'linkedin-dm', label: 'LinkedIn (message privé)' },
+  { value: 'google', label: 'Recherche Google' },
+  { value: 'word-of-mouth', label: 'Bouche-à-oreille / Recommandation' },
+  { value: 'community', label: 'Communauté Slack / Discord' },
+  { value: 'podcast', label: 'Podcast' },
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'newsletter', label: 'Newsletter' },
+  { value: 'blog', label: 'Article / Blog' },
+  { value: 'event', label: 'Événement / Salon / Meetup' },
+  { value: 'product-hunt', label: 'Product Hunt' },
+  { value: 'appsumo', label: 'AppSumo' },
+  { value: 'comparison', label: 'Site de comparatifs (G2, Capterra…)' },
+  { value: 'referral', label: 'Programme de parrainage' },
+  { value: 'social-twitter', label: 'X (Twitter)' },
+  { value: 'social-instagram', label: 'Instagram / TikTok' },
+  { value: 'partner', label: 'Partenaire / Intégrateur' },
+  { value: 'other', label: 'Autre' },
+];
 
 const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string; description: string }[] = [
   {
@@ -33,6 +57,7 @@ const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string
 
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
+  const [discovery, setDiscovery] = useState('');
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -106,6 +131,24 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         })}
       </div>
 
+      {/* Découverte — facultatif, non bloquant */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.35 }}
+      >
+        <Select value={discovery} onValueChange={setDiscovery}>
+          <SelectTrigger className="w-full border border-border text-sm text-muted-foreground h-10">
+            <SelectValue placeholder="Comment nous avez-vous connu ? (optionnel)" />
+          </SelectTrigger>
+          <SelectContent>
+            {DISCOVERY_SOURCES.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </motion.div>
+
       {/* Navigation */}
       <motion.div
         className="flex items-center justify-end pt-2"
@@ -114,7 +157,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.4 }}
       >
         <Button
-          onClick={() => selected && onSelect(selected)}
+          onClick={() => selected && onSelect(selected, discovery)}
           disabled={!selected}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}

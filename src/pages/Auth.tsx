@@ -281,7 +281,7 @@ const Auth = () => {
       >
         <CollaboratorWelcome
           orgName={collaboratorWelcome.orgName}
-          onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding'), { replace: true })}
+          onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding', '?new=1'), { replace: true })}
           onSkip={() => navigate(withPreviewAccessToken('/dashboard'), { replace: true })}
         />
       </Suspense>

@@ -14,6 +14,8 @@ import linkedinLogo from '@/assets/linkedin-logo.webp';
 interface Props {
   onNext: () => void;
   onBack: () => void;
+  /** Numéro d'étape affiché (dépend du flow : 03 enterprise/agency, 02 freelance). */
+  stepLabel?: string;
 }
 
 interface IntegrationDef {
@@ -45,7 +47,7 @@ const INTEGRATIONS: IntegrationDef[] = [
   },
 ];
 
-export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
+export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack, stepLabel = '03' }) => {
   const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
   const { organization } = useOrganization();
 
@@ -108,7 +110,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
           className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
           style={{ fontFamily: "'Space Mono', monospace" }}
         >
-          04 — Vos outils
+          {stepLabel} — Vos outils
         </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos comptes</h2>
         <p className="text-muted-foreground text-sm">
