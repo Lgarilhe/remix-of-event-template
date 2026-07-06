@@ -5046,6 +5046,7 @@ export type Database = {
           job_details: Json | null
           job_id: string | null
           job_title: string | null
+          kind: string
           last_search_at: string | null
           name: string
           notes: string | null
@@ -5075,6 +5076,7 @@ export type Database = {
           job_details?: Json | null
           job_id?: string | null
           job_title?: string | null
+          kind?: string
           last_search_at?: string | null
           name: string
           notes?: string | null
@@ -5104,6 +5106,7 @@ export type Database = {
           job_details?: Json | null
           job_id?: string | null
           job_title?: string | null
+          kind?: string
           last_search_at?: string | null
           name?: string
           notes?: string | null

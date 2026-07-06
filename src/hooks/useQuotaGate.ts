@@ -20,6 +20,8 @@ export const useQuotaGate = () => {
         .from('sourcing_projects')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', organizationId)
+        // Les recherches autonomes (/sourcing) ne consomment pas le quota missions
+        .eq('kind', 'mission')
         .is('archived_at', null);
       if (error) return 0;
       return count || 0;

@@ -20,7 +20,7 @@ import {
 import {
   LayoutDashboard, Target, Kanban, MessageSquare, Calendar as CalendarIcon, CheckSquare,
   Settings as SettingsIcon, Sparkles, Sun, Moon, LogOut,
-  Plus, CreditCard, Users,
+  Plus, CreditCard, Users, Search,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAgent } from '@/contexts/AgentContext';
@@ -87,6 +87,10 @@ export function NavigationPalette() {
             <Target className="mr-2 h-4 w-4" aria-hidden="true" />
             Missions
             <CommandShortcut>G M</CommandShortcut>
+          </CommandItem>
+          <CommandItem onSelect={() => go('/sourcing')}>
+            <Search className="mr-2 h-4 w-4" aria-hidden="true" />
+            Recherche
           </CommandItem>
           <CommandItem onSelect={() => go('/pipeline')}>
             <Kanban className="mr-2 h-4 w-4" aria-hidden="true" />

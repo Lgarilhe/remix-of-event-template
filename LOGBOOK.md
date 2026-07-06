@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-06 — SHIP — Recherche autonome (/sourcing) : sourcer sans créer de mission
+
+**Contexte** : le sourcing n'existait que dans une mission ; Laurent veut chercher librement et ne créer la mission que quand la recherche devient sérieuse.
+**Décision / Fait** : une recherche autonome EST un sourcing_project léger `kind='search'` (colonne + CHECK + index, migration 20260706130611, appliquée en prod) — toute la machinerie mission (filters_snapshot, job_candidate_status keyé project:{id}, stats triggers, quotas LinkedIn et crédits IA côté serveur) fonctionne sans duplication. Pages : /sourcing (liste des recherches — cards avec stats, suppression AlertDialog, nom auto « Recherche du 6 juillet, 14h32 ») et /sourcing/:id (champ « Que cherches-tu ? » → job_details.title + name, LinkedInSearch monté tel quel, bouton « Transformer en mission » = UPDATE kind+name → workspace mission avec candidats/filtres/statuts déjà en place, zéro migration de données). Entrée sidebar « Recherche » + palette ⌘K. Garde-fous : scoring bloqué tant que la cible n'est pas définie (`scoringDisabledReason`), pré-check « brief incomplet » neutralisé pour les recherches (`skipBriefCheck`), SourcingReadinessPanel (qui parle du brief) remplacé par le welcome générique, useQuotaGate ne compte plus les recherches dans max_jobs, listes missions filtrées kind='mission' (`useSourcingProjects(kind)`).
+**Raison** : audit préalable (2 sub-agents) — le seul vrai verrou était le selectedJob (recherche+scoring) ; réutiliser l'objet mission évite un 2e système de persistance et rend la conversion instantanée. Audit quotas : tous les mécanismes (member_quotas, ledger linkedin_action_log, rate limit, crédits IA) sont keyés compte/user/org, jamais mission → aucun contournement possible depuis la page autonome.
+**Impact** : useSourcingProjects, useLinkedInScoring, LinkedInSearch, SearchResultsPanel, useQuotaGate, App.tsx, AppSidebar, NavigationPalette, pages/SourcingSearches + pages/SourcingSearch, types.ts, migration SQL.
+**QA** : tsc + vite build OK ; harnais navigateur 12/12 (liste vide, création → workspace, welcome générique sans panneau brief, PATCH title+name au blur, liste renommée, dialog transformation préremplie, PATCH kind=mission → /missions/:id).
+**Reste à faire** :
+- [ ] Pré-remplissage IA des filtres depuis le champ cible (réutiliser generate-search-filters)
+- [ ] Tuto vidéo de l'écran Recherche
+- [ ] Option : masquer les panneaux séquences/enrollment dans une recherche (fonctionnels mais orientés mission)
+**Refs** : supabase/migrations/20260706130611_sourcing_projects_kind.sql
+
+---
+
 ## 2026-07-02 — SHIP — Tutos vidéo in-app : popup d'aide + studio de tournage Playwright
 
 **Contexte** : Laurent veut des popups d'aide avec vidéos tuto courtes où l'on voit la souris naviguer.

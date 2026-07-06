@@ -34,6 +34,8 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
 const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
 const Inbox = lazy(() => import("./pages/Inbox"));
+const SourcingSearches = lazy(() => import("./pages/SourcingSearches"));
+const SourcingSearchPage = lazy(() => import("./pages/SourcingSearch"));
 
 const Pricing = lazy(() => import("./pages/Pricing"));
 const Marketplace = lazy(() => import("./pages/Marketplace"));
@@ -161,6 +163,9 @@ const AppContent = () => {
           <Route path="/candidates" element={<Navigate to="/pipeline" replace />} />
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          {/* Recherche autonome (sourcing sans mission) */}
+          <Route path="/sourcing" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearches /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/sourcing/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearchPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/agents" element={<ProtectedRoute><OrganizationGuard><AppLayout><AgentsPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/pipeline" element={<ProtectedRoute><OrganizationGuard><AppLayout><ATS /></AppLayout></OrganizationGuard></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><OrganizationGuard><AppLayout><Inbox /></AppLayout></OrganizationGuard></ProtectedRoute>} />

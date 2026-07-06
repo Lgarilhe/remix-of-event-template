@@ -354,6 +354,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Ref for merged results (includes pool profiles) - used by scoring hook
   const allAvailableProfilesRef = useRef<LinkedInProfile[]>([]);
 
+  // Recherche autonome (/sourcing) : pas de brief mission. Le scoring reste
+  // possible mais exige au minimum que la cible soit définie (champ
+  // « Que cherches-tu ? » → job_details.title), sinon le titre du job
+  // synthétique serait le nom auto de la recherche — scores sans fondement.
+  const isStandaloneSearch = activeProject?.kind === 'search';
+  const standaloneTargetTitle = ((activeProject?.job_details as { title?: string } | undefined)?.title || '').trim();
+  const scoringDisabledReason = isStandaloneSearch && !standaloneTargetTitle
+    ? 'Précise d’abord ce que tu cherches (intitulé du poste, en haut de la page) avant de lancer le scoring.'
+    : null;
+
   // Scoring hook
   const scoring = useLinkedInScoring({
     selectedJob: search.selectedJob,
@@ -376,6 +386,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     customScoringInstructions: scoringInstructions.trim() || undefined,
     accountId: selectedAccount,
     scoringModel,
+    scoringDisabledReason,
+    skipBriefCheck: isStandaloneSearch,
   });
 
   // Pool view toggle

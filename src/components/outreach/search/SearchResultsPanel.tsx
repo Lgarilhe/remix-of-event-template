@@ -783,7 +783,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <BrutalLoader variant="search" rows={5} />
         ) : !hasSearched ? (
           <div className="flex flex-col items-center justify-start pt-6 pb-24 text-muted-foreground px-4 sm:px-8">
-            {activeProject ? (
+            {/* Recherche autonome (kind='search') : le panneau readiness parle
+                du brief mission (CTA tab=brief inexistant sur /sourcing) →
+                welcome générique à la place. */}
+            {activeProject && activeProject.kind !== 'search' ? (
               <SourcingReadinessPanel
                 project={activeProject}
                 selectedAccount={selectedAccount}

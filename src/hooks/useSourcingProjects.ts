@@ -10,6 +10,8 @@ export interface SourcingProject {
   id: string;
   organization_id: string;
   name: string;
+  /** 'mission' = mission classique · 'search' = recherche autonome (/sourcing), convertible en mission */
+  kind: 'mission' | 'search';
   description: string | null;
   job_id: string | null;
   job_title: string | null;
@@ -39,6 +41,7 @@ export interface SourcingProject {
 
 export interface CreateProjectInput {
   name: string;
+  kind?: 'mission' | 'search';
   description?: string;
   job_id?: string;
   job_title?: string;
@@ -49,6 +52,7 @@ export interface CreateProjectInput {
 export interface UpdateProjectInput {
   id: string;
   name?: string;
+  kind?: 'mission' | 'search';
   description?: string;
   notes?: string;
   status?: SourcingProject['status'];
@@ -68,22 +72,25 @@ export interface UpdateProjectInput {
   hunt_status?: string | null;
 }
 
-export const useSourcingProjects = () => {
+export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
   const queryClient = useQueryClient();
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
 
   // Fetch all projects — excludes heavy JSONB columns (job_details, filters_snapshot)
   // Use useSourcingProject(id) to fetch a single project with all fields.
+  // Filtré par kind : les missions et les recherches autonomes (/sourcing)
+  // partagent la table mais jamais les listes.
   const { data: projects = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['sourcing-projects', organizationId, user?.id],
+    queryKey: ['sourcing-projects', organizationId, user?.id, kind],
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('sourcing_projects')
-        .select('id, name, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status')
+        .select('id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status')
         .eq('organization_id', organizationId)
+        .eq('kind', kind)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -114,9 +121,9 @@ export const useSourcingProjects = () => {
       if (error) throw error;
       return data as SourcingProject;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-      toast.success('Projet créé avec succès');
+      toast.success(data?.kind === 'search' ? 'Recherche créée' : 'Projet créé avec succès');
     },
     onError: (err: Error) => {
       toast.error(`Erreur: ${err.message}`);

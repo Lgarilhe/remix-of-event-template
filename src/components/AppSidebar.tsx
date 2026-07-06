@@ -53,6 +53,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/dashboard',   label: 'Dashboard',   icon: Home      },
   { to: '/missions',    label: 'Missions',    icon: Briefcase },
+  { to: '/sourcing',    label: 'Recherche',   icon: Search    },
   { to: '/pipeline',    label: 'Pipeline',    icon: Columns3  },
   { to: '/calendar',    label: 'Calendrier',  icon: Calendar  },
   { to: '/tasks',       label: 'Tâches',      icon: ListTodo  },

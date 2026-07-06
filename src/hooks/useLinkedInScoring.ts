@@ -181,6 +181,16 @@ interface ScoringOptions {
    * (orgDefault → action.autoDefault → tier default).
    */
   scoringModel?: string | null;
+  /**
+   * Recherche autonome (/sourcing) : si non-null, tout scoring est bloqué
+   * avec ce message — la cible (intitulé du poste) n'est pas encore définie.
+   */
+  scoringDisabledReason?: string | null;
+  /**
+   * Recherche autonome : pas de brief mission, le pré-check de complétude
+   * ne s'applique pas (le scoring s'appuie sur l'intitulé + les instructions).
+   */
+  skipBriefCheck?: boolean;
   candidateStatus?: {
     batchDismiss: (profiles: Array<{
       id: string;
@@ -651,6 +661,8 @@ export function useLinkedInScoring({
   customScoringInstructions,
   accountId,
   scoringModel,
+  scoringDisabledReason,
+  skipBriefCheck,
 }: ScoringOptions) {
   // Hydrate from localStorage on mount — survives mobile remounts during scoring
   const initialPersisted = readPersistedBatchReport(selectedJob?.id);
@@ -700,6 +712,10 @@ export function useLinkedInScoring({
   const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
     if (!selectedJob) {
       toast.error('Sélectionnez un poste pour le scoring');
+      return;
+    }
+    if (scoringDisabledReason) {
+      toast.error(scoringDisabledReason);
       return;
     }
 
@@ -803,12 +819,16 @@ export function useLinkedInScoring({
       console.error('Score error:', err);
       toast.error('Erreur lors du scoring');
     }
-  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel]);
+  }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel, scoringDisabledReason]);
 
   // Batch score selected profiles
   const handleBatchScore = useCallback(async () => {
     if (!selectedJob) {
       toast.error('Sélectionnez un poste pour le scoring');
+      return;
+    }
+    if (scoringDisabledReason) {
+      toast.error(scoringDisabledReason);
       return;
     }
 
@@ -825,7 +845,7 @@ export function useLinkedInScoring({
     const hasSkills = Array.isArray(selectedJob.skills) && selectedJob.skills.length > 0;
     const hasDescription = !!(selectedJob.description && selectedJob.description.trim().length >= 30);
     const isMissionJob = typeof selectedJob.id === 'string' && selectedJob.id.startsWith('project:');
-    if (isMissionJob && !hasMustHave && !hasSkills && !hasDescription) {
+    if (!skipBriefCheck && isMissionJob && !hasMustHave && !hasSkills && !hasDescription) {
       toast.error('Brief incomplet', {
         description: 'Renseigne au moins les compétences must-have ou la description de la mission avant de lancer le scoring — sinon les scores ne seront pas pertinents.',
         duration: 8000,
@@ -1189,7 +1209,7 @@ export function useLinkedInScoring({
     } finally {
       setScoringInProgress(false);
     }
-  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, setStatusFilter, customScoringInstructions, accountId, scoringModel]);
+  }, [selectedJob, selectedProfiles, results, allAvailableProfilesRef, autoHideTreatedRef, candidateStatus, setJobScores, setScoringInProgress, setSortByScore, setResults, setSelectedProfiles, setStatusFilter, customScoringInstructions, accountId, scoringModel, scoringDisabledReason, skipBriefCheck]);
 
   const clearBatchReport = useCallback(() => {
     setBatchReport([]);
