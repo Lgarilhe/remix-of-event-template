@@ -985,13 +985,20 @@ export function useLinkedInSearchActions(
       const errorType = String(error?.errorType || '').toLowerCase();
       const isMultipleSessionsError =
         errorType.includes('multiple_sessions') ||
-        errorMessage.toLowerCase().includes('multiple sessions') ||
-        errorMessage.toLowerCase().includes('unable to process');
+        errorMessage.toLowerCase().includes('multiple sessions');
+      // « unable to process » est le message GÉNÉRIQUE du provider quand
+      // LinkedIn rejette la recherche (payload trop lourd, combinaison de
+      // filtres invalide) — rien à voir avec un conflit de session. Il était
+      // classé multiple_sessions → toast « Conflit de session » trompeur
+      // alors que le compte allait très bien.
+      const isUnprocessableSearch = errorMessage.toLowerCase().includes('unable to process');
 
       // NEVER auto-retry on session conflicts
       if (isMultipleSessionsError) {
         toast.error(
-          "Conflit de session LinkedIn. Utilisez l'onglet « Base de données » pour continuer à sourcer, ou attendez 2-3 minutes.",
+          isStandaloneSearch
+            ? 'Conflit de session LinkedIn — un autre onglet ou outil utilise ce compte en ce moment. Attendez 2-3 minutes puis relancez.'
+            : "Conflit de session LinkedIn. Utilisez l'onglet « Base de données » pour continuer à sourcer, ou attendez 2-3 minutes.",
           {
             id: 'search-error',
             duration: 15000,
@@ -1031,6 +1038,11 @@ export function useLinkedInSearchActions(
             onClick: () => { window.location.href = "/settings?tab=account"; },
           },
         });
+      } else if (isUnprocessableSearch) {
+        toast.error(
+          'LinkedIn n’a pas pu traiter cette recherche — la combinaison de filtres est probablement trop lourde. Retire un critère ou raccourcis les mots-clés, puis relance.',
+          { id: 'search-error', duration: 12000 },
+        );
       } else if (/unexpected token|not valid json|<!doctype|<html/i.test(errorMessage || '')) {
         // Erreur de parsing brute (réponse HTML du provider) — jamais montrer ça à l'user
         toast.error('Le service LinkedIn a renvoyé une réponse invalide. Réessaie dans quelques instants.', { id: 'search-error' });
@@ -1043,7 +1055,7 @@ export function useLinkedInSearchActions(
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
+  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
 
   const handleLoadMore = useCallback(() => {
     if (!cursor || context.quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {

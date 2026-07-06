@@ -32,6 +32,16 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-06 — BUG — Faux « Conflit de session LinkedIn » : « unable to process » mal classé
+
+**Contexte** : sur certaines combinaisons de filtres (générés IA notamment), le toast « Conflit de session LinkedIn » s'affiche alors que le dashboard provider montre les comptes Running, rien d'anormal. Corrélation nette avec les filtres, pas avec le compte.
+**Décision / Fait** : `useLinkedInSearchActions` classait TOUT message contenant « unable to process » comme multiple_sessions (ligne 989). Or « Unable to process… » est le message générique du provider quand LinkedIn REJETTE la recherche (payload trop lourd, combinaison de filtres invalide) — aucun rapport avec un conflit de session. Fix : (1) classification conflit de session restreinte à errorType/message multiple_sessions ; (2) nouveau branch « unable to process » → toast actionnable « LinkedIn n'a pas pu traiter cette recherche — retire un critère ou raccourcis les mots-clés » ; (3) texte du vrai toast conflit adapté sur /sourcing (l'onglet « Base de données » n'y existe pas). Le prochain échec réel montrera le bon diagnostic ; les logs edge (« Search error: » + « Request body was: ») permettront d'identifier le filtre exact rejeté.
+**Impact** : useLinkedInSearchActions uniquement (pas de redéploiement edge).
+**Reste à faire** :
+- [ ] Quand le cas se reproduit : lire les logs unipile-search pour identifier la combinaison de filtres rejetée et la corriger à la source (mapping buildSearchParams)
+
+---
+
 ## 2026-07-06 — BUG — Recherche : « Unexpected token < » + faux avertissement « Brief peu détaillé »
 
 **Contexte** : premier test réel du flux prompt par Laurent — deux messages anormaux au lancement de la recherche.
