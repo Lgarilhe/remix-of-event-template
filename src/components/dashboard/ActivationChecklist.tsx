@@ -172,12 +172,12 @@ const ActivationChecklistInner: React.FC<Props & { onDismiss: () => void }> = ({
   const refineItems = items.slice(5);
 
   return (
-    <div className="border border-border bg-card mb-6">
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden mb-6">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold">Bien démarrer</span>
           <span className="text-xs font-mono text-muted-foreground tabular-nums">{doneCount}/{items.length}</span>
-          <div className="hidden sm:block w-28 h-1.5 bg-muted overflow-hidden">
+          <div className="hidden sm:block w-28 h-1.5 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full bg-foreground transition-all"
               style={{ width: `${Math.round((doneCount / items.length) * 100)}%` }}
@@ -224,7 +224,7 @@ const ChecklistRow: React.FC<{ item: ChecklistItem }> = ({ item }) => (
     >
       <span
         className={cn(
-          'w-[18px] h-[18px] border flex items-center justify-center shrink-0',
+          'w-[18px] h-[18px] rounded-md border flex items-center justify-center shrink-0',
           item.done ? 'bg-foreground border-foreground text-background' : 'border-border',
         )}
       >

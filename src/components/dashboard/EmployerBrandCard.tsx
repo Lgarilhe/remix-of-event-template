@@ -106,7 +106,7 @@ export const EmployerBrandCard: React.FC = () => {
   };
 
   return (
-    <div className="border border-border bg-card mb-6">
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden mb-6">
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
           {audit?.score != null ? (
@@ -143,7 +143,7 @@ export const EmployerBrandCard: React.FC = () => {
                 onClick={runAudit}
                 disabled={isRunning || !canRerun}
                 title={canRerun ? undefined : 'Disponible 7 jours après le dernier audit'}
-                className="gap-1.5 text-xs border border-border"
+                className="gap-1.5 text-xs"
               >
                 {isRunning && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {isRunning ? 'Analyse…' : 'Relancer'}
@@ -151,10 +151,11 @@ export const EmployerBrandCard: React.FC = () => {
             </>
           ) : (
             <Button
+              variant="primary"
               size="sm"
               onClick={runAudit}
               disabled={isRunning}
-              className="gap-1.5 border border-border bg-foreground text-background hover:bg-foreground/90 text-xs"
+              className="gap-1.5 text-xs"
             >
               {isRunning && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {isRunning ? 'Analyse en cours (~1 min)…' : "Lancer l'audit"}

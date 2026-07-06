@@ -34,7 +34,9 @@ export interface EnrichmentSnapshot {
   structuredInsights?: { key?: string; title?: string; body?: string }[];
 }
 
-/** Brouillon de contexte IA org depuis le snapshot d'enrichissement. */
+/** Brouillon de contexte IA org depuis le snapshot d'enrichissement.
+ *  Garde une vraie structure même quand la fiche société est maigre
+ *  (un brouillon réduit au nom de la boîte n'aide personne). */
 export function buildAiContextDraft(
   snapshot: EnrichmentSnapshot | null | undefined,
   orgName: string,
@@ -42,15 +44,23 @@ export function buildAiContextDraft(
   const parts: string[] = [];
   const name = snapshot?.name || orgName;
 
-  const identity: string[] = [name];
+  const identity: string[] = [];
+  if (name) identity.push(`Nous recrutons pour ${name}`);
   if (snapshot?.industry) identity.push(snapshot.industry);
   if (snapshot?.size) identity.push(`${snapshot.size} collaborateurs`);
   if (snapshot?.location) identity.push(snapshot.location);
-  parts.push(identity.join(' · '));
+  if (identity.length) parts.push(`${identity.join(' · ')}.`);
 
   if (snapshot?.description) parts.push(snapshot.description);
   if (snapshot?.funding) parts.push(`Financement : ${snapshot.funding}.`);
   if (snapshot?.techStack?.length) parts.push(`Stack technique : ${snapshot.techStack.slice(0, 8).join(', ')}.`);
+
+  parts.push('Ton des messages : professionnel, direct et chaleureux — jamais de superlatifs creux.');
+  parts.push(
+    snapshot?.industry
+      ? `À mettre en avant : notre expertise ${snapshot.industry}, la qualité de nos process et la transparence avec les candidats.`
+      : 'À mettre en avant : vos points forts, votre process de recrutement, ce qui vous différencie (complétez librement).',
+  );
 
   return {
     tone: 'vous',

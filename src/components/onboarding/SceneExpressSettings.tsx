@@ -47,7 +47,18 @@ interface Props {
 export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyData, onFinish, onBack, stepLabel = '04' }) => {
   const { displayName } = useCurrentProfile();
 
+  const [fullName, setFullName] = useState('');
+  const [nameHydrated, setNameHydrated] = useState(false);
   const [jobTitle, setJobTitle] = useState('');
+
+  // Pré-remplit le nom depuis le profil (souvent déduit de l'email à
+  // l'inscription — d'où ce champ : l'utilisateur corrige ici en 2 secondes).
+  useEffect(() => {
+    if (displayName && !nameHydrated) {
+      setFullName(displayName);
+      setNameHydrated(true);
+    }
+  }, [displayName, nameHydrated]);
   const [includeSignature, setIncludeSignature] = useState(true);
   const [includeAiContext, setIncludeAiContext] = useState(true);
   const [aiContextText, setAiContextText] = useState('');
@@ -152,9 +163,9 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
     }
   };
 
-  // ── Aperçu signature (recalculé en direct avec le poste saisi) ──
+  // ── Aperçu signature (recalculé en direct avec le nom et le poste saisis) ──
   const signatureHtml = buildSignatureHtml({
-    displayName,
+    displayName: fullName.trim() || displayName,
     jobTitle: jobTitle.trim() || null,
     orgName,
     website: companyData?.domain ? `https://${companyData.domain}` : null,
@@ -167,10 +178,14 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
       if (!user) throw new Error('Non authentifié');
       const tasks: Promise<unknown>[] = [];
 
-      if (jobTitle.trim()) {
+      if (jobTitle.trim() || fullName.trim()) {
         tasks.push(
           (supabase as any).from('profiles').upsert(
-            { user_id: user.id, job_title: jobTitle.trim() },
+            {
+              user_id: user.id,
+              ...(fullName.trim() ? { display_name: fullName.trim() } : {}),
+              ...(jobTitle.trim() ? { job_title: jobTitle.trim() } : {}),
+            },
             { onConflict: 'user_id' },
           ),
         );
@@ -208,35 +223,38 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-4">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          {stepLabel} — Réglages express
-        </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Prêt à l'emploi dès aujourd'hui</h2>
+      <div className="text-center space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Réglages express</p>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Prêt à l'emploi dès aujourd'hui</h2>
         <p className="text-muted-foreground text-sm">
           30 secondes pour que vos messages partent avec votre voix, votre signature et votre email.
         </p>
       </div>
 
-      {/* 1. Poste */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="border border-border p-3.5 space-y-2">
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Votre poste</p>
-        <Input
-          value={jobTitle}
-          onChange={(e) => setJobTitle(e.target.value)}
-          placeholder="Talent Acquisition Manager"
-          className="border border-border text-sm h-10"
-        />
-        <p className="text-[11px] text-muted-foreground">Utilisé dans vos signatures et messages ({'{{mon_poste}}'}).</p>
+      {/* 1. Identité */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Vous</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <Input
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Prénom Nom"
+            className="text-sm h-10 rounded-xl"
+          />
+          <Input
+            value={jobTitle}
+            onChange={(e) => setJobTitle(e.target.value)}
+            placeholder="Votre poste (ex. Talent Acquisition)"
+            className="text-sm h-10 rounded-xl"
+          />
+        </div>
+        <p className="text-[11px] text-muted-foreground">Utilisés dans vos signatures et messages ({'{{mon_poste}}'}).</p>
       </motion.div>
 
       {/* 2. Email d'envoi */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="border border-border p-3.5 space-y-2">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Votre email d'envoi</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Votre email d'envoi</p>
           {emailLinked && (
             <span className="flex items-center gap-1 text-xs font-bold" style={{ color: 'hsl(var(--skalr-green))' }}>
               <Check className="w-3.5 h-3.5" /> {emailLinked}
@@ -246,10 +264,10 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
         {!emailLinked && (
           <>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleConnectEmail('GOOGLE')} disabled={emailConnecting} className="flex-1 gap-1.5 border border-border text-xs">
+              <Button variant="outline" size="sm" onClick={() => handleConnectEmail('GOOGLE')} disabled={emailConnecting} className="flex-1 gap-1.5 text-xs">
                 {emailConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} Gmail
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleConnectEmail('OUTLOOK')} disabled={emailConnecting} className="flex-1 gap-1.5 border border-border text-xs">
+              <Button variant="outline" size="sm" onClick={() => handleConnectEmail('OUTLOOK')} disabled={emailConnecting} className="flex-1 gap-1.5 text-xs">
                 {emailConnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} Outlook
               </Button>
             </div>
@@ -259,16 +277,16 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
       </motion.div>
 
       {/* 3. Signature pré-rédigée */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="border border-border p-3.5 space-y-2">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Sparkles className="w-3 h-3" /> Signature email — pré-rédigée
           </p>
           <Switch checked={includeSignature} onCheckedChange={setIncludeSignature} />
         </div>
         {includeSignature && (
           <div
-            className="text-sm border-l-2 border-foreground/20 pl-3 py-1 [&_a]:underline"
+            className="text-sm rounded-lg bg-foreground/[0.04] px-3 py-2.5 [&_a]:underline"
             dangerouslySetInnerHTML={{ __html: signatureHtml }}
           />
         )}
@@ -276,9 +294,9 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
       </motion.div>
 
       {/* 4. Contexte IA pré-rédigé */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="border border-border p-3.5 space-y-2">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="rounded-xl border border-border bg-card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <Sparkles className="w-3 h-3" /> Votre voix de marque — pré-rédigée
           </p>
           <Switch checked={includeAiContext} onCheckedChange={setIncludeAiContext} />
@@ -287,8 +305,8 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
           <Textarea
             value={aiContextText}
             onChange={(e) => setAiContextText(e.target.value)}
-            rows={4}
-            className="text-sm border border-border"
+            rows={6}
+            className="text-sm rounded-xl"
           />
         )}
         <p className="text-[11px] text-muted-foreground">Guide tous les messages générés par l'IA (approches, réponses, relances).</p>
@@ -297,15 +315,10 @@ export const SceneExpressSettings: React.FC<Props> = ({ orgId, orgName, companyD
       {/* Navigation */}
       <div className="flex flex-col items-end gap-1.5 pt-1">
         <div className="flex items-center justify-between w-full">
-          <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
+          <Button variant="outline" onClick={onBack} className="gap-2">
             <ArrowLeft className="w-4 h-4" /> Retour
           </Button>
-          <Button
-            onClick={handleValidate}
-            disabled={saving}
-            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
-          >
+          <Button variant="primary" onClick={handleValidate} disabled={saving} className="gap-2 px-6">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
             {saving ? 'Enregistrement…' : 'Tout valider et entrer dans Konekt'}
           </Button>

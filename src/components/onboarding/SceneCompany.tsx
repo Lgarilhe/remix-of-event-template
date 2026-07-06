@@ -177,14 +177,9 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          02 — Votre société
-        </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Créez votre espace</h2>
+      <div className="text-center space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Votre société</p>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Créez votre espace</h2>
         <p className="text-muted-foreground text-sm">
           Entrez le nom de votre société — on s'occupe du reste en arrière-plan.
         </p>
@@ -200,14 +195,14 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearch(); } }}
           placeholder="Nom de votre société"
-          className="flex-1 border border-border text-sm h-10"
+          className="flex-1 text-sm h-10 rounded-xl"
           disabled={phase === 'matching'}
         />
         <Button
+          variant="primary"
           onClick={handleSearch}
           disabled={query.trim().length < 2 || phase === 'matching'}
-          className="h-10 gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-4"
-          style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
+          className="h-10 gap-2 px-4"
         >
           {phase === 'matching' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           Rechercher
@@ -229,7 +224,7 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
               <button
                 key={c.id}
                 onClick={() => startMatch(query.trim(), c.id)}
-                className="w-full text-left border border-border hover:border-foreground/40 p-3 flex items-center gap-3 transition-all"
+                className="w-full text-left rounded-xl border border-border bg-card hover:bg-accent/40 p-3 flex items-center gap-3 transition-colors"
               >
                 {c.logoUrl || c.domain ? (
                   <img
@@ -239,7 +234,7 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                 ) : (
-                  <div className="w-8 h-8 bg-muted flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                     <Building2 className="w-4 h-4 text-muted-foreground" />
                   </div>
                 )}
@@ -270,16 +265,16 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
             exit={{ opacity: 0, y: -10 }}
             className="space-y-3"
           >
-            <div className="border-2 border-border p-4 flex items-center gap-3" style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}>
+            <div className="rounded-xl border border-foreground/30 bg-card shadow-sm p-4 flex items-center gap-3">
               {(company.logoUrl || company.domain) ? (
                 <img
                   src={company.logoUrl || `https://logo.clearbit.com/${company.domain}`}
                   alt={company.name}
-                  className="w-10 h-10 object-contain shrink-0"
+                  className="w-10 h-10 rounded-lg object-contain shrink-0"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
               ) : (
-                <div className="w-10 h-10 bg-muted flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
                   <Building2 className="w-5 h-5 text-muted-foreground" />
                 </div>
               )}
@@ -288,7 +283,7 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
                 {companyMeta && <p className="text-xs text-muted-foreground truncate">{companyMeta}</p>}
               </div>
             </div>
-            <p className="text-xs text-muted-foreground border-l-2 border-foreground/30 pl-3">
+            <p className="text-xs text-muted-foreground pl-1">
               L'analyse complète (postes ouverts, insights société) continue en arrière-plan —
               vous la retrouverez sur votre tableau de bord.
             </p>
@@ -298,14 +293,14 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
 
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
+        <Button variant="outline" onClick={onBack} className="gap-2">
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
+          variant="primary"
           onClick={handleCreate}
           disabled={phase !== 'confirm' || !company || isCreating}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
+          className="gap-2 px-6"
         >
           {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
           {isCreating ? 'Création…' : 'Créer mon espace'}

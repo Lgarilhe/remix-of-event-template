@@ -125,7 +125,7 @@ export const DetectedRolesCard: React.FC = () => {
   };
 
   return (
-    <div className="border border-border bg-card mb-6">
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden mb-6">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <Briefcase className="w-4 h-4 text-muted-foreground" />
@@ -153,10 +153,11 @@ export const DetectedRolesCard: React.FC = () => {
       </div>
       <div className="px-4 py-3 border-t border-border flex justify-end">
         <Button
+          variant="primary"
           size="sm"
           onClick={handleCreate}
           disabled={selectedCount === 0 || isCreating}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-xs"
+          className="gap-2 text-xs"
         >
           {isCreating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           {isCreating ? 'Création…' : `En faire ${selectedCount > 1 ? `${selectedCount} missions` : 'une mission'}`}

@@ -75,14 +75,9 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          01 — Votre activité
-        </span>
-        <h2 className="font-editorial italic text-3xl md:text-4xl">
+      <div className="text-center space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Votre activité</p>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
           Quel est votre profil ?
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -105,19 +100,18 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + index * 0.08, duration: 0.35 }}
               className={`
-                w-full text-left p-3.5 border-2 transition-all duration-200
+                w-full text-left p-3.5 rounded-xl border transition-all duration-200
                 flex items-start gap-3
                 ${isSelected
-                  ? 'border-border bg-foreground/[0.03]'
-                  : 'border-border hover:border-border'}
+                  ? 'border-foreground/40 bg-accent/60'
+                  : 'border-border bg-card hover:bg-accent/40'}
               `}
-              style={isSelected ? { boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' } : {}}
             >
               <div
-                className={`w-9 h-9 flex items-center justify-center shrink-0 transition-colors ${
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
                   isSelected
                     ? 'bg-foreground text-background'
-                    : 'bg-accent/50 text-foreground/60'
+                    : 'bg-foreground/[0.06] text-foreground/60'
                 }`}
               >
                 <Icon className="w-4.5 h-4.5" />
@@ -132,7 +126,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="w-5 h-5 bg-foreground text-background flex items-center justify-center shrink-0 mt-0.5"
+                  className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center shrink-0 mt-0.5"
                 >
                   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
@@ -151,7 +145,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.35 }}
       >
         <Select value={discovery} onValueChange={setDiscovery}>
-          <SelectTrigger className="w-full border border-border text-sm text-muted-foreground h-10">
+          <SelectTrigger className="w-full rounded-xl text-sm text-muted-foreground h-10">
             <SelectValue placeholder="Comment nous avez-vous connu ? (optionnel)" />
           </SelectTrigger>
           <SelectContent>
@@ -170,10 +164,10 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.4 }}
       >
         <Button
+          variant="primary"
           onClick={handleContinue}
           disabled={!selected || submitting}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
+          className="gap-2 px-6"
         >
           {submitting ? <>Création… <Loader2 className="w-4 h-4 animate-spin" /></> : <>Suivant <ArrowRight className="w-4 h-4" /></>}
         </Button>
