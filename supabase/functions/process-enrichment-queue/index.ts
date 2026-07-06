@@ -24,12 +24,21 @@ const MAX_PER_RUN = 3;          // peu d'items par run (cadence cron = 2 min →
 const INTER_ITEM_DELAY_MS = 12000;  // espacement anti micro-burst entre 2 items du même run
 const MAX_ATTEMPTS = 4;
 
+// Sérialisation par compte : ne JAMAIS enrichir un compte utilisé
+// interactivement dans les N dernières minutes (recherche / vue de profil /
+// message manuels = linkedin_action_log.source manual_*). Un profile_view de
+// fond pendant une recherche Recruiter manuelle = multiple_sessions garanti.
+const INTERACTIVE_COOLDOWN_MS = 5 * 60 * 1000;
+
 // ⏸️ PAUSE TEMPORAIRE (2026-06-02) — l'enrichissement de fond consommait la session
 // LinkedIn Recruiter EN MÊME TEMPS que les recherches manuelles de l'utilisateur →
 // « conflit de session » (multiple_sessions, sensible sur comptes Recruiter).
-// On suspend le worker le temps de brancher une sérialisation par compte
-// (ne jamais enrichir un compte utilisé interactivement récemment).
-// 👉 Repasser à false une fois la sérialisation en place pour réactiver l'enrichissement.
+// 2026-07-06 : la sérialisation par compte demandée ci-dessous est en place
+// (check linkedin_action_log manual_* < INTERACTIVE_COOLDOWN_MS avant chaque
+// item). Le flag reste true tant que le comportement n'a pas été validé en
+// prod après redéploiement — ⚠️ cette pause n'était visiblement JAMAIS partie
+// en prod (exécutions de 2-11 s observées le 2026-07-06, un no-op répond en ms).
+// 👉 Repasser à false une fois le redéploiement vérifié + logs propres.
 const ENRICHMENT_PAUSED = true;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -109,7 +118,25 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // 2. Résoudre les credentials Unipile de l'org.
+      // 2. Sérialisation par compte : compte utilisé interactivement il y a
+      // moins de INTERACTIVE_COOLDOWN_MS → on reporte SANS consommer de
+      // tentative. L'usage manuel (recherche en cours) a toujours priorité.
+      const { data: recentManual } = await supabase
+        .from("linkedin_action_log")
+        .select("id")
+        .eq("account_id", item.account_id)
+        .like("source", "manual%")
+        .gte("created_at", new Date(Date.now() - INTERACTIVE_COOLDOWN_MS).toISOString())
+        .limit(1);
+      if (recentManual && recentManual.length > 0) {
+        await supabase.from("profile_enrichment_queue")
+          .update({ scheduled_at: new Date(Date.now() + INTERACTIVE_COOLDOWN_MS).toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", item.id);
+        results.push({ id: item.id, ok: false, reason: "account in interactive use, rescheduled" });
+        continue;
+      }
+
+      // 3. Résoudre les credentials Unipile de l'org.
       const creds = await resolveUnipileCredentials(item.organization_id ?? undefined, supabase);
       if (!creds) {
         await supabase.from("profile_enrichment_queue")
@@ -119,7 +146,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // 3. Enrichissement gated (1 vue de profil, throttlée).
+      // 4. Enrichissement gated (1 vue de profil, throttlée).
       const res = await enrichProfileToCache({
         supabase,
         apiKey: creds.apiKey,

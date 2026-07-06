@@ -32,6 +32,18 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-06 — BUG — Vrais conflits de session : le worker enrichissement jamais mis en pause en prod (suspicion forte)
+
+**Contexte** : après le fix de classification, Laurent relance → le VRAI toast conflit de session s'affiche (multiple_sessions authentique). Quelque chose utilise son compte LinkedIn en parallèle des recherches manuelles.
+**Décision / Fait** : le kill-switch `ENRICHMENT_PAUSED=true` (commit 24f5e4b du 2026-06-02, motivé par EXACTEMENT ce symptôme) n'a très probablement jamais été déployé : les logs prod du 2026-07-06 montrent process-enrichment-queue avec des exécutions de 0,6 à 11,2 s toutes les ~2 min — un no-op pausé répond en millisecondes. Le worker actif consomme la session Recruiter (profile_views de fond) → collision quasi systématique avec les recherches. Fait : sérialisation par compte implémentée (la condition posée par la pause) — avant chaque item, check `linkedin_action_log` source manual_* < 5 min sur le compte → report +5 min sans consommer de tentative ; flag laissé à true jusqu'à redéploiement vérifié. ⚠️ Déploiement bloqué sur le moment (MCP Supabase déconnecté) — send_later armé pour déployer + vérifier la version prod + lire le ledger dès reconnexion.
+**Impact** : supabase/functions/process-enrichment-queue/index.ts (à déployer), leçon : TOUJOURS tracer le déploiement d'une edge function dans le LOGBOOK (le commit #205 n'en a aucune trace).
+**Reste à faire** :
+- [ ] Vérifier la version déployée (get_edge_function) puis déployer
+- [ ] Ledger linkedin_action_log autour des échecs → confirmer l'acteur concurrent (enrichment ? sequences ? inmail queue en 400 ?)
+- [ ] Après validation : ENRICHMENT_PAUSED=false (la sérialisation protège désormais l'usage interactif)
+
+---
+
 ## 2026-07-06 — BUG — Faux « Conflit de session LinkedIn » : « unable to process » mal classé
 
 **Contexte** : sur certaines combinaisons de filtres (générés IA notamment), le toast « Conflit de session LinkedIn » s'affiche alors que le dashboard provider montre les comptes Running, rien d'anormal. Corrélation nette avec les filtres, pas avec le compte.
