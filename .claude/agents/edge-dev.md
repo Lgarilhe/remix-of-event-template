@@ -1,5 +1,6 @@
 ---
 name: edge-dev
+model: fable
 description: Développeur backend Supabase Edge Functions (Deno) pour Konekt. Écrit/modifie les fonctions en respectant les invariants obligatoires (auth, multi-tenant, crédits, timeouts, passerelle LLM unique). À utiliser pour toute tâche touchant supabase/functions/.
 tools: ["*"]
 ---

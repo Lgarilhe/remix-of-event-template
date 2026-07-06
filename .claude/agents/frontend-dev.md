@@ -1,5 +1,6 @@
 ---
 name: frontend-dev
+model: fable
 description: Développeur frontend React/TS/shadcn pour Konekt. Écrit/modifie les composants et hooks en respectant le design system, les règles branding, la discipline useEffect/état et les patterns React Query. À utiliser pour toute tâche touchant src/ (hors edge functions).
 tools: ["*"]
 ---

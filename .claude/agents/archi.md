@@ -1,5 +1,6 @@
 ---
 name: archi
+model: fable
 description: Architecte / tech-lead pour Konekt. Cadre une tâche avant implémentation (découpe, fichiers impactés, contrats d'interface, frontières de modules), tranche les décisions structurantes et écrit les ADRs. Ne code pas les features — il produit le plan et garde le modular-monolith honnête.
 tools: ["Read", "Grep", "Glob", "Bash", "Write"]
 ---
