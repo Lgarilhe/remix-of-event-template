@@ -856,28 +856,42 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   }
 
   // ── Trigger auto-analysis for intent detection & status update ──
+  // Internal edge→edge call: service role key (ADR 0001) — the anon key is
+  // neither a JWT nor the service key and gets rejected with a 401 downstream.
   if (chatId) {
-    console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
-    // Fire-and-forget: don't await to keep webhook fast
-    fetchWithTimeout(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        chat_id: chatId,
-        account_id: account_id,
-        sender_id: senderId,
-      }),
-    }).then(res => {
-      console.log(`[unipile-webhook] Auto-analyze triggered: ${res.status}`);
-    }).catch(err => {
-      console.error('[unipile-webhook] Auto-analyze trigger failed:', err);
-    });
+    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
+    // Tenant assertion from server-side data (member_linkedin_accounts), not
+    // from the webhook payload. Fail-closed: no org mapping → no analysis.
+    const analyzeOrgId = linkedMembers?.[0]?.organization_id;
+
+    if (!analyzeOrgId) {
+      console.warn(`[unipile-webhook] No org mapping for account ${account_id} — skipping auto-analyze`);
+    } else {
+      console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
+      // Fire-and-forget: don't await to keep webhook fast. 60s timeout because
+      // auto-analyze-message runs LLM calls (the 15s default would abort mid-call).
+      const analyzePromise = fetchWithTimeout(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          account_id: account_id,
+          sender_id: senderId,
+          organization_id: analyzeOrgId,
+        }),
+      }, 60000).then(res => {
+        console.log(`[unipile-webhook] Auto-analyze triggered: ${res.status}`);
+      }).catch(err => {
+        console.error('[unipile-webhook] Auto-analyze trigger failed:', err);
+      });
+      // Keep the promise alive after the 200 is returned to the webhook sender
+      // (isolate can be recycled once the response is sent).
+      try { (globalThis as any).EdgeRuntime?.waitUntil?.(analyzePromise); } catch { /* no-op */ }
+    }
   }
 
   // ── Fire-and-forget RAG ingestion (conversation message) ──

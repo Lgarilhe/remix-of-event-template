@@ -722,17 +722,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // --- Auth: validate JWT and org membership ---
+    // --- Auth: service role (internal edge→edge calls, ADR 0001) OR JWT + org membership ---
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const isServiceRole = bearerToken === SUPABASE_SERVICE_ROLE_KEY;
+
+    let userId: string | null = null;
+    if (!isServiceRole) {
+      const supabaseAuth = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      userId = user.id;
     }
 
     // Parse request body
@@ -743,13 +750,17 @@ Deno.serve(async (req) => {
       // No body or invalid JSON, use defaults
     }
 
+    // organization_id is mandatory on BOTH paths — resolveOrgCredentials below
+    // stays fail-closed (throws if Notion is not connected for this org).
     const organizationId = body?.organization_id || null;
     if (!organizationId) {
       throw new Error('organization_id est requis');
     }
-    const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
-    if (!membership) {
-      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (userId) {
+      const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', userId).eq('organization_id', organizationId).maybeSingle();
+      if (!membership) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
     const creds = await resolveOrgCredentials(organizationId);
 
@@ -876,7 +887,9 @@ Deno.serve(async (req) => {
     let aiSkillsMap = new Map<string, string[]>();
     if (jobsNeedingSkills.length > 0) {
       console.log(`Extracting skills for ${jobsNeedingSkills.length} jobs via AI...`);
-      aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills, { userId: user.id, organizationId });
+      // userId is null on the service_role path → settleClaudeUsage skips
+      // silently (settle-usage.ts contract); organizationId is always set.
+      aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills, { userId, organizationId });
       
       // Cache the newly extracted skills
       if (aiSkillsMap.size > 0) {

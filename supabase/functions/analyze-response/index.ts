@@ -126,12 +126,15 @@ Deno.serve(async (req) => {
     }
     const userId = auth.userId;
 
-    // Rate limit: 30 req/min
-    const { createClient: createSvcClient } = await import("https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check");
-    const svc = createSvcClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
-    const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'analyze_response', p_max_requests: 30, p_window_seconds: 60 });
-    if (allowed === false) {
-      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Rate limit: 30 req/min — JWT callers only (service_role has no user;
+    // p_user_id: null had undefined behavior).
+    if (userId) {
+      const { createClient: createSvcClient } = await import("https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check");
+      const svc = createSvcClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
+      const { data: allowed } = await svc.rpc('check_rate_limit', { p_user_id: userId, p_action: 'analyze_response', p_max_requests: 30, p_window_seconds: 60 });
+      if (allowed === false) {
+        return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     const body = await req.json();
@@ -145,6 +148,17 @@ Deno.serve(async (req) => {
     }
 
     const { context } = body as { context: AnalysisContext };
+
+    // Settle attribution — internal service_role callers (auto-analyze-message,
+    // ADR 0001) pass organization_id + user_id explicitly in the body. These
+    // fields are trusted ONLY on the service_role path; ignored for JWT callers
+    // (their settle stays attributed to the authenticated user, unchanged).
+    let settleUserId: string | null = userId;
+    let settleOrgId: string | null = null;
+    if (auth.method === 'service_role') {
+      settleUserId = typeof body.user_id === 'string' ? body.user_id : null;
+      settleOrgId = typeof body.organization_id === 'string' ? body.organization_id : null;
+    }
 
     if (!context || !context.messages || context.messages.length === 0) {
       throw new Error("Conversation context is required");
@@ -424,7 +438,7 @@ Analyse cette conversation et retourne le JSON.`;
         antiAiStyle: "full", // les suggestions de réponse sont user-facing
       });
       content = result.content;
-      await settleClaudeUsage({ userId, aiAction: "analyze_response", usage: result.usage, modelId: result.model });
+      await settleClaudeUsage({ userId: settleUserId, organizationId: settleOrgId, aiAction: "analyze_response", usage: result.usage, modelId: result.model });
     } catch (e) {
       console.error("[analyze-response] Claude API error:", e);
       // Return fallback analysis instead of crashing

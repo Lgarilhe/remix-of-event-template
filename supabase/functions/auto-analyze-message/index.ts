@@ -79,6 +79,60 @@ const INTENT_TO_SHORTLIST_ETAPE: Record<string, string> = {
 // Minimum confidence to trigger auto-update
 const MIN_CONFIDENCE = 60;
 
+// ─── Org-scoped job_candidate_status lookup ───────────────────────
+// job_candidate_status has NO organization_id column: the tenant is created_by
+// (must be a member of the resolved org). No raw input in PostgREST filters —
+// two parameterized .eq() queries merged instead of a .or() interpolation
+// (candidateId/profileUrl come from the caller / Unipile and could inject
+// filter segments).
+async function findStatusRecordsForCandidate(opts: {
+  memberIds: string[];
+  candidateId?: string | null;
+  profileUrl?: string | null;
+  select: string;
+  statuses?: string[];
+  limit?: number;
+}): Promise<Record<string, unknown>[]> {
+  const { memberIds, candidateId, profileUrl, select, statuses, limit = 10 } = opts;
+  if (memberIds.length === 0) return [];
+
+  const queries = [];
+  if (candidateId) {
+    let q = supabase.from('job_candidate_status').select(select)
+      .eq('candidate_id', candidateId)
+      .in('created_by', memberIds)
+      .limit(limit);
+    if (statuses) q = q.in('status', statuses);
+    queries.push(q);
+  }
+  if (profileUrl) {
+    let q = supabase.from('job_candidate_status').select(select)
+      .eq('linkedin_profile_url', profileUrl)
+      .in('created_by', memberIds)
+      .limit(limit);
+    if (statuses) q = q.in('status', statuses);
+    queries.push(q);
+  }
+  if (queries.length === 0) return [];
+
+  const results = await Promise.all(queries);
+  const seen = new Set<string>();
+  const merged: Record<string, unknown>[] = [];
+  for (const { data, error } of results) {
+    if (error) {
+      console.error('[auto-analyze] job_candidate_status query error:', error);
+      continue;
+    }
+    for (const row of (data || []) as Record<string, unknown>[]) {
+      const key = typeof row.id === 'string' ? row.id : JSON.stringify(row);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(row);
+    }
+  }
+  return merged.slice(0, limit);
+}
+
 // ─── Notion helpers ───────────────────────────────────────────────
 async function notionQuery(databaseId: string, filter: Record<string, unknown>, creds: OrgCreds) {
   const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${databaseId}/query`, {
@@ -320,16 +374,86 @@ Deno.serve(async (req) => {
 
     const { chat_id, account_id, sender_id, organization_id } = _body;
 
-    // Verify org membership (skip for service_role — used by webhooks)
-    if (organization_id && userId) {
-      const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-      const isMember = await verifyOrgMembership(supabase, userId, organization_id);
-      if (!isMember) {
+    if (!chat_id || !account_id) {
+      throw new Error('chat_id and account_id are required');
+    }
+
+    // ── Tenant resolution (fail-closed) — ADR 0001 ──
+    // account_id is the trusted anchor: member_linkedin_accounts maps it to the
+    // owning org(s) + owner user(s). body.organization_id is only an assertion,
+    // cross-checked against the mapped orgs (403 on mismatch). All writes
+    // below are bounded to the resolved tenant.
+    const { data: accountMappings, error: mappingError } = await supabase
+      .from('member_linkedin_accounts')
+      .select('organization_id, user_id')
+      .eq('linkedin_account_id', account_id)
+      .limit(50);
+    if (mappingError) {
+      console.error('[auto-analyze] member_linkedin_accounts lookup error:', mappingError);
+    }
+
+    const mappings = (accountMappings || []) as Array<{ organization_id: string; user_id: string | null }>;
+    const mappedOrgIds = [...new Set(mappings.map((m) => m.organization_id).filter(Boolean))];
+
+    if (mappedOrgIds.length === 0) {
+      console.warn(`[auto-analyze] No org mapping for account ${account_id} — refusing`);
+      return new Response(JSON.stringify({ error: 'Compte LinkedIn non rattaché à une organisation' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (organization_id && !mappedOrgIds.includes(organization_id)) {
+      console.warn(`[auto-analyze] organization_id mismatch: body=${organization_id} not among mapped orgs for account ${account_id}`);
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let resolvedOrgId: string;
+    if (userId) {
+      // JWT path: membership in a MAPPED org is MANDATORY — cannot be bypassed
+      // by omitting organization_id from the body.
+      const candidateOrgIds = organization_id ? [organization_id] : mappedOrgIds;
+      const { data: membershipRows, error: membershipError } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .in('organization_id', candidateOrgIds)
+        .limit(1);
+      if (membershipError) {
+        console.error('[auto-analyze] organization_members membership lookup error:', membershipError);
+      }
+      const memberOrgId = (membershipRows?.[0] as { organization_id?: string } | undefined)?.organization_id;
+      if (!memberOrgId) {
         return new Response(JSON.stringify({ error: 'Forbidden' }), {
           status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      resolvedOrgId = memberOrgId;
+    } else {
+      // service_role path: honor the (already cross-checked) body assertion,
+      // else fall back to the first mapped org.
+      resolvedOrgId = organization_id || mappedOrgIds[0];
     }
+
+    // Owner of the LinkedIn account within the resolved org — the settle target
+    // on the service_role path (always a Konekt uuid).
+    const accountOwnerId: string | null =
+      mappings.find((m) => m.organization_id === resolvedOrgId && m.user_id)?.user_id ?? null;
+
+    // Member ids of the resolved org — the write-scope boundary for
+    // job_candidate_status / chat_categories (tables tenant-scoped by created_by).
+    const { data: orgMembers, error: orgMembersError } = await supabase
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', resolvedOrgId);
+    if (orgMembersError) {
+      console.error('[auto-analyze] organization_members lookup error:', orgMembersError);
+    }
+    const memberIds: string[] = [...new Set(
+      ((orgMembers || []) as Array<{ user_id: string | null }>).map((m) => m.user_id).filter((id): id is string => !!id)
+    )];
+
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "auto_analyze_message", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -340,12 +464,9 @@ Deno.serve(async (req) => {
       console.warn("[auto-analyze-message] Failed to load settle-credits:", e);
     }
 
-    // Resolve org-specific credentials (Unipile + Notion)
-    const creds = await resolveOrgCredentials(organization_id);
-
-    if (!chat_id || !account_id) {
-      throw new Error('chat_id and account_id are required');
-    }
+    // Resolve org-specific credentials (Unipile + Notion) — from the RESOLVED
+    // org, never from the body assertion.
+    const creds = await resolveOrgCredentials(resolvedOrgId);
 
     console.log(`[auto-analyze] Processing chat: ${chat_id}, sender: ${sender_id}`);
 
@@ -395,14 +516,17 @@ Deno.serve(async (req) => {
     // 4. Update app DB (job_candidate_status)
 
     const candidateId = sender_id || chatDetails.attendeeProviderId;
-    
+
     if (candidateId) {
-      const { data: statusRecords } = await supabase
-        .from('job_candidate_status')
-        .select('id, job_id, status, pipeline_stage')
-        .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
-        .in('status', ['messaged', 'shortlisted', 'scored', 'replied'])
-        .limit(10);
+      // Org-scoped, parameterized lookup (no .or() interpolation of caller input)
+      const statusRecords = await findStatusRecordsForCandidate({
+        memberIds,
+        candidateId,
+        profileUrl,
+        select: 'id, job_id, status, pipeline_stage',
+        statuses: ['messaged', 'shortlisted', 'scored', 'replied'],
+        limit: 10,
+      }) as Array<{ id: string; job_id: string; status: string; pipeline_stage: string | null }>;
 
       if (statusRecords && statusRecords.length > 0) {
         const appStatus = analysis.intent === 'interested' || analysis.intent === 'wants_call' 
@@ -424,15 +548,18 @@ Deno.serve(async (req) => {
             record.pipeline_stage === 'Contacté' ||
             (!advancedStages.includes(record.pipeline_stage) && record.pipeline_stage !== 'Perdu');
 
-          await supabase
+          const { error: updateError } = await supabase
             .from('job_candidate_status')
-            .update({ 
+            .update({
               status: appStatus,
               recommendation: analysis.summary,
               ...(shouldUpdatePipeline ? { pipeline_stage: pipelineStage } : {}),
               updated_at: new Date().toISOString(),
             })
             .eq('id', record.id);
+          if (updateError) {
+            console.error('[auto-analyze] job_candidate_status update error:', updateError);
+          }
         }
         console.log(`[auto-analyze] Updated ${statusRecords.length} job_candidate_status records to "${appStatus}" (pipeline: ${pipelineStage})`);
       }
@@ -478,38 +605,49 @@ Deno.serve(async (req) => {
       'timing_issue': 'to_recontact',
     };
     const chatCategory = INTENT_TO_CHAT_CATEGORY[analysis.intent];
-    if (chatCategory && chat_id && account_id) {
-      const { data: existingEntries } = await supabase
+    if (chatCategory && chat_id && account_id && memberIds.length > 0) {
+      const { data: existingEntries, error: catLookupError } = await supabase
         .from('chat_categories')
         .select('created_by')
         .eq('account_id', account_id)
+        .in('created_by', memberIds)
         .limit(1);
-
-      let userIds: string[] = existingEntries?.map((e: any) => e.created_by) || [];
-      
-      if (userIds.length === 0 && candidateId) {
-        const { data: statusRecs } = await supabase
-          .from('job_candidate_status')
-          .select('created_by')
-          .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
-          .limit(1);
-        userIds = statusRecs?.map((r: any) => r.created_by) || [];
+      if (catLookupError) {
+        console.error('[auto-analyze] chat_categories lookup error:', catLookupError);
       }
 
-      const uniqueUserIds = [...new Set(userIds)];
-      
-      for (const userId of uniqueUserIds) {
-        await supabase
+      let userIds: string[] = existingEntries?.map((e: any) => e.created_by) || [];
+
+      if (userIds.length === 0 && candidateId) {
+        const statusRecs = await findStatusRecordsForCandidate({
+          memberIds,
+          candidateId,
+          profileUrl,
+          select: 'created_by',
+          limit: 1,
+        }) as Array<{ created_by: string }>;
+        userIds = statusRecs.map((r) => r.created_by);
+      }
+
+      // Defense in depth: never write a row attributed to a user outside the
+      // resolved org.
+      const uniqueUserIds = [...new Set(userIds)].filter((id) => memberIds.includes(id));
+
+      for (const memberUserId of uniqueUserIds) {
+        const { error: upsertError } = await supabase
           .from('chat_categories')
           .upsert({
             chat_id: chat_id,
             account_id: account_id,
             category: chatCategory,
-            created_by: userId,
+            created_by: memberUserId,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'chat_id,created_by' });
+        if (upsertError) {
+          console.error('[auto-analyze] chat_categories upsert error:', upsertError);
+        }
       }
-      
+
       if (uniqueUserIds.length > 0) {
         console.log(`[auto-analyze] Updated chat_categories → "${chatCategory}" for ${uniqueUserIds.length} user(s)`);
       }
@@ -518,13 +656,12 @@ Deno.serve(async (req) => {
     // 7. Trigger full AI analysis (analyze-response) and cache the result
     // IMPORTANT: We await this so the cache is written before the function exits.
     // The webhook already calls auto-analyze as fire-and-forget, so this is fine.
-    const supabaseUrl2 = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
+    // Internal edge→edge calls: service role key (ADR 0001), tenant explicit in
+    // the body, bounded timeouts to stay under the 60s platform budget.
     let cacheWritten = false;
     try {
       console.log(`[auto-analyze] Triggering full analysis for cache (chat: ${chat_id})`);
-      
+
       // Build context for analyze-response
       const analysisContext: Record<string, unknown> = {
         recipientName: candidateName,
@@ -532,36 +669,47 @@ Deno.serve(async (req) => {
         messages: messages.map(m => ({ text: m.text, is_sender: m.is_sender, timestamp: m.timestamp })),
       };
 
-      // Fetch available jobs from Notion for job matching
+      // Fetch available jobs from Notion for job matching.
+      // Degraded mode is fine: orgs without Notion configured get no jobs
+      // (fetch-notion-jobs throws on resolveOrgCredentials → non-ok response).
       try {
-        const notionJobsRes = await fetch(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
+        const notionJobsRes = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/fetch-notion-jobs`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({}),
-        });
+          body: JSON.stringify({ organization_id: resolvedOrgId }),
+        }, 15000);
         if (notionJobsRes.ok) {
           const notionJobsData = await notionJobsRes.json();
           const jobs = notionJobsData?.jobs || [];
           if (jobs.length > 0) {
             analysisContext.availableJobs = jobs.slice(0, 15);
           }
+        } else {
+          await notionJobsRes.text().catch(() => {});
+          console.warn(`[auto-analyze] fetch-notion-jobs returned ${notionJobsRes.status} — continuing without jobs`);
         }
       } catch (e) {
         console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
       }
 
-      // Call analyze-response and AWAIT the result
-      const analyzeRes = await fetch(`${supabaseUrl2}/functions/v1/analyze-response`, {
+      // Call analyze-response and AWAIT the result. user_id/organization_id
+      // are the settle targets, trusted by analyze-response only because this
+      // call carries the service role key.
+      const analyzeRes = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/analyze-response`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ context: analysisContext }),
-      });
+        body: JSON.stringify({
+          context: analysisContext,
+          organization_id: resolvedOrgId,
+          user_id: userId ?? accountOwnerId,
+        }),
+      }, 45000);
 
       if (analyzeRes.ok) {
         const analyzeData = await analyzeRes.json();
@@ -572,11 +720,12 @@ Deno.serve(async (req) => {
             .upsert({
               chat_id: chat_id,
               account_id: account_id,
+              organization_id: resolvedOrgId,
               recipient_name: candidateName,
               analysis: analyzeData.analysis,
               updated_at: new Date().toISOString(),
             }, { onConflict: 'chat_id,account_id' });
-          
+
           if (cacheError) {
             console.error(`[auto-analyze] Cache write error:`, cacheError);
           } else {
@@ -592,62 +741,47 @@ Deno.serve(async (req) => {
     }
 
     // ── Fire-and-forget RAG ingestion (analysis result) ──
-    const candidateId2 = sender_id || chatDetails.attendeeProviderId;
-    if (candidateId2 && analysis) {
-      const ragOrgId = (() => {
-        // Resolve org from any available source
-        return null; // Will use service key mode in ingest-context
-      })();
-      const supabaseUrlRag = Deno.env.get('SUPABASE_URL');
-      const serviceKeyRag = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-      if (supabaseUrlRag && serviceKeyRag) {
-        // Try to find org from member_linkedin_accounts
-        const { data: memberMapping } = await supabase
-          .from('member_linkedin_accounts')
-          .select('organization_id')
-          .eq('linkedin_account_id', account_id)
-          .limit(1);
-        const resolvedOrgId = memberMapping?.[0]?.organization_id;
-        if (resolvedOrgId) {
-          await fetch(`${supabaseUrlRag}/functions/v1/ingest-context`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${serviceKeyRag}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              organization_id: resolvedOrgId,
-              entity_type: 'candidate',
-              entity_id: candidateId2,
-              chunks: [{
-                chunk_type: 'evaluation',
-                content: `Analyse automatique: Intent=${analysis.intent} (${analysis.confidence}%) — ${analysis.summary}`,
-                source_table: 'auto_analyze_message',
-                metadata: { chat_id: chat_id, intent: analysis.intent, confidence: analysis.confidence, date: new Date().toISOString() },
-              }],
-            }),
-          }).catch(err => console.warn('[auto-analyze] RAG ingest failed (non-blocking):', err));
-        }
-      }
+    // Uses the tenant resolved at the top of the handler (single resolution).
+    if (candidateId && analysis) {
+      await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/ingest-context`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: resolvedOrgId,
+          entity_type: 'candidate',
+          entity_id: candidateId,
+          chunks: [{
+            chunk_type: 'evaluation',
+            content: `Analyse automatique: Intent=${analysis.intent} (${analysis.confidence}%) — ${analysis.summary}`,
+            source_table: 'auto_analyze_message',
+            metadata: { chat_id: chat_id, intent: analysis.intent, confidence: analysis.confidence, date: new Date().toISOString() },
+          }],
+        }),
+      }).catch(err => console.warn('[auto-analyze] RAG ingest failed (non-blocking):', err));
     }
 
-    // ── Settle AI credits (fire-and-forget) ──
+    // ── Settle AI credits ──
+    // userId (JWT caller) or the LinkedIn account owner (service_role path) —
+    // always a Konekt uuid, never a LinkedIn provider id / 'system' (which
+    // silently broke the ai_credit_transactions insert while the balance was
+    // already decremented).
     const _tokensIn = analysis?._tokensIn || 0;
     const _tokensOut = analysis?._tokensOut || 0;
+    const settleUserId = userId ?? accountOwnerId;
     if (_tokensIn + _tokensOut > 0) {
-      try {
-        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-        // Use organization_id from body, or resolve from any available user
-        const settleUserId = sender_id || 'system';
-        const orgId = organization_id || await resolveOrgIdFromUser(settleUserId, adminClient).catch(() => null);
-        if (orgId) {
+      if (!settleUserId) {
+        console.warn('[auto-analyze] settle skipped: no Konekt user to attribute usage to');
+      } else {
+        try {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          await settleCredits(adminClient, {
-            organizationId: orgId, userId: settleUserId,
+          await settleCredits(supabase, {
+            organizationId: resolvedOrgId, userId: settleUserId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
           }).catch((e) => console.error("[auto-analyze-message] settle error:", e));
-        }
-      } catch (e) { console.error("[auto-analyze-message] settle skipped:", e); }
+        } catch (e) { console.error("[auto-analyze-message] settle skipped:", e); }
+      }
     }
 
     return new Response(JSON.stringify({
