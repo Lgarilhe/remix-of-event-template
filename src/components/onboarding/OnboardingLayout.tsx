@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
+import { KonektLogo } from '@/components/KonektLogo';
 
 interface OnboardingLayoutProps {
   currentStep: number;
@@ -19,22 +19,25 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
   trackableSteps,
   children,
 }) => {
+  // Même convention que AppSidebar : sombre par défaut, clair si la classe
+  // 'light' est posée sur <html>. Le logo blanc ne se voit que sur fond sombre.
+  const isDark = !document.documentElement.classList.contains('light');
   const progress = ((currentStep + 1) / totalSteps) * 100;
   const scorePercent = Math.round((completedSteps / Math.max(trackableSteps, 1)) * 100);
   const circumference = 2 * Math.PI * 18;
   const strokeDashoffset = circumference - (scorePercent / 100) * circumference;
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden">
-      <div className="absolute inset-0 landing-sky-gradient opacity-50" />
-
+    // bg-background (même fond que le reste de l'app) — l'ancien voile
+    // landing-sky-gradient posé à 50 % d'opacité grisait tout l'écran.
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-background text-foreground">
       <div
         className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.04) 0%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.08) 0%, transparent 70%)' }}
       />
       <div
         className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-blue) / 0.035) 0%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--skalr-blue) / 0.07) 0%, transparent 70%)' }}
       />
 
       {/* Progress bar */}
@@ -51,7 +54,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       {/* Top bar */}
       <div className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-3 backdrop-blur-sm bg-background/60">
         <div className="flex items-center gap-2 shrink-0">
-          <img src={skalrLogo} alt="Konekt" className="h-6 sm:h-7 w-auto" />
+          <KonektLogo variant="full" theme={isDark ? 'light' : 'dark'} size={22} />
           {orgName && (
             <span className="text-xs text-muted-foreground truncate max-w-[80px] sm:max-w-[140px] hidden sm:inline">{orgName}</span>
           )}
