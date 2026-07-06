@@ -328,6 +328,11 @@ export function useLinkedInSearch({
         location_within_area: savedFilters.location_within_area ?? null,
         spotlight: savedFilters.spotlight || '',
         open_to_work: savedFilters.open_to_work ?? null,
+        // Sans ces deux mappings, les chips skills/industries générées par
+        // l'IA disparaissaient au rechargement (seul AutoFillFiltersButton
+        // les appliquait, en session uniquement).
+        skills_keywords: Array.isArray(savedFilters.skills_keywords) ? savedFilters.skills_keywords : [],
+        industry_keywords: Array.isArray(savedFilters.industry_keywords) ? savedFilters.industry_keywords : [],
       };
       setFilters({ ...INITIAL_FILTERS, ...transformed });
 

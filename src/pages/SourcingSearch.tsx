@@ -18,7 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Briefcase } from 'lucide-react';
+import { ArrowLeft, Briefcase, Sparkles } from 'lucide-react';
+import { PromptSearchHero } from '@/components/sourcing/PromptSearchHero';
 import type { JobDetails } from '@/types/jobDetails';
 
 // Workspace d'une recherche autonome (kind='search') : le même moteur de
@@ -34,15 +35,28 @@ export default function SourcingSearch() {
   const { openContextualAgent } = useAgent();
 
   const jd = (project?.job_details || {}) as JobDetails;
+  const jdTitle = (jd.title || '').trim();
 
   const [title, setTitle] = useState('');
   const [transformOpen, setTransformOpen] = useState(false);
   const [missionName, setMissionName] = useState('');
 
-  // Hydrate le champ cible au chargement de la recherche (l'user est le seul
-  // éditeur sur cette page — pas de resync en cours de frappe).
+  // Hero « prompt IA » : affiché tant qu'aucun filtre n'existe, ré-ouvrable
+  // via le bouton ✨, fermable via « Configurer manuellement ».
+  const snapshotKeys = Object.keys((project?.filters_snapshot || {}) as Record<string, unknown>);
+  const hasFilters = snapshotKeys.length > 0;
+  const [heroOverride, setHeroOverride] = useState<'open' | 'closed' | null>(null);
+  const showHero = heroOverride === 'open' || (heroOverride !== 'closed' && !hasFilters);
+
+  // Hydrate le champ intitulé au chargement ET quand l'IA l'extrait du prompt
+  // (l'user est le seul autre éditeur — pas de conflit de frappe).
   useEffect(() => {
-    if (project?.id) setTitle(((project.job_details as JobDetails | undefined)?.title || '').trim());
+    if (project?.id) setTitle(jdTitle);
+  }, [project?.id, jdTitle]);
+
+  // Changement de recherche (navigation) → l'état du hero repart du réel
+  useEffect(() => {
+    setHeroOverride(null);
   }, [project?.id]);
 
   // Une recherche déjà transformée (ou un deep-link vers une mission) vit
@@ -154,30 +168,51 @@ export default function SourcingSearch() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') e.currentTarget.blur();
                 }}
-                placeholder="Que cherches-tu ? Ex : Développeur React senior"
+                placeholder="Intitulé du poste (ex : Développeur React senior)"
                 className="h-9 font-medium"
                 aria-label="Intitulé du poste recherché"
               />
             </div>
+            {!showHero && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 gap-1.5 shrink-0"
+                onClick={() => setHeroOverride('open')}
+                title="Décrire la cible en langage naturel — l'IA génère les filtres"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Prompt IA
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" onClick={openTransform}>
               <Briefcase className="w-3.5 h-3.5" />
               Transformer en mission
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mb-3 ml-11">
-            Optionnel pour chercher — requis pour lancer le scoring IA.
+            L'intitulé sert au scoring IA — il se remplit tout seul quand tu passes par le prompt.
           </p>
 
-          <OutreachSearchProvider>
-            <LinkedInSearch
-              accounts={accounts}
-              selectedAccount={selectedAccount}
-              onAccountChange={setSelectedAccount}
-              activeProject={project}
-              searchSource="linkedin"
-              onOpenSearchAgent={handleOpenSearchAgent}
+          {showHero ? (
+            <PromptSearchHero
+              project={project}
+              hasExistingFilters={hasFilters}
+              onGenerated={() => setHeroOverride('closed')}
+              onSkip={() => setHeroOverride('closed')}
             />
-          </OutreachSearchProvider>
+          ) : (
+            <OutreachSearchProvider>
+              <LinkedInSearch
+                accounts={accounts}
+                selectedAccount={selectedAccount}
+                onAccountChange={setSelectedAccount}
+                activeProject={project}
+                searchSource="linkedin"
+                onOpenSearchAgent={handleOpenSearchAgent}
+              />
+            </OutreachSearchProvider>
+          )}
         </div>
       </div>
 

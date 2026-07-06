@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-06 — SHIP — Recherche par prompt sur /sourcing : hero IA « Décris qui tu cherches »
+
+**Contexte** : retour fondateur immédiat après le ship /sourcing — le champ « Que cherches-tu ? » laissait croire à une recherche par prompt (« ça marche mal », « l'UX pourrait être beaucoup mieux fait ») alors qu'il ne faisait que renommer.
+**Décision / Fait** : vrai flux prompt → filtres. Nouveau `PromptSearchHero` (src/components/sourcing/) affiché tant qu'aucun filtre n'existe : textarea langage naturel + 3 exemples cliquables + « Générer la recherche ». Appelle `generate-search-filters` via invokeWithCredits (action `filter_generation`, prompt entier dans job.description comme le Brief IA de CreateProjectModal), persiste `filters_snapshot = { ...data.filters, suggestions, brief_text, generated_at }` (spread top-level — PAS la réponse entière, cf. bug du tool agent regenerate_search_filters) + `name`/`job_details.title` = `analysis.suggested_title` → le scoring se débloque tout seul. L'hydratation existante (deps [id, filters_snapshot], snapshotKey=generated_at) applique les filtres au panneau sans plumbing. Boutons « Prompt IA » (ré-ouvrir, prompt pré-rempli, warning remplacement) et « Configurer manuellement » (skip). Bonus : (1) fix hydratation Branch B — `skills_keywords`/`industry_keywords` n'étaient PAS copiés dans le state au rechargement (chips perdues aussi côté missions) ; (2) SearchWelcomeMessage variante standalone (l'étape « Sélectionnez un poste dans le panneau de gauche » n'existe pas ici).
+**Impact** : PromptSearchHero (nouveau), SourcingSearch, useLinkedInSearch (2 mappings), SearchResultsPanel (variante welcome).
+**QA** : tsc + build OK ; navigateur 22/22 (hero à la création, exemple cliquable, payload generate-search-filters, PATCH snapshot+titre, hydratation FILTRES=4 + chips, champ intitulé auto-rempli, ré-ouverture prompt pré-rempli, skip manuel, liste renommée, transformation mission intacte).
+**Reste à faire** :
+- [ ] Auto-lancer la recherche post-génération (bloqué par la résolution asynchrone de la localisation — pendingLocationRef ; à faire proprement ou pas du tout)
+- [ ] FilterReviewModal (validation avant application) — volontairement pas branché : il perd company/school/spotlight/open_to_work
+**Refs** : contrat complet generate-search-filters documenté dans l'entry (input job structuré, output filters/analysis/suggestions/power_filters)
+
+---
+
 ## 2026-07-06 — SHIP — Recherche autonome (/sourcing) : sourcer sans créer de mission
 
 **Contexte** : le sourcing n'existait que dans une mission ; Laurent veut chercher librement et ne créer la mission que quand la recherche devient sérieuse.
@@ -40,7 +53,7 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Impact** : useSourcingProjects, useLinkedInScoring, LinkedInSearch, SearchResultsPanel, useQuotaGate, App.tsx, AppSidebar, NavigationPalette, pages/SourcingSearches + pages/SourcingSearch, types.ts, migration SQL.
 **QA** : tsc + vite build OK ; harnais navigateur 12/12 (liste vide, création → workspace, welcome générique sans panneau brief, PATCH title+name au blur, liste renommée, dialog transformation préremplie, PATCH kind=mission → /missions/:id).
 **Reste à faire** :
-- [ ] Pré-remplissage IA des filtres depuis le champ cible (réutiliser generate-search-filters)
+- [x] Pré-remplissage IA des filtres depuis le champ cible (réutiliser generate-search-filters) — fait le jour même, voir entry suivante
 - [ ] Tuto vidéo de l'écran Recherche
 - [ ] Option : masquer les panneaux séquences/enrollment dans une recherche (fonctionnels mais orientés mission)
 **Refs** : supabase/migrations/20260706130611_sourcing_projects_kind.sql

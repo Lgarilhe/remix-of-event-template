@@ -800,7 +800,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 accountStatus={accountStatus}
               />
             ) : (
-              <SearchWelcomeMessage />
+              <SearchWelcomeMessage standalone={activeProject?.kind === 'search'} />
             )}
           </div>
         ) : displayResults.length === 0 ? (
@@ -1248,7 +1248,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 };
 
 // Welcome message when no search has been performed
-const SearchWelcomeMessage: React.FC = () => (
+const SearchWelcomeMessage: React.FC<{ standalone?: boolean }> = ({ standalone = false }) => (
   <div className="w-full max-w-lg">
     <motion.div
       className="text-center mb-8"
@@ -1268,42 +1268,54 @@ const SearchWelcomeMessage: React.FC = () => (
         Recherche LinkedIn
       </h3>
       <p className="text-sm text-muted-foreground">
-        Trouvez des candidats qualifiés en utilisant les filtres avancés
+        {standalone
+          ? 'Tes filtres sont prêts — il ne reste qu’à lancer'
+          : 'Trouvez des candidats qualifiés en utilisant les filtres avancés'}
       </p>
     </motion.div>
 
     <div className="space-y-4">
       {[
-        {
+        // Recherche autonome : pas de « poste de référence » à choisir (il est
+        // déduit du prompt) — le guide démarre directement sur la recherche.
+        ...(standalone ? [] : [{
           num: '1',
           title: 'Sélectionnez un poste',
           content: <p className="text-sm text-muted-foreground ml-8">Choisissez un <strong>poste de référence</strong> dans le panneau de gauche.</p>,
           bg: 'bg-muted/50 border-border',
-        },
+        }]),
         {
-          num: '2',
+          num: standalone ? '1' : '2',
           title: 'Recherchez des profils',
           content: (
             <ul className="text-sm text-muted-foreground space-y-2 ml-8">
-              <li>• Configurez vos filtres ou utilisez <strong>Auto-fill</strong></li>
-              <li>• Cliquez sur <strong>Rechercher</strong></li>
+              {standalone
+                ? <li>• Vérifie les filtres générés, puis clique sur <strong>Rechercher</strong></li>
+                : <>
+                    <li>• Configurez vos filtres ou utilisez <strong>Auto-fill</strong></li>
+                    <li>• Cliquez sur <strong>Rechercher</strong></li>
+                  </>}
             </ul>
           ),
           bg: 'bg-muted/30 border-border',
         },
         {
-          num: '3',
+          num: standalone ? '2' : '3',
           title: 'Sélectionnez et scorez',
           content: <p className="text-sm text-muted-foreground ml-8">Sélectionnez les profils, puis cliquez sur <strong><Target className="w-3 h-3 inline" /> Scorer</strong>.</p>,
           bg: 'bg-muted border-border',
         },
         {
-          num: '4',
-          title: 'Ajoutez ou archivez',
+          num: standalone ? '3' : '4',
+          title: standalone ? 'Shortlistez ou archivez' : 'Ajoutez ou archivez',
           content: (
             <ul className="text-sm text-muted-foreground space-y-1 ml-8">
-              <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong></li>
-              <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
+              {standalone
+                ? <li>• Shortlist, statuts et scores sont conservés — transforme en mission quand c'est mûr</li>
+                : <>
+                    <li>• <strong><FolderPlus className="w-3 h-3 inline" /> Ajouter au projet</strong></li>
+                    <li>• <strong><Archive className="w-3 h-3 inline" /> Archiver</strong></li>
+                  </>}
             </ul>
           ),
           bg: 'bg-muted/50 border-border',
