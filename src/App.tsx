@@ -16,6 +16,7 @@ import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
+import { clearOnboardingProgress } from "@/components/onboarding/onboardingStorage";
 import { getPreviewAccessToken, persistPreviewAccessToken, withPreviewAccessToken, withPreviewAccessTokenFromSearch } from "@/lib/previewToken";
 import { loadAnalytics } from "@/lib/analytics";
 import Auth from "./pages/Auth";
@@ -92,6 +93,7 @@ const AppContent = () => {
       
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
         clearOrgIdCache();
+        clearOnboardingProgress();
         queryClient.clear();
         prevUserIdRef.current = null;
         Sentry.setUser(null);
@@ -108,6 +110,7 @@ const AppContent = () => {
         const newUserId = session?.user?.id ?? null;
         if (prevUserIdRef.current && prevUserIdRef.current !== newUserId) {
           clearOrgIdCache();
+          clearOnboardingProgress();
           queryClient.clear();
         }
         prevUserIdRef.current = newUserId;

@@ -27,6 +27,11 @@ import {
   type OrgType,
   type SceneKey,
 } from '@/components/onboarding/onboardingMeta';
+import {
+  loadOnboardingProgress,
+  saveOnboardingProgress,
+  clearOnboardingProgress,
+} from '@/components/onboarding/onboardingStorage';
 
 export interface OnboardingCompanyData {
   name: string;
@@ -35,48 +40,8 @@ export interface OnboardingCompanyData {
   careersUrl: string | null;
 }
 
-const STORAGE_KEY = 'konekt_onboarding_progress_v2';
-
-interface PersistedProgress {
-  step: number;
-  orgType: OrgType | null;
-  orgDetails: OrgDetailsData | null;
-  discoverySource: string;
-  specializations: string[];
-  completed: SceneKey[];
-  profileBasics: { displayName: string; jobTitle: string; linkedinUrl: string } | null;
-}
-
-function loadProgress(): PersistedProgress | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedProgress;
-    if (typeof parsed?.step !== 'number') return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveProgress(progress: PersistedProgress) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-  } catch {
-    // stockage plein/indisponible — la progression n'est simplement pas persistée
-  }
-}
-
-export function clearOnboardingProgress() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 const Onboarding = () => {
-  const [restored] = useState(loadProgress);
+  const [restored] = useState(loadOnboardingProgress);
 
   const [orgType, setOrgType] = useState<OrgType | null>(restored?.orgType ?? null);
   const [step, setStep] = useState(() => {
@@ -140,7 +105,7 @@ const Onboarding = () => {
 
   // ─── Persistance de la progression ───
   useEffect(() => {
-    saveProgress({
+    saveOnboardingProgress({
       step,
       orgType,
       orgDetails: orgDetailsData,
