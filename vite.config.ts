@@ -37,21 +37,18 @@ export default defineConfig(({ mode }) => ({
       output: {
         // Vendors stables dans des chunks dédiés : le cache navigateur les
         // conserve entre deux déploiements (l'entrée applicative, elle, change
-        // à chaque deploy). Ne pas y mettre les libs lazy-loadées (@xyflow,
-        // recharts, @assistant-ui) : elles doivent rester dans leurs chunks
-        // à la demande.
+        // à chaque deploy). ⚠️ N'y mettre QUE des libs déjà chargées par
+        // l'entrée (App importe Toaster/TooltipProvider/Dialog) : un
+        // manualChunk devient une dépendance statique du bundle initial —
+        // y mettre lucide-react ou des radix utilisés seulement par des
+        // routes lazy les ferait charger au premier paint.
         manualChunks: {
           "vendor-react": ["react", "react-dom", "react-router-dom"],
           "vendor-data": ["@supabase/supabase-js", "@tanstack/react-query"],
           "vendor-ui": [
             "@radix-ui/react-dialog",
-            "@radix-ui/react-dropdown-menu",
-            "@radix-ui/react-popover",
-            "@radix-ui/react-select",
             "@radix-ui/react-tooltip",
-            "@radix-ui/react-tabs",
             "@radix-ui/react-toast",
-            "lucide-react",
           ],
         },
       },

@@ -27,36 +27,40 @@ const dismissKey = (orgId: string) => `konekt:detected-roles-dismissed:${orgId}`
 export const DetectedRolesCard: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { organizationId } = useOrganization();
+  const { organization, organizationId } = useOrganization();
   const [dismissed, setDismissed] = useState(() =>
     organizationId ? localStorage.getItem(dismissKey(organizationId)) === '1' : false
   );
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
 
-  const { data } = useQuery({
+  // Source primaire : l'org déjà en cache (useOrganization select *) — zéro
+  // requête supplémentaire pour l'immense majorité des visites.
+  const orgSnapshot = ((organization as any)?.enrichment_snapshot ?? null) as EnrichmentSnapshot | null;
+  const orgCreatedMs = (organization as any)?.created_at ? new Date((organization as any).created_at).getTime() : 0;
+  const orgIsFresh = orgCreatedMs > 0 && Date.now() - orgCreatedMs < 60 * 60 * 1000;
+
+  // Polling UNIQUEMENT pendant la fenêtre où l'enrichissement de fond peut
+  // encore atterrir : org < 1 h sans snapshot. Pour toute org plus vieille,
+  // aucune requête n'est jamais émise.
+  const { data: polledSnapshot } = useQuery({
     queryKey: ['org-enrichment-snapshot', organizationId],
     queryFn: async () => {
       if (!organizationId) return null;
       const { data: row } = await (supabase as any)
         .from('organizations')
-        .select('enrichment_snapshot, created_at')
+        .select('enrichment_snapshot')
         .eq('id', organizationId)
         .maybeSingle();
-      return row as { enrichment_snapshot: EnrichmentSnapshot | null; created_at: string } | null;
+      return (row?.enrichment_snapshot ?? null) as EnrichmentSnapshot | null;
     },
-    enabled: !!organizationId && !dismissed,
-    // L'enrichissement en fond prend ~30-60 s : on poll tant qu'il n'a pas
-    // atterri, mais uniquement pour une org fraîche (sinon il n'arrivera pas).
-    refetchInterval: (query) => {
-      const row = query.state.data;
-      if (!row || row.enrichment_snapshot) return false;
-      const ageMs = Date.now() - new Date(row.created_at).getTime();
-      return ageMs < 60 * 60 * 1000 ? 30_000 : false;
-    },
+    enabled: !!organizationId && !dismissed && !orgSnapshot && orgIsFresh,
+    refetchInterval: (query) =>
+      !query.state.data && Date.now() - orgCreatedMs < 60 * 60 * 1000 ? 30_000 : false,
+    staleTime: 25_000,
   });
 
-  const snapshot = data?.enrichment_snapshot ?? null;
+  const snapshot = orgSnapshot || polledSnapshot || null;
   const roles = snapshot?.openRoles ?? [];
 
   if (!organizationId || dismissed || !snapshot || roles.length === 0) return null;

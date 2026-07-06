@@ -9,6 +9,7 @@ import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { useAgent } from '@/contexts/AgentContext';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { isPublicRoute } from '@/lib/publicRoutes';
 
 // Lazy : AgentChatPanel tire @assistant-ui/react + react-markdown (~2 200 lignes).
 // Le chunk n'est chargé qu'à la première ouverture du drawer, pas dans le bundle initial.
@@ -16,11 +17,10 @@ const AgentChatPanel = lazy(() =>
   import('./AgentChatPanel').then((m) => ({ default: m.AgentChatPanel }))
 );
 
-// Routes publiques où l'agent est totalement désactivé (FAB + raccourci clavier) :
-// landing, auth, portail candidat et portail client externe — les visiteurs et
-// clients finaux ne doivent jamais voir l'assistant interne.
-const AGENT_BLOCKED_ROUTES = ['/', '/auth', '/portal', '/client'];
-// Routes internes où seul le FAB est masqué (Cmd+K reste actif).
+// Sur toute route publique (source de vérité : lib/publicRoutes), l'agent est
+// totalement désactivé (FAB + raccourci clavier) — les visiteurs et clients
+// finaux ne doivent jamais voir l'assistant interne.
+// Routes internes où seul le FAB est masqué (Cmd+K reste actif) :
 const HIDDEN_FAB_ROUTES = ['/onboarding'];
 
 const matchesRoute = (pathname: string, routes: string[]) =>
@@ -72,7 +72,7 @@ const AgentFAB: React.FC = () => {
 export const AgentDrawer: React.FC = () => {
   const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob, projectId, accountId } = useAgent();
   const location = useLocation();
-  const isBlocked = matchesRoute(location.pathname, AGENT_BLOCKED_ROUTES);
+  const isBlocked = isPublicRoute(location.pathname);
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {

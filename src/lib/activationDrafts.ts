@@ -11,6 +11,9 @@
  */
 
 import type { AiContext } from '@/hooks/useAiContext';
+import type { JobDetails } from '@/types/jobDetails';
+
+type ClientSize = NonNullable<JobDetails['client']>['size'];
 
 export interface EnrichmentSnapshot {
   enriched_at?: string;
@@ -78,10 +81,11 @@ export function buildSignatureHtml(input: {
   return `<p>${lines.join('<br>')}</p>`;
 }
 
-/** Mappe la taille d'entreprise (nombre d'employés) vers l'enum du brief. */
+/** Mappe la taille d'entreprise (nombre d'employés) vers l'enum du brief
+ *  (type dérivé de JobDetails — pas de duplication de l'union). */
 export function mapCompanySizeToClientSize(
   size?: string | null,
-): 'startup' | 'scale-up' | 'mid-market' | 'enterprise' | undefined {
+): ClientSize | undefined {
   const n = size ? parseInt(String(size).replace(/[^0-9]/g, ''), 10) : NaN;
   if (Number.isNaN(n)) return undefined;
   if (n < 50) return 'startup';

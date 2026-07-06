@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Building2, Users, UserCircle } from 'lucide-react';
+import { ArrowRight, Building2, Loader2, Users, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 interface Props {
-  onSelect: (orgType: OrgType, discoverySource: string) => void;
+  /** Peut être async (création d'org freelance côté parent) — le bouton est
+   *  verrouillé pendant l'attente pour empêcher les doubles créations. */
+  onSelect: (orgType: OrgType, discoverySource: string) => void | Promise<void>;
   onBack: () => void;
 }
 
@@ -58,6 +60,17 @@ const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
   const [discovery, setDiscovery] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleContinue = async () => {
+    if (!selected || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSelect(selected, discovery);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -157,12 +170,12 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         transition={{ delay: 0.4 }}
       >
         <Button
-          onClick={() => selected && onSelect(selected, discovery)}
-          disabled={!selected}
+          onClick={handleContinue}
+          disabled={!selected || submitting}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
         >
-          Suivant <ArrowRight className="w-4 h-4" />
+          {submitting ? <>Création… <Loader2 className="w-4 h-4 animate-spin" /></> : <>Suivant <ArrowRight className="w-4 h-4" /></>}
         </Button>
       </motion.div>
     </div>

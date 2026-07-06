@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { OnboardingCompanyData } from '@/pages/Onboarding';
 
@@ -62,9 +63,14 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
   const [company, setCompany] = useState<QuickCompany | null>(null);
   const [candidates, setCandidates] = useState<DisambiguationCandidate[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  // Choix de désambiguïsation (id Apollo ou '__none__') : DOIT être propagé au
+  // run d'enrichissement complet en arrière-plan, sinon celui-ci re-tombe sur
+  // la désambiguïsation (snapshot jamais écrit) ou re-matche la mauvaise société.
+  const [matchedApolloId, setMatchedApolloId] = useState<string | null>(null);
 
   const startMatch = useCallback(async (name: string, selectedId?: string) => {
     setPhase('matching');
+    setMatchedApolloId(selectedId ?? null);
     try {
       const { data, error } = await invokeEdgeFunction<{
         company: QuickCompany;
@@ -115,24 +121,37 @@ export const SceneCompany: React.FC<Props> = ({ onComplete, onBack, createdOrgId
     if (!company) return;
     setIsCreating(true);
     try {
+      const displayName = company.officialName || company.name;
+      const website = company.websiteUrl || (company.domain ? `https://${company.domain}` : null);
+      const logoUrl = company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null);
+
       // Anti-doublon : réutilise l'org créée en session si retour arrière.
       let orgId = createdOrgId ?? null;
       if (!orgId) {
-        const displayName = company.officialName || company.name;
         const org = await createOrganization({
           name: displayName,
           slug: generateSlug(displayName),
-          website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
-          logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
+          website,
+          logoUrl,
         });
         orgId = org?.id ?? null;
+      } else {
+        // Org déjà créée (ex. auto-créée en freelance puis switch entreprise) :
+        // on aligne son identité sur la société confirmée au lieu de garder
+        // le nom de la personne sans logo ni site.
+        const { error } = await supabase
+          .from('organizations')
+          .update({ name: displayName, website, logo_url: logoUrl })
+          .eq('id', orgId);
+        if (error) console.error('[SceneCompany] Org identity update failed:', error);
       }
 
       onComplete({
-        name: company.officialName || company.name,
+        name: displayName,
         domain: company.domain,
         linkedinUrl: company.linkedinUrl,
         careersUrl: null,
+        apolloId: matchedApolloId,
       }, orgId);
     } catch (err: any) {
       const msg = err?.message || '';

@@ -15,11 +15,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronRight, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuthReady } from '@/hooks/useAuthReady';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 import { usePedigreePresets } from '@/hooks/usePedigreePresets';
@@ -46,35 +43,36 @@ interface ChecklistItem {
 
 const dismissKey = (orgId: string) => `konekt:activation-dismissed:${orgId}`;
 
-export const ActivationChecklist: React.FC<Props> = ({ connections, projectsCount }) => {
+/**
+ * Wrapper : le gate dismissed/org est évalué AVANT de monter le composant
+ * porteur des hooks de fetch — un utilisateur qui a masqué la checklist ne
+ * paie plus les ~6 requêtes à chaque visite du dashboard.
+ */
+export const ActivationChecklist: React.FC<Props> = (props) => {
+  const { organizationId } = useOrganization();
+  const [dismissed, setDismissed] = useState(() =>
+    organizationId ? localStorage.getItem(dismissKey(organizationId)) === '1' : false
+  );
+
+  if (!organizationId || dismissed) return null;
+
+  const handleDismiss = () => {
+    localStorage.setItem(dismissKey(organizationId), '1');
+    setDismissed(true);
+  };
+
+  return <ActivationChecklistInner {...props} onDismiss={handleDismiss} />;
+};
+
+const ActivationChecklistInner: React.FC<Props & { onDismiss: () => void }> = ({ connections, projectsCount, onDismiss }) => {
   const navigate = useNavigate();
-  const { user } = useAuthReady();
   const { organization, organizationId, isOwner } = useOrganization();
   const { members } = useOrganizationMembers(organizationId);
   const { signatures, isLoading: signaturesLoading, createSignature } = useEmailSignatures();
   const { presets, loading: presetsLoading } = usePedigreePresets();
   const { aiContext, isLoading: aiContextLoading, save: saveAiContext } = useOrgAiContext();
-  const { displayName } = useCurrentProfile();
-
-  const [dismissed, setDismissed] = useState(() =>
-    organizationId ? localStorage.getItem(dismissKey(organizationId)) === '1' : false
-  );
-
-  // job_title / recruiter_bio ne sont pas dans useCurrentProfile — mini query dédiée.
-  const { data: profileExtra, isLoading: profileLoading } = useQuery({
-    queryKey: ['profile-activation', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data } = await (supabase as any)
-        .from('profiles')
-        .select('job_title, recruiter_bio, linkedin_url')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      return data as { job_title: string | null; recruiter_bio: string | null; linkedin_url: string | null } | null;
-    },
-    enabled: !!user?.id,
-    staleTime: 60 * 1000,
-  });
+  const { profile, displayName, isLoading: profileLoading } = useCurrentProfile();
+  const profileExtra = profile;
 
   const snapshot = ((organization as any)?.enrichment_snapshot ?? null) as EnrichmentSnapshot | null;
   const aiContextFilled = !!(aiContext.tone || aiContext.specialty || aiContext.free_text || aiContext.do.length || aiContext.dont.length);
@@ -168,12 +166,7 @@ export const ActivationChecklist: React.FC<Props> = ({ connections, projectsCoun
   const allDone = doneCount === items.length;
   const isLoading = connections.isLoading || signaturesLoading || presetsLoading || aiContextLoading || profileLoading;
 
-  if (!organizationId || dismissed || allDone || isLoading) return null;
-
-  const handleDismiss = () => {
-    localStorage.setItem(dismissKey(organizationId), '1');
-    setDismissed(true);
-  };
+  if (allDone || isLoading) return null;
 
   const coreItems = items.slice(0, 5);
   const refineItems = items.slice(5);
@@ -192,7 +185,7 @@ export const ActivationChecklist: React.FC<Props> = ({ connections, projectsCoun
           </div>
         </div>
         <button
-          onClick={handleDismiss}
+          onClick={onDismiss}
           aria-label="Masquer la checklist"
           className="text-muted-foreground hover:text-foreground p-1"
         >

@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Save, ScanSearch, Sparkles, UserCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { toast } from 'sonner';
 
@@ -72,27 +73,35 @@ export const MyRecruiterProfile: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
+  // Deps primitives (convention CLAUDE.md « useEffect — avoid object deps ») :
+  // l'effet ne doit tourner qu'à l'arrivée initiale du profil, pas à chaque
+  // nouvelle référence d'objet produite par un refetch.
+  const profileLoaded = !!profile;
   useEffect(() => {
-    if (profile && !hydrated) {
-      setDisplayName(profile.display_name || '');
-      setJobTitle(profile.job_title || '');
-      setLinkedinUrl(profile.linkedin_url || '');
-      setBio(profile.recruiter_bio || '');
+    if (profileLoaded && !hydrated) {
+      setDisplayName(profile!.display_name || '');
+      setJobTitle(profile!.job_title || '');
+      setLinkedinUrl(profile!.linkedin_url || '');
+      setBio(profile!.recruiter_bio || '');
       setHydrated(true);
     }
-  }, [profile, hydrated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileLoaded, hydrated]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['recruiter-profile'] });
-    queryClient.invalidateQueries({ queryKey: ['profile-activation'] });
+    // Le greeting/avatar du dashboard et la checklist lisent 'current-profile'.
+    queryClient.invalidateQueries({ queryKey: ['current-profile'] });
   };
 
   const handleScan = async () => {
     if (!linkedinUrl.trim()) return;
     setScanning(true);
     try {
-      const { data, error } = await supabase.functions.invoke('scan-recruiter-linkedin', {
-        body: { linkedinUrl: linkedinUrl.trim() },
+      // invokeEdgeFunction (pas supabase.functions.invoke) : gère le refresh
+      // de session sur 401 — un onglet Réglages resté ouvert ne casse pas.
+      const { data, error } = await invokeEdgeFunction<ScanResult & { error?: string }>('scan-recruiter-linkedin', {
+        linkedinUrl: linkedinUrl.trim(),
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -113,21 +122,19 @@ export const MyRecruiterProfile: React.FC = () => {
     if (!scanResult) return;
     setGeneratingBio(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-recruiter-bio', {
-        body: {
-          profileData: {
-            name: scanResult.name || displayName,
-            headline: scanResult.headline || jobTitle,
-            about: scanResult.about || '',
-            experiences: scanResult.experiences || [],
-            yearsExperience: scanResult.yearsExperience,
-            location: scanResult.location,
-            currentCompany: scanResult.currentCompany,
-            education: scanResult.education || [],
-            companies: scanResult.companies || [],
-          },
-          classifications: [],
+      const { data, error } = await invokeEdgeFunction<{ bio?: string; error?: string }>('generate-recruiter-bio', {
+        profileData: {
+          name: scanResult.name || displayName,
+          headline: scanResult.headline || jobTitle,
+          about: scanResult.about || '',
+          experiences: scanResult.experiences || [],
+          yearsExperience: scanResult.yearsExperience,
+          location: scanResult.location,
+          currentCompany: scanResult.currentCompany,
+          education: scanResult.education || [],
+          companies: scanResult.companies || [],
         },
+        classifications: [],
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

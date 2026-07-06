@@ -78,13 +78,15 @@ export const EmployerBrandCard: React.FC = () => {
     try {
       const website = (organization as any)?.website || snapshot?.websiteUrl || null;
       const domain = website ? website.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : snapshot?.domain || null;
+      // Pas de force : le garde-fou 7 jours côté serveur est la seule source
+      // de vérité (un force systématique le neutraliserait — un cache client
+      // périmé suffirait à re-payer un audit complet pendant le cooldown).
       const { data, error } = await invokeEdgeFunction<{ cached?: boolean }>('audit-employer-brand', {
         company_name: snapshot?.name || organization?.name,
         domain,
         linkedin_url: snapshot?.linkedinUrl || null,
         careers_url: snapshot?.careersUrl || null,
         organization_id: organizationId,
-        force: !!audit,
       });
       if (error || !(data as any)?.success) {
         throw new Error((data as any)?.error || 'Audit indisponible pour le moment');

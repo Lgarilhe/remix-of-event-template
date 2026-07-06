@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -29,6 +29,9 @@ export interface OnboardingCompanyData {
   domain: string | null;
   linkedinUrl: string | null;
   careersUrl: string | null;
+  /** Choix de désambiguïsation fait à l'écran société (id Apollo ou '__none__') —
+   *  propagé au run d'enrichissement complet en arrière-plan. */
+  apolloId?: string | null;
 }
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
@@ -46,12 +49,14 @@ const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
 const Onboarding = () => {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
-  const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [orgType, setOrgType] = useState<OrgType | null>(null);
   const [discoverySource, setDiscoverySource] = useState('');
   // Org créée PENDANT cette session (≠ organizationId du hook, qui peut être
   // null juste après création ou pointer sur l'org d'un inviteur).
   const [createdOrgId, setCreatedOrgId] = useState<string | null>(null);
+  // Verrou anti double-soumission : createdOrgId (state) n'est posé qu'après
+  // la fin de la création — un double-clic verrait deux fois null.
+  const creatingOrgRef = useRef(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -63,15 +68,6 @@ const Onboarding = () => {
 
   const wantsNewWorkspace = searchParams.get('new') === '1';
 
-  const markCompleted = useCallback((stepIndex: number) => {
-    setCompletedSet((prev) => {
-      if (prev.has(stepIndex)) return prev;
-      const next = new Set(prev);
-      next.add(stepIndex);
-      return next;
-    });
-  }, []);
-
   const goBack = useCallback(() => {
     setDirection(-1);
     setStep((s) => Math.max(0, s - 1));
@@ -82,12 +78,14 @@ const Onboarding = () => {
   const handleOrgTypeSelected = useCallback(async (type: OrgType, discovery: string) => {
     setOrgType(type);
     setDiscoverySource(discovery);
-    markCompleted(0);
     setDirection(1);
 
     if (type === 'freelance') {
-      if (!createdOrgId) {
-        try {
+      if (creatingOrgRef.current) return;
+      creatingOrgRef.current = true;
+      try {
+        let orgId = createdOrgId;
+        if (!orgId) {
           const { data: { user } } = await supabase.auth.getUser();
           const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
           const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
@@ -95,24 +93,29 @@ const Onboarding = () => {
             name: userName,
             slug: `${slug}-${Date.now().toString(36)}`,
           });
-          if (org?.id) {
-            setCreatedOrgId(org.id);
-            const { error } = await supabase
-              .from('organizations')
-              .update({ org_type: 'freelance', discovery_source: discovery || null } as any)
-              .eq('id', org.id);
-            if (error) console.error('[Onboarding] Failed to persist org details:', error);
-          }
-        } catch (err) {
-          console.error('[Onboarding] Auto-create org failed:', err);
-          toast.error("Impossible de créer votre espace. Vérifiez votre connexion puis réessayez.");
-          return;
+          orgId = org?.id ?? null;
+          if (orgId) setCreatedOrgId(orgId);
         }
+        // Toujours persister le type + la découverte, y compris quand l'org
+        // existe déjà (retour arrière depuis le flow entreprise).
+        if (orgId) {
+          const { error } = await supabase
+            .from('organizations')
+            .update({ org_type: 'freelance', discovery_source: discovery || null } as any)
+            .eq('id', orgId);
+          if (error) console.error('[Onboarding] Failed to persist org details:', error);
+        }
+      } catch (err) {
+        console.error('[Onboarding] Auto-create org failed:', err);
+        toast.error("Impossible de créer votre espace. Vérifiez votre connexion puis réessayez.");
+        return;
+      } finally {
+        creatingOrgRef.current = false;
       }
     }
 
     setStep(1);
-  }, [markCompleted, createOrganization, createdOrgId]);
+  }, [createOrganization, createdOrgId]);
 
   // Écran 2 (enterprise/agency) : org créée par SceneCompany. On persiste
   // org_type/discovery_source (awaité — un builder supabase-js est lazy et
@@ -122,7 +125,6 @@ const Onboarding = () => {
   const handleCompanyCreated = useCallback(async (data: OnboardingCompanyData, newOrgId: string | null) => {
     if (newOrgId) setCreatedOrgId(newOrgId);
     const companyIndex = flow.indexOf('company');
-    if (companyIndex >= 0) markCompleted(companyIndex);
 
     if (newOrgId && orgType) {
       const { error } = await supabase
@@ -132,31 +134,47 @@ const Onboarding = () => {
       if (error) console.error('[Onboarding] Failed to persist org details:', error);
 
       // Fire-and-forget : pipeline complet (~30-55 s) sans bloquer le parcours.
+      // write_snapshot : opt-in explicite du write-back org (ne JAMAIS reposer
+      // sur le seul organization_id, auto-injecté par invokeEdgeFunction).
+      // selected_apollo_id : propage le choix de désambiguïsation de l'écran 2,
+      // sinon le run de fond re-tombe sur la désambiguïsation et n'écrit rien.
       invokeEdgeFunction('enrich-company', {
         company_name: data.name,
         country: 'France',
         organization_id: newOrgId,
+        write_snapshot: true,
+        ...(data.apolloId ? { selected_apollo_id: data.apolloId } : {}),
       }).catch((err) => console.warn('[Onboarding] Background enrichment failed:', err));
     }
 
     setDirection(1);
     setStep((companyIndex >= 0 ? companyIndex : 1) + 1);
-  }, [flow, markCompleted, orgType, discoverySource]);
+  }, [flow, orgType, discoverySource]);
 
   const handleFinish = useCallback(async () => {
-    const lastIndex = stepCount - 1;
-    markCompleted(lastIndex);
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
     navigate('/dashboard', { replace: true });
-  }, [navigate, queryClient, markCompleted, stepCount]);
+  }, [navigate, queryClient]);
+
+  // Barrière de chargement : tant que l'état org n'est pas résolu, AUCUNE
+  // interaction possible — sinon un utilisateur qui a déjà une org pourrait
+  // cliquer « freelance » pendant le chargement et créer un doublon avant que
+  // la garde ci-dessous ne tire (fenêtre de course, incident déjà vu en prod).
+  if (orgLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-9 h-9 rounded-full border border-border border-t-foreground animate-spin" />
+      </div>
+    );
+  }
 
   // Garde anti re-onboarding : un utilisateur qui a déjà une organisation ne
   // doit pas pouvoir en recréer une par accident (doublons + perte de données
   // déjà survenus en prod). Entrée volontaire possible via ?new=1 (flow
   // collaborateur « créer mon espace »). Placée après tous les hooks (Rules of
   // Hooks) ; createdOrgId protège le parcours en cours.
-  if (!orgLoading && organization && !createdOrgId && !wantsNewWorkspace) {
+  if (organization && !createdOrgId && !wantsNewWorkspace) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -179,7 +197,7 @@ const Onboarding = () => {
       currentStep={step}
       totalSteps={stepCount}
       orgName={organization?.name}
-      completedSteps={completedSet.size}
+      completedSteps={step}
       trackableSteps={stepCount}
     >
       <div className="px-4 max-w-lg mx-auto w-full mb-4">
