@@ -18,8 +18,11 @@ import type { OnboardingCompanyData } from '@/pages/Onboarding';
 
 /* ─── Types ─── */
 interface Props {
-  onComplete: (companyData: OnboardingCompanyData) => void;
+  onComplete: (companyData: OnboardingCompanyData, orgId: string | null) => void;
   onBack?: () => void;
+  /** Org déjà créée dans cette session d'onboarding (retour arrière sur cette
+   *  scène) : on la réutilise au lieu d'en créer une deuxième. */
+  createdOrgId?: string | null;
 }
 
 interface Source {
@@ -98,7 +101,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
+export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack, createdOrgId }) => {
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'disambiguate' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
@@ -155,7 +158,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       const { data, error } = await invokeEdgeFunction<{ company: CompanyData; disambiguate?: boolean; candidates?: ApolloCandidate[] }>('enrich-company', {
         company_name: name,
         country: 'France',
-        force_refresh: true,
         ...(selectedApolloId ? { selected_apollo_id: selectedApolloId } : {}),
       });
 
@@ -234,15 +236,22 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     if (!company) return;
     setIsCreating(true);
     try {
-      const org = await createOrganization({
-        name: company.name,
-        slug: generateSlug(company.name),
-        website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
-        logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
-      });
+      // Anti-doublon : si une org a déjà été créée dans cette session
+      // (retour arrière puis re-continue), on la réutilise au lieu d'en
+      // recréer une (duplicate key → soft-lock, ou org fantôme).
+      let orgId = createdOrgId ?? null;
+      if (!orgId) {
+        const org = await createOrganization({
+          name: company.name,
+          slug: generateSlug(company.name),
+          website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
+          logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
+        });
+        orgId = org?.id ?? null;
+      }
 
       // Create sourcing projects for selected roles
-      if (selectedRoles.size > 0 && org?.id) {
+      if (selectedRoles.size > 0 && orgId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const uniqueRoles = dedupeRoles(company.openRoles);
@@ -255,7 +264,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 job_title: role.title,
                 client_name: company.name,
                 description: role.location ? `📍 ${role.location}` : null,
-                organization_id: org.id,
+                organization_id: orgId,
                 created_by: user.id,
                 filters_snapshot: {},
                 status: 'active',
@@ -279,7 +288,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         domain: company.domain,
         linkedinUrl: company.linkedinUrl,
         careersUrl: company.careersUrl || null,
-      });
+      }, orgId);
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg.includes('duplicate key') || msg.includes('organizations_slug_key')) {
@@ -445,7 +454,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               onClick={() => startScan(query.trim(), '__none__')}
               className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 py-1"
             >
-              Aucune ne correspond — continuer sans Apollo
+              Aucune ne correspond — continuer avec les infos de base
             </button>
           </motion.div>
         )}

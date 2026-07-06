@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
+import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
 import { InvitationBanner } from '@/components/InvitationBanner';
@@ -40,6 +41,9 @@ const Onboarding = () => {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
+  // Org créée PENDANT cette session d'onboarding (≠ organizationId du hook,
+  // qui peut être null juste après création ou pointer sur l'org d'un inviteur).
+  const [createdOrgId, setCreatedOrgId] = useState<string | null>(null);
   const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgType, setOrgType] = useState<OrgType | null>(null);
@@ -119,7 +123,10 @@ const Onboarding = () => {
     if (specIndex >= 0) markCompleted(specIndex);
     setDirection(1);
 
-    if (orgType === 'freelance' && orgDetailsData) {
+    // Garde anti-doublon : un retour arrière puis re-soumission ne doit pas
+    // recréer une org (le slug horodaté rendait chaque re-passage unique →
+    // doublons garantis en DB).
+    if (orgType === 'freelance' && orgDetailsData && !orgCreated) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -129,7 +136,8 @@ const Onboarding = () => {
           slug: `${slug}-${Date.now().toString(36)}`,
         });
         if (org?.id) {
-          await supabase
+          setCreatedOrgId(org.id);
+          const { error } = await supabase
             .from('organizations')
             .update({
               org_type: 'freelance',
@@ -139,24 +147,35 @@ const Onboarding = () => {
               freelance_mode: orgDetailsData.freelanceMode,
             } as any)
             .eq('id', org.id);
+          if (error) console.error('[Onboarding] Failed to persist org details:', error);
         }
         setOrgCreated(true);
       } catch (err) {
         console.error('[Onboarding] Auto-create org failed:', err);
+        // Ne pas avancer : sans org, la fin du flow boucle sur /onboarding
+        // (OrganizationGuard) sans explication. L'utilisateur peut réessayer.
+        toast.error("Impossible de créer votre espace. Vérifiez votre connexion puis réessayez.");
+        return;
       }
     }
 
     setStep((specIndex >= 0 ? specIndex : 3) + 1);
-  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData, discoverySource]);
+  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, orgCreated]);
 
-  const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
+  const handleOrgCreated = useCallback(async (data: OnboardingCompanyData, newOrgId: string | null) => {
     setOrgCreated(true);
     setCompanyData(data);
+    if (newOrgId) setCreatedOrgId(newOrgId);
     const orgIndex = flow.indexOf('org');
     if (orgIndex >= 0) markCompleted(orgIndex);
 
-    if (organizationId && orgType && orgDetailsData) {
-      supabase
+    // newOrgId vient directement de SceneOrganization : organizationId (hook)
+    // est encore null à ce moment (React Query pas refetché après création).
+    const targetOrgId = newOrgId || organizationId;
+    if (targetOrgId && orgType && orgDetailsData) {
+      // ⚠️ awaité : un builder supabase-js est lazy et n'émet la requête
+      // qu'au .then() — sans await, org_type n'était JAMAIS persisté.
+      const { error } = await supabase
         .from('organizations')
         .update({
           org_type: orgType,
@@ -165,11 +184,12 @@ const Onboarding = () => {
           discovery_source: discoverySource,
           freelance_mode: orgDetailsData.freelanceMode,
         } as any)
-        .eq('id', organizationId);
+        .eq('id', targetOrgId);
+      if (error) console.error('[Onboarding] Failed to persist org details:', error);
     }
 
     goNext();
-  }, [flow, goNext, markCompleted, organizationId, orgType, orgDetailsData]);
+  }, [flow, goNext, markCompleted, organizationId, orgType, orgDetailsData, specializations, discoverySource]);
 
   const handleFinish = useCallback(async () => {
     const teamIndex = flow.indexOf('team');
@@ -234,7 +254,7 @@ const Onboarding = () => {
               />
             )}
             {currentScene === 'org' && (
-              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
+              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} createdOrgId={createdOrgId} />
             )}
             {currentScene === 'audit' && (
               <SceneAudit
