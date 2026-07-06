@@ -14,7 +14,7 @@ import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
-import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send } from 'lucide-react';
+import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send, ListChecks, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -297,6 +297,14 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     }, { replace: true });
   };
 
+  const goToProcess = () => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'process');
+      return next;
+    }, { replace: true });
+  };
+
   const openCandidateDetail = (c: ProjectCandidate) => {
     if (dragHappenedRef.current) return;
     setDetailCandidate(c);
@@ -528,6 +536,28 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Nudge : sans étapes de process, le board reste générique
+          (Sourcé/Contacté/Shortlisté) — pointer vers la configuration */}
+      {steps.length === 0 && totalCandidates > 0 && (
+        <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-2.5 konekt-fade-up">
+          <span className="h-7 w-7 rounded-lg bg-brand-purple/15 text-brand-purple grid place-items-center shrink-0">
+            <ListChecks className="w-3.5 h-3.5" />
+          </span>
+          <p className="text-2xs text-muted-foreground min-w-0 truncate">
+            <span className="text-foreground font-medium">Board générique.</span>{' '}
+            Définissez vos étapes d'entretien pour piloter les candidats colonne par colonne.
+          </p>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={goToProcess}
+            className="shrink-0 inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-foreground text-background text-2xs font-semibold hover:bg-foreground/90 transition-colors"
+          >
+            Configurer le process <ArrowRight className="w-3 h-3" />
+          </button>
         </div>
       )}
 
