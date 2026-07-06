@@ -5496,6 +5496,14 @@ export type Database = {
           tracking_id: string
         }[]
       }
+      get_linkedin_reconnect_alerts: {
+        Args: never
+        Returns: {
+          account_id: string
+          failure_count: number
+          last_failure_at: string
+        }[]
+      }
       get_org_integration: {
         Args: { p_org_id: string }
         Returns: {

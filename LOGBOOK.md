@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-07 — SHIP — Bannière reconnexion + InMails cron réparés (enrichissement : en attente de confirmation)
+
+**Contexte** : suite du verdict conflits de session (INSIGHT 2026-07-06). Chantiers du backlog livrés sur feu vert Laurent.
+**Décision / Fait** :
+1. **Bannière « compte à reconnecter »** : RPC `get_linkedin_reconnect_alerts` (SECURITY DEFINER — agrège search_failure_log qui reste service-role-only ; ≥ 2 `multiple_sessions` en 12 h, scoping org via member_linkedin_accounts → organization_members) + hook `useReconnectAlerts` + composant `LinkedInReconnectBanner` inséré dans LinkedInSearch sous AppliedFiltersBar. Fenêtre « problème actif » = dernier échec < 1 h ; dismiss croix persisté en localStorage par (account, last_failure_at) — un conflit plus récent ré-affiche. CTA → /settings?tab=connectors.
+2. **process-inmail-queue mode cron** : Bearer = PROCESS_SEQUENCES_SECRET ou service key → traite les items dus de TOUS les users (quotas heures ouvrées + credentials LinkedIn résolus par user propriétaire, cachés par run) ; mode JWT user inchangé (scopé caller). Avant : `validateUser()` → 400 à CHAQUE cycle de 3 min (58 occurrences sur 3 h observées en prod), les InMails planifiés ne partaient jamais d'eux-mêmes. Ajout de la sérialisation par compte (cooldown 5 min après toute action `manual_*` du ledger), identique à process-enrichment-queue.
+3. **Enrichissement — réactivation préparée mais NON livrée** : kill-switch vérifié en prod (86 réponses `paused:true` sur 3 h → le no-op déployé la veille fonctionne), garde-fous prêts (sérialisation par compte, heures ouvrées, caps ledger, 3 items/run espacés de 12 s). Flag laissé à `true` : le garde-fou de sécurité de session a exigé une confirmation NOMINATIVE de Laurent sur ce point (compte post-suspension — un feu vert générique ne suffit pas), question posée séparément.
+**Impact** : migration 20260706234500_linkedin_reconnect_alerts.sql, supabase/functions/process-inmail-queue, src/components/outreach/LinkedInSearch.tsx, src/hooks/useReconnectAlerts.ts, src/components/outreach/search/LinkedInReconnectBanner.tsx, types.ts (RPC).
+**Reste à faire** :
+- [ ] Vérifier le 07/07 matin : cron inmail répond 200, les 4 InMails Numspot en file depuis le 30/06 partent aux heures ouvrées (annulables avant depuis l'app si devenus obsolètes), la file enrichissement (17 pending) se draine sans nouvelle ligne search_failure_log.
+**Refs** : branche claude/sourcing-filters-visibility-r0zsr8 → main.
+
+---
+
 ## 2026-07-06 — INSIGHT — Verdict conflits de session : compte Recruiter mono-session, reconnexion en méthode cookie requise
 
 **Contexte** : après extinction du worker enrichissement (innocenté pour la journée — le ledger ne montre QUE des actions manuelles sur le compte), les échecs persistaient même onglets LinkedIn fermés. La boîte noire `search_failure_log` a capturé l'erreur exacte à 16:53 UTC.
@@ -40,8 +54,8 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 **Impact** : search_failure_log (nouvelle table diagnostic, purge 14 j), useLinkedInSearchActions (toast remède).
 **Reste à faire** :
 - [x] Laurent reconnecte le compte en méthode cookie → CONFIRMÉ le 06/07 22:43 UTC : reconnexion avec cookies frais (li_at + li_a — il était DÉJÀ en méthode cookie, mais import du 02/06 devenu obsolète après rotation de session navigateur) → 5 recherches OK d'affilée, 45 profils trouvés, zéro ligne search_failure_log. Règle opérationnelle : ré-importer les cookies après chaque re-login navigateur ; piste produit : bannière « compte à reconnecter » quand la boîte noire voit ≥2 multiple_sessions
-- [ ] Fix process-inmail-queue mode cron (itérer les users au lieu de validateUser)
-- [ ] Décision réactivation enrichissement (sérialisation prête)
+- [x] Fix process-inmail-queue mode cron → livré le 07/07 (cf. SHIP 2026-07-07)
+- [ ] Décision réactivation enrichissement — sérialisation prête, no-op vérifié en prod ; confirmation explicite de Laurent requise (cf. SHIP 2026-07-07)
 
 ---
 

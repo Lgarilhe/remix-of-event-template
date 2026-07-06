@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel, type FilterSuggestions } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
+import { LinkedInReconnectBanner } from './search/LinkedInReconnectBanner';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
@@ -985,6 +986,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         hasSearched={search.hasSearched}
         onOpenSearchAgent={onOpenSearchAgent}
       />
+
+      {/* Bannière « compte à reconnecter » — conflits de session répétés
+          détectés par la boîte noire search_failure_log */}
+      <LinkedInReconnectBanner />
 
       {/* Bandeau pedigree : info des IDs auto-injectés dans la recherche */}
       {pedigreeAug && (

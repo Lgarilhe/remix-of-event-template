@@ -15,6 +15,13 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// Sérialisation par compte (même garde-fou que process-enrichment-queue) :
+// ne jamais envoyer depuis un compte utilisé interactivement (recherche /
+// inbox manuelles = linkedin_action_log.source manual_*) dans les 5 dernières
+// minutes. Un envoi concurrent sur un compte Recruiter mono-session peut
+// déclencher multiple_sessions (cf. LOGBOOK 2026-07-06).
+const INTERACTIVE_COOLDOWN_MS = 5 * 60 * 1000;
+
 interface InMailQueueItem {
   id: string;
   account_id: string;
@@ -273,26 +280,68 @@ Deno.serve(async (req: Request) => {
 
     // Action: process - Process pending items (called by cron or manually)
     if (action === "process") {
-      const user = await validateUser();
-      // Load user's configured business hours (cf. member_quotas, default 8h-19h)
-      const userQuotas = await loadUserQuotas(supabase, user.id);
-      const startHour = userQuotas.startHour;
-      const endHour = userQuotas.endHour;
+      // Mode cron (pg_cron → invoke_process_inmail_queue, Bearer = secret interne
+      // ou service key) : on traite les items dus de TOUS les users — c'est le
+      // chemin nominal d'envoi des InMails planifiés. Mode manuel (UI, JWT user) :
+      // comportement historique, scopé aux items du caller. Avant ce correctif le
+      // cron passait par validateUser() → 400 à chaque cycle de 3 min, les InMails
+      // planifiés ne partaient donc JAMAIS d'eux-mêmes (LOGBOOK 2026-07-06).
+      const rawBearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+      const cronSecret = Deno.env.get("PROCESS_SEQUENCES_SECRET");
+      const isCronCall = !!rawBearer && (rawBearer === cronSecret || rawBearer === supabaseServiceKey);
+
+      let scopedUserId: string | null = null;
+      if (!isCronCall) {
+        const user = await validateUser();
+        scopedUserId = user.id;
+      }
+
+      // Quotas (heures ouvrées + timezone) et credentials LinkedIn résolus PAR
+      // user propriétaire de l'item (multi-user en mode cron), cachés par run.
+      const quotasCache = new Map<string, { startHour: number; endHour: number; timezone: string }>();
+      const getQuotasFor = async (userId: string) => {
+        if (!quotasCache.has(userId)) quotasCache.set(userId, await loadUserQuotas(supabase, userId));
+        return quotasCache.get(userId)!;
+      };
+      const credsCache = new Map<string, { apiKey: string; dsn: string } | null>();
+      const getCredsFor = async (userId: string) => {
+        // Mode manuel : validateUser() a déjà résolu les credentials de l'org du caller.
+        if (unipileApiKey && unipileDsn) return { apiKey: unipileApiKey, dsn: unipileDsn };
+        if (credsCache.has(userId)) return credsCache.get(userId)!;
+        let resolved: { apiKey: string; dsn: string } | null = null;
+        try {
+          const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+          const orgId = await resolveOrgIdFromUser(userId, supabase);
+          const creds = await resolveUnipileCredentials(orgId, supabase);
+          if (creds) resolved = { apiKey: creds.apiKey, dsn: creds.dsn.replace(/^https?:\/\//, "") };
+        } catch (e) {
+          console.warn("[process-inmail-queue] org credential resolution failed:", e);
+        }
+        if (!resolved) {
+          const envKey = Deno.env.get("UNIPILE_API_KEY");
+          const envDsn = Deno.env.get("UNIPILE_DSN");
+          if (envKey && envDsn) resolved = { apiKey: envKey, dsn: envDsn };
+        }
+        credsCache.set(userId, resolved);
+        return resolved;
+      };
+
       const now = new Date();
-      
-      // Get items that are scheduled and ready to send — scoped to the authenticated user.
+
+      // Get items that are scheduled and ready to send.
       // Conformité LinkedIn (warning #260513-007211) : on limite à 3 InMails/cycle
       // pour rester cohérent avec MAX_VISIBLE_PER_CYCLE de process-sequences et
       // éviter les "bursts" détectables (50 InMails en 5min = pattern bot).
       const MAX_INMAILS_PER_CYCLE = 3;
-      const { data: pendingItems, error: fetchError } = await supabase
+      let pendingQuery = supabase
         .from("inmail_queue")
         .select("*")
-        .eq("created_by", user.id)
         .in("status", ["scheduled", "pending"])
         .lte("scheduled_at", now.toISOString())
         .order("scheduled_at", { ascending: true })
         .limit(MAX_INMAILS_PER_CYCLE);
+      if (scopedUserId) pendingQuery = pendingQuery.eq("created_by", scopedUserId);
+      const { data: pendingItems, error: fetchError } = await pendingQuery;
 
       if (fetchError) throw fetchError;
 
@@ -307,10 +356,11 @@ Deno.serve(async (req: Request) => {
 
       for (const item of pendingItems as InMailQueueItem[]) {
         // Check if we're within business hours (per-user configurable via member_quotas)
-        const itemTz = item.user_timezone || userQuotas.timezone;
-        if (!isWithinBusinessHours(itemTz, startHour, endHour)) {
+        const itemQuotas = await getQuotasFor(item.created_by);
+        const itemTz = item.user_timezone || itemQuotas.timezone;
+        if (!isWithinBusinessHours(itemTz, itemQuotas.startHour, itemQuotas.endHour)) {
           // Reschedule for next business hours
-          const nextScheduled = calculateNextScheduledTime(itemTz, startHour, endHour);
+          const nextScheduled = calculateNextScheduledTime(itemTz, itemQuotas.startHour, itemQuotas.endHour);
           await supabase
             .from("inmail_queue")
             .update({ scheduled_at: nextScheduled.toISOString() })
@@ -350,6 +400,45 @@ Deno.serve(async (req: Request) => {
           console.warn(`[process-inmail-queue] could not read account_status for ${item.account_id}:`, statusErr);
         }
 
+        // Sérialisation par compte : compte utilisé interactivement il y a
+        // moins de INTERACTIVE_COOLDOWN_MS → on reporte l'envoi, l'usage
+        // manuel a toujours priorité (un envoi concurrent sur un compte
+        // Recruiter mono-session peut déclencher multiple_sessions).
+        const { data: recentManual } = await supabase
+          .from("linkedin_action_log")
+          .select("id")
+          .eq("account_id", item.account_id)
+          .like("source", "manual%")
+          .gte("created_at", new Date(Date.now() - INTERACTIVE_COOLDOWN_MS).toISOString())
+          .limit(1);
+        if (recentManual && recentManual.length > 0) {
+          await supabase
+            .from("inmail_queue")
+            .update({
+              status: "scheduled",
+              scheduled_at: new Date(Date.now() + INTERACTIVE_COOLDOWN_MS).toISOString(),
+              error_message: "Compte LinkedIn en cours d'utilisation — envoi reporté",
+            })
+            .eq("id", item.id);
+          results.push({ id: item.id, success: false, error: "account in interactive use, rescheduled" });
+          continue;
+        }
+
+        // Credentials LinkedIn de l'org propriétaire de l'item (cache par run).
+        const creds = await getCredsFor(item.created_by);
+        if (!creds) {
+          await supabase
+            .from("inmail_queue")
+            .update({
+              status: "scheduled",
+              scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+              error_message: "Configuration LinkedIn indisponible (re-essai dans 1h)",
+            })
+            .eq("id", item.id);
+          results.push({ id: item.id, success: false, error: "no credentials" });
+          continue;
+        }
+
         // Conformité LinkedIn : pour les InMails (degree 2+) on vérifie le
         // solde Recruiter/Premium AVANT d'envoyer. Si solde = 0 ou check fail,
         // on reschedule à +4h (fail-CLOSED) — éviter d'envoyer des InMails en
@@ -358,8 +447,8 @@ Deno.serve(async (req: Request) => {
         if (!isFirstDegreeMsg) {
           try {
             const balRes = await fetchWithTimeout(
-              `https://${unipileDsn}/api/v1/linkedin/inmail_balance?account_id=${encodeURIComponent(item.account_id)}`,
-              { headers: { "X-API-KEY": unipileApiKey! } }
+              `https://${creds.dsn}/api/v1/linkedin/inmail_balance?account_id=${encodeURIComponent(item.account_id)}`,
+              { headers: { "X-API-KEY": creds.apiKey } }
             );
             if (!balRes.ok) {
               throw new Error(`balance check HTTP ${balRes.status}`);
@@ -487,11 +576,11 @@ Deno.serve(async (req: Request) => {
           });
 
           const response = await fetchWithTimeout(
-            `https://${unipileDsn}/api/v1/chats`,
+            `https://${creds.dsn}/api/v1/chats`,
             {
               method: "POST",
               headers: {
-                "X-API-KEY": unipileApiKey!,
+                "X-API-KEY": creds.apiKey,
                 "accept": "application/json",
               },
               body: formData,
