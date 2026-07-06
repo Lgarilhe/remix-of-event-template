@@ -30,15 +30,15 @@ const MAX_ATTEMPTS = 4;
 // fond pendant une recherche Recruiter manuelle = multiple_sessions garanti.
 const INTERACTIVE_COOLDOWN_MS = 5 * 60 * 1000;
 
-// ⏸️ PAUSE TEMPORAIRE (2026-06-02) — l'enrichissement de fond consommait la session
+// ⏸️ PAUSE (2026-06-02) — l'enrichissement de fond consommait la session
 // LinkedIn Recruiter EN MÊME TEMPS que les recherches manuelles de l'utilisateur →
 // « conflit de session » (multiple_sessions, sensible sur comptes Recruiter).
-// 2026-07-06 : la sérialisation par compte demandée ci-dessous est en place
-// (check linkedin_action_log manual_* < INTERACTIVE_COOLDOWN_MS avant chaque
-// item). Le flag reste true tant que le comportement n'a pas été validé en
-// prod après redéploiement — ⚠️ cette pause n'était visiblement JAMAIS partie
-// en prod (exécutions de 2-11 s observées le 2026-07-06, un no-op répond en ms).
-// 👉 Repasser à false une fois le redéploiement vérifié + logs propres.
+// 2026-07-06 : sérialisation par compte en place (check linkedin_action_log
+// manual_* < INTERACTIVE_COOLDOWN_MS avant chaque item) ; no-op vérifié en prod.
+// 2026-07-07 : DÉCISION LAURENT — le worker reste ÉTEINT malgré les garde-fous
+// (compte post-suspension, warning #260513-007211). Ne repasser à false que sur
+// sa demande explicite (cf. LOGBOOK 2026-07-07). La file profile_enrichment_queue
+// continue d'accumuler sans effet.
 const ENRICHMENT_PAUSED = true;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
