@@ -38,12 +38,6 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          01 — Votre activité
-        </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">
           Quel est votre profil ?
         </h2>

@@ -215,9 +215,6 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5 px-1">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
-          02 — Marque employeur
-        </span>
         <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Votre image employeur</h2>
         <p className="text-muted-foreground text-sm">On analyse votre présence en ligne pour identifier vos forces et axes d'amélioration.</p>
       </div>

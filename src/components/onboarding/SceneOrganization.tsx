@@ -308,9 +308,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold" style={{ fontFamily: "'Space Mono', monospace" }}>
-          01 — Votre société
-        </span>
         <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Parlez-nous de vous</h2>
         <p className="text-muted-foreground text-sm">Entrez le nom de votre société, on récupère tout automatiquement.</p>
       </div>
@@ -445,7 +442,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
               onClick={() => startScan(query.trim(), '__none__')}
               className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 py-1"
             >
-              Aucune ne correspond — continuer sans Apollo
+              Aucune ne correspond — continuer sans ces données
             </button>
           </motion.div>
         )}

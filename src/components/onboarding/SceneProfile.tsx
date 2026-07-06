@@ -239,12 +239,6 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       >
         {/* Header */}
         <div className="text-center space-y-2">
-          <span
-            className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-            style={{ fontFamily: "'Space Mono', monospace" }}
-          >
-            Classification
-          </span>
           <h2 className="font-editorial italic text-3xl md:text-4xl">Classez vos expériences</h2>
           <p className="text-muted-foreground text-sm max-w-sm mx-auto">
             Pour chaque poste, indiquez le contexte de recrutement.
@@ -402,12 +396,6 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          {isFreelance ? '02' : '04'} — Votre profil
-        </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">Faisons connaissance</h2>
         <p className="text-muted-foreground text-sm">
           {isFreelance

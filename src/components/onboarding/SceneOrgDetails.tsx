@@ -99,12 +99,6 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          02 — Quelques détails
-        </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">
           {isFreelance ? 'Votre activité indépendante' : 'Votre équipe recrutement'}
         </h2>

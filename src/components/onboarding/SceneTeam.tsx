@@ -16,7 +16,7 @@ import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 interface Props {
   organizationId: string | null;
-  onFinish: () => void;
+  onFinish: (invitedCount: number) => void;
   onBack: () => void;
 }
 
@@ -167,9 +167,9 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       (p) => selected.has(p.id) && p.email && !invitedEmails.includes(p.email.toLowerCase())
     );
 
+    let sentCount = 0;
     if (profilesToInvite.length > 0) {
       setIsSending(true);
-      let sentCount = 0;
       for (const p of profilesToInvite) {
         try {
           await inviteMember({ email: p.email!.toLowerCase(), role: 'member' });
@@ -184,19 +184,13 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       setIsSending(false);
     }
 
-    onFinish();
+    onFinish(sentCount + invitedEmails.length);
   };
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          06 — Votre équipe
-        </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">Invitez vos collaborateurs</h2>
         <p className="text-muted-foreground text-sm">Le recrutement est un sport d'équipe.</p>
       </div>

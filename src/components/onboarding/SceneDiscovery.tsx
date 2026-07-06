@@ -27,23 +27,18 @@ const DISCOVERY_SOURCES = [
 
 interface Props {
   onSubmit: (source: string) => void;
+  onSkip: () => void;
   onBack: () => void;
   savedValue?: string;
 }
 
-export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }) => {
+export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, savedValue }) => {
   const [selected, setSelected] = useState(savedValue || '');
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          03 — Une dernière chose
-        </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">
           Comment nous avez-vous trouvé ?
         </h2>
@@ -88,14 +83,19 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onBack, savedValue }
         >
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
-        <Button
-          onClick={() => selected && onSubmit(selected)}
-          disabled={!selected}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
-        >
-          Suivant <ArrowRight className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={onSkip} className="text-sm text-muted-foreground">
+            Passer
+          </Button>
+          <Button
+            onClick={() => selected && onSubmit(selected)}
+            disabled={!selected}
+            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
+          >
+            Suivant <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
       </motion.div>
     </div>
   );

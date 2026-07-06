@@ -32,10 +32,9 @@ interface Props {
   onSubmit: (specializations: string[]) => void;
   onBack: () => void;
   savedSpecializations?: string[];
-  stepLabel?: string;
 }
 
-export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedSpecializations, stepLabel }) => {
+export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedSpecializations }) => {
   const [selected, setSelected] = useState<Set<string>>(new Set(savedSpecializations ?? []));
 
   const toggle = (value: string) => {
@@ -50,12 +49,6 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <span
-          className="skalr-gradient-text text-xs uppercase tracking-wider font-semibold"
-          style={{ fontFamily: "'Space Mono', monospace" }}
-        >
-          {stepLabel || '03'} — Spécialisations
-        </span>
         <h2 className="font-editorial italic text-3xl md:text-4xl">
           Quels sont vos secteurs ?
         </h2>

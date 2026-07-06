@@ -252,8 +252,8 @@
     font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   }
 
-  /* Landing hero/CTA + onboarding scenes — gradient ciel doux light-first.
-     Référencé par .landing-sky-gradient dans SkalrLanding et OnboardingLayout. */
+  /* Landing hero/CTA — gradient ciel doux light-first.
+     Référencé par .landing-sky-gradient dans SkalrLanding. */
   .landing-sky-gradient {
     background: linear-gradient(
       180deg,

@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { supabase } from '@/integrations/supabase/client';
 import { InvitationBanner } from '@/components/InvitationBanner';
-import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
+import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
+import { ChapterInterstitial } from '@/components/onboarding/ChapterInterstitial';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile, type ProfileFormState } from '@/components/onboarding/SceneProfile';
@@ -14,8 +16,17 @@ import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
 import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
 import { SceneSpecializations } from '@/components/onboarding/SceneSpecializations';
+import { SceneAiTone } from '@/components/onboarding/SceneAiTone';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
-import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
+import { SceneLaunch, type LaunchChecklistItem } from '@/components/onboarding/SceneLaunch';
+import {
+  FLOWS,
+  DEFAULT_FLOW,
+  chaptersForFlow,
+  chapterIndexOfScene,
+  type OrgType,
+  type SceneKey,
+} from '@/components/onboarding/onboardingMeta';
 
 export interface OnboardingCompanyData {
   name: string;
@@ -24,46 +35,127 @@ export interface OnboardingCompanyData {
   careersUrl: string | null;
 }
 
-type OrgType = 'enterprise' | 'agency' | 'freelance';
+const STORAGE_KEY = 'konekt_onboarding_progress_v2';
 
-type SceneKey = 'orgtype' | 'orgdetails' | 'discovery' | 'specializations' | 'org' | 'audit' | 'profile' | 'integrations' | 'team' | 'launch';
+interface PersistedProgress {
+  step: number;
+  orgType: OrgType | null;
+  orgDetails: OrgDetailsData | null;
+  discoverySource: string;
+  specializations: string[];
+  completed: SceneKey[];
+  profileBasics: { displayName: string; jobTitle: string; linkedinUrl: string } | null;
+}
 
-const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'orgdetails', 'discovery', 'specializations', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  agency:     ['orgtype', 'orgdetails', 'discovery', 'specializations', 'org', 'audit', 'profile', 'integrations', 'team', 'launch'],
-  freelance:  ['orgtype', 'orgdetails', 'discovery', 'specializations', 'profile', 'integrations', 'launch'],
-};
+function loadProgress(): PersistedProgress | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedProgress;
+    if (typeof parsed?.step !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
-const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
+function saveProgress(progress: PersistedProgress) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // stockage plein/indisponible — la progression n'est simplement pas persistée
+  }
+}
+
+export function clearOnboardingProgress() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 const Onboarding = () => {
-  const [step, setStep] = useState(0);
+  const [restored] = useState(loadProgress);
+
+  const [orgType, setOrgType] = useState<OrgType | null>(restored?.orgType ?? null);
+  const [step, setStep] = useState(() => {
+    if (!restored?.orgType) return 0;
+    const flow = FLOWS[restored.orgType];
+    return Math.min(Math.max(restored.step, 0), flow.length - 1);
+  });
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
-  const [completedSet, setCompletedSet] = useState<Set<number>>(new Set());
+  const [completedScenes, setCompletedScenes] = useState<Set<SceneKey>>(
+    () => new Set(restored?.completed ?? [])
+  );
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
-  const [orgType, setOrgType] = useState<OrgType | null>(null);
-  const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(null);
-  const [discoverySource, setDiscoverySource] = useState('');
-  const [specializations, setSpecializations] = useState<string[]>([]);
-  const [profileState, setProfileState] = useState<ProfileFormState | undefined>(undefined);
+  const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(restored?.orgDetails ?? null);
+  const [discoverySource, setDiscoverySource] = useState(restored?.discoverySource ?? '');
+  const [specializations, setSpecializations] = useState<string[]>(restored?.specializations ?? []);
+  const [profileState, setProfileState] = useState<ProfileFormState | undefined>(
+    restored?.profileBasics
+      ? {
+          displayName: restored.profileBasics.displayName,
+          jobTitle: restored.profileBasics.jobTitle,
+          linkedinUrl: restored.profileBasics.linkedinUrl,
+          selectedSpecs: [],
+          scanResult: null,
+          experienceClassifications: [],
+        }
+      : undefined
+  );
+  const [teamInvitedCount, setTeamInvitedCount] = useState(0);
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { organization, organizationId } = useOrganization();
+  const reduceMotion = useReducedMotion();
+  const { organization, organizationId, createOrganization } = useOrganization();
+  const { accounts } = useLinkedInAccounts();
 
-  const flow = useMemo(() => orgType ? FLOWS[orgType] : DEFAULT_FLOW, [orgType]);
+  const flow = useMemo(() => (orgType ? FLOWS[orgType] : DEFAULT_FLOW), [orgType]);
+  const chapters = useMemo(() => chaptersForFlow(flow), [flow]);
   const currentScene = flow[step] ?? 'orgtype';
-  const stepCount = flow.length;
-  const trackableSteps = stepCount - 1;
+  const trackableSteps = flow.length - 1;
+  const completedInFlow = useMemo(
+    () => flow.filter((s) => s !== 'launch' && completedScenes.has(s)).length,
+    [flow, completedScenes]
+  );
+  const scorePercent = Math.round((completedInFlow / Math.max(trackableSteps, 1)) * 100);
 
-  const markCompleted = useCallback((stepIndex: number) => {
-    setCompletedSet((prev) => {
-      if (prev.has(stepIndex)) return prev;
-      const next = new Set(prev);
-      next.add(stepIndex);
-      return next;
+  const linkedInConnected = accounts.some(
+    (a: any) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP'
+  );
+
+  // ─── Interstitiel de chapitre ───
+  const [interstitialIdx, setInterstitialIdx] = useState<number | null>(null);
+  const prevChapterRef = useRef(chapterIndexOfScene(currentScene, chapters));
+  useEffect(() => {
+    const idx = chapterIndexOfScene(currentScene, chapters);
+    if (idx > 0 && idx !== prevChapterRef.current && direction > 0) {
+      setInterstitialIdx(idx);
+    }
+    prevChapterRef.current = idx;
+  }, [currentScene, chapters, direction]);
+
+  // ─── Persistance de la progression ───
+  useEffect(() => {
+    saveProgress({
+      step,
+      orgType,
+      orgDetails: orgDetailsData,
+      discoverySource,
+      specializations,
+      completed: Array.from(completedScenes),
+      profileBasics: profileState
+        ? {
+            displayName: profileState.displayName,
+            jobTitle: profileState.jobTitle,
+            linkedinUrl: profileState.linkedinUrl,
+          }
+        : null,
     });
-  }, []);
+  }, [step, orgType, orgDetailsData, discoverySource, specializations, completedScenes, profileState]);
 
   useEffect(() => {
     if (organization && !orgCreated) {
@@ -71,141 +163,204 @@ const Onboarding = () => {
     }
   }, [organization, orgCreated]);
 
+  const markCompleted = useCallback((scene: SceneKey) => {
+    setCompletedScenes((prev) => {
+      if (prev.has(scene)) return prev;
+      const next = new Set(prev);
+      next.add(scene);
+      return next;
+    });
+  }, []);
+
   const goNext = useCallback(() => {
     setDirection(1);
-    setStep((s) => Math.min(s + 1, stepCount - 1));
-  }, [stepCount]);
-
-  const completeAndNext = useCallback((stepIndex: number) => {
-    markCompleted(stepIndex);
-    goNext();
-  }, [markCompleted, goNext]);
+    setStep((s) => Math.min(s + 1, flow.length - 1));
+  }, [flow.length]);
 
   const goBack = useCallback(() => {
     setDirection(-1);
     setStep((s) => Math.max(0, s - 1));
   }, []);
 
-  const { createOrganization } = useOrganization();
+  const completeAndNext = useCallback(
+    (scene: SceneKey) => {
+      markCompleted(scene);
+      goNext();
+    },
+    [markCompleted, goNext]
+  );
 
-  // Step 1: pick org type
-  const handleOrgTypeSelected = useCallback((type: OrgType) => {
-    setOrgType(type);
-    markCompleted(0);
-    setDirection(1);
-    setStep(1); // go to orgdetails
-  }, [markCompleted]);
+  // ─── Handlers ───
+  const handleOrgTypeSelected = useCallback(
+    (type: OrgType) => {
+      setOrgType(type);
+      markCompleted('orgtype');
+      setDirection(1);
+      setStep(1);
+    },
+    [markCompleted]
+  );
 
-  // Step 2: details submitted (no longer handles discovery)
-  const handleOrgDetailsSubmitted = useCallback((data: OrgDetailsData) => {
-    setOrgDetailsData(data);
-    markCompleted(1);
-    setDirection(1);
-    setStep(2); // go to discovery
-  }, [markCompleted]);
+  const handleOrgDetailsSubmitted = useCallback(
+    (data: OrgDetailsData) => {
+      setOrgDetailsData(data);
+      completeAndNext('orgdetails');
+    },
+    [completeAndNext]
+  );
 
-  // Step 3: discovery source submitted
-  const handleDiscoverySubmitted = useCallback(async (source: string) => {
-    setDiscoverySource(source);
-    const discoveryIndex = flow.indexOf('discovery');
-    if (discoveryIndex >= 0) markCompleted(discoveryIndex);
-    setDirection(1);
-    setStep((discoveryIndex >= 0 ? discoveryIndex : 2) + 1);
-  }, [flow, markCompleted]);
+  const handleDiscoverySubmitted = useCallback(
+    (source: string) => {
+      setDiscoverySource(source);
+      completeAndNext('discovery');
+    },
+    [completeAndNext]
+  );
 
-  const handleSpecializationsSubmitted = useCallback(async (specs: string[]) => {
-    setSpecializations(specs);
-    const specIndex = flow.indexOf('specializations');
-    if (specIndex >= 0) markCompleted(specIndex);
-    setDirection(1);
+  const handleSpecializationsSubmitted = useCallback(
+    async (specs: string[]) => {
+      setSpecializations(specs);
+      markCompleted('specializations');
+      setDirection(1);
 
-    if (orgType === 'freelance' && orgDetailsData) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
-        const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
-        const org = await createOrganization({
-          name: userName,
-          slug: `${slug}-${Date.now().toString(36)}`,
-        });
-        if (org?.id) {
-          await supabase
-            .from('organizations')
-            .update({
-              org_type: 'freelance',
-              team_size: orgDetailsData.teamSize,
-              specializations: specs,
-              discovery_source: discoverySource,
-              freelance_mode: orgDetailsData.freelanceMode,
-            } as any)
-            .eq('id', org.id);
+      if (orgType === 'freelance' && orgDetailsData) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
+          const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
+          const org = await createOrganization({
+            name: userName,
+            slug: `${slug}-${Date.now().toString(36)}`,
+          });
+          if (org?.id) {
+            await supabase
+              .from('organizations')
+              .update({
+                org_type: 'freelance',
+                team_size: orgDetailsData.teamSize,
+                specializations: specs,
+                discovery_source: discoverySource,
+                freelance_mode: orgDetailsData.freelanceMode,
+              } as any)
+              .eq('id', org.id);
+          }
+          setOrgCreated(true);
+        } catch (err) {
+          console.error('[Onboarding] Auto-create org failed:', err);
         }
-        setOrgCreated(true);
-      } catch (err) {
-        console.error('[Onboarding] Auto-create org failed:', err);
       }
-    }
 
-    setStep((specIndex >= 0 ? specIndex : 3) + 1);
-  }, [flow, markCompleted, createOrganization, orgType, orgDetailsData, discoverySource]);
+      setStep((s) => Math.min(s + 1, flow.length - 1));
+    },
+    [markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, flow.length]
+  );
 
-  const handleOrgCreated = useCallback((data: OnboardingCompanyData) => {
-    setOrgCreated(true);
-    setCompanyData(data);
-    const orgIndex = flow.indexOf('org');
-    if (orgIndex >= 0) markCompleted(orgIndex);
+  const handleOrgCreated = useCallback(
+    (data: OnboardingCompanyData) => {
+      setOrgCreated(true);
+      setCompanyData(data);
+      markCompleted('org');
 
-    if (organizationId && orgType && orgDetailsData) {
-      supabase
-        .from('organizations')
-        .update({
-          org_type: orgType,
-          team_size: orgDetailsData.teamSize,
-          specializations,
-          discovery_source: discoverySource,
-          freelance_mode: orgDetailsData.freelanceMode,
-        } as any)
-        .eq('id', organizationId);
-    }
+      if (organizationId && orgType && orgDetailsData) {
+        supabase
+          .from('organizations')
+          .update({
+            org_type: orgType,
+            team_size: orgDetailsData.teamSize,
+            specializations,
+            discovery_source: discoverySource,
+            freelance_mode: orgDetailsData.freelanceMode,
+          } as any)
+          .eq('id', organizationId);
+      }
 
-    goNext();
-  }, [flow, goNext, markCompleted, organizationId, orgType, orgDetailsData]);
+      goNext();
+    },
+    [markCompleted, goNext, organizationId, orgType, orgDetailsData, specializations, discoverySource]
+  );
+
+  const handleIntegrationsNext = useCallback(
+    (connectedCount: number) => {
+      if (connectedCount > 0) markCompleted('integrations');
+      goNext();
+    },
+    [markCompleted, goNext]
+  );
+
+  const handleTeamFinish = useCallback(
+    (invitedCount: number) => {
+      setTeamInvitedCount(invitedCount);
+      if (invitedCount > 0) markCompleted('team');
+      goNext();
+    },
+    [markCompleted, goNext]
+  );
 
   const handleFinish = useCallback(async () => {
-    const teamIndex = flow.indexOf('team');
-    if (teamIndex >= 0) markCompleted(teamIndex);
+    clearOnboardingProgress();
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
     navigate('/dashboard', { replace: true });
-  }, [navigate, queryClient, markCompleted, flow]);
+  }, [navigate, queryClient]);
 
-  const variants = {
-    enter: (dir: number) => ({
-      x: dir > 0 ? '60%' : '-60%',
-      opacity: 0,
-      scale: 0.97,
-    }),
-    center: { x: 0, opacity: 1, scale: 1 },
-    exit: (dir: number) => ({
-      x: dir > 0 ? '-60%' : '60%',
-      opacity: 0,
-      scale: 0.97,
-    }),
-  };
+  // ─── Récap de lancement ───
+  const launchItems = useMemo<LaunchChecklistItem[]>(() => {
+    const items: LaunchChecklistItem[] = [
+      { key: 'org', label: 'Espace de travail créé', done: orgCreated || !!organization },
+      { key: 'activity', label: 'Activité & secteurs renseignés', done: completedScenes.has('specializations') },
+    ];
+    if (flow.includes('audit')) {
+      items.push({ key: 'audit', label: 'Image employeur analysée', done: completedScenes.has('audit') });
+    }
+    items.push(
+      { key: 'profile', label: 'Profil recruteur complété', done: completedScenes.has('profile'), settingsPath: '/settings?tab=account' },
+      { key: 'aitone', label: 'Ton de l’IA personnalisé', done: completedScenes.has('aitone'), settingsPath: '/settings?tab=ai-context' },
+      { key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings?tab=account' }
+    );
+    if (flow.includes('team')) {
+      items.push({ key: 'team', label: 'Équipe invitée', done: completedScenes.has('team') || teamInvitedCount > 0, settingsPath: '/settings?tab=team' });
+    }
+    return items;
+  }, [orgCreated, organization, completedScenes, flow, linkedInConnected, teamInvitedCount]);
+
+  // ─── Transitions de scène ───
+  const variants = reduceMotion
+    ? {
+        enter: () => ({ opacity: 0 }),
+        center: { opacity: 1 },
+        exit: () => ({ opacity: 0 }),
+      }
+    : {
+        enter: (dir: number) => ({
+          x: dir > 0 ? 90 : -90,
+          opacity: 0,
+          scale: 0.96,
+          filter: 'blur(8px)',
+        }),
+        center: { x: 0, opacity: 1, scale: 1, filter: 'blur(0px)' },
+        exit: (dir: number) => ({
+          x: dir > 0 ? -90 : 90,
+          opacity: 0,
+          scale: 0.96,
+          filter: 'blur(8px)',
+        }),
+      };
 
   return (
-    <OnboardingLayout
-      currentStep={step}
-      totalSteps={stepCount}
+    <OnboardingShell
+      chapters={chapters}
+      flow={flow}
+      currentScene={currentScene}
+      stepIndex={step}
+      completedScenes={completedScenes}
+      scorePercent={scorePercent}
       orgName={organization?.name}
-      completedSteps={completedSet.size}
-      trackableSteps={trackableSteps}
     >
-      <div className="px-4 max-w-lg mx-auto w-full mb-4">
+      <div className="w-full max-w-lg mx-auto mb-4 empty:mb-0">
         <InvitationBanner />
       </div>
 
-      <div className="w-full max-w-lg relative px-1" style={{ minHeight: 340 }}>
+      <div className="w-full relative" style={{ minHeight: 340 }}>
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
@@ -214,7 +369,7 @@ const Onboarding = () => {
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
             className="w-full"
           >
             {currentScene === 'orgtype' && (
@@ -224,7 +379,12 @@ const Onboarding = () => {
               <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
             )}
             {currentScene === 'discovery' && (
-              <SceneDiscovery onSubmit={handleDiscoverySubmitted} onBack={goBack} savedValue={discoverySource} />
+              <SceneDiscovery
+                onSubmit={handleDiscoverySubmitted}
+                onSkip={goNext}
+                onBack={goBack}
+                savedValue={discoverySource}
+              />
             )}
             {currentScene === 'specializations' && (
               <SceneSpecializations
@@ -239,40 +399,60 @@ const Onboarding = () => {
             {currentScene === 'audit' && (
               <SceneAudit
                 companyData={companyData}
-                onNext={() => completeAndNext(step)}
+                onNext={() => completeAndNext('audit')}
                 onBack={goBack}
               />
             )}
             {currentScene === 'profile' && (
               <SceneProfile
-                onNext={() => completeAndNext(step)}
+                onNext={() => completeAndNext('profile')}
                 onBack={goBack}
                 orgType={orgType}
                 savedState={profileState}
                 onStateChange={setProfileState}
               />
             )}
+            {currentScene === 'aitone' && (
+              <SceneAiTone
+                onNext={() => completeAndNext('aitone')}
+                onSkip={goNext}
+                onBack={goBack}
+              />
+            )}
             {currentScene === 'integrations' && (
-              <SceneIntegrations onNext={() => completeAndNext(step)} onBack={goBack} />
+              <SceneIntegrations onNext={handleIntegrationsNext} onBack={goBack} />
             )}
             {currentScene === 'team' && (
               <SceneTeam
                 organizationId={organizationId}
-                onFinish={() => { markCompleted(step); goNext(); }}
+                onFinish={handleTeamFinish}
                 onBack={goBack}
               />
             )}
             {currentScene === 'launch' && (
               <SceneLaunch
-                completedSet={completedSet}
-                totalSteps={trackableSteps}
+                items={launchItems}
+                scorePercent={scorePercent}
+                orgName={organization?.name}
                 onFinish={handleFinish}
               />
             )}
           </motion.div>
         </AnimatePresence>
       </div>
-    </OnboardingLayout>
+
+      {/* Interstitiel de chapitre */}
+      <AnimatePresence>
+        {interstitialIdx !== null && chapters[interstitialIdx] && (
+          <ChapterInterstitial
+            chapter={chapters[interstitialIdx]}
+            chapterIndex={interstitialIdx}
+            totalChapters={chapters.length}
+            onDismiss={() => setInterstitialIdx(null)}
+          />
+        )}
+      </AnimatePresence>
+    </OnboardingShell>
   );
 };
 
