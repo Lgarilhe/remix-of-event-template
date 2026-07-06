@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-02 — SHIP — Tutos vidéo in-app : popup d'aide + studio de tournage Playwright
+
+**Contexte** : Laurent veut des popups d'aide avec vidéos tuto courtes où l'on voit la souris naviguer.
+**Décision / Fait** : (1) composant générique `TutorialVideoDialog` (bouton « ? » → Dialog avec vidéo autoplay muted loop + points clés) — chaque écran peut monter son tuto ; premier montage : header Pipeline (« Le pipeline en 30 secondes », public/tutos/pipeline-tour.webm, 2,1 Mo / 27 s). (2) Studio de tournage : harnais Playwright (app réelle + Supabase intercepté, mocks STATEFUL pour que le drag persiste à l'écran) + recordVideo, curseur factice injecté (suivi mousemove, ripple au clic) + barre de sous-titres injectée pilotée depuis le script. Scénario : funnel → clic tuile → drag Sarah vers Entretien technique (toast) → fiche candidat → outro. Sortie webm VP8 (le ffmpeg Playwright n'a pas libx264 — pas de mp4 ; lisible partout sauf très vieux Safari).
+**Raison** : onboarding visuel sans dépendance à un outil externe (Loom etc.) — reproductible à chaque évolution d'écran en relançant le script.
+**Impact** : src/components/help/TutorialVideoDialog.tsx, MissionPipeline (montage), public/tutos/.
+**Reste à faire** :
+- [ ] Tuto sourcing (pills, toggle À l'écoute) avec le même studio
+- [ ] Pièges de tournage documentés : cibler les cartes par classe (le toast sonner peut porter le même texte), attendre la disparition des toasts, scrollIntoViewIfNeeded avant clic (sinon clic sidebar)
+**Refs** : MissionPipeline.tsx, TutorialVideoDialog.tsx
+
+---
+
 ## 2026-07-02 — SHIP — Vue Pipeline mission : données réparées (project_id, RPCs) + refonte DA v2
 
 **Contexte** : Pipeline débloqué le même jour → l'user découvre une vue quasi vide et restée en DA brutaliste.
