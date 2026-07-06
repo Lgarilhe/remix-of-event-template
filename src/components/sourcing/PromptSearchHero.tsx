@@ -82,6 +82,10 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
       await updateProject({
         id: project.id,
         name: title || project.name,
+        // Le prompt devient la description du poste : il alimente le job
+        // synthétique (contexte de scoring) et évite le faux avertissement
+        // « recherche peu ciblée » au lancement.
+        description: trimmed,
         job_details: { ...(project.job_details || {}), title } as JobDetails,
         filters_snapshot: {
           ...data.filters,

@@ -740,12 +740,18 @@ export function useLinkedInSearchActions(
       return;
     }
 
+    const isStandaloneSearch = activeProject?.kind === 'search';
     if (!selectedJob.title || selectedJob.title.trim().length < 3) {
-      toast.error('Complétez au minimum le titre du poste dans le brief.');
+      toast.error(isStandaloneSearch
+        ? 'Renseigne l’intitulé du poste en haut de la page.'
+        : 'Complétez au minimum le titre du poste dans le brief.');
       return;
     }
     if (!selectedJob.skills?.length && !selectedJob.mustHave && !selectedJob.description) {
-      toast.info('Brief peu détaillé — les résultats seront génériques. Complétez le brief pour de meilleurs résultats.', { duration: 8000 });
+      toast.info(isStandaloneSearch
+        ? 'Recherche peu ciblée — décris ta cible via le Prompt IA pour de meilleurs résultats.'
+        : 'Brief peu détaillé — les résultats seront génériques. Complétez le brief pour de meilleurs résultats.',
+        { duration: 8000 });
     }
 
     if (!isDatabase && !quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
@@ -1025,6 +1031,9 @@ export function useLinkedInSearchActions(
             onClick: () => { window.location.href = "/settings?tab=account"; },
           },
         });
+      } else if (/unexpected token|not valid json|<!doctype|<html/i.test(errorMessage || '')) {
+        // Erreur de parsing brute (réponse HTML du provider) — jamais montrer ça à l'user
+        toast.error('Le service LinkedIn a renvoyé une réponse invalide. Réessaie dans quelques instants.', { id: 'search-error' });
       } else {
         toast.error(errorMessage || "Erreur lors de la recherche", { id: "search-error" });
       }

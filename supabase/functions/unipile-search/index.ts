@@ -1022,10 +1022,11 @@ async function handleSearch(
   const RETRY_DELAYS = [0, 6000, 15000]; // ms: immediate, 6s, 15s
   let response: globalThis.Response | null = null;
   let data: Record<string, unknown> = {};
+  let invalidBody = false;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (attempt > 0) {
-      console.log(`[search] Retry attempt ${attempt + 1}/${MAX_RETRIES} after multiple_sessions error, waiting ${RETRY_DELAYS[attempt]}ms`);
+      console.log(`[search] Retry attempt ${attempt + 1}/${MAX_RETRIES}, waiting ${RETRY_DELAYS[attempt]}ms`);
       await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
     }
 
@@ -1039,7 +1040,22 @@ async function handleSearch(
       body: JSON.stringify(searchBody),
     });
 
-    data = await response.json();
+    // La passerelle LinkedIn peut renvoyer une page HTML (502/504,
+    // maintenance) : response.json() lèverait « Unexpected token '<' » qui
+    // remontait brut jusqu'au toast user. Parse défensif + retry (transitoire).
+    const rawBody = await response.text().catch(() => '');
+    try {
+      data = rawBody ? JSON.parse(rawBody) : {};
+      invalidBody = false;
+    } catch {
+      console.error(`[search] Non-JSON response (HTTP ${response.status}): ${rawBody.slice(0, 300)}`);
+      data = {
+        type: 'invalid_response',
+        detail: 'Le service LinkedIn a renvoyé une réponse invalide (maintenance possible). Réessayez dans un instant.',
+      };
+      invalidBody = true;
+      continue;
+    }
 
     // If success or non-retryable error, break
     if (response.ok) break;
@@ -1053,7 +1069,7 @@ async function handleSearch(
     console.log(`[search] multiple_sessions error on attempt ${attempt + 1}`);
   }
 
-  if (!response!.ok) {
+  if (invalidBody || !response!.ok) {
     console.error('Search error:', JSON.stringify(data, null, 2));
     console.error('Request body was:', JSON.stringify(searchBody, null, 2));
     

@@ -32,6 +32,15 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-06 — BUG — Recherche : « Unexpected token < » + faux avertissement « Brief peu détaillé »
+
+**Contexte** : premier test réel du flux prompt par Laurent — deux messages anormaux au lancement de la recherche.
+**Décision / Fait** : (1) « unexpected HTML » : logs prod → un POST unipile-search 500 après ~7 s ; cause = `data = await response.json()` non protégé (ligne 1042) quand la passerelle LinkedIn renvoie une page HTML (502/504 maintenance) → SyntaxError brute propagée jusqu'au toast. Fix : parse défensif (text → JSON.parse try/catch), réponse invalide traitée comme transitoire (retry avec les délais existants 0/6/15 s), message propre « Le service LinkedIn a renvoyé une réponse invalide » ; + filet côté front (useLinkedInSearchActions) qui humanise tout message contenant unexpected token/doctype/html. Fonction déployée v29. Les ~14 autres `response.json()` de la fonction restent non gardés (actions non-search) — le filet front les couvre. (2) « Brief peu détaillé — complétez le brief » sur une recherche sans brief : le job synthétique n'avait que le titre. Fix : le prompt est maintenant persisté en `description` du sourcing_project → devient la description du job synthétique (l'avertissement ne se déclenche plus + le scoring reçoit tout le contexte du prompt) ; et les messages de garde de handleSearch sont adaptés quand kind='search' (« décris ta cible via le Prompt IA » au lieu de « complétez le brief »).
+**Impact** : supabase/functions/unipile-search/index.ts (v29 prod), useLinkedInSearchActions, PromptSearchHero.
+**Refs** : logs edge-function 2026-07-06 13:26 UTC (POST 500, 6977 ms)
+
+---
+
 ## 2026-07-06 — SHIP — Recherche par prompt sur /sourcing : hero IA « Décris qui tu cherches »
 
 **Contexte** : retour fondateur immédiat après le ship /sourcing — le champ « Que cherches-tu ? » laissait croire à une recherche par prompt (« ça marche mal », « l'UX pourrait être beaucoup mieux fait ») alors qu'il ne faisait que renommer.
